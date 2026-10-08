@@ -25,6 +25,8 @@ public sealed class HiveFixture : IAsyncLifetime
 
     public WebApplicationFactory<Program> App { get; private set; } = null!;
 
+    public string MediaRoot { get; } = Path.Combine(Path.GetTempPath(), $"hive-media-{Guid.NewGuid():N}");
+
     public string MqttHost => _mosquitto.Hostname;
     public int MqttPort => _mosquitto.GetMappedPublicPort(1883);
 
@@ -40,6 +42,9 @@ public sealed class HiveFixture : IAsyncLifetime
             b.UseSetting("Mqtt:Port", MqttPort.ToString(System.Globalization.CultureInfo.InvariantCulture));
             b.UseSetting("Mqtt:ClientId", $"hive-api-test-{Guid.NewGuid():N}");
             b.UseSetting("Database:MigrateOnStartup", "true");
+            b.UseSetting("Media:Root", MediaRoot);
+            b.UseSetting("Media:AllowUploadsWithoutToken", "true");
+            b.UseSetting("Hive:TimeZone", "Europe/Moscow");
         });
         _ = App.Server; // start the host: migrations, MQTT gateway, ingest pipeline
     }
@@ -48,6 +53,8 @@ public sealed class HiveFixture : IAsyncLifetime
     {
         await App.DisposeAsync();
         await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _mosquitto.DisposeAsync().AsTask());
+        if (Directory.Exists(MediaRoot))
+            Directory.Delete(MediaRoot, recursive: true);
     }
 
     public async Task<T> QueryAsync<T>(Func<HiveDbContext, Task<T>> query)

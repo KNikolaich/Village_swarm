@@ -66,6 +66,10 @@ public class Device
     public int ConfigRev { get; set; }
     public int? ConfigAppliedRev { get; set; }
     public string? MqttUser { get; set; }
+
+    /// <summary>SHA-256 (hex) of the bearer token the hornet uses for photo uploads; issued at provisioning.</summary>
+    public string? UploadTokenHash { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public string? Notes { get; set; }
 }

@@ -1,6 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../Hive.Domain/Hive.Domain.csproj" />
     <ProjectReference Include="../Hive.Contracts/Hive.Contracts.csproj" />
+    <ProjectReference Include="../Hive.Infrastructure/Hive.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

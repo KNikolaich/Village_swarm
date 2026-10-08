@@ -49,4 +49,19 @@ Each hornet publishes status (with LWT), info, health, telemetry, events and sta
 retained `config` and confirms it with `event/config_applied`. While offline, events are buffered and
 replayed with their original ids. The heater follows the local failsafe (min_c / max_c / max_on_s,
 anti-freeze timer when the sensor fails) and reports `event/failsafe`. Camera photos are POSTed to
-`{upload_url}/api/ingest/photo` once photo ingest exists (step 5).
+`{upload_url}/api/ingest/photo` (see `contracts/http-ingest.md`).
+
+## REST API (so far)
+
+| Endpoint | What |
+|---|---|
+| `GET /api/devices`, `/api/devices/{id}` | Device registry |
+| `GET /api/events?type=&device=&zone=&severity=&from=&to=&cursor=&limit=` | Event feed, newest first, with photo links |
+| `POST /api/events/{id}/ack` | Acknowledge an alarm |
+| `GET /api/media?device=&date=YYYY-MM-DD&eventId=&cursor=` | Photos of a day (house time zone `Hive:TimeZone`) |
+| `GET /api/media/days?from=&to=&device=` | Days that have photos, for the archive calendar |
+| `GET /api/media/{id}`, `/api/media/{id}/thumb` | Original JPEG (Range, ETag) and 320 px WebP preview |
+| `POST`/`DELETE /api/media/{id}/pin` | Keep forever / allow retention |
+| `POST /api/ingest/photo` | Hornet photo upload (`contracts/http-ingest.md`) |
+
+Media files live under `Media:Root` (`/srv/hive/media` on the hive, `deploy/.data/media` in development).

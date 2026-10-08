@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Hive.Contracts;
 using Hive.Contracts.Messages;
 using Hive.Contracts.Mqtt;
 using Hive.Domain;
@@ -11,12 +12,6 @@ namespace Hive.Modules.Telemetry.Ingest;
 /// <summary>Adapter for our own hornets: <c>vs/v1/dev/{id}/...</c> payloads per contracts/ become ingest items (spec 4.6).</summary>
 public sealed class NativeHornetAdapter(IngestQueue queue, ILogger<NativeHornetAdapter> logger) : IMqttMessageHandler
 {
-    /// <summary>Hornet clocks this far ahead of the hive are not trusted (spec 4.3).</summary>
-    public static readonly TimeSpan MaxClockAhead = TimeSpan.FromMinutes(5);
-
-    /// <summary>Older than this cannot come from a hornet outbox, so the clock must be wrong.</summary>
-    public static readonly TimeSpan MaxBufferedAge = TimeSpan.FromDays(7);
-
     public IReadOnlyList<string> TopicFilters => [Topics.AllDevices];
 
     public ValueTask HandleAsync(string topic, ReadOnlyMemory<byte> payload, bool retained, DateTimeOffset receivedAt)
@@ -28,6 +23,10 @@ public sealed class NativeHornetAdapter(IngestQueue queue, ILogger<NativeHornetA
             queue.Enqueue(item);
         return ValueTask.CompletedTask;
     }
+
+    public static DateTimeOffset EffectiveTs(long ts, DateTimeOffset receivedAt) => MessageTime.Effective(ts, receivedAt);
+
+    public static bool IsClockSkewed(long ts, DateTimeOffset receivedAt) => MessageTime.IsSkewed(ts, receivedAt);
 
     /// <summary>Pure parsing step, public for tests. Returns null for topics the hive does not ingest.</summary>
     public static IngestItem? Parse(string topic, ReadOnlySpan<byte> payload, DateTimeOffset receivedAt, out string? error)
@@ -66,22 +65,6 @@ public sealed class NativeHornetAdapter(IngestQueue queue, ILogger<NativeHornetA
             return null;
         }
     }
-
-    /// <summary>
-    /// Effective time of a message: the hornet clock when plausible, otherwise receive time.
-    /// Past timestamps are trusted up to <see cref="MaxBufferedAge"/>, because outbox replays are legitimately old.
-    /// </summary>
-    public static DateTimeOffset EffectiveTs(long ts, DateTimeOffset receivedAt)
-    {
-        if (ts <= 0)
-            return receivedAt;
-        var deviceTime = DateTimeOffset.FromUnixTimeMilliseconds(ts);
-        return deviceTime > receivedAt + MaxClockAhead || deviceTime < receivedAt - MaxBufferedAge ? receivedAt : deviceTime;
-    }
-
-    /// <summary>Health is never buffered, so a gap over 5 minutes in either direction means a skewed clock.</summary>
-    public static bool IsClockSkewed(long ts, DateTimeOffset receivedAt) =>
-        ts <= 0 || (DateTimeOffset.FromUnixTimeMilliseconds(ts) - receivedAt).Duration() > MaxClockAhead;
 
     private static IngestItem? Status(string deviceId, string payload, DateTimeOffset receivedAt, out string? error)
     {

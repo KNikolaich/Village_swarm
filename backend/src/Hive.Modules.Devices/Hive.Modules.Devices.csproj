@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../Hive.Domain/Hive.Domain.csproj" />
     <ProjectReference Include="../Hive.Contracts/Hive.Contracts.csproj" />
+    <ProjectReference Include="../Hive.Infrastructure/Hive.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

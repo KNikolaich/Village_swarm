@@ -39,7 +39,7 @@ public sealed class GuardCamRole(MotionSpec motion, PhotoLibrary photos) : Horne
         _lastMotion = now;
 
         var e = Hornet.NextEnvelope(now);
-        var photoIds = Armed || RecordWhenDisarmed ? Shoot(e.Id, e.Ts, Burst) : [];
+        var photoIds = Armed || RecordWhenDisarmed ? Shoot(e.Id, "motion", e.Ts, Burst) : [];
         Hornet.EmitEvent("motion", new MotionEvent
         {
             Id = e.Id, Ts = e.Ts, Seq = e.Seq, Boot = e.Boot,
@@ -77,7 +77,7 @@ public sealed class GuardCamRole(MotionSpec motion, PhotoLibrary photos) : Horne
             case "snapshot":
                 var count = payload.TryGetProperty("count", out var c) ? Math.Clamp(c.GetInt32(), 1, 10) : 1;
                 var e = Hornet.NextEnvelope(now);
-                var ids = Shoot(e.Id, e.Ts, count);
+                var ids = Shoot(e.Id, "snapshot", e.Ts, count);
                 Hornet.EmitEvent("snapshot", new EventMessage
                 {
                     Id = e.Id, Ts = e.Ts, Seq = e.Seq, Boot = e.Boot,
@@ -102,7 +102,7 @@ public sealed class GuardCamRole(MotionSpec motion, PhotoLibrary photos) : Horne
 
     public override void ReturnFailedUploads(IEnumerable<PhotoUpload> failed) => _uploads.AddRange(failed);
 
-    private List<string> Shoot(string eventId, long ts, int count)
+    private List<string> Shoot(string eventId, string eventType, long ts, int count)
     {
         var ids = new List<string>(count);
         for (var i = 0; i < count; i++)
@@ -110,7 +110,7 @@ public sealed class GuardCamRole(MotionSpec motion, PhotoLibrary photos) : Horne
             var photoId = $"{eventId}-{i}";
             ids.Add(photoId);
             if (photos.Count > 0)
-                _uploads.Add(new PhotoUpload(photoId, eventId, ts + i * motion.BurstIntervalMs, photos.Next(), UploadUrl));
+                _uploads.Add(new PhotoUpload(photoId, eventId, eventType, ts + i * motion.BurstIntervalMs, photos.Next(), UploadUrl));
         }
         return ids;
     }

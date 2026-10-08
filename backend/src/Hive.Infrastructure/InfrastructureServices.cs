@@ -20,6 +20,7 @@ public static class InfrastructureServices
             .UseSnakeCaseNamingConvention());
 
         services.AddSingleton(TimeProvider.System);
+        services.Configure<HiveOptions>(configuration.GetSection(HiveOptions.Section));
         services.Configure<MqttOptions>(configuration.GetSection(MqttOptions.Section));
         services.AddSingleton<MqttGateway>();
         services.AddHostedService(sp => sp.GetRequiredService<MqttGateway>());

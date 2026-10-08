@@ -15,7 +15,7 @@ hornets:
       armed: true
       burst: 3
       burst_interval_ms: 700
-      upload_url: ""            # set to http://localhost:5080 once photo ingest exists (step 5)
+      upload_url: http://localhost:5080   # Hive.Api in development
       photos_dir: photos
     script:
       - at_s: 120

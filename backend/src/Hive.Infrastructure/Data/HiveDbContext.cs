@@ -13,6 +13,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options) : DbContext(
     public DbSet<DeviceEvent> Events => Set<DeviceEvent>();
     public DbSet<DeviceLog> DeviceLogs => Set<DeviceLog>();
     public DbSet<DeviceHealth> DeviceHealth => Set<DeviceHealth>();
+    public DbSet<MediaItem> Media => Set<MediaItem>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -49,6 +50,23 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options) : DbContext(
             e.HasOne(x => x.Zone).WithMany().HasForeignKey(x => x.ZoneId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne<DeviceType>().WithMany().HasForeignKey(x => x.TypeCode).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+            e.Property(x => x.UploadTokenHash).HasMaxLength(64);
+        });
+
+        b.Entity<MediaItem>(e =>
+        {
+            e.ToTable("media");
+            e.Property(x => x.Id).HasMaxLength(32);
+            e.Property(x => x.EventId).HasMaxLength(26);
+            e.Property(x => x.DeviceId).HasMaxLength(32);
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Path).HasMaxLength(256);
+            e.Property(x => x.ThumbPath).HasMaxLength(256);
+            e.Property(x => x.Sha256).HasMaxLength(64);
+            e.Property(x => x.UploadedVia).HasMaxLength(8);
+            e.HasIndex(x => x.Ts);
+            e.HasIndex(x => new { x.DeviceId, x.Ts });
+            e.HasIndex(x => x.EventId);
         });
 
         // Partitioned by month in raw SQL (see the InitialSchema migration); EF only reads it.

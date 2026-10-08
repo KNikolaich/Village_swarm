@@ -131,23 +131,16 @@ public sealed class HornetRunner(VirtualHornet hornet, IHornetLink link, HttpCli
         var failed = new List<PhotoUpload>();
         foreach (var upload in uploads)
         {
-            try
+            var (outcome, detail) = await PhotoUploader.UploadAsync(http, hornet.Id, upload, token: null, ct);
+            switch (outcome)
             {
-                using var request = new HttpRequestMessage(HttpMethod.Post, $"{upload.Url.TrimEnd('/')}/api/ingest/photo")
-                {
-                    Content = new ByteArrayContent(upload.Jpeg) { Headers = { ContentType = new MediaTypeHeaderValue("image/jpeg") } },
-                };
-                request.Headers.Add("X-Photo-Id", upload.PhotoId);
-                request.Headers.Add("X-Event-Id", upload.EventId);
-                request.Headers.Add("X-Ts", upload.Ts.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                request.Headers.Add("X-Device-Id", hornet.Id);
-                using var response = await http.SendAsync(request, ct);
-                response.EnsureSuccessStatusCode();
-            }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
-            {
-                failed.Add(upload);
-                hornet.EmitLog(HornetLogLevel.Warn, "photo upload failed, kept on SD", now, new { photo = upload.PhotoId, error = ex.Message });
+                case UploadOutcome.Retry:
+                    failed.Add(upload);
+                    hornet.EmitLog(HornetLogLevel.Warn, "photo upload failed, kept on SD", now, new { photo = upload.PhotoId, error = detail });
+                    break;
+                case UploadOutcome.Rejected:
+                    hornet.EmitLog(HornetLogLevel.Error, "photo rejected by hive, dropped", now, new { photo = upload.PhotoId, error = detail });
+                    break;
             }
         }
 

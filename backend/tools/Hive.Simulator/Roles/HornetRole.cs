@@ -42,4 +42,4 @@ public abstract class HornetRole
 }
 
 /// <summary>A photo to POST to {upload}/api/ingest/photo (spec 5.4).</summary>
-public sealed record PhotoUpload(string PhotoId, string EventId, long Ts, byte[] Jpeg, string Url);
+public sealed record PhotoUpload(string PhotoId, string EventId, string EventType, long Ts, byte[] Jpeg, string Url);

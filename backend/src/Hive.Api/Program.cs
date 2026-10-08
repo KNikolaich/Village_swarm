@@ -1,6 +1,9 @@
 using Hive.Infrastructure;
 using Hive.Infrastructure.Data;
 using Hive.Infrastructure.Mqtt;
+using Hive.Modules.Devices;
+using Hive.Modules.Events;
+using Hive.Modules.Media;
 using Hive.Modules.Telemetry;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,6 +11,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddHiveInfrastructure(builder.Configuration);
 builder.Services.AddTelemetryModule();
+builder.Services.AddDevicesModule();
+builder.Services.AddEventsModule();
+builder.Services.AddMediaModule(builder.Configuration);
 
 var app = builder.Build();
 
@@ -21,6 +27,10 @@ if (migrateOnly || app.Configuration.GetValue("Database:MigrateOnStartup", app.E
     if (migrateOnly)
         return;
 }
+
+app.MapDevicesEndpoints();
+app.MapEventsEndpoints();
+app.MapMediaEndpoints();
 
 app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
 
