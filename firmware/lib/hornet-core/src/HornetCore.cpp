@@ -1,5 +1,6 @@
 #include "HornetCore.h"
 
+#include <HTTPClient.h>
 #include <WiFi.h>
 #include <esp_mac.h>
 #include <esp_random.h>
@@ -235,7 +236,7 @@ void Core::handleCommand(const String& name, const String& payload) {
     }
 
     AckResult result(AckStatus::Unsupported, "unknown command " + name);
-    if (name == "reboot" || name == "config_reload") {
+    if (name == "reboot" || name == "config_reload" || name == "factory_reset") {
         result = AckResult::ok();
     } else {
         for (auto& [n, handler] : commands_)
@@ -254,9 +255,10 @@ void Core::handleCommand(const String& name, const String& payload) {
     guard.remember(cid, t.c_str(), body.c_str());
     publish(t, body, false, true, true);
 
-    if (name == "reboot" && result.status == AckStatus::Ok) {
+    if ((name == "reboot" || name == "factory_reset") && result.status == AckStatus::Ok) {
         mqtt.loop();  // give the ack a chance to leave
         delay(200);
+        if (name == "factory_reset") settings_.clear();  // spec 5.3: back to an unconfigured board
         ESP.restart();
     }
 }
@@ -296,6 +298,7 @@ void Core::publishInfo() {
     JsonArray commands = info["commands"].to<JsonArray>();
     commands.add("reboot");
     commands.add("config_reload");
+    commands.add("factory_reset");
     for (auto& [n, _] : commands_) commands.add(n);
     String body;
     serializeJson(info, body);
@@ -392,8 +395,87 @@ void Core::serialConsole() {
             Serial.println("settings cleared, rebooting");
             delay(100);
             ESP.restart();
-        } else if (!settings_.command(line, Serial)) Serial.println("commands: show | set <ssid|pass|mqtt|mqttuser|mqttpass|id|upload|token|ntp> <value> | reboot | factory");
+        } else if (line.startsWith("enroll ")) {
+            const int sp = line.indexOf(' ', 7);
+            if (sp < 0) Serial.println("usage: enroll <http://hive:port> <CODE>");
+            else if (enroll(line.substring(7, sp), line.substring(sp + 1))) {
+                delay(200);
+                ESP.restart();
+            }
+        } else if (!settings_.command(line, Serial)) Serial.println("commands: show | set <ssid|pass|mqtt|mqttuser|mqttpass|id|upload|token|ntp> <value> | enroll <hive-url> <code> | reboot | factory");
     }
+}
+
+}  // namespace hornet
+
+namespace hornet {
+
+// Trades a one-time code from the web UI for this hornet's identity and credentials (spec 5.3 step 3-5).
+// Wi-Fi must be set first (`set ssid`, `set pass`). Prints "enrolled <id>" for the browser wizard.
+bool Core::enroll(const String& hiveUrl, const String& code) {
+    if (!settings_.ssid.length()) {
+        Serial.println("enroll failed: set ssid/pass first");
+        return false;
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+        WiFi.mode(WIFI_STA);
+        WiFi.begin(settings_.ssid.c_str(), settings_.pass.c_str());
+        Serial.print("[hornet] wifi");
+        for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; ++i) {
+            esp_task_wdt_reset();
+            delay(500);
+            Serial.print('.');
+        }
+        Serial.println();
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("enroll failed: wifi not connected (check ssid/pass)");
+            return false;
+        }
+    }
+
+    JsonDocument request;
+    request["code"] = code;
+    request["mac"] = macString();
+    request["hw"] = role_.hw();
+    request["fw"] = HORNET_FW_VERSION;
+    String body;
+    serializeJson(request, body);
+
+    HTTPClient http;
+    http.setTimeout(10000);
+    String url = hiveUrl;
+    if (url.endsWith("/")) url.remove(url.length() - 1);
+    if (!http.begin(url + "/api/provision/enroll")) {
+        Serial.println("enroll failed: bad hive url");
+        return false;
+    }
+    http.addHeader("Content-Type", "application/json");
+    const int status = http.POST(body);
+    const String response = http.getString();
+    http.end();
+    if (status != 200) {
+        Serial.printf("enroll failed: HTTP %d%s\n", status, status == 403 ? " (code wrong, used or expired)" : "");
+        return false;
+    }
+
+    JsonDocument doc;
+    if (deserializeJson(doc, response)) {
+        Serial.println("enroll failed: bad response");
+        return false;
+    }
+    settings_.deviceId = doc["deviceId"].as<String>();
+    settings_.mqttHost = doc["mqtt"]["host"].as<String>();
+    settings_.mqttPort = doc["mqtt"]["port"] | 1883;
+    settings_.mqttUser = doc["mqtt"]["user"] | "";
+    settings_.mqttPass = doc["mqtt"]["pass"] | "";
+    settings_.uploadUrl = doc["uploadUrl"].as<String>();
+    settings_.uploadToken = doc["uploadToken"].as<String>();
+    settings_.save();
+    String config;
+    serializeJson(doc["config"], config);
+    settings_.saveConfig(config);
+    Serial.printf("enrolled %s\n", settings_.deviceId.c_str());
+    return true;
 }
 
 }  // namespace hornet

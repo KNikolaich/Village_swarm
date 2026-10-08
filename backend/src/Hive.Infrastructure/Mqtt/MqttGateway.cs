@@ -16,6 +16,12 @@ public sealed class MqttOptions
     public string? Username { get; set; }
     public string? Password { get; set; }
     public string ClientId { get; set; } = "hive-api";
+
+    /// <summary>Broker runs the dynamic security plugin: hornets get their own logins (spec 4.1). Off in development.</summary>
+    public bool DynamicSecurity { get; set; }
+
+    /// <summary>dynsec role of the api client (created by `mosquitto_ctrl dynsec init`).</summary>
+    public string AdminRole { get; set; } = "admin";
 }
 
 /// <summary>Device adapter (spec 4.6): subscribes to its topics and turns messages into internal ingest items.</summary>
@@ -37,6 +43,9 @@ public sealed class MqttGateway(
     private readonly IMqttClient _client = new MqttClientFactory().CreateMqttClient();
 
     public bool IsConnected => _client.IsConnected;
+
+    /// <summary>Raised after every (re)connect, once subscriptions are in place.</summary>
+    public event Func<CancellationToken, Task>? Connected;
 
     public Task PublishAsync(string topic, string payload, bool retain, CancellationToken ct) =>
         _client.PublishAsync(new MqttApplicationMessageBuilder()
@@ -91,6 +100,20 @@ public sealed class MqttGateway(
                         await SubscribeAsync(handlerList, stoppingToken);
                     logger.LogInformation("MQTT connected to {Host}:{Port} (session present: {Session})", o.Host, o.Port, result.IsSessionPresent);
                     backoff = TimeSpan.FromSeconds(1);
+                    foreach (var handler in Connected?.GetInvocationList().Cast<Func<CancellationToken, Task>>() ?? [])
+                    {
+                        try
+                        {
+                            await handler(stoppingToken);
+                        }
+                        catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+                        {
+                            logger.LogError(ex, "MQTT on-connect step failed");
+                        }
+                    }
+                    // An on-connect step may have just granted our own ACLs (dynsec): subscribe again so it takes effect.
+                    if (Connected is not null)
+                        await SubscribeAsync(handlerList, stoppingToken);
                 }
                 catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
                 {

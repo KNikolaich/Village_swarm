@@ -323,6 +323,29 @@
             "description": "Not Found"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
       }
     },
     "/api/devices/{deviceId}/commands": {
@@ -413,6 +436,195 @@
           },
           "404": {
             "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/provision/codes": {
+      "post": {
+        "tags": [
+          "provision"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentCodeDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/provision/enroll": {
+      "post": {
+        "tags": [
+          "provision"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrollRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        }
+      }
+    },
+    "/api/devices/{deviceId}/replace": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrollmentCodeDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/ingest/photo": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/firmware/{type}/manifest.json": {
+      "get": {
+        "tags": [
+          "firmware"
+        ],
+        "parameters": [
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/firmware/{type}/{file}": {
+      "get": {
+        "tags": [
+          "firmware"
+        ],
+        "parameters": [
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/firmware": {
+      "get": {
+        "tags": [
+          "firmware"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -604,18 +816,6 @@
           },
           "404": {
             "description": "Not Found"
-          }
-        }
-      }
-    },
-    "/api/ingest/photo": {
-      "post": {
-        "tags": [
-          "ingest"
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
           }
         }
       }
@@ -986,6 +1186,32 @@
           }
         }
       },
+      "CreateCodeRequest": {
+        "required": [
+          "deviceId",
+          "type",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "zoneId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "DeviceDto": {
         "required": [
           "deviceId",
@@ -1108,6 +1334,122 @@
               "integer"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "EnrollmentCodeDto": {
+        "required": [
+          "code",
+          "deviceId",
+          "type",
+          "name",
+          "expiresAt",
+          "replaces"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "replaces": {
+            "type": "boolean"
+          }
+        }
+      },
+      "EnrollMqtt": {
+        "required": [
+          "host",
+          "port",
+          "user",
+          "pass"
+        ],
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "user": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "pass": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "EnrollRequest": {
+        "required": [
+          "code",
+          "mac"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "mac": {
+            "type": "string"
+          },
+          "hw": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "fw": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "EnrollResponse": {
+        "required": [
+          "deviceId",
+          "mqtt",
+          "uploadUrl",
+          "uploadToken",
+          "config"
+        ],
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "mqtt": {
+            "$ref": "#/components/schemas/EnrollMqtt"
+          },
+          "uploadUrl": {
+            "type": "string"
+          },
+          "uploadToken": {
+            "type": "string"
+          },
+          "config": {
+            "$ref": "#/components/schemas/JsonElement"
           }
         }
       },
@@ -1686,13 +2028,19 @@
       "name": "devices"
     },
     {
+      "name": "provision"
+    },
+    {
+      "name": "ingest"
+    },
+    {
+      "name": "firmware"
+    },
+    {
       "name": "modes"
     },
     {
       "name": "events"
-    },
-    {
-      "name": "ingest"
     },
     {
       "name": "media"

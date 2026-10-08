@@ -24,6 +24,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     public DbSet<TgLink> TgLinks => Set<TgLink>();
     public DbSet<TgLinkCode> TgLinkCodes => Set<TgLinkCode>();
     public DbSet<Notification> Notifications => Set<Notification>();
+    public DbSet<EnrollmentCode> EnrollmentCodes => Set<EnrollmentCode>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -126,6 +127,19 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.HasKey(x => x.Code);
             e.Property(x => x.Code).HasMaxLength(8);
             e.HasOne<HiveUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<EnrollmentCode>(e =>
+        {
+            e.ToTable("enrollment_codes");
+            e.HasKey(x => x.Code);
+            e.Property(x => x.Code).HasMaxLength(8);
+            e.Property(x => x.DeviceId).HasMaxLength(32);
+            e.Property(x => x.TypeCode).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.UsedByMac).HasMaxLength(17);
+            e.Property(x => x.CreatedBy).HasMaxLength(64);
+            e.HasIndex(x => x.DeviceId);
         });
 
         b.Entity<Notification>(e =>

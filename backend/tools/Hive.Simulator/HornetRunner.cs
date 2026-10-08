@@ -5,7 +5,7 @@ using Hive.Simulator.Roles;
 namespace Hive.Simulator;
 
 /// <summary>Drives one <see cref="VirtualHornet"/> against a real broker: reconnects, scripted outages, photo uploads.</summary>
-public sealed class HornetRunner(VirtualHornet hornet, IHornetLink link, HttpClient http, TimeProvider time)
+public sealed class HornetRunner(VirtualHornet hornet, IHornetLink link, HttpClient http, TimeProvider time, string? uploadToken = null)
 {
     private static readonly TimeSpan StepInterval = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan UploadRetry = TimeSpan.FromSeconds(30);
@@ -131,7 +131,7 @@ public sealed class HornetRunner(VirtualHornet hornet, IHornetLink link, HttpCli
         var failed = new List<PhotoUpload>();
         foreach (var upload in uploads)
         {
-            var (outcome, detail) = await PhotoUploader.UploadAsync(http, hornet.Id, upload, token: null, ct);
+            var (outcome, detail) = await PhotoUploader.UploadAsync(http, hornet.Id, upload, uploadToken, ct);
             switch (outcome)
             {
                 case UploadOutcome.Retry:

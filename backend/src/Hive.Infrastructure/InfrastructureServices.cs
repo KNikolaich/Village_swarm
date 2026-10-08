@@ -24,6 +24,9 @@ public static class InfrastructureServices
         services.Configure<MqttOptions>(configuration.GetSection(MqttOptions.Section));
         services.AddSingleton<MqttGateway>();
         services.AddHostedService(sp => sp.GetRequiredService<MqttGateway>());
+        services.AddSingleton<DynamicSecurityResponses>();
+        services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<DynamicSecurityResponses>());
+        services.AddSingleton<DynamicSecurity>();
         return services;
     }
 }

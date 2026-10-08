@@ -47,11 +47,14 @@ public static class DevicesModule
 {
     public const string Name = "devices";
 
-    public static IServiceCollection AddDevicesModule(this IServiceCollection services)
+    public static IServiceCollection AddDevicesModule(this IServiceCollection services, Microsoft.Extensions.Configuration.IConfiguration configuration)
     {
+        services.Configure<ProvisioningOptions>(configuration.GetSection(ProvisioningOptions.Section));
         services.AddScoped<DeviceQueries>();
         services.AddScoped<CommandService>();
         services.AddScoped<ArmService>();
+        services.AddScoped<ProvisioningService>();
+        services.AddHostedService<DynamicSecurityBootstrap>();
         services.AddHostedService<CommandTimeoutJob>();
         return services;
     }
@@ -79,6 +82,8 @@ public static class DevicesModule
             .RequireAuthorization(HiveRoles.CanControl);
         devices.MapGet("/{deviceId}/commands/{cid}", async Task<Results<Ok<CommandDto>, NotFound>> (string deviceId, string cid, CommandService commands, CancellationToken ct) =>
             await commands.GetAsync(deviceId, cid, ct) is { } c ? TypedResults.Ok(CommandDto.From(c)) : TypedResults.NotFound());
+
+        app.MapProvisioningEndpoints();
 
         var modes = app.MapGroup("/api/modes").WithTags("modes");
         modes.MapGet("/armed", (ArmService arm, CancellationToken ct) => arm.GetAsync(ct));

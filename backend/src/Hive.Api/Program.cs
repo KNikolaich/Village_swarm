@@ -15,8 +15,16 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 // Local development reads secrets (bot token, proxy) from the git-ignored deploy/.env, like the hive does.
+// It goes right after the appsettings files, so environment variables and test settings still win.
 if (builder.Environment.IsDevelopment())
-    builder.Configuration.AddInMemoryCollection(DotEnv.Read(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "..", "deploy", ".env")));
+{
+    var sources = builder.Configuration.Sources;
+    var afterJson = sources.Select((s, i) => (s, i)).LastOrDefault(x => x.s is Microsoft.Extensions.Configuration.Json.JsonConfigurationSource).i + 1;
+    sources.Insert(afterJson, new Microsoft.Extensions.Configuration.Memory.MemoryConfigurationSource
+    {
+        InitialData = DotEnv.Read(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "..", "deploy", ".env")),
+    });
+}
 
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -27,7 +35,7 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 builder.Services.AddHiveInfrastructure(builder.Configuration);
 builder.Services.AddUsersModule(builder.Configuration);
 builder.Services.AddTelemetryModule();
-builder.Services.AddDevicesModule();
+builder.Services.AddDevicesModule(builder.Configuration);
 builder.Services.AddEventsModule();
 builder.Services.AddMediaModule(builder.Configuration);
 builder.Services.AddNotifyModule(builder.Configuration);

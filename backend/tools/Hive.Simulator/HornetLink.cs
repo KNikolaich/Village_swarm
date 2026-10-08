@@ -22,7 +22,7 @@ public interface IHornetLink : IAsyncDisposable
     event Func<string, string, Task>? MessageReceived;
 }
 
-public sealed class MqttHornetLink(BrokerOptions broker) : IHornetLink
+public sealed class MqttHornetLink(BrokerOptions broker, string? username = null, string? password = null) : IHornetLink
 {
     private readonly IMqttClient _client = new MqttClientFactory().CreateMqttClient();
 
@@ -32,7 +32,7 @@ public sealed class MqttHornetLink(BrokerOptions broker) : IHornetLink
 
     public async Task ConnectAsync(string deviceId, CancellationToken ct)
     {
-        var options = new MqttClientOptionsBuilder()
+        var builder = new MqttClientOptionsBuilder()
             .WithTcpServer(broker.Host, broker.Port)
             .WithClientId($"sim-{deviceId}")
             .WithCleanSession()
@@ -40,8 +40,10 @@ public sealed class MqttHornetLink(BrokerOptions broker) : IHornetLink
             .WithWillTopic(Topics.Status(deviceId))
             .WithWillPayload("offline")
             .WithWillRetain()
-            .WithWillQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
-            .Build();
+            .WithWillQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce);
+        if ((username ?? broker.Username) is { } user)
+            builder.WithCredentials(user, password ?? broker.Password);
+        var options = builder.Build();
 
         _client.ApplicationMessageReceivedAsync -= OnMessage;
         _client.ApplicationMessageReceivedAsync += OnMessage;
