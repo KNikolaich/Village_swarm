@@ -18,9 +18,9 @@ public sealed class MediaTests(HiveFixture hive) : IAsyncLifetime
 {
     private static readonly byte[] TestJpeg = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "scenarios", "photos", "frame0.jpg"));
     private readonly List<IHornetLink> _links = [];
-    private readonly HttpClient _http = hive.App.CreateClient();
+    private HttpClient _http = null!;
 
-    public Task InitializeAsync() => Task.CompletedTask;
+    public async Task InitializeAsync() => _http = await hive.LoginAsync();
 
     public async Task DisposeAsync()
     {

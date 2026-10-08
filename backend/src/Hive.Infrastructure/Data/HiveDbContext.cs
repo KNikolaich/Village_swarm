@@ -1,10 +1,14 @@
 using Hive.Domain;
+using Hive.Infrastructure.Identity;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hive.Infrastructure.Data;
 
 /// <summary>PostgreSQL schema (spec 6.4). Table and column names are snake_case.</summary>
-public class HiveDbContext(DbContextOptions<HiveDbContext> options) : DbContext(options)
+public class HiveDbContext(DbContextOptions<HiveDbContext> options)
+    : IdentityDbContext<HiveUser, IdentityRole<int>, int>(options)
 {
     public DbSet<Zone> Zones => Set<Zone>();
     public DbSet<DeviceType> DeviceTypes => Set<DeviceType>();
@@ -17,6 +21,22 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options) : DbContext(
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        base.OnModelCreating(b);
+        // Identity tables without the AspNet prefix: users, roles, user_roles...
+        b.Entity<HiveUser>(e =>
+        {
+            e.ToTable("users");
+            e.Property(x => x.DisplayName).HasMaxLength(128);
+            e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+        });
+        b.Entity<IdentityRole<int>>().ToTable("roles");
+        b.Entity<IdentityUserRole<int>>().ToTable("user_roles");
+        b.Entity<IdentityUserClaim<int>>().ToTable("user_claims");
+        b.Entity<IdentityUserLogin<int>>().ToTable("user_logins");
+        b.Entity<IdentityUserToken<int>>().ToTable("user_tokens");
+        b.Entity<IdentityRoleClaim<int>>().ToTable("role_claims");
+        b.Entity<IdentityUserPasskey<int>>().ToTable("user_passkeys");
+
         b.Entity<Zone>(e =>
         {
             e.ToTable("zones");

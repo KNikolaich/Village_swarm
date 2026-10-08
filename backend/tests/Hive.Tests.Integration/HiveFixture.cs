@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using Hive.Infrastructure.Data;
@@ -27,6 +28,28 @@ public sealed class HiveFixture : IAsyncLifetime
 
     public string MediaRoot { get; } = Path.Combine(Path.GetTempPath(), $"hive-media-{Guid.NewGuid():N}");
 
+    public const string AdminPassword = "test-admin-password";
+
+    /// <summary>HttpClient with a logged-in session cookie.</summary>
+    public async Task<HttpClient> LoginAsync(string login = "admin", string password = AdminPassword)
+    {
+        var client = App.CreateClient();
+        using var response = await client.PostAsJsonAsync("/api/auth/login", new { login, password });
+        response.EnsureSuccessStatusCode();
+        return client;
+    }
+
+    /// <summary>Creates a user with the given role directly through Identity.</summary>
+    public async Task CreateUserAsync(string login, string password, string role)
+    {
+        using var scope = App.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<Hive.Infrastructure.Identity.HiveUser>>();
+        var user = new Hive.Infrastructure.Identity.HiveUser { UserName = login, CreatedAt = DateTimeOffset.UtcNow };
+        var result = await users.CreateAsync(user, password);
+        Assert.True(result.Succeeded, string.Join("; ", result.Errors.Select(e => e.Description)));
+        await users.AddToRoleAsync(user, role);
+    }
+
     public string MqttHost => _mosquitto.Hostname;
     public int MqttPort => _mosquitto.GetMappedPublicPort(1883);
 
@@ -45,6 +68,8 @@ public sealed class HiveFixture : IAsyncLifetime
             b.UseSetting("Media:Root", MediaRoot);
             b.UseSetting("Media:AllowUploadsWithoutToken", "true");
             b.UseSetting("Hive:TimeZone", "Europe/Moscow");
+            b.UseSetting("Auth:BootstrapAdminPassword", AdminPassword);
+            b.UseSetting("Auth:AuthRequestsPerMinute", "10000");
         });
         _ = App.Server; // start the host: migrations, MQTT gateway, ingest pipeline
     }

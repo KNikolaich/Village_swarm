@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+using Hive.Api.Live;
 using Hive.Infrastructure;
 using Hive.Infrastructure.Data;
 using Hive.Infrastructure.Mqtt;
@@ -5,15 +7,23 @@ using Hive.Modules.Devices;
 using Hive.Modules.Events;
 using Hive.Modules.Media;
 using Hive.Modules.Telemetry;
+using Hive.Modules.Telemetry.Ingest;
+using Hive.Modules.Users;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
 builder.Services.AddHiveInfrastructure(builder.Configuration);
+builder.Services.AddUsersModule(builder.Configuration);
 builder.Services.AddTelemetryModule();
 builder.Services.AddDevicesModule();
 builder.Services.AddEventsModule();
 builder.Services.AddMediaModule(builder.Configuration);
+
+builder.Services.AddSignalR().AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
+builder.Services.AddSingleton<IIngestListener, LiveNotifier>();
+builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
@@ -28,11 +38,28 @@ if (migrateOnly || app.Configuration.GetValue("Database:MigrateOnStartup", app.E
         return;
 }
 
+// OpenAPI document for the generated TypeScript client (npm run gen:api) and Swagger UI.
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue("OpenApi:Enabled", false))
+{
+    app.MapOpenApi().AllowAnonymous();
+    app.UseSwaggerUI(o =>
+    {
+        o.SwaggerEndpoint("/openapi/v1.json", "Village Swarm API");
+        o.RoutePrefix = "swagger";
+    });
+}
+
+app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapUsersEndpoints();
 app.MapDevicesEndpoints();
 app.MapEventsEndpoints();
 app.MapMediaEndpoints();
+app.MapHub<LiveHub>(LiveHub.Path);
 
-app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+app.MapGet("/healthz", () => TypedResults.Ok(new { status = "ok" })).AllowAnonymous().ExcludeFromDescription();
 
 app.MapGet("/readyz", async (HiveDbContext db, MqttGateway mqtt, CancellationToken ct) =>
 {
@@ -41,7 +68,7 @@ app.MapGet("/readyz", async (HiveDbContext db, MqttGateway mqtt, CancellationTok
     return dbOk && mqtt.IsConnected
         ? Results.Ok(new { status = "ok", checks })
         : Results.Json(new { status = "degraded", checks }, statusCode: StatusCodes.Status503ServiceUnavailable);
-});
+}).AllowAnonymous().ExcludeFromDescription();
 
 app.Run();
 

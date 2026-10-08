@@ -1,9 +1,12 @@
+using System.Security.Claims;
 using System.Text.Json;
 using Hive.Domain;
 using Hive.Infrastructure;
 using Hive.Infrastructure.Data;
+using Hive.Infrastructure.Identity;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -98,15 +101,15 @@ public static class EventsModule
 
     public static IEndpointRouteBuilder MapEventsEndpoints(this IEndpointRouteBuilder app)
     {
-        var events = app.MapGroup("/api/events");
+        var events = app.MapGroup("/api/events").WithTags("events");
         events.MapGet("", (string? type, string? device, int? zone, string? severity, DateTimeOffset? from, DateTimeOffset? to,
                 string? cursor, int? limit, EventQueries q, CancellationToken ct) =>
             q.ListAsync(new EventFilter(type, device, zone, severity, from, to, cursor, limit), ct));
-        events.MapGet("/{id}", async (string id, EventQueries q, CancellationToken ct) =>
-            await q.GetAsync(id, ct) is { } e ? Results.Ok(e) : Results.NotFound());
-        // Until authentication (build step 6) the acknowledging user is "admin".
-        events.MapPost("/{id}/ack", async (string id, EventQueries q, CancellationToken ct) =>
-            await q.AcknowledgeAsync(id, "user:admin", ct) is { } e ? Results.Ok(e) : Results.NotFound());
+        events.MapGet("/{id}", async Task<Results<Ok<EventDto>, NotFound>> (string id, EventQueries q, CancellationToken ct) =>
+            await q.GetAsync(id, ct) is { } e ? TypedResults.Ok(e) : TypedResults.NotFound());
+        events.MapPost("/{id}/ack", async Task<Results<Ok<EventDto>, NotFound>> (string id, ClaimsPrincipal user, EventQueries q, CancellationToken ct) =>
+                await q.AcknowledgeAsync(id, $"user:{user.Identity?.Name}", ct) is { } e ? TypedResults.Ok(e) : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.CanControl);
         return app;
     }
 }

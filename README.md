@@ -53,8 +53,15 @@ anti-freeze timer when the sensor fails) and reports `event/failsafe`. Camera ph
 
 ## REST API (so far)
 
+Everything under `/api` needs a session except `/api/auth/*` and `/api/ingest/photo`. On the first start with an
+empty database the api creates the user `admin`: in Development the password is `hive-dev-admin`, elsewhere it is
+generated and written to the log once (or set `Auth:BootstrapAdminPassword`). Swagger UI: `/swagger` (Development).
+Live updates: SignalR hub `/hubs/live` with `Event`, `Telemetry`, `DeviceStatus`, `DeviceHealth`.
+
 | Endpoint | What |
 |---|---|
+| `POST /api/auth/login`, `/api/auth/totp`, `/api/auth/logout` | Session cookie; TOTP step when enabled |
+| `GET /api/me`, `POST /api/me/password`, `/api/me/totp/setup|enable|disable` | Own account, authenticator app |
 | `GET /api/devices`, `/api/devices/{id}` | Device registry |
 | `GET /api/events?type=&device=&zone=&severity=&from=&to=&cursor=&limit=` | Event feed, newest first, with photo links |
 | `POST /api/events/{id}/ack` | Acknowledge an alarm |

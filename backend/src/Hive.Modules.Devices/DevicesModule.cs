@@ -3,6 +3,7 @@ using Hive.Domain;
 using Hive.Infrastructure.Data;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -49,11 +50,11 @@ public static class DevicesModule
 
     public static IEndpointRouteBuilder MapDevicesEndpoints(this IEndpointRouteBuilder app)
     {
-        var devices = app.MapGroup("/api/devices");
+        var devices = app.MapGroup("/api/devices").WithTags("devices");
         devices.MapGet("", (int? zone, string? type, string? status, DeviceQueries q, CancellationToken ct) =>
             q.ListAsync(zone, type, status, ct));
-        devices.MapGet("/{deviceId}", async (string deviceId, DeviceQueries q, CancellationToken ct) =>
-            await q.GetAsync(deviceId, ct) is { } d ? Results.Ok(d) : Results.NotFound());
+        devices.MapGet("/{deviceId}", async Task<Results<Ok<DeviceDto>, NotFound>> (string deviceId, DeviceQueries q, CancellationToken ct) =>
+            await q.GetAsync(deviceId, ct) is { } d ? TypedResults.Ok(d) : TypedResults.NotFound());
         return app;
     }
 }

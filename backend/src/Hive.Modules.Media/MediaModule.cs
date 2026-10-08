@@ -1,5 +1,7 @@
+using Hive.Infrastructure.Identity;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
@@ -27,21 +29,26 @@ public static class MediaModule
 
     public static IEndpointRouteBuilder MapMediaEndpoints(this IEndpointRouteBuilder app)
     {
+        // Hornets authenticate with their upload token, not a user session.
         app.MapPost("/api/ingest/photo", IngestPhoto)
+            .AllowAnonymous()
             .DisableAntiforgery()
-            .WithMetadata(new RequestSizeLimitAttribute(3 * 1024 * 1024));
+            .WithMetadata(new RequestSizeLimitAttribute(3 * 1024 * 1024))
+            .WithTags("ingest");
 
-        var media = app.MapGroup("/api/media");
+        var media = app.MapGroup("/api/media").WithTags("media");
         media.MapGet("", (string? device, DateOnly? date, string? eventId, string? cursor, int? limit, MediaQueries q, CancellationToken ct) =>
             q.ListAsync(device, date, eventId, cursor, limit, ct));
         media.MapGet("/days", (DateOnly from, DateOnly to, string? device, MediaQueries q, CancellationToken ct) =>
             q.DaysAsync(from, to, device, ct));
-        media.MapGet("/{id}", GetOriginal);
-        media.MapGet("/{id}/thumb", GetThumb);
-        media.MapPost("/{id}/pin", async (string id, MediaQueries q, CancellationToken ct) =>
-            await q.SetPinnedAsync(id, true, ct) ? Results.NoContent() : Results.NotFound());
-        media.MapDelete("/{id}/pin", async (string id, MediaQueries q, CancellationToken ct) =>
-            await q.SetPinnedAsync(id, false, ct) ? Results.NoContent() : Results.NotFound());
+        media.MapGet("/{id}", GetOriginal).Produces(StatusCodes.Status200OK, contentType: "image/jpeg").Produces(StatusCodes.Status404NotFound);
+        media.MapGet("/{id}/thumb", GetThumb).Produces(StatusCodes.Status200OK, contentType: "image/webp").Produces(StatusCodes.Status404NotFound);
+        media.MapPost("/{id}/pin", async Task<Results<NoContent, NotFound>> (string id, MediaQueries q, CancellationToken ct) =>
+                await q.SetPinnedAsync(id, true, ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.CanControl);
+        media.MapDelete("/{id}/pin", async Task<Results<NoContent, NotFound>> (string id, MediaQueries q, CancellationToken ct) =>
+                await q.SetPinnedAsync(id, false, ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.CanControl);
         return app;
     }
 
