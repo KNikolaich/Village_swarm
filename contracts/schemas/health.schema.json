@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/health.schema.json",
+  "title": "vs/v1/dev/{id}/health (every health_interval_s)",
+  "type": "object",
+  "allOf": [{ "$ref": "common.schema.json#/$defs/envelope" }],
+  "required": ["uptime_s", "rssi", "heap_free", "reset_reason"],
+  "properties": {
+    "uptime_s": { "type": "integer", "minimum": 0 },
+    "rssi": { "type": "integer", "minimum": -127, "maximum": 0 },
+    "heap_free": { "type": "integer", "minimum": 0 },
+    "psram_free": { "type": "integer", "minimum": 0 },
+    "vbat": { "type": "number", "minimum": 0, "description": "Supply/battery voltage, V" },
+    "reset_reason": { "type": "string", "minLength": 1, "description": "Reason of the last reset, e.g. poweron, watchdog, panic" },
+    "outbox": { "type": "integer", "minimum": 0, "description": "Events waiting in the local buffer" },
+    "broker": { "enum": ["home", "city"], "description": "Broker the hornet is connected to (spec 4.5)" }
+  },
+  "unevaluatedProperties": false
+}

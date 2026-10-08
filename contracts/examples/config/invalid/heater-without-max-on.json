@@ -1,0 +1,4 @@
+{
+  "v": 1, "rev": 12, "name": "Обогрев гостиная", "health_interval_s": 60,
+  "failsafe": { "heater": { "min_c": 5.0, "max_c": 25.0 } }
+}

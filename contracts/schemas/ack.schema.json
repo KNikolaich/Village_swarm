@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/ack.schema.json",
+  "title": "vs/v1/dev/{id}/cmd/{name}/ack (hornet -> hive)",
+  "type": "object",
+  "allOf": [{ "$ref": "common.schema.json#/$defs/envelope" }],
+  "required": ["cid", "status"],
+  "properties": {
+    "cid": { "$ref": "common.schema.json#/$defs/ulid" },
+    "status": { "enum": ["ok", "rejected", "expired", "error", "unsupported"] },
+    "state": {
+      "type": "object",
+      "propertyNames": { "$ref": "common.schema.json#/$defs/segment" },
+      "additionalProperties": { "type": ["string", "number", "boolean"] }
+    },
+    "msg": { "type": ["string", "null"] }
+  },
+  "unevaluatedProperties": false
+}

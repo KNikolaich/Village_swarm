@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/common.schema.json",
+  "title": "Shared definitions (spec 4.3)",
+  "$defs": {
+    "ulid": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "photoId": {
+      "description": "Photo id: <event ULID>-<frame index>",
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}-[0-9]{1,2}$"
+    },
+    "deviceId": {
+      "type": "string",
+      "maxLength": 32,
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+    },
+    "segment": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "unixMs": {
+      "description": "Unix time in ms by the sender's clock; 0 when the clock is not synced yet",
+      "type": "integer",
+      "minimum": 0
+    },
+    "envelope": {
+      "description": "Fields every JSON message from a hornet carries",
+      "type": "object",
+      "required": ["v", "id", "ts", "seq", "boot"],
+      "properties": {
+        "v": { "const": 1 },
+        "id": { "$ref": "#/$defs/ulid" },
+        "ts": { "$ref": "#/$defs/unixMs" },
+        "seq": { "type": "integer", "minimum": 0 },
+        "boot": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

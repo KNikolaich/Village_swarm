@@ -1,0 +1,2 @@
+{ "v": 1, "id": "01J9Z3K7Q8M4N5P6R7S8T9V160", "ts": 1759387200123, "seq": 40, "boot": 17,
+  "level": "warn", "msg": "photo upload failed, buffered to SD", "ctx": { "photo": "01J9Z3K7Q8M4N5P6R7S8T9V130-1", "http": 503 } }

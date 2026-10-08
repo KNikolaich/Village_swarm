@@ -1,0 +1,7 @@
+{
+  "v": 1, "rev": 3, "name": "Камера у ворот",
+  "health_interval_s": 60,
+  "guard": { "armed": true, "cooldown_s": 20, "record_when_disarmed": false, "check_photo_every_min": 60 },
+  "camera": { "frame": "SVGA", "quality": 12, "burst": 3, "burst_interval_ms": 700, "ir_led": "auto" },
+  "upload": { "primary": "http://192.168.20.2:8443", "fallback": "https://10.10.0.2:8443" }
+}

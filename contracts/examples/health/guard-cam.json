@@ -1,0 +1,5 @@
+{
+  "v": 1, "id": "01J9Z3K7Q8M4N5P6R7S8T9V0Y0", "ts": 1759387260123, "seq": 2, "boot": 17,
+  "uptime_s": 60, "rssi": -67, "heap_free": 142336, "psram_free": 3981204,
+  "vbat": 5.02, "reset_reason": "poweron", "outbox": 0, "broker": "home"
+}

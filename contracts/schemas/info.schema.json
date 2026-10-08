@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/info.schema.json",
+  "title": "vs/v1/dev/{id}/info (retained, on every connect)",
+  "type": "object",
+  "allOf": [{ "$ref": "common.schema.json#/$defs/envelope" }],
+  "required": ["type", "hw", "fw", "mac", "caps", "metrics", "commands"],
+  "properties": {
+    "type": { "$ref": "common.schema.json#/$defs/deviceId", "description": "Device type code, e.g. guard-cam" },
+    "hw": { "type": "string", "minLength": 1 },
+    "fw": { "type": "string", "minLength": 1 },
+    "mac": { "type": "string", "pattern": "^[0-9A-F]{2}(:[0-9A-F]{2}){5}$" },
+    "ip": { "type": "string", "format": "ipv4" },
+    "caps": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$" }, "uniqueItems": true },
+    "metrics": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/segment" }, "uniqueItems": true },
+    "commands": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/segment" }, "uniqueItems": true }
+  },
+  "unevaluatedProperties": false
+}

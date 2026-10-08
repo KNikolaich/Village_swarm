@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/active.schema.json",
+  "title": "vs/v1/hive/active (retained): which node is active (spec 11.3)",
+  "type": "object",
+  "required": ["v", "ts", "node"],
+  "properties": {
+    "v": { "const": 1 },
+    "ts": { "$ref": "common.schema.json#/$defs/unixMs" },
+    "node": { "enum": ["home", "city"] }
+  },
+  "additionalProperties": false
+}

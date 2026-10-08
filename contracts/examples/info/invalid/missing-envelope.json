@@ -1,0 +1,5 @@
+{
+  "type": "guard-cam", "hw": "esp32cam-aithinker", "fw": "0.3.2",
+  "mac": "A0:B7:65:12:34:56",
+  "caps": [], "metrics": [], "commands": []
+}

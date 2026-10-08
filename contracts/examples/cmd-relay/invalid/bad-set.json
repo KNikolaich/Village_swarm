@@ -1,0 +1,2 @@
+{ "v": 1, "cid": "01J9Z3K7Q8M4N5P6R7S8T9V170", "ts": 1759387200123, "ttl_s": 30,
+  "channel": "heater", "set": "toggle", "by": "rule:frost-guard" }

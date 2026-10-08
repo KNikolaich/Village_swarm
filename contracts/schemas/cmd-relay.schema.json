@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/cmd-relay.schema.json",
+  "title": "vs/v1/dev/{id}/cmd/relay",
+  "type": "object",
+  "allOf": [{ "$ref": "cmd.schema.json" }],
+  "required": ["channel", "set"],
+  "properties": {
+    "channel": { "$ref": "common.schema.json#/$defs/segment" },
+    "set": { "enum": ["on", "off"] },
+    "for_s": { "type": "integer", "minimum": 1, "description": "Hornet switches the relay off by itself after this time" }
+  },
+  "unevaluatedProperties": false
+}

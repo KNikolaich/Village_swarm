@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/event-motion.schema.json",
+  "title": "vs/v1/dev/{id}/event/motion (spec 4.4, 5.4)",
+  "type": "object",
+  "allOf": [{ "$ref": "event.schema.json" }],
+  "required": ["source", "armed", "photos", "photo_status"],
+  "properties": {
+    "source": { "enum": ["pir", "mmwave", "camera"] },
+    "photos": {
+      "description": "Ids of photos the hornet uploads over HTTP; empty when no photos are taken",
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/photoId" },
+      "uniqueItems": true
+    },
+    "photo_status": { "enum": ["none", "uploading", "buffered"] }
+  },
+  "unevaluatedProperties": false
+}

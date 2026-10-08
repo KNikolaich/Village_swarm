@@ -1,0 +1,6 @@
+{
+  "v": 1, "id": "01J9Z3K7Q8M4N5P6R7S8T9V0WX", "ts": 1759387200123, "seq": 1, "boot": 17,
+  "type": "guard-cam", "hw": "esp32cam-aithinker", "fw": "0.3.2",
+  "mac": "a0:b7:65:12:34:56",
+  "caps": [], "metrics": [], "commands": []
+}

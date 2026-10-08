@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/cmd.schema.json",
+  "title": "vs/v1/dev/{id}/cmd/{name} (hive -> hornet). Command-specific fields are defined in cmd-<name>.schema.json",
+  "type": "object",
+  "required": ["v", "cid", "ts", "ttl_s", "by"],
+  "properties": {
+    "v": { "const": 1 },
+    "cid": { "$ref": "common.schema.json#/$defs/ulid", "description": "Command id and idempotency key" },
+    "ts": { "$ref": "common.schema.json#/$defs/unixMs" },
+    "ttl_s": { "type": "integer", "minimum": 1, "description": "Rejected with ack status expired when received after ts + ttl_s" },
+    "by": { "type": "string", "pattern": "^(user|rule|tg|system):[^\\s]+$" }
+  }
+}

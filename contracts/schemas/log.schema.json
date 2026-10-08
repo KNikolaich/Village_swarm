@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/log.schema.json",
+  "title": "vs/v1/dev/{id}/log (WARN and above; DEBUG on request)",
+  "type": "object",
+  "allOf": [{ "$ref": "common.schema.json#/$defs/envelope" }],
+  "required": ["level", "msg"],
+  "properties": {
+    "level": { "enum": ["debug", "info", "warn", "error"] },
+    "msg": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "ctx": { "type": "object" }
+  },
+  "unevaluatedProperties": false
+}

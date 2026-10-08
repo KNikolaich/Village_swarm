@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/cmd-snapshot.schema.json",
+  "title": "vs/v1/dev/{id}/cmd/snapshot: take photos on request",
+  "type": "object",
+  "allOf": [{ "$ref": "cmd.schema.json" }],
+  "properties": {
+    "count": { "type": "integer", "minimum": 1, "maximum": 10 }
+  },
+  "unevaluatedProperties": false
+}

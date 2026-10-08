@@ -1,0 +1,8 @@
+{
+  "v": 1, "id": "01J9Z3K7Q8M4N5P6R7S8T9V0X0", "ts": 0, "seq": 1, "boot": 3,
+  "type": "meteo", "hw": "esp32c3-supermini", "fw": "0.1.0",
+  "mac": "34:85:18:AA:BB:CC",
+  "caps": ["sensor.sht45"],
+  "metrics": ["temperature", "humidity"],
+  "commands": ["reboot", "ota"]
+}

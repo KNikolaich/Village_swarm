@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/cmd-arm.schema.json",
+  "title": "vs/v1/dev/{id}/cmd/arm",
+  "type": "object",
+  "allOf": [{ "$ref": "cmd.schema.json" }],
+  "required": ["armed"],
+  "properties": {
+    "armed": { "type": "boolean" }
+  },
+  "unevaluatedProperties": false
+}

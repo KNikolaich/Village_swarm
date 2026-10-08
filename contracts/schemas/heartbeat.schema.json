@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/heartbeat.schema.json",
+  "title": "vs/v1/hive/{node}/heartbeat (every 30 s)",
+  "type": "object",
+  "required": ["v", "ts", "node", "role", "version"],
+  "properties": {
+    "v": { "const": 1 },
+    "ts": { "$ref": "common.schema.json#/$defs/unixMs" },
+    "node": { "enum": ["home", "city"] },
+    "role": { "enum": ["active", "standby", "observer"] },
+    "version": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

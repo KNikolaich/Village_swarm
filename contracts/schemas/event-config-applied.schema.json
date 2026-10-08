@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/event-config-applied.schema.json",
+  "title": "vs/v1/dev/{id}/event/config_applied (spec 4.4)",
+  "type": "object",
+  "allOf": [{ "$ref": "event.schema.json" }],
+  "required": ["rev"],
+  "properties": {
+    "rev": { "type": "integer", "minimum": 0 }
+  },
+  "unevaluatedProperties": false
+}
