@@ -1,0 +1,35 @@
+{
+  // F5 in "Run and Debug": pick "Улей (отладка)" to debug the API with breakpoints and open the UI in a browser.
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "API (отладка)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build API",
+      "program": "${workspaceFolder}/backend/src/Hive.Api/bin/Debug/net10.0/Hive.Api.dll",
+      "cwd": "${workspaceFolder}/backend/src/Hive.Api",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "ASPNETCORE_URLS": "http://localhost:5080"
+      },
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Веб-интерфейс в браузере",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/frontend/src"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Улей (отладка)",
+      "configurations": ["API (отладка)", "Веб-интерфейс в браузере"],
+      "preLaunchTask": "Улей: для отладки",
+      "stopAll": true
+    }
+  ]
+}

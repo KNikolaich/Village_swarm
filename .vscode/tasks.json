@@ -1,0 +1,117 @@
+{
+  // Run from VS Code: Ctrl+Shift+P → "Tasks: Run Task", or Ctrl+Shift+B for "Улей: всё".
+  // Processes are started directly (type "process"), so the PowerShell script policy does not matter.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Улей: всё",
+      "detail": "Контейнеры, API, веб-интерфейс и симулятор",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Контейнеры (Mosquitto, PostgreSQL)", "Улей: сервисы"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Улей: для отладки",
+      "detail": "Всё, кроме API: его запускает отладчик (F5)",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Контейнеры (Mosquitto, PostgreSQL)", "Улей: фронт и симулятор"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Улей: фронт и симулятор",
+      "dependsOn": ["Веб-интерфейс", "Симулятор роя"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Улей: сервисы",
+      "dependsOn": ["API", "Веб-интерфейс", "Симулятор роя"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Контейнеры (Mosquitto, PostgreSQL)",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "-f", "deploy/compose.dev.yaml", "up", "-d", "--wait"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "API",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["run", "--project", "backend/src/Hive.Api"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "presentation": { "group": "hive", "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "hive-api",
+        "pattern": { "regexp": "^__never__$" },
+        "background": { "activesBegin": ".", "beginsPattern": "Building|Сборка|info:", "endsPattern": "Now listening on" }
+      }
+    },
+    {
+      "label": "Веб-интерфейс",
+      "type": "process",
+      "command": "npm.cmd",
+      "args": ["run", "dev"],
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "isBackground": true,
+      "presentation": { "group": "hive", "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "hive-frontend",
+        "pattern": { "regexp": "^__never__$" },
+        "background": { "activesBegin": ".", "beginsPattern": "vite|VITE", "endsPattern": "ready in|Local:" }
+      }
+    },
+    {
+      "label": "Симулятор роя",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["run", "--project", "backend/tools/Hive.Simulator", "--", "backend/tools/Hive.Simulator/scenarios/default.yaml"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "presentation": { "group": "hive", "panel": "dedicated" },
+      "problemMatcher": {
+        "owner": "hive-simulator",
+        "pattern": { "regexp": "^__never__$" },
+        "background": { "activesBegin": ".", "beginsPattern": "Scenario|Building", "endsPattern": "Ctrl\\+C to stop" }
+      }
+    },
+    {
+      "label": "Симулятор роя (20 шершней)",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["run", "--project", "backend/tools/Hive.Simulator", "--", "backend/tools/Hive.Simulator/scenarios/swarm.yaml"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "presentation": { "group": "hive", "panel": "dedicated" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Остановить контейнеры",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "-f", "deploy/compose.dev.yaml", "down"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "build API",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "backend/src/Hive.Api", "-c", "Debug"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Тесты backend",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "backend/Hive.slnx"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}
