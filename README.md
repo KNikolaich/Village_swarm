@@ -19,8 +19,15 @@ Spec: [docs/architecture.md](docs/architecture.md). MQTT contract: [contracts/](
 ```sh
 make dev-up      # Mosquitto on :1883, PostgreSQL 17 on :5432 (user/pass/db: hive)
 make check       # build + tests + lint for backend, frontend, firmware
-dotnet run --project backend/src/Hive.Api   # http://localhost:5080/healthz
+dotnet run --project backend/src/Hive.Api   # http://localhost:5080/readyz
 ```
+
+In Development the api applies EF migrations on start; elsewhere run `Hive.Api --migrate` once.
+It subscribes to `vs/v1/dev/+/#` and writes devices, telemetry (monthly partitions), events,
+logs and health to PostgreSQL in batches, dropping duplicate message ids. Integration tests in
+`backend/tests/Hive.Tests.Integration` start PostgreSQL and Mosquitto with Testcontainers (Docker required).
+
+New migration: `cd backend && dotnet tool restore && dotnet ef migrations add <Name> --project src/Hive.Infrastructure --startup-project src/Hive.Api --output-dir Data/Migrations`.
 
 Without `make` (Windows), run the commands from the `Makefile` directly.
 

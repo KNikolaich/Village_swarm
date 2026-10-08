@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Hive.Contracts/Hive.Contracts.csproj" />
     <ProjectReference Include="../../tools/Hive.Simulator/Hive.Simulator.csproj" />
+    <ProjectReference Include="../../src/Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- The contract is the source of truth: tests read schemas and examples straight from contracts/. -->
