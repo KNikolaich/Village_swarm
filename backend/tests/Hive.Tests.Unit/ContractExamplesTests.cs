@@ -11,9 +11,7 @@ namespace Hive.Tests.Unit;
 /// </summary>
 public class ContractExamplesTests
 {
-    private static readonly string ContractsDir = Path.Combine(AppContext.BaseDirectory, "contracts");
-    private static readonly string SchemasDir = Path.Combine(ContractsDir, "schemas");
-    private static readonly string ExamplesDir = Path.Combine(ContractsDir, "examples");
+    private static readonly string ExamplesDir = ContractSchemas.ExamplesDir;
 
     // Base schemas that only exist to be extended.
     private static readonly HashSet<string> AbstractSchemas = ["common", "cmd"];
@@ -36,26 +34,6 @@ public class ContractExamplesTests
         ["config"] = typeof(DeviceConfig),
         ["heartbeat"] = typeof(HeartbeatMessage),
         ["active"] = typeof(ActiveNodeMessage),
-    };
-
-    private static readonly Lazy<Dictionary<string, JsonSchema>> Schemas = new(LoadSchemas);
-
-    private static Dictionary<string, JsonSchema> LoadSchemas()
-    {
-        var schemas = new Dictionary<string, JsonSchema>();
-        foreach (var file in Directory.GetFiles(SchemasDir, "*.schema.json"))
-        {
-            var schema = JsonSchema.FromFile(file);
-            SchemaRegistry.Global.Register(schema);
-            schemas[Path.GetFileName(file)[..^".schema.json".Length]] = schema;
-        }
-        return schemas;
-    }
-
-    private static readonly EvaluationOptions Options = new()
-    {
-        OutputFormat = OutputFormat.List,
-        RequireFormatValidation = true,
     };
 
     public static TheoryData<string, string> ValidExamples() => Examples(invalid: false);
@@ -110,7 +88,7 @@ public class ContractExamplesTests
     [Fact]
     public void Every_concrete_schema_has_examples_and_a_dto()
     {
-        foreach (var name in Schemas.Value.Keys.Where(n => !AbstractSchemas.Contains(n)))
+        foreach (var name in ContractSchemas.All.Keys.Where(n => !AbstractSchemas.Contains(n)))
         {
             Assert.True(Directory.Exists(Path.Combine(ExamplesDir, name)), $"No examples for {name}.schema.json");
             Assert.True(Dtos.ContainsKey(name), $"No DTO for {name}.schema.json");
@@ -121,7 +99,7 @@ public class ContractExamplesTests
     public void Every_example_folder_has_a_schema()
     {
         foreach (var dir in Directory.GetDirectories(ExamplesDir))
-            Assert.True(Schemas.Value.ContainsKey(Path.GetFileName(dir)), $"No schema for examples/{Path.GetFileName(dir)}");
+            Assert.True(ContractSchemas.All.ContainsKey(Path.GetFileName(dir)), $"No schema for examples/{Path.GetFileName(dir)}");
     }
 
     [Fact]
@@ -135,16 +113,12 @@ public class ContractExamplesTests
     public void Missing_required_field_fails_deserialization() =>
         Assert.Throws<JsonException>(() => ContractJson.Deserialize<TeleMessage>("""{"v":1,"id":"01J9Z3K7Q8M4N5P6R7S8T9V0Z0","ts":0,"seq":1,"boot":1}"""));
 
-    private static EvaluationResults Evaluate(string schema, JsonNode? instance) =>
-        Schemas.Value[schema].Evaluate(instance, Options);
+    private static EvaluationResults Evaluate(string schema, JsonNode? instance) => ContractSchemas.Evaluate(schema, instance);
 
     private static JsonNode? ReadExample(string example) =>
         JsonNode.Parse(File.ReadAllText(Path.Combine(ExamplesDir, example)));
 
-    private static string Describe(EvaluationResults result) =>
-        string.Join("; ", result.Details
-            .Where(d => d.HasErrors)
-            .SelectMany(d => d.Errors!.Select(e => $"{d.InstanceLocation} {e.Key}: {e.Value}")));
+    private static string Describe(EvaluationResults result) => ContractSchemas.Describe(result);
 
     private static SortedSet<string> NonNullKeys(JsonNode node, string prefix = "")
     {

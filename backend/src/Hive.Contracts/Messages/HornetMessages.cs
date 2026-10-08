@@ -8,15 +8,21 @@ namespace Hive.Contracts.Messages;
 /// <summary>Envelope every hornet message carries (spec 4.3).</summary>
 public abstract record HornetMessage
 {
+    [JsonPropertyOrder(-5)]
     public int V { get; init; } = 1;
 
     /// <summary>Message ULID, the deduplication key.</summary>
+    [JsonPropertyOrder(-4)]
     public required string Id { get; init; }
 
     /// <summary>Unix ms by the hornet clock; 0 when not synced.</summary>
+    [JsonPropertyOrder(-3)]
     public required long Ts { get; init; }
 
+    [JsonPropertyOrder(-2)]
     public required long Seq { get; init; }
+
+    [JsonPropertyOrder(-1)]
     public required int Boot { get; init; }
 }
 

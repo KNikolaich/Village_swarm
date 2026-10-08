@@ -1,0 +1,25 @@
+# Load scenario: 10 cameras, 5 meteo sensors, 5 heaters, frequent motion.
+
+broker:
+  host: localhost
+  port: 1883
+
+hornets:
+  - id: guard-load
+    type: guard-cam
+    count: 10
+    motion:
+      every_seconds: 20
+      photos_dir: photos
+
+  - id: meteo-load
+    type: meteo
+    count: 5
+    tele_interval_s: 5
+
+  - id: heat-load
+    type: heat
+    count: 5
+    tele_interval_s: 10
+    heater:
+      sensor_fail_at_s: 90      # sensor lost: anti-freeze timer mode + failsafe event

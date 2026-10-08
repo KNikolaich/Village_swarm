@@ -3,6 +3,16 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="MQTTnet" />
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../../src/Hive.Contracts/Hive.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="scenarios/**/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hive.Tests.Unit" />
   </ItemGroup>
 </Project>

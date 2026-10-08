@@ -1,0 +1,48 @@
+# Default swarm: the MVP gate camera, an outdoor meteo sensor and a heater.
+# Run: dotnet run --project backend/tools/Hive.Simulator -- backend/tools/Hive.Simulator/scenarios/default.yaml
+# Watch: docker compose -f deploy/compose.dev.yaml exec mosquitto mosquitto_sub -v -t 'vs/v1/#'
+
+broker:
+  host: localhost
+  port: 1883
+
+hornets:
+  - id: guard-gate1
+    type: guard-cam
+    health_interval_s: 60
+    motion:
+      every_seconds: 45
+      armed: true
+      burst: 3
+      burst_interval_ms: 700
+      upload_url: ""            # set to http://localhost:5080 once photo ingest exists (step 5)
+      photos_dir: photos
+    script:
+      - at_s: 120
+        action: offline         # Wi-Fi gone: LWT, events buffered, flushed after reconnect
+        for_s: 40
+      - at_s: 300
+        action: reboot
+
+  - id: meteo-out1
+    type: meteo
+    health_interval_s: 60
+    tele_interval_s: 10
+    temperature:
+      base: -2
+      amplitude: 4
+      period_s: 600
+      noise: 0.15
+
+  - id: heat-living1
+    type: heat
+    health_interval_s: 60
+    tele_interval_s: 15
+    heater:
+      start_c: 4.5              # below min_c: the failsafe turns the heater on by itself
+      outside_c: -8
+      heat_rate_c_per_min: 0.6
+      loss_per_min: 0.02
+      min_c: 5
+      max_c: 25
+      max_on_s: 21600
