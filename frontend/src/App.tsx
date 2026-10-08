@@ -11,6 +11,7 @@ import { EventsPage } from '@/pages/EventsPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { PhotosPage } from '@/pages/PhotosPage'
+import { SettingsPage } from '@/pages/SettingsPage'
 
 function Authenticated() {
   const live = useLive(true)
@@ -26,6 +27,7 @@ const router = createBrowserRouter([
       { path: 'events', element: <EventsPage /> },
       { path: 'photos', element: <PhotosPage /> },
       { path: 'photos/:date', element: <PhotosPage /> },
+      { path: 'settings', element: <SettingsPage /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },

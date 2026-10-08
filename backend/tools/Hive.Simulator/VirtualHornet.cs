@@ -32,6 +32,7 @@ public sealed class VirtualHornet
     private static readonly TimeSpan ClockSyncDelay = TimeSpan.FromSeconds(5);
 
     private readonly Channel<(string Topic, string Payload)> _inbox = Channel.CreateUnbounded<(string, string)>();
+    private readonly System.Collections.Concurrent.ConcurrentQueue<Action<DateTimeOffset>> _actions = new();
     private readonly List<Outgoing> _pending = [];
     private readonly Queue<Outgoing> _outbox = new();
     private readonly LinkedList<(string Cid, Outgoing Ack)> _ackCache = new();
@@ -71,9 +72,15 @@ public sealed class VirtualHornet
     /// <summary>Queues an incoming message; it is handled on the next <see cref="Step"/>.</summary>
     public void Receive(string topic, string payload) => _inbox.Writer.TryWrite((topic, payload));
 
+    /// <summary>Runs <paramref name="action"/> on the next <see cref="Step"/>, e.g. a PIR trigger from another thread.</summary>
+    public void Enqueue(Action<DateTimeOffset> action) => _actions.Enqueue(action);
+
     /// <summary>Advances the hornet: handles incoming messages, runs the role, emits health.</summary>
     public void Step(DateTimeOffset now)
     {
+        while (_actions.TryDequeue(out var action))
+            action(now);
+
         while (_inbox.Reader.TryRead(out var message))
             Handle(message.Topic, message.Payload, now);
 

@@ -6,12 +6,17 @@ using Hive.Infrastructure.Mqtt;
 using Hive.Modules.Devices;
 using Hive.Modules.Events;
 using Hive.Modules.Media;
+using Hive.Modules.Notify;
 using Hive.Modules.Telemetry;
 using Hive.Modules.Telemetry.Ingest;
 using Hive.Modules.Users;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Local development reads secrets (bot token, proxy) from the git-ignored deploy/.env, like the hive does.
+if (builder.Environment.IsDevelopment())
+    builder.Configuration.AddInMemoryCollection(DotEnv.Read(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "..", "deploy", ".env")));
 
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -25,6 +30,7 @@ builder.Services.AddTelemetryModule();
 builder.Services.AddDevicesModule();
 builder.Services.AddEventsModule();
 builder.Services.AddMediaModule(builder.Configuration);
+builder.Services.AddNotifyModule(builder.Configuration);
 
 builder.Services.AddSignalR().AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
 builder.Services.AddSingleton<IIngestListener, LiveNotifier>();
@@ -41,6 +47,12 @@ if (migrateOnly || app.Configuration.GetValue("Database:MigrateOnStartup", app.E
     await scope.ServiceProvider.GetRequiredService<HiveDbContext>().Database.MigrateAsync();
     if (migrateOnly)
         return;
+}
+
+if (args.Contains("--add-user"))
+{
+    Environment.ExitCode = await UserCli.RunAsync(app.Services, args);
+    return;
 }
 
 // OpenAPI document for the generated TypeScript client (npm run gen:api) and Swagger UI.
@@ -63,6 +75,7 @@ app.MapTelemetryEndpoints();
 app.MapDevicesEndpoints();
 app.MapEventsEndpoints();
 app.MapMediaEndpoints();
+app.MapNotifyEndpoints();
 app.MapHub<LiveHub>(LiveHub.Path);
 
 app.MapGet("/healthz", () => TypedResults.Ok(new { status = "ok" })).AllowAnonymous().ExcludeFromDescription();

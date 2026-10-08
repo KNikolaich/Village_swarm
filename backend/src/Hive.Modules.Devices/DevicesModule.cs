@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using System.Text.Json;
 using Hive.Domain;
 using Hive.Infrastructure.Data;
+using Hive.Infrastructure.Identity;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -45,8 +47,14 @@ public static class DevicesModule
 {
     public const string Name = "devices";
 
-    public static IServiceCollection AddDevicesModule(this IServiceCollection services) =>
+    public static IServiceCollection AddDevicesModule(this IServiceCollection services)
+    {
         services.AddScoped<DeviceQueries>();
+        services.AddScoped<CommandService>();
+        services.AddScoped<ArmService>();
+        services.AddHostedService<CommandTimeoutJob>();
+        return services;
+    }
 
     public static IEndpointRouteBuilder MapDevicesEndpoints(this IEndpointRouteBuilder app)
     {
@@ -55,6 +63,28 @@ public static class DevicesModule
             q.ListAsync(zone, type, status, ct));
         devices.MapGet("/{deviceId}", async Task<Results<Ok<DeviceDto>, NotFound>> (string deviceId, DeviceQueries q, CancellationToken ct) =>
             await q.GetAsync(deviceId, ct) is { } d ? TypedResults.Ok(d) : TypedResults.NotFound());
+
+        devices.MapPost("/{deviceId}/commands", async Task<Results<Accepted<CommandDto>, NotFound, ValidationProblem, ProblemHttpResult>> (
+                string deviceId, SendCommandRequest request, ClaimsPrincipal user, CommandService commands, CancellationToken ct) =>
+            {
+                var (status, command) = await commands.SendAsync(deviceId, request.Name, request.Payload, $"user:{user.Identity?.Name}", request.TtlS, ct);
+                return status switch
+                {
+                    SendStatus.Sent => TypedResults.Accepted($"/api/devices/{deviceId}/commands/{command!.Cid}", CommandDto.From(command)),
+                    SendStatus.UnknownDevice => TypedResults.NotFound(),
+                    SendStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["Invalid command name"] }),
+                    _ => TypedResults.Problem("MQTT broker is not connected", statusCode: StatusCodes.Status503ServiceUnavailable),
+                };
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
+        devices.MapGet("/{deviceId}/commands/{cid}", async Task<Results<Ok<CommandDto>, NotFound>> (string deviceId, string cid, CommandService commands, CancellationToken ct) =>
+            await commands.GetAsync(deviceId, cid, ct) is { } c ? TypedResults.Ok(CommandDto.From(c)) : TypedResults.NotFound());
+
+        var modes = app.MapGroup("/api/modes").WithTags("modes");
+        modes.MapGet("/armed", (ArmService arm, CancellationToken ct) => arm.GetAsync(ct));
+        modes.MapPut("/armed", (SetArmedRequest request, ClaimsPrincipal user, ArmService arm, CancellationToken ct) =>
+                arm.SetAsync(request.Armed, $"user:{user.Identity?.Name}", ct))
+            .RequireAuthorization(HiveRoles.CanControl);
         return app;
     }
 }

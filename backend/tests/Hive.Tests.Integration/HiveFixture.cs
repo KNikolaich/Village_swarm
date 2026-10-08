@@ -53,9 +53,12 @@ public sealed class HiveFixture : IAsyncLifetime
     public string MqttHost => _mosquitto.Hostname;
     public int MqttPort => _mosquitto.GetMappedPublicPort(1883);
 
+    public FakeTelegram Telegram { get; private set; } = null!;
+
     public async Task InitializeAsync()
     {
         await Task.WhenAll(_postgres.StartAsync(), _mosquitto.StartAsync());
+        Telegram = await FakeTelegram.StartAsync();
 
         App = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
@@ -70,6 +73,10 @@ public sealed class HiveFixture : IAsyncLifetime
             b.UseSetting("Hive:TimeZone", "Europe/Moscow");
             b.UseSetting("Auth:BootstrapAdminPassword", AdminPassword);
             b.UseSetting("Auth:AuthRequestsPerMinute", "10000");
+            b.UseSetting("Telegram:Token", FakeTelegram.Token);
+            b.UseSetting("Telegram:Endpoints:0:BaseUrl", Telegram.BaseUrl);
+            b.UseSetting("Telegram:PollTimeoutS", "1");
+            b.UseSetting("Telegram:PhotoWaitS", "8");
         });
         _ = App.Server; // start the host: migrations, MQTT gateway, ingest pipeline
     }
@@ -77,6 +84,7 @@ public sealed class HiveFixture : IAsyncLifetime
     public async Task DisposeAsync()
     {
         await App.DisposeAsync();
+        await Telegram.DisposeAsync();
         await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _mosquitto.DisposeAsync().AsTask());
         if (Directory.Exists(MediaRoot))
             Directory.Delete(MediaRoot, recursive: true);

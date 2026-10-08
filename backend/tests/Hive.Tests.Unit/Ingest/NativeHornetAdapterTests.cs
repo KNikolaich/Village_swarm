@@ -49,10 +49,11 @@ public class NativeHornetAdapterTests
     }
 
     [Fact]
-    public void Ignores_commands_acks_and_config_and_reports_garbage()
+    public void Parses_acks_and_ignores_own_commands_config_and_garbage()
     {
         Assert.Null(Parse("vs/v1/dev/guard-gate1/cmd/arm", "{}"));
-        Assert.Null(Parse("vs/v1/dev/guard-gate1/cmd/arm/ack", Example("ack/relay-ok.json")));
+        var ack = Assert.IsType<CommandAckReceived>(Parse("vs/v1/dev/guard-gate1/cmd/relay/ack", Example("ack/relay-ok.json")));
+        Assert.Equal(("01J9Z3K7Q8M4N5P6R7S8T9V170", "ok"), (ack.Cid, ack.Status));
         Assert.Null(Parse("vs/v1/dev/guard-gate1/config", Example("config/guard-gate1.json")));
 
         Assert.Null(NativeHornetAdapter.Parse("vs/v1/dev/guard-gate1/health", "{not json"u8, Now, out var error));

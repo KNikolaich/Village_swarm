@@ -24,6 +24,7 @@ public sealed class IngestWriter(HiveDbContext db)
         {
             DeviceId = l.DeviceId, Ts = l.Ts, Level = l.Level, Msg = l.Msg, Ctx = l.Ctx,
         }));
+        await ApplyAcksAsync(items.OfType<CommandAckReceived>().ToList(), ct);
         await db.SaveChangesAsync(ct);
 
         var connection = (NpgsqlConnection)db.Database.GetDbConnection();
@@ -86,6 +87,22 @@ public sealed class IngestWriter(HiveDbContext db)
                     device.ConfigAppliedRev = r;
                     break;
             }
+        }
+    }
+
+    private async Task ApplyAcksAsync(List<CommandAckReceived> acks, CancellationToken ct)
+    {
+        if (acks.Count == 0)
+            return;
+        var cids = acks.Select(a => a.Cid).ToList();
+        var commands = await db.Commands.Where(c => cids.Contains(c.Cid)).ToDictionaryAsync(c => c.Cid, ct);
+        foreach (var ack in acks)
+        {
+            if (!commands.TryGetValue(ack.Cid, out var command) || command.DeviceId != ack.DeviceId)
+                continue; // not ours, or a hornet answering for another one
+            command.Status = Enum.TryParse<CommandStatus>(ack.Status, ignoreCase: true, out var s) ? s : CommandStatus.Error;
+            command.AckAt = ack.ReceivedAt;
+            command.AckPayload = ack.Payload;
         }
     }
 

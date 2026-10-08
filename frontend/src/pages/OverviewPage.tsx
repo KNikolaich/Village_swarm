@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 import type { DeviceDto, LatestValueDto } from '@/api/client'
 import { useDevices, useEvents, useLatestTelemetry } from '@/api/queries'
 import { EventCard, type PhotoRef } from '@/components/EventCard'
+import { GuardCard } from '@/components/GuardCard'
 import { Lightbox } from '@/components/Lightbox'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
@@ -24,6 +25,7 @@ export function OverviewPage() {
 
   return (
     <div className="space-y-4">
+      <GuardCard />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Card>
           <CardContent>

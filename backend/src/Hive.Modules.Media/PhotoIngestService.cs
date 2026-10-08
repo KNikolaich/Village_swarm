@@ -81,7 +81,7 @@ public sealed partial class PhotoIngestService(
             Id = request.PhotoId,
             EventId = request.EventId,
             DeviceId = deviceId,
-            Kind = request.EventId is null ? MediaKind.Snapshot : MediaKind.Photo,
+            Kind = request.EventId is null || eventType == "snapshot" ? MediaKind.Snapshot : MediaKind.Photo,
             Ts = ts,
             ReceivedAt = receivedAt,
             Path = MediaStore.PhotoPath(deviceId, local, eventType, request.PhotoId),

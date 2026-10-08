@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Hive.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,7 +30,7 @@ public sealed class AdminBootstrap(IServiceScopeFactory scopes, IOptions<AuthOpt
         var password = options.Value.BootstrapAdminPassword;
         var generated = string.IsNullOrEmpty(password);
         if (generated)
-            password = GeneratePassword();
+            password = UserCli.GeneratePassword();
 
         var admin = new HiveUser { UserName = login, DisplayName = "Администратор", CreatedAt = DateTimeOffset.UtcNow };
         var created = await users.CreateAsync(admin, password!);
@@ -46,10 +45,4 @@ public sealed class AdminBootstrap(IServiceScopeFactory scopes, IOptions<AuthOpt
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
-
-    private static string GeneratePassword()
-    {
-        const string alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
-        return string.Join('-', Enumerable.Range(0, 3).Select(_ => RandomNumberGenerator.GetString(alphabet, 5)));
-    }
 }

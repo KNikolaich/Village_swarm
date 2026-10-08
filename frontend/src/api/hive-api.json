@@ -325,6 +325,144 @@
         }
       }
     },
+    "/api/devices/{deviceId}/commands": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendCommandRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices/{deviceId}/commands/{cid}": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/modes/armed": {
+      "get": {
+        "tags": [
+          "modes"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArmedDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "modes"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetArmedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArmedDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/events": {
       "get": {
         "tags": [
@@ -686,10 +824,102 @@
           }
         }
       }
+    },
+    "/api/me/telegram": {
+      "get": {
+        "tags": [
+          "telegram"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelegramStatusDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me/telegram/code": {
+      "post": {
+        "tags": [
+          "telegram"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkCodeDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me/telegram/{id}": {
+      "delete": {
+        "tags": [
+          "telegram"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "ArmedDto": {
+        "required": [
+          "armed",
+          "updatedAt",
+          "updatedBy",
+          "cameras"
+        ],
+        "type": "object",
+        "properties": {
+          "armed": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "cameras": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "ChangePasswordRequest": {
         "required": [
           "currentPassword",
@@ -702,6 +932,57 @@
           },
           "newPassword": {
             "type": "string"
+          }
+        }
+      },
+      "CommandDto": {
+        "required": [
+          "cid",
+          "deviceId",
+          "name",
+          "status",
+          "issuedBy",
+          "issuedAt",
+          "ackAt",
+          "ack"
+        ],
+        "type": "object",
+        "properties": {
+          "cid": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "issuedBy": {
+            "type": "string"
+          },
+          "issuedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ackAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "ack": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
           }
         }
       },
@@ -975,6 +1256,9 @@
         }
       },
       "JsonElement": { },
+      "JsonObject": {
+        "type": "object"
+      },
       "LatestValueDto": {
         "required": [
           "deviceId",
@@ -997,6 +1281,29 @@
           "value": {
             "type": "number",
             "format": "double"
+          }
+        }
+      },
+      "LinkCodeDto": {
+        "required": [
+          "code",
+          "expiresAt",
+          "botUsername"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "botUsername": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -1213,6 +1520,111 @@
           }
         }
       },
+      "SendCommandRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "payload": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            ]
+          },
+          "ttlS": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "SetArmedRequest": {
+        "required": [
+          "armed"
+        ],
+        "type": "object",
+        "properties": {
+          "armed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TelegramLinkDto": {
+        "required": [
+          "id",
+          "chatId",
+          "username",
+          "linkedAt",
+          "notifyLevel",
+          "mutedUntil"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "chatId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "username": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "linkedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notifyLevel": {
+            "type": "string"
+          },
+          "mutedUntil": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "TelegramStatusDto": {
+        "required": [
+          "enabled",
+          "botUsername",
+          "links"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "botUsername": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "links": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TelegramLinkDto"
+            }
+          }
+        }
+      },
       "TotpCodeRequest": {
         "required": [
           "code"
@@ -1274,6 +1686,9 @@
       "name": "devices"
     },
     {
+      "name": "modes"
+    },
+    {
       "name": "events"
     },
     {
@@ -1281,6 +1696,9 @@
     },
     {
       "name": "media"
+    },
+    {
+      "name": "telegram"
     }
   ]
 }

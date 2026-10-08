@@ -78,3 +78,17 @@ export function usePin() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['media'] }),
   })
 }
+
+export const useArmed = () =>
+  useQuery({ queryKey: ['modes', 'armed'], queryFn: () => call(api.GET('/api/modes/armed')), refetchInterval: 60_000 })
+
+export function useSetArmed() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (armed: boolean) => call(api.PUT('/api/modes/armed', { body: { armed } })),
+    onSuccess: (data) => qc.setQueryData(['modes', 'armed'], data),
+  })
+}
+
+export const useTelegram = () =>
+  useQuery({ queryKey: ['telegram'], queryFn: () => call(api.GET('/api/me/telegram')) })

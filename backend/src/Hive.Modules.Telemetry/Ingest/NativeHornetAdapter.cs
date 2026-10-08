@@ -54,7 +54,8 @@ public sealed class NativeHornetAdapter(IngestQueue queue, ILogger<NativeHornetA
                 ("state", 5) => State(deviceId, JsonSerializer.Deserialize<StateMessage>(payload, ContractJson.Options)!, receivedAt),
                 ("event", 6) => Event(deviceId, parts[5], payload, receivedAt),
                 ("log", 5) => Log(deviceId, JsonSerializer.Deserialize<LogMessage>(payload, ContractJson.Options)!, receivedAt),
-                ("cmd", _) => null, // commands are ours; acks are handled by CommandDispatcher (later step)
+                ("cmd", 7) when parts[6] == "ack" => Ack(deviceId, payload, receivedAt),
+                ("cmd", _) => null, // commands are published by the hive itself
                 ("config", 5) => null, // published by the hive itself
                 _ => Unknown(out error),
             };
@@ -116,6 +117,13 @@ public sealed class NativeHornetAdapter(IngestQueue queue, ILogger<NativeHornetA
         "failsafe" or "photo_failed" or "tamper" => EventSeverity.Warn,
         _ => EventSeverity.Info,
     };
+
+    private static CommandAckReceived Ack(string deviceId, ReadOnlySpan<byte> payload, DateTimeOffset receivedAt)
+    {
+        var m = JsonSerializer.Deserialize<AckMessage>(payload, ContractJson.Options)!;
+        return new(deviceId, m.Id, EffectiveTs(m.Ts, receivedAt), receivedAt, m.Cid,
+            m.Status.ToString().ToLowerInvariant(), JsonDocument.Parse(payload.ToArray()));
+    }
 
     private static DeviceLogReceived Log(string deviceId, LogMessage m, DateTimeOffset receivedAt) =>
         new(deviceId, m.Id, EffectiveTs(m.Ts, receivedAt), receivedAt, m.Level.ToString().ToLowerInvariant(), m.Msg,

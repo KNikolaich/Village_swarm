@@ -72,3 +72,16 @@ Live updates: SignalR hub `/hubs/live` with `Event`, `Telemetry`, `DeviceStatus`
 | `POST /api/ingest/photo` | Hornet photo upload (`contracts/http-ingest.md`) |
 
 Media files live under `Media:Root` (`/srv/hive/media` on the hive, `deploy/.data/media` in development).
+
+## Telegram bot
+
+Put the token from @BotFather into `deploy/.env` (git-ignored; see `deploy/.env.example`):
+`TELEGRAM__TOKEN=...`, plus `TELEGRAM__ENDPOINTS__0__PROXY=socks5://...` or `...__BASEURL=https://...`
+when api.telegram.org is not reachable directly. In Development the api reads that file itself.
+Then in the web UI: Settings → Telegram → "Получить код", and send `/link CODE` to the bot.
+Alarms come with buttons (ack, more photos, 1 h mute) and photos; commands: /status /arm /disarm /photo
+/events /temp /devices /mute /help. Without a token everything else works and alarms stay in the feed.
+
+## Users
+
+`dotnet run --project backend/src/Hive.Api -- --add-user <login> <admin|member|viewer>` prints a one-time password.
