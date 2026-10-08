@@ -11,7 +11,9 @@ import { EventsPage } from '@/pages/EventsPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { PhotosPage } from '@/pages/PhotosPage'
+import { AddHornetPage } from '@/pages/AddHornetPage'
 import { SettingsPage } from '@/pages/SettingsPage'
+import { SwarmPage } from '@/pages/SwarmPage'
 
 function Authenticated() {
   const live = useLive(true)
@@ -27,6 +29,8 @@ const router = createBrowserRouter([
       { path: 'events', element: <EventsPage /> },
       { path: 'photos', element: <PhotosPage /> },
       { path: 'photos/:date', element: <PhotosPage /> },
+      { path: 'swarm', element: <SwarmPage /> },
+      { path: 'swarm/add', element: <AddHornetPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],

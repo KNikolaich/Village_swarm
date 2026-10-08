@@ -38,10 +38,10 @@ export default defineConfig({
     alias: { '@': path.resolve(__dirname, './src') },
   },
   server: {
-    // Hive.Api in development (backend/src/Hive.Api/Properties/launchSettings.json).
+    // Hive.Api in development (backend/src/Hive.Api/Properties/launchSettings.json); HIVE_API overrides it.
     proxy: {
-      '/api': 'http://localhost:5080',
-      '/hubs': { target: 'http://localhost:5080', ws: true },
+      '/api': process.env.HIVE_API ?? 'http://localhost:5080',
+      '/hubs': { target: process.env.HIVE_API ?? 'http://localhost:5080', ws: true },
     },
   },
 })

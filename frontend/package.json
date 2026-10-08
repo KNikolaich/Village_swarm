@@ -16,6 +16,7 @@
     "@tanstack/react-query": "^5.90.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "esp-web-tools": "^10.1.1",
     "lucide-react": "^0.544.0",
     "openapi-fetch": "^0.14.1",
     "qrcode": "^1.5.4",

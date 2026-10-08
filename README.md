@@ -82,6 +82,15 @@ Then in the web UI: Settings → Telegram → "Получить код", and sen
 Alarms come with buttons (ack, more photos, 1 h mute) and photos; commands: /status /arm /disarm /photo
 /events /temp /devices /mute /help. Without a token everything else works and alarms stay in the feed.
 
+## Adding a hornet
+
+Web UI → Рой → «Добавить шершня»: pick the type, id and name to get a one-time code, flash the board from the
+browser (Chrome/Edge, ESP Web Tools; images come from `firmware/dist/<role>` after `pio run`), then send Wi-Fi
+and the code over USB. The board calls `/api/provision/enroll`, gets its own Mosquitto login (dynsec, only its
+own topics) and photo upload token, and comes online. «Заменить» issues a code for the same id (history kept,
+the old board loses access); «Удалить» revokes the login. The simulator can do the same against a real hive:
+`Hive.Simulator scenario.yaml --hive http://hive:5080 --login admin --password ...`.
+
 ## Users
 
 `dotnet run --project backend/src/Hive.Api -- --add-user <login> <admin|member|viewer>` prints a one-time password.
