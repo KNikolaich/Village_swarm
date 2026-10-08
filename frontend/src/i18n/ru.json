@@ -1,6 +1,94 @@
 {
   "app": {
     "title": "Улей",
-    "placeholder": "Village Swarm: интерфейс в разработке"
+    "subtitle": "Village Swarm"
+  },
+  "nav": {
+    "overview": "Обзор",
+    "events": "События",
+    "photos": "Фото",
+    "logout": "Выйти"
+  },
+  "live": {
+    "connected": "На связи",
+    "connecting": "Подключение…",
+    "disconnected": "Нет связи с Ульем"
+  },
+  "login": {
+    "title": "Вход в Улей",
+    "login": "Логин",
+    "password": "Пароль",
+    "submit": "Войти",
+    "failed": "Неверный логин или пароль",
+    "locked": "Слишком много попыток. Вход заблокирован на 15 минут",
+    "totpTitle": "Код из приложения",
+    "totpHint": "Введите 6 цифр из приложения-аутентификатора или код восстановления",
+    "totpFailed": "Неверный код",
+    "back": "Назад"
+  },
+  "overview": {
+    "swarm": "Рой",
+    "online": "на связи",
+    "climate": "Температура",
+    "noClimate": "Нет свежих показаний",
+    "latestEvents": "Последние события",
+    "allEvents": "Все события",
+    "devices": "Шершни",
+    "noDevices": "Пока ни один шершень не вышел на связь",
+    "unacknowledged": "Неподтверждённые тревоги"
+  },
+  "events": {
+    "title": "События",
+    "empty": "Событий нет",
+    "loadMore": "Показать ещё",
+    "ack": "Подтвердить",
+    "acked": "Подтверждено",
+    "allTypes": "Все типы",
+    "allDevices": "Все шершни",
+    "allSeverities": "Любая важность",
+    "photosPending": "Фото загружаются…",
+    "photosMissing": "Фото не дошли до Улья",
+    "new": "Новое событие"
+  },
+  "photos": {
+    "title": "Фото-архив",
+    "noPhotos": "В этот день фото нет",
+    "today": "Сегодня",
+    "photosCount": "фото",
+    "download": "Скачать",
+    "pin": "Не удалять",
+    "unpin": "Снять пометку",
+    "pinned": "Сохранено навсегда",
+    "close": "Закрыть"
+  },
+  "eventTypes": {
+    "motion": "Движение",
+    "door_open": "Дверь открыта",
+    "leak": "Протечка",
+    "failsafe": "Защита обогрева",
+    "config_applied": "Настройки применены",
+    "snapshot": "Снимок",
+    "photo_failed": "Фото не загрузилось",
+    "tamper": "Камера закрыта или сдвинута"
+  },
+  "severity": {
+    "info": "Инфо",
+    "warn": "Внимание",
+    "alarm": "Тревога",
+    "critical": "Критично"
+  },
+  "status": {
+    "online": "в сети",
+    "offline": "не в сети",
+    "pending": "ожидает",
+    "disabled": "отключён"
+  },
+  "metrics": {
+    "temperature": "Температура",
+    "humidity": "Влажность"
+  },
+  "errors": {
+    "generic": "Что-то пошло не так",
+    "forbidden": "Недостаточно прав"
   }
 }

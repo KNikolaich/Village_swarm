@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using Hive.Contracts.Mqtt;
 using Hive.Domain;
 using Hive.Simulator;
@@ -77,6 +78,10 @@ public sealed class IngestTests(HiveFixture hive) : IAsyncLifetime
         Assert.Equal(3, humidity);
         var device = await hive.QueryAsync(db => db.Devices.SingleAsync(d => d.DeviceId == "meteo-ing1"));
         Assert.NotNull(device.Rssi);
+
+        var client = await hive.LoginAsync();
+        var latest = await client.GetFromJsonAsync<List<Hive.Modules.Telemetry.LatestValueDto>>("/api/telemetry/latest?device=meteo-ing1");
+        Assert.Equal(["humidity", "temperature"], latest!.Select(v => v.Metric).Order());
     }
 
     [Fact]

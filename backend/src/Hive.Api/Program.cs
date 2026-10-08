@@ -13,7 +13,12 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
+builder.Services.ConfigureHttpJsonOptions(o =>
+{
+    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase));
+    // Numbers are numbers: keeps the OpenAPI types (and the generated TypeScript) as `number`, not `number | string`.
+    o.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
+});
 builder.Services.AddHiveInfrastructure(builder.Configuration);
 builder.Services.AddUsersModule(builder.Configuration);
 builder.Services.AddTelemetryModule();
@@ -54,6 +59,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapUsersEndpoints();
+app.MapTelemetryEndpoints();
 app.MapDevicesEndpoints();
 app.MapEventsEndpoints();
 app.MapMediaEndpoints();

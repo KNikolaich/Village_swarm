@@ -1,5 +1,8 @@
 using Hive.Infrastructure.Mqtt;
 using Hive.Modules.Telemetry.Ingest;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Hive.Modules.Telemetry;
@@ -16,6 +19,14 @@ public static class TelemetryModule
         services.AddScoped<IngestWriter>();
         services.AddSingleton<IngestPipeline>();
         services.AddHostedService(sp => sp.GetRequiredService<IngestPipeline>());
+        services.AddScoped<TelemetryQueries>();
         return services;
+    }
+
+    public static IEndpointRouteBuilder MapTelemetryEndpoints(this IEndpointRouteBuilder app)
+    {
+        var telemetry = app.MapGroup("/api/telemetry").WithTags("telemetry");
+        telemetry.MapGet("/latest", (string? device, TelemetryQueries q, CancellationToken ct) => q.LatestAsync(device, ct));
+        return app;
     }
 }
