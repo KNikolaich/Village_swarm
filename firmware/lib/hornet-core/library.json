@@ -1,0 +1,7 @@
+{
+  "name": "hornet-core",
+  "version": "0.0.1",
+  "description": "Village Swarm hornet core: lifecycle, MQTT contract, config, health, commands",
+  "frameworks": "*",
+  "platforms": "*"
+}

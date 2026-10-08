@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+/* Dark theme is the default: alarms are checked from a phone at night (spec 8.1). */
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  @apply bg-neutral-950 text-neutral-100 antialiased;
+}

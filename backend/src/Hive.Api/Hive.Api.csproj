@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="../Hive.Infrastructure/Hive.Infrastructure.csproj" />
+    <ProjectReference Include="../Hive.Modules.Devices/Hive.Modules.Devices.csproj" />
+    <ProjectReference Include="../Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
+    <ProjectReference Include="../Hive.Modules.Events/Hive.Modules.Events.csproj" />
+    <ProjectReference Include="../Hive.Modules.Media/Hive.Modules.Media.csproj" />
+    <ProjectReference Include="../Hive.Modules.Rules/Hive.Modules.Rules.csproj" />
+    <ProjectReference Include="../Hive.Modules.Notify/Hive.Modules.Notify.csproj" />
+    <ProjectReference Include="../Hive.Modules.Cluster/Hive.Modules.Cluster.csproj" />
+  </ItemGroup>
+</Project>

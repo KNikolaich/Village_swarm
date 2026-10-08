@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Hive.Domain/Hive.Domain.csproj" />
+    <ProjectReference Include="../Hive.Contracts/Hive.Contracts.csproj" />
+  </ItemGroup>
+</Project>

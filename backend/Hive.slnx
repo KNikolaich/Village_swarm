@@ -1,0 +1,22 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Hive.Api/Hive.Api.csproj" />
+    <Project Path="src/Hive.Contracts/Hive.Contracts.csproj" />
+    <Project Path="src/Hive.Domain/Hive.Domain.csproj" />
+    <Project Path="src/Hive.Infrastructure/Hive.Infrastructure.csproj" />
+    <Project Path="src/Hive.Modules.Cluster/Hive.Modules.Cluster.csproj" />
+    <Project Path="src/Hive.Modules.Devices/Hive.Modules.Devices.csproj" />
+    <Project Path="src/Hive.Modules.Events/Hive.Modules.Events.csproj" />
+    <Project Path="src/Hive.Modules.Media/Hive.Modules.Media.csproj" />
+    <Project Path="src/Hive.Modules.Notify/Hive.Modules.Notify.csproj" />
+    <Project Path="src/Hive.Modules.Rules/Hive.Modules.Rules.csproj" />
+    <Project Path="src/Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Hive.Tests.Integration/Hive.Tests.Integration.csproj" />
+    <Project Path="tests/Hive.Tests.Unit/Hive.Tests.Unit.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Hive.Simulator/Hive.Simulator.csproj" />
+  </Folder>
+</Solution>
