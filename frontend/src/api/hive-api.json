@@ -555,14 +555,14 @@
         }
       }
     },
-    "/api/firmware/{type}/manifest.json": {
+    "/api/firmware/{build}/manifest.json": {
       "get": {
         "tags": [
           "firmware"
         ],
         "parameters": [
           {
-            "name": "type",
+            "name": "build",
             "in": "path",
             "required": true,
             "schema": {
@@ -577,14 +577,14 @@
         }
       }
     },
-    "/api/firmware/{type}/{file}": {
+    "/api/firmware/{build}/{file}": {
       "get": {
         "tags": [
           "firmware"
         ],
         "parameters": [
           {
-            "name": "type",
+            "name": "build",
             "in": "path",
             "required": true,
             "schema": {
@@ -620,7 +620,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "string"
+                    "$ref": "#/components/schemas/FirmwareBuildDto"
                   }
                 }
               }
@@ -1549,6 +1549,34 @@
           },
           "thumbUrl": {
             "type": "string"
+          }
+        }
+      },
+      "FirmwareBuildDto": {
+        "required": [
+          "build",
+          "role",
+          "board",
+          "chipFamily",
+          "built"
+        ],
+        "type": "object",
+        "properties": {
+          "build": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "board": {
+            "type": "string"
+          },
+          "chipFamily": {
+            "type": "string"
+          },
+          "built": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },

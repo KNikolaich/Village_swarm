@@ -11,8 +11,32 @@
 #include <string>
 #include <vector>
 
+#include "Platform.h"
 #include "Settings.h"
 #include "Topics.h"
+
+// Board wiring defaults come from platformio.ini (-D HW_...=); the config "hw" section overrides them.
+#ifndef HORNET_BOARD
+#define HORNET_BOARD "unknown"
+#endif
+#ifndef HW_ONEWIRE_PIN
+#define HW_ONEWIRE_PIN -1
+#endif
+#ifndef HW_SDA_PIN
+#define HW_SDA_PIN -1
+#endif
+#ifndef HW_SCL_PIN
+#define HW_SCL_PIN -1
+#endif
+#ifndef HW_RELAY_PIN
+#define HW_RELAY_PIN -1
+#endif
+#ifndef HW_RELAY_ACTIVE_LOW
+#define HW_RELAY_ACTIVE_LOW 0
+#endif
+#ifndef HW_BUTTON_PIN
+#define HW_BUTTON_PIN -1
+#endif
 
 namespace hornet {
 

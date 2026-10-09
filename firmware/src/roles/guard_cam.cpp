@@ -77,7 +77,7 @@ struct Photo {
 class GuardCam : public Role {
 public:
     const char* type() const override { return "guard-cam"; }
-    const char* hw() const override { return "esp32cam-aithinker"; }
+    const char* hw() const override { return HORNET_BOARD; }
     std::vector<const char*> caps() const override { return {"camera", "motion.pir", "sd"}; }
 
     void setup(Core& core) override {

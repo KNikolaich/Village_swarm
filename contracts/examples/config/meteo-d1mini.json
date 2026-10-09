@@ -1,0 +1,5 @@
+{
+  "v": 1, "rev": 2, "name": "Улица, север",
+  "health_interval_s": 60, "tele_interval_s": 60,
+  "hw": { "onewire_pin": 14, "sda_pin": 4, "scl_pin": 5 }
+}

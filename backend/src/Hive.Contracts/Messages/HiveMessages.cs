@@ -52,6 +52,28 @@ public sealed record DeviceConfig
     public GuardConfig? Guard { get; init; }
     public CameraConfig? Camera { get; init; }
     public UploadConfig? Upload { get; init; }
+    public HwConfig? Hw { get; init; }
+    public RelayConfig? Relay { get; init; }
+}
+
+/// <summary>Board wiring; omitted pins keep the firmware defaults for the board.</summary>
+public sealed record HwConfig
+{
+    public int? OnewirePin { get; init; }
+    public int? SdaPin { get; init; }
+    public int? SclPin { get; init; }
+    public int? RelayPin { get; init; }
+    public bool? RelayActiveLow { get; init; }
+    public int? ButtonPin { get; init; }
+    public int? LedPin { get; init; }
+}
+
+public sealed record RelayConfig
+{
+    public string? Channel { get; init; }
+
+    /// <summary>0 = no limit; the relay switches off by itself after this.</summary>
+    public int? MaxOnS { get; init; }
 }
 
 public sealed record FailsafeConfig

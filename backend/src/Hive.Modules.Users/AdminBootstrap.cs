@@ -15,6 +15,10 @@ public sealed class AdminBootstrap(IServiceScopeFactory scopes, IOptions<AuthOpt
 {
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        // The build runs the app to write the OpenAPI document (frontend/src/api); it must not need a database.
+        if (System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider")
+            return;
+
         using var scope = scopes.CreateScope();
         var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole<int>>>();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<HiveUser>>();

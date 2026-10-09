@@ -1,0 +1,1 @@
+{ "v": 1, "rev": 1, "name": "x", "health_interval_s": 60, "hw": { "led_pin": 99 } }

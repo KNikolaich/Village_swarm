@@ -1,17 +1,12 @@
 #include "HornetCore.h"
 
-#include <HTTPClient.h>
-#include <WiFi.h>
-#include <esp_mac.h>
-#include <esp_random.h>
-#include <esp_system.h>
-#include <esp_task_wdt.h>
 #include <espMqttClient.h>
 
 #include <sys/time.h>
 
 #include "CommandGuard.h"
 #include "Outbox.h"
+#include "Platform.h"
 #include "Ulid.h"
 
 namespace hornet {
@@ -19,7 +14,11 @@ namespace hornet {
 namespace {
 
 // Single-threaded client: callbacks run inside mqtt.loop() on the Arduino loop task.
+#if defined(ESP32)
 espMqttClient mqtt(espMqttClientTypes::UseInternalTask::NO);
+#else
+espMqttClient mqtt;
+#endif
 Outbox<50> outbox;  // RAM only (spec 4.5); camera roles keep photos on SD themselves
 CommandGuard<16> guard;
 
@@ -27,21 +26,6 @@ constexpr uint32_t kWatchdogMs = 30000;  // spec 4.5: reboot if the loop hangs f
 constexpr uint64_t kSaneEpochMs = 1700000000000ULL;
 
 String willTopic;
-
-const char* resetReason() {
-    switch (esp_reset_reason()) {
-        case ESP_RST_POWERON: return "poweron";
-        case ESP_RST_SW: return "software";
-        case ESP_RST_PANIC: return "panic";
-        case ESP_RST_INT_WDT:
-        case ESP_RST_TASK_WDT:
-        case ESP_RST_WDT: return "watchdog";
-        case ESP_RST_BROWNOUT: return "brownout";
-        case ESP_RST_DEEPSLEEP: return "deepsleep";
-        case ESP_RST_EXT: return "external";
-        default: return "unknown";
-    }
-}
 
 const char* ackStatus(AckStatus s) {
     switch (s) {
@@ -53,13 +37,7 @@ const char* ackStatus(AckStatus s) {
     }
 }
 
-String macString() {
-    uint8_t mac[6];
-    esp_read_mac(mac, ESP_MAC_WIFI_STA);
-    char buf[18];
-    snprintf(buf, sizeof buf, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    return buf;
-}
+String macString() { return WiFi.macAddress(); }
 
 }  // namespace
 
@@ -68,11 +46,9 @@ void Core::begin() {
     settings_.load();
     settings_.boot++;
     settings_.saveBoot();
-    Serial.printf("\n[hornet] %s fw=%s boot=%u reset=%s\n", role_.type(), HORNET_FW_VERSION, settings_.boot, resetReason());
+    Serial.printf("\n[hornet] %s fw=%s boot=%u reset=%s\n", role_.type(), HORNET_FW_VERSION, settings_.boot, platform::resetReason());
 
-    esp_task_wdt_config_t wdt = {.timeout_ms = kWatchdogMs, .idle_core_mask = 0, .trigger_panic = true};
-    esp_task_wdt_reconfigure(&wdt);
-    esp_task_wdt_add(nullptr);
+    platform::watchdogBegin(kWatchdogMs);
 
     // Last config from NVS: the hornet behaves the same after a reboot without the broker (spec 5.6).
     const String saved = settings_.loadConfig();
@@ -106,7 +82,7 @@ void Core::begin() {
 }
 
 void Core::loop() {
-    esp_task_wdt_reset();
+    platform::watchdogFeed();
     serialConsole();
     if (settings_.complete()) {
         mqtt.loop();
@@ -136,7 +112,7 @@ uint64_t Core::nowMs() const {
 
 String Core::newUlid() const {
     uint8_t random[10];
-    esp_fill_random(random, sizeof random);
+    platform::fillRandom(random, sizeof random);
     char id[kUlidLength + 1];
     encodeUlid(nowMs(), random, id);
     return id;
@@ -163,7 +139,7 @@ void Core::connectMqtt() {
     }
     if (WiFi.status() != WL_CONNECTED || millis() < nextMqttAttemptMs_ || mqtt.disconnected() == false) return;
     // Exponential backoff with jitter (spec 4.5).
-    nextMqttAttemptMs_ = millis() + backoffMs(mqttAttempts_++) + (esp_random() % 1000);
+    nextMqttAttemptMs_ = millis() + backoffMs(mqttAttempts_++) + (random(1000));
     Serial.printf("[hornet] mqtt connect %s:%u\n", settings_.mqttHost.c_str(), settings_.mqttPort);
     mqtt.connect();
 }
@@ -311,8 +287,8 @@ void Core::publishHealth() {
     health["uptime_s"] = millis() / 1000;
     health["rssi"] = WiFi.RSSI();
     health["heap_free"] = ESP.getFreeHeap();
-    if (psramFound()) health["psram_free"] = ESP.getFreePsram();
-    health["reset_reason"] = resetReason();
+    if (platform::hasPsram()) health["psram_free"] = platform::freePsram();
+    health["reset_reason"] = platform::resetReason();
     health["outbox"] = outbox.size();
     health["broker"] = "home";
     role_.fillHealth(health.as<JsonObject>());
@@ -422,7 +398,7 @@ bool Core::enroll(const String& hiveUrl, const String& code) {
         WiFi.begin(settings_.ssid.c_str(), settings_.pass.c_str());
         Serial.print("[hornet] wifi");
         for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; ++i) {
-            esp_task_wdt_reset();
+            platform::watchdogFeed();
             delay(500);
             Serial.print('.');
         }
@@ -441,18 +417,11 @@ bool Core::enroll(const String& hiveUrl, const String& code) {
     String body;
     serializeJson(request, body);
 
-    HTTPClient http;
-    http.setTimeout(10000);
     String url = hiveUrl;
     if (url.endsWith("/")) url.remove(url.length() - 1);
-    if (!http.begin(url + "/api/provision/enroll")) {
-        Serial.println("enroll failed: bad hive url");
-        return false;
-    }
-    http.addHeader("Content-Type", "application/json");
-    const int status = http.POST(body);
-    const String response = http.getString();
-    http.end();
+    String response;
+    const int status = platform::httpPost(url + "/api/provision/enroll", "application/json",
+                                          reinterpret_cast<const uint8_t*>(body.c_str()), body.length(), {}, &response);
     if (status != 200) {
         Serial.printf("enroll failed: HTTP %d%s\n", status, status == 403 ? " (code wrong, used or expired)" : "");
         return false;

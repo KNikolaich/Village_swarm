@@ -12,12 +12,23 @@ import { HornetSerial, serialSupported } from '@/lib/serial'
 const types = [
   { code: 'guard-cam', title: 'Камера с датчиком движения' },
   { code: 'meteo', title: 'Метеодатчик' },
+  { code: 'relay', title: 'Реле (свет, розетка)' },
   { code: 'heat', title: 'Обогрев' },
   { code: 'leak', title: 'Датчик протечки' },
   { code: 'plant', title: 'Растения' },
 ]
 
 const idPattern = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
+
+// PlatformIO board ids from firmware/dist/<build>/build.json → what is printed on the board.
+const boardTitles: Record<string, string> = {
+  'AI Thinker ESP32-CAM': 'ESP32-CAM AI-Thinker',
+  'Espressif ESP32-C3-DevKitM-1': 'ESP32-C3 mini (SuperMini, OLED)',
+  'WeMos D1 R2 and mini': 'Wemos D1 mini',
+  'NodeMCU 1.0 (ESP-12E Module)': 'NodeMCU v3',
+  'Espressif Generic ESP8266 ESP-01 1M': 'ESP-01 / ESP-01S (1 МБ)',
+}
+const boardTitle = (board: string) => boardTitles[board] ?? board
 
 export function CodeBox({ code, expiresAt }: { code: string; expiresAt: string }) {
   return (
@@ -46,6 +57,9 @@ export function AddHornetPage() {
   const [code, setCode] = useState<{ code: string; expiresAt: string; replaces: boolean } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const firmware = useQuery({ queryKey: ['firmware'], queryFn: () => call(api.GET('/api/firmware')) })
+  const builds = (firmware.data ?? []).filter((b) => b.role === type)
+  const [build, setBuild] = useState('')
+  const selectedBuild = builds.find((b) => b.build === build) ?? builds[0]
 
   async function createCode(e: FormEvent) {
     e.preventDefault()
@@ -90,14 +104,27 @@ export function AddHornetPage() {
         </CardContent>
       </Card>
 
-      {code && <FlashStep type={type} available={firmware.data?.includes(type) ?? false} />}
+      {code && (
+        <FlashStep
+          type={type}
+          builds={builds}
+          selected={selectedBuild?.build}
+          onSelect={setBuild}
+        />
+      )}
       {code && <ConfigureStep code={code.code} deviceId={deviceId} />}
     </div>
   )
 }
 
-function FlashStep({ type, available }: { type: string; available: boolean }) {
+function FlashStep({ type, builds, selected, onSelect }: {
+  type: string
+  builds: { build: string; board: string; chipFamily: string }[]
+  selected?: string
+  onSelect: (build: string) => void
+}) {
   const [ready, setReady] = useState(false)
+  const available = builds.length > 0
   useEffect(() => {
     if (!available || !serialSupported()) return
     // ESP Web Tools (a web component, ~100 KB) is only loaded for this step.
@@ -111,8 +138,13 @@ function FlashStep({ type, available }: { type: string; available: boolean }) {
         <p className="text-neutral-400">{t('add.flashHint')}</p>
         {!serialSupported() && <p className="text-amber-300">{t('add.noSerial')}</p>}
         {!available && <p className="text-amber-300">{t('add.noFirmware').replace('{type}', type)}</p>}
-        {available && ready &&
-          createElement('esp-web-install-button', { manifest: `/api/firmware/${type}/manifest.json` },
+        {available && (
+          <Select value={selected} onChange={(e) => onSelect(e.target.value)} className="h-11 w-full">
+            {builds.map((b) => <option key={b.build} value={b.build}>{boardTitle(b.board)} · {b.chipFamily}</option>)}
+          </Select>
+        )}
+        {available && ready && selected &&
+          createElement('esp-web-install-button', { key: selected, manifest: `/api/firmware/${selected}/manifest.json` },
             createElement(Button, { slot: 'activate' } as never, createElement(Cpu), t('add.flash')))}
         <p className="text-xs text-neutral-500">{t('add.alreadyFlashed')}</p>
       </CardContent>

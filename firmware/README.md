@@ -12,6 +12,40 @@ pio test -e native                # logic tests on the PC (needs gcc)
 
 In VS Code the PlatformIO toolbar does the same (✓ build, → upload, plug icon for the monitor).
 
+## Builds: role × board
+
+| Env | Board | Chip |
+|---|---|---|
+| `guard-cam` | ESP32-CAM AI-Thinker | ESP32 |
+| `meteo-c3`, `relay-c3` | ESP32-C3 mini (SuperMini, 0.42" OLED board) | ESP32-C3 |
+| `meteo-d1mini`, `relay-d1mini` | Wemos D1 mini | ESP8266 |
+| `meteo-nodemcu`, `relay-nodemcu` | NodeMCU v3 | ESP8266 |
+| `meteo-esp01`, `relay-esp01` | ESP-01 / ESP-01S (1 MB), incl. "ESP-01 Relay v1.0" and DS18B20 modules | ESP8266 |
+
+Every build lands in `firmware/dist/<env>/` with a `build.json` (chip, flash offsets); the web flasher in
+"Добавить шершня" offers the boards that exist there for the chosen role.
+
+Default pins (override per hornet with the config `hw` section: `onewire_pin`, `sda_pin`, `scl_pin`,
+`relay_pin`, `relay_active_low`, `button_pin`):
+
+| Board | 1-Wire (DS18B20) | I2C SDA/SCL (BME280) | Relay | Button |
+|---|---|---|---|---|
+| ESP32-C3 mini | GPIO3 | GPIO8 / GPIO9 | GPIO10 | — |
+| D1 mini, NodeMCU | D5 (GPIO14) | D2 / D1 (GPIO4/5) | D6 (GPIO12) | D3 (GPIO0, FLASH on NodeMCU) |
+| ESP-01 | GPIO2 | GPIO0 / GPIO2 | GPIO0, active low | — |
+
+DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have it).
+
+- **meteo**: detects a BME280 (0x76/0x77) and any number of DS18B20 at start. Publishes `temperature`,
+  `humidity`, `pressure` (hPa) and further thermometers as `temperature_2`, `temperature_3`...
+- **relay**: `cmd/relay {channel, set: on|off, for_s}`, channel `relay` unless config `relay.channel` says
+  otherwise (e.g. `light`). Off at every boot; switches off by itself after `for_s` or `relay.max_on_s`,
+  whichever is shorter. The optional button toggles it locally. Heaters with a temperature failsafe will be a
+  separate role (spec 5.6).
+
+ESP8266 notes: 80 KB of RAM, so roles stay small; the watchdog is the chip's fixed one (~8 s). Settings live
+in LittleFS through the same Preferences API as NVS on ESP32.
+
 ## guard-cam on ESP32-CAM AI-Thinker
 
 | What | Pin |

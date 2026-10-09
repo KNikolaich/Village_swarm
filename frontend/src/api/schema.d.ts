@@ -744,7 +744,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/firmware/{type}/manifest.json": {
+    "/api/firmware/{build}/manifest.json": {
         parameters: {
             query?: never;
             header?: never;
@@ -756,7 +756,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
-                    type: string;
+                    build: string;
                 };
                 cookie?: never;
             };
@@ -779,7 +779,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/firmware/{type}/{file}": {
+    "/api/firmware/{build}/{file}": {
         parameters: {
             query?: never;
             header?: never;
@@ -791,7 +791,7 @@ export interface paths {
                 query?: never;
                 header?: never;
                 path: {
-                    type: string;
+                    build: string;
                     file: string;
                 };
                 cookie?: never;
@@ -837,7 +837,7 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": string[];
+                        "application/json": components["schemas"]["FirmwareBuildDto"][];
                     };
                 };
             };
@@ -1495,6 +1495,14 @@ export interface components {
             id: string;
             url: string;
             thumbUrl: string;
+        };
+        FirmwareBuildDto: {
+            build: string;
+            role: string;
+            board: string;
+            chipFamily: string;
+            /** Format: date-time */
+            built: string;
         };
         HttpValidationProblemDetails: {
             type?: null | string;

@@ -62,6 +62,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
                 new DeviceType { Code = "meteo", Title = "Метеодатчик", OfflineAfterS = 180 },
                 new DeviceType { Code = "heat", Title = "Обогрев", OfflineAfterS = 180 },
                 new DeviceType { Code = "leak", Title = "Датчик протечки с краном", OfflineAfterS = 180 },
+                new DeviceType { Code = "relay", Title = "Реле (свет, розетка)", OfflineAfterS = 180 },
                 new DeviceType { Code = "plant", Title = "Растения", OfflineAfterS = 600 });
         });
 

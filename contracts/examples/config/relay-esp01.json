@@ -1,0 +1,6 @@
+{
+  "v": 1, "rev": 1, "name": "Свет на крыльце",
+  "health_interval_s": 60,
+  "hw": { "relay_pin": 0, "relay_active_low": false },
+  "relay": { "channel": "light", "max_on_s": 14400 }
+}

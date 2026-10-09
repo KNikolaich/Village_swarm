@@ -67,42 +67,70 @@ public static class ProvisioningEndpoints
             .WithTags("devices")
             .RequireAuthorization(HiveRoles.AdminOnly);
 
-        // Images for the in-browser flasher (ESP Web Tools).
+        // Images for the in-browser flasher (ESP Web Tools), one folder per build env (role-board).
         var firmware = app.MapGroup("/api/firmware").WithTags("firmware");
-        firmware.MapGet("/{type}/manifest.json", Results<JsonHttpResult<JsonObject>, NotFound> (string type, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
+        firmware.MapGet("/{build}/manifest.json", Results<JsonHttpResult<JsonObject>, NotFound> (string build, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
         {
-            var dir = FirmwareDir(type, options.Value, env);
-            if (dir is null || !Esp32Parts.All(p => File.Exists(Path.Combine(dir, p.File))))
+            if (ReadBuild(build, options.Value, env) is not { } b)
                 return TypedResults.NotFound();
-            var built = File.GetLastWriteTimeUtc(Path.Combine(dir, "firmware.bin"));
-            var parts = new JsonArray(Esp32Parts.Select(p => (JsonNode)new JsonObject
+            var parts = new JsonArray(b.Parts.Select(p => (JsonNode)new JsonObject
             {
-                ["path"] = $"/api/firmware/{type}/{p.File}",
+                ["path"] = $"/api/firmware/{build}/{p.File}",
                 ["offset"] = p.Offset,
             }).ToArray());
             return TypedResults.Json(new JsonObject
             {
-                ["name"] = $"Village Swarm {type}",
-                ["version"] = built.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
+                ["name"] = $"Village Swarm {build}",
+                ["version"] = b.Built.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture),
                 ["new_install_prompt_erase"] = true,
-                ["builds"] = new JsonArray { new JsonObject { ["chipFamily"] = "ESP32", ["parts"] = parts } },
+                ["builds"] = new JsonArray { new JsonObject { ["chipFamily"] = b.ChipFamily, ["parts"] = parts } },
             });
         });
-        firmware.MapGet("/{type}/{file}", Results<PhysicalFileHttpResult, NotFound> (string type, string file, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
-        {
-            var dir = FirmwareDir(type, options.Value, env);
-            if (dir is null || !Esp32Parts.Any(p => p.File == file) || !File.Exists(Path.Combine(dir, file)))
-                return TypedResults.NotFound();
-            return TypedResults.PhysicalFile(Path.Combine(dir, file), "application/octet-stream");
-        });
+        firmware.MapGet("/{build}/{file}", Results<PhysicalFileHttpResult, NotFound> (string build, string file, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
+            ReadBuild(build, options.Value, env) is { } b && b.Parts.Any(p => p.File == file)
+                ? TypedResults.PhysicalFile(Path.Combine(b.Dir, file), "application/octet-stream")
+                : TypedResults.NotFound());
         firmware.MapGet("", (IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
         {
             var root = Path.GetFullPath(Path.Combine(env.ContentRootPath, options.Value.FirmwareDir));
-            return Directory.Exists(root)
-                ? Directory.GetDirectories(root).Select(Path.GetFileName).Where(t => FirmwareDir(t!, options.Value, env) is not null).ToArray()
-                : [];
+            if (!Directory.Exists(root))
+                return Array.Empty<FirmwareBuildDto>();
+            return Directory.GetDirectories(root)
+                .Select(d => ReadBuild(Path.GetFileName(d), options.Value, env))
+                .Where(b => b is not null)
+                .Select(b => new FirmwareBuildDto(b!.Name, b.Role, b.Board, b.ChipFamily, b.Built))
+                .OrderBy(b => b.Build, StringComparer.Ordinal)
+                .ToArray();
         });
         return app;
+    }
+
+    private sealed record Part(string File, int Offset);
+
+    private sealed record Build(string Name, string Dir, string Role, string Board, string ChipFamily, IReadOnlyList<Part> Parts, DateTime Built);
+
+    /// <summary>firmware/dist/<build>/build.json (written by firmware/scripts/dist.py), or the classic ESP32 layout without it.</summary>
+    private static Build? ReadBuild(string name, ProvisioningOptions options, IHostEnvironment env)
+    {
+        var dir = FirmwareDir(name, options, env);
+        if (dir is null)
+            return null;
+        var role = name;
+        var board = name;
+        var chip = "ESP32";
+        IReadOnlyList<Part> parts = Esp32Parts.Select(p => new Part(p.File, p.Offset)).ToList();
+        var meta = Path.Combine(dir, "build.json");
+        if (File.Exists(meta))
+        {
+            var json = JsonNode.Parse(File.ReadAllText(meta))!;
+            role = json["role"]?.GetValue<string>() ?? role;
+            board = json["board"]?.GetValue<string>() ?? board;
+            chip = json["chipFamily"]?.GetValue<string>() ?? chip;
+            parts = json["parts"]!.AsArray().Select(p => new Part(p!["file"]!.GetValue<string>(), p["offset"]!.GetValue<int>())).ToList();
+        }
+        if (!parts.All(p => File.Exists(Path.Combine(dir, p.File))))
+            return null;
+        return new Build(name, dir, role, board, chip, parts, File.GetLastWriteTimeUtc(Path.Combine(dir, "firmware.bin")));
     }
 
     private static string? FirmwareDir(string type, ProvisioningOptions options, IHostEnvironment env)
@@ -113,3 +141,6 @@ public static class ProvisioningEndpoints
         return Directory.Exists(dir) ? dir : null;
     }
 }
+
+/// <summary>A flashable firmware image: build env (role-board), role (device type), board name and chip.</summary>
+public sealed record FirmwareBuildDto(string Build, string Role, string Board, string ChipFamily, DateTime Built);
