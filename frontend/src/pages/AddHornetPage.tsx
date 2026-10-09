@@ -20,13 +20,14 @@ const types = [
 
 const idPattern = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
 
-// PlatformIO board ids from firmware/dist/<build>/build.json → what is printed on the board.
+// Board ids from firmware/dist/<build>/build.json (HORNET_BOARD) → what people call the board.
 const boardTitles: Record<string, string> = {
-  'AI Thinker ESP32-CAM': 'ESP32-CAM AI-Thinker',
-  'Espressif ESP32-C3-DevKitM-1': 'ESP32-C3 mini (SuperMini, OLED)',
-  'WeMos D1 R2 and mini': 'Wemos D1 mini',
-  'NodeMCU 1.0 (ESP-12E Module)': 'NodeMCU v3',
-  'Espressif Generic ESP8266 ESP-01 1M': 'ESP-01 / ESP-01S (1 МБ)',
+  'esp32cam-aithinker': 'ESP32-CAM AI-Thinker',
+  'esp32c3-mini': 'ESP32-C3 mini (SuperMini)',
+  'esp32c3-oled-042': 'ESP32-C3 с экраном 0,42"',
+  'wemos-d1-mini': 'Wemos D1 mini',
+  'nodemcu-v3': 'NodeMCU v3',
+  'esp-01': 'ESP-01 / ESP-01S (1 МБ)',
 }
 const boardTitle = (board: string) => boardTitles[board] ?? board
 

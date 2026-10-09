@@ -30,11 +30,15 @@ def copy_images(source, target, env):
         if file != "boot_app0.bin":
             shutil.copy2(os.path.join(build, file), os.path.join(out, file))
     role, _, board = name.partition("-")
+    # HORNET_BOARD from the build flags names the board as people know it (esp-01, wemos-d1-mini...).
+    for define in env.get("CPPDEFINES", []):
+        if isinstance(define, (list, tuple)) and define[0] == "HORNET_BOARD":
+            board = str(define[1]).strip('\\"')
     with open(os.path.join(out, "build.json"), "w", encoding="utf-8") as f:
         json.dump({
             "env": name,
             "role": role if name != "guard-cam" else "guard-cam",
-            "board": env.BoardConfig().get("name", board),
+            "board": board,
             "chipFamily": family,
             "parts": [{"file": file, "offset": offset} for file, offset in parts],
         }, f, indent=2)

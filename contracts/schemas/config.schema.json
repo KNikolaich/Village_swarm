@@ -172,6 +172,17 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 48
+        },
+        "vbat_pin": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 48,
+          "description": "ADC pin with a voltage divider from the battery"
+        },
+        "vbat_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Divider ratio (R1+R2)/R2, e.g. 5.7 for 47k/10k: battery V = pin V x ratio"
         }
       },
       "additionalProperties": false
@@ -186,6 +197,20 @@
           "type": "integer",
           "minimum": 0,
           "description": "0 = no limit; the relay switches off by itself after this"
+        }
+      },
+      "additionalProperties": false
+    },
+    "display": {
+      "type": "object",
+      "description": "Small local screen (0.42\" OLED): up to two metrics, large",
+      "properties": {
+        "lines": {
+          "type": "array",
+          "maxItems": 2,
+          "items": {
+            "$ref": "common.schema.json#/$defs/segment"
+          }
         }
       },
       "additionalProperties": false

@@ -1,0 +1,6 @@
+{
+  "v": 1, "rev": 3, "name": "Гараж: АКБ и температура",
+  "health_interval_s": 60, "tele_interval_s": 30,
+  "hw": { "sda_pin": 5, "scl_pin": 6, "onewire_pin": 3, "vbat_pin": 2, "vbat_ratio": 5.7 },
+  "display": { "lines": ["temperature", "battery_voltage"] }
+}

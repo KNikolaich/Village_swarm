@@ -54,6 +54,7 @@ public sealed record DeviceConfig
     public UploadConfig? Upload { get; init; }
     public HwConfig? Hw { get; init; }
     public RelayConfig? Relay { get; init; }
+    public DisplayConfig? Display { get; init; }
 }
 
 /// <summary>Board wiring; omitted pins keep the firmware defaults for the board.</summary>
@@ -66,6 +67,18 @@ public sealed record HwConfig
     public bool? RelayActiveLow { get; init; }
     public int? ButtonPin { get; init; }
     public int? LedPin { get; init; }
+
+    /// <summary>ADC pin with a voltage divider from the battery.</summary>
+    public int? VbatPin { get; init; }
+
+    /// <summary>Divider ratio (R1+R2)/R2: battery V = pin V x ratio.</summary>
+    public double? VbatRatio { get; init; }
+}
+
+/// <summary>Small local screen: up to two metrics shown large.</summary>
+public sealed record DisplayConfig
+{
+    public IReadOnlyList<string>? Lines { get; init; }
 }
 
 public sealed record RelayConfig
