@@ -81,11 +81,13 @@ services:
       Mqtt__DynamicSecurity: "true"
       Database__MigrateOnStartup: "true"
       ForwardedHeaders__Enabled: "true"
+      DataProtection__KeysPath: /srv/hive/keys
       Hive__TimeZone: ${HIVE_TIMEZONE:-Europe/Moscow}
       # Every SQL statement at Information would flood the log on the RPi's disk.
       Logging__LogLevel__Microsoft.EntityFrameworkCore: Warning
     volumes:
       - ${HIVE_DATA:-/srv/hive}/media:/srv/hive/media
+      - ${HIVE_DATA:-/srv/hive}/keys:/srv/hive/keys
     depends_on:
       postgres: { condition: service_healthy }
       mosquitto: { condition: service_started }

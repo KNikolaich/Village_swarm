@@ -155,8 +155,8 @@ if [ "$first_install" -eq 1 ] && { [ -n "$(ls -A "$data/pg" 2>/dev/null)" ] || [
 	rm -f "$ENV"
 	die "в $data остались данные прошлой установки, а пароли в новом .env другие, и они не подойдут. Если там нет нужных данных, удалите: sudo rm -rf $data/pg $data/mosquitto/dynamic-security.json — и запустите установку снова"
 fi
-mkdir -p "$data"/{pg,media,mosquitto,caddy,backups}
-chown -R 1654:1654 "$data/media"     # "app" user of the .NET image
+mkdir -p "$data"/{pg,media,keys,mosquitto,caddy,backups}
+chown -R 1654:1654 "$data/media" "$data/keys" # "app" user of the .NET image
 chown -R 1883:1883 "$data/mosquitto" # "mosquitto" user of the broker image
 
 # 5-6. Images and start.

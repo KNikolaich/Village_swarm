@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Hive.Api.Live;
+using Microsoft.AspNetCore.DataProtection;
 using Hive.Infrastructure;
 using Hive.Infrastructure.Data;
 using Hive.Infrastructure.Mqtt;
@@ -32,6 +33,11 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     // Numbers are numbers: keeps the OpenAPI types (and the generated TypeScript) as `number`, not `number | string`.
     o.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;
 });
+// Keep the cookie encryption keys outside the container so an update does not log everybody out.
+var keysPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrEmpty(keysPath))
+    builder.Services.AddDataProtection().SetApplicationName("village-swarm").PersistKeysToFileSystem(new DirectoryInfo(keysPath));
+
 builder.Services.AddHiveInfrastructure(builder.Configuration);
 builder.Services.AddUsersModule(builder.Configuration);
 builder.Services.AddTelemetryModule();

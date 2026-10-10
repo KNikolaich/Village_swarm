@@ -18,6 +18,8 @@ RUN arch="$([ "$TARGETARCH" = amd64 ] && echo x64 || echo "$TARGETARCH")" \
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
+# Npgsql looks for the Kerberos library when it connects; without it the log gets an error line each start.
+RUN apt-get update && apt-get install -y --no-install-recommends libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out ./
 # Flashable hornet images for the "add hornet" wizard, when firmware/dist was built before the image.
 COPY firmware/dis[t] /app/firmware/
