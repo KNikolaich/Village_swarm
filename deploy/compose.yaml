@@ -1,0 +1,92 @@
+# The hive stack (spec 13.2). Run on the RPi from /opt/hive; .env sets COMPOSE_FILE so plain
+# `docker compose up -d` also applies compose.home.yaml.
+# Memory limits fit a Raspberry Pi 4 with 2 GB next to the OS and its page cache (about 1 GB in total).
+name: village-swarm
+
+x-common: &common
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
+services:
+  web:
+    <<: *common
+    image: ${HIVE_IMAGES:-ghcr.io/knikolaich/village-swarm}-web:${HIVE_VERSION:?set HIVE_VERSION in .env}
+    ports: ["80:80", "443:443"]
+    environment:
+      HIVE_HOSTS: ${HIVE_HOSTS:-localhost}
+      HIVE_DEFAULT_SNI: ${HIVE_DEFAULT_SNI:-localhost}
+    volumes:
+      - ${HIVE_DATA:-/srv/hive}/caddy:/data
+    depends_on: [api]
+    mem_limit: 96m
+
+  mosquitto:
+    <<: *common
+    image: eclipse-mosquitto:2
+    ports: ["1883:1883"]
+    entrypoint: ["/bin/sh", "/mosquitto/config/entrypoint.sh"]
+    environment:
+      MQTT_ADMIN_USER: ${MQTT_ADMIN_USER:-hive-api}
+      MQTT_ADMIN_PASSWORD: ${MQTT_ADMIN_PASSWORD:?set MQTT_ADMIN_PASSWORD in .env}
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/entrypoint.sh:/mosquitto/config/entrypoint.sh:ro
+      - ${HIVE_DATA:-/srv/hive}/mosquitto:/mosquitto/data
+    mem_limit: 64m
+
+  postgres:
+    <<: *common
+    image: postgres:17
+    environment:
+      POSTGRES_DB: hive
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?set PG_PASSWORD in .env}
+    command:
+      - postgres
+      - -c
+      - shared_buffers=96MB
+      - -c
+      - effective_cache_size=384MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=30
+      - -c
+      - wal_compression=on
+      - -c
+      - max_wal_size=512MB
+    shm_size: 128m
+    volumes:
+      - ${HIVE_DATA:-/srv/hive}/pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive -d hive"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 448m
+
+  api:
+    <<: *common
+    image: ${HIVE_IMAGES:-ghcr.io/knikolaich/village-swarm}-api:${HIVE_VERSION:?set HIVE_VERSION in .env}
+    env_file: .env
+    environment:
+      ConnectionStrings__Hive: Host=postgres;Port=5432;Database=hive;Username=hive;Password=${PG_PASSWORD}
+      Mqtt__Host: mosquitto
+      Mqtt__Username: ${MQTT_ADMIN_USER:-hive-api}
+      Mqtt__Password: ${MQTT_ADMIN_PASSWORD}
+      Mqtt__DynamicSecurity: "true"
+      Database__MigrateOnStartup: "true"
+      ForwardedHeaders__Enabled: "true"
+      Hive__TimeZone: ${HIVE_TIMEZONE:-Europe/Moscow}
+      # Every SQL statement at Information would flood the log on the RPi's disk.
+      Logging__LogLevel__Microsoft.EntityFrameworkCore: Warning
+    volumes:
+      - ${HIVE_DATA:-/srv/hive}/media:/srv/hive/media
+    depends_on:
+      postgres: { condition: service_healthy }
+      mosquitto: { condition: service_started }
+    mem_limit: 320m

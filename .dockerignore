@@ -1,0 +1,14 @@
+# Build context is the repo root (deploy/docker/*.Dockerfile); keep it small and secret-free.
+**/bin
+**/obj
+**/node_modules
+**/.pio
+**/TestResults
+.git
+.vs
+.vscode
+deploy/.env
+deploy/.data
+deploy/dist
+firmware/.pio
+frontend/dist

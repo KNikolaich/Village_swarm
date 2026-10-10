@@ -1,0 +1,71 @@
+# Hive web front (spec 7.2, 12, 13.2). Baked into the web image; HIVE_HOSTS comes from deploy/.env.
+{
+	admin off
+	# LAN appliance without a public name: certificates from Caddy's own CA.
+	# Install /ca.crt once on phones and PCs to get rid of the browser warning.
+	local_certs
+	skip_install_trust
+	# Port 80 is ours (the :80 site below): hornets upload over plain HTTP, no automatic redirect for them.
+	auto_https disable_redirects
+	default_sni {$HIVE_DEFAULT_SNI:localhost}
+}
+
+(security_headers) {
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		X-Frame-Options DENY
+		-Server
+	}
+}
+
+# Plain HTTP: only what hornets need inside the IoT segment (no TLS on ESP32-CAM, spec 4.1),
+# the CA certificate, and a redirect to HTTPS for everything else.
+:80 {
+	import security_headers
+	@hornet path /api/ingest/* /api/provision/enroll /healthz
+	handle @hornet {
+		reverse_proxy api:8080
+	}
+	handle /ca.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		file_server
+	}
+	handle {
+		redir https://{host}{uri} 308
+	}
+}
+
+{$HIVE_HOSTS:localhost} {
+	tls internal
+	import security_headers
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+	handle /hubs/* {
+		reverse_proxy api:8080
+	}
+	handle /healthz {
+		reverse_proxy api:8080
+	}
+	handle /readyz {
+		reverse_proxy api:8080
+	}
+	handle /ca.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		header Content-Type application/x-x509-ca-cert
+		file_server
+	}
+	handle {
+		root * /srv/web
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		try_files {path} /index.html
+		file_server
+	}
+}

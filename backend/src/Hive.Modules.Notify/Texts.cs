@@ -18,6 +18,10 @@ public static class Texts
         "photo_failed" => "Фото не загрузилось",
         "tamper" => "Камера закрыта или сдвинута",
         "snapshot" => "Снимок",
+        "overheat" => "Улей перегревается",
+        "overheat_cleared" => "Температура улья в норме",
+        "disk_full" => "Диск улья почти заполнен",
+        "disk_full_cleared" => "На диске улья снова есть место",
         _ => type,
     };
 
@@ -37,9 +41,26 @@ public static class Texts
         var text = $"{Icon(e.Severity)} <b>{H(EventType(e.Type))}</b>: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}";
         if (e.Type == "failsafe" && e.Payload.RootElement.TryGetProperty("rule", out var rule))
             text += $"\nправило: {H(rule.GetString())}";
+        if (e.Type.StartsWith("overheat", StringComparison.Ordinal) || e.Type.StartsWith("disk_full", StringComparison.Ordinal))
+            text += HiveReading(e.Payload.RootElement);
         if (repeat > 1)
             text += $"\n<b>×{repeat}</b> подряд";
         return text;
+    }
+
+    /// <summary>"\nвоздух у платы: 47,5° (порог 45°)" for the hive's own sensor events.</summary>
+    private static string HiveReading(System.Text.Json.JsonElement p)
+    {
+        if (!p.TryGetProperty("metric", out var m) || !p.TryGetProperty("value", out var v) || !p.TryGetProperty("limit", out var l))
+            return "";
+        var (label, unit) = m.GetString() switch
+        {
+            "temperature" => ("воздух у платы", "°"),
+            "cpu_temperature" => ("процессор", "°"),
+            "disk_used_pct" => ("занято", "%"),
+            var other => (other ?? "", ""),
+        };
+        return $"\n{H(label)}: {v.GetDouble().ToString("0.#", Ru)}{unit} (порог {l.GetDouble().ToString("0.#", Ru)}{unit})";
     }
 
     public static string Temperature(double value) => $"{value.ToString("0.#", Ru)}°";

@@ -1,0 +1,9 @@
+# Home node (the RPi at the dacha). The city node gets compose.city.yaml in build step 16.
+services:
+  api:
+    environment:
+      Hive__Node: home
+      Hive__Role: active
+      # The hive watches itself: air at the board (DS18B20 on 1-Wire), CPU, disk (spec 3.1, 7.4).
+      Hive__Sensors__Enabled: "true"
+      Hive__Sensors__AirWarnC: ${HIVE_AIR_WARN_C:-45}

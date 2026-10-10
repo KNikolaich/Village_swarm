@@ -47,6 +47,18 @@ public sealed class MqttGateway(
     /// <summary>Raised after every (re)connect, once subscriptions are in place.</summary>
     public event Func<CancellationToken, Task>? Connected;
 
+    /// <summary>
+    /// Waits out a short reconnect, e.g. the broker dropping the api once when its dynsec role changes on first start.
+    /// Returns false when still disconnected after <paramref name="timeout"/>.
+    /// </summary>
+    public async Task<bool> WaitConnectedAsync(TimeSpan timeout, CancellationToken ct)
+    {
+        var deadline = time.GetUtcNow() + timeout;
+        while (!_client.IsConnected && time.GetUtcNow() < deadline)
+            await Task.Delay(TimeSpan.FromMilliseconds(100), time, ct);
+        return _client.IsConnected;
+    }
+
     public Task PublishAsync(string topic, string payload, bool retain, CancellationToken ct) =>
         _client.PublishAsync(new MqttApplicationMessageBuilder()
             .WithTopic(topic)

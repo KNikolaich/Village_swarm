@@ -41,10 +41,14 @@ export function CodeBox({ code, expiresAt }: { code: string; expiresAt: string }
   )
 }
 
-/** Hive address as the board sees it: the PC/RPi in the LAN, never localhost. */
+/**
+ * Hive address as the board sees it: the PC/RPi in the LAN, never localhost. On the hive the UI is HTTPS
+ * but hornets use plain HTTP on port 80 (deploy/caddy/Caddyfile); the Vite dev server means the api on :5080.
+ */
 function defaultHiveUrl() {
-  const host = window.location.hostname
-  return host === 'localhost' || host === '127.0.0.1' ? '' : `${window.location.protocol}//${host}:5080`
+  const { hostname } = window.location
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return ''
+  return import.meta.env.DEV ? `http://${hostname}:5080` : `http://${hostname}`
 }
 
 /**

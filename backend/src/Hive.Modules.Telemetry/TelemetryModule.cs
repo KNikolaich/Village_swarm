@@ -20,6 +20,8 @@ public static class TelemetryModule
         services.AddSingleton<IngestPipeline>();
         services.AddHostedService(sp => sp.GetRequiredService<IngestPipeline>());
         services.AddScoped<TelemetryQueries>();
+        services.AddOptions<HiveSensorOptions>().BindConfiguration(HiveSensorOptions.Section);
+        services.AddHostedService<HiveSensors>();
         return services;
     }
 

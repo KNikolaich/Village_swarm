@@ -3,7 +3,7 @@
 
 COMPOSE_DEV = docker compose -f deploy/compose.dev.yaml
 
-.PHONY: check backend frontend firmware firmware-test dev-up dev-down
+.PHONY: check backend frontend firmware firmware-test dev-up dev-down images ship
 
 check: backend frontend firmware
 
@@ -25,3 +25,10 @@ dev-up:
 
 dev-down:
 	$(COMPOSE_DEV) down
+
+# Hive images for the RPi, packed into deploy/dist (docs/deploy.md). `make ship PI=kirill@172.16.1.2`.
+images:
+	bash deploy/build-images.sh linux/arm64
+
+ship:
+	bash deploy/ship.sh $(PI)

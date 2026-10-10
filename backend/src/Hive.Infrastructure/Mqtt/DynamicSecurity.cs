@@ -103,6 +103,7 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
 
     private async Task SendAsync(JsonObject[] commands, CancellationToken ct, bool ignoreErrors = false)
     {
+        await mqtt.WaitConnectedAsync(Timeout, ct);
         var correlation = Guid.NewGuid().ToString("N");
         foreach (var c in commands)
             c["correlationData"] = correlation;

@@ -44,6 +44,20 @@ builder.Services.AddSignalR().AddJsonProtocol(o => o.PayloadSerializerOptions.Co
 builder.Services.AddSingleton<IIngestListener, LiveNotifier>();
 builder.Services.AddOpenApi();
 
+// Behind Caddy on the hive (deploy/compose.yaml): client IP for the login rate limit, https for secure cookies.
+var behindProxy = builder.Configuration.GetValue("ForwardedHeaders:Enabled", false);
+if (behindProxy)
+{
+    builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(o =>
+    {
+        o.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+                             | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+        // Only Caddy can reach the api: it is not published outside the compose network.
+        o.KnownIPNetworks.Clear();
+        o.KnownProxies.Clear();
+    });
+}
+
 var app = builder.Build();
 
 // `Hive.Api --migrate` applies migrations and exits (install/update scripts, spec 13.4).
@@ -73,6 +87,9 @@ if (app.Environment.IsDevelopment() || app.Configuration.GetValue("OpenApi:Enabl
         o.RoutePrefix = "swagger";
     });
 }
+
+if (behindProxy)
+    app.UseForwardedHeaders();
 
 app.UseRateLimiter();
 app.UseAuthentication();

@@ -12,7 +12,7 @@ Spec: [docs/architecture.md](docs/architecture.md). MQTT contract: [contracts/](
 | `frontend/` | Vite + React 19 + TypeScript + Tailwind |
 | `firmware/` | PlatformIO, `lib/hornet-core` + one role per env (`guard-cam` first) |
 | `contracts/` | MQTT topics, JSON schemas, examples |
-| `deploy/` | docker compose files, Mosquitto config |
+| `deploy/` | docker compose (dev and hive), Dockerfiles, Caddy and Mosquitto config, install/update scripts |
 
 ## Development
 
@@ -94,3 +94,18 @@ the old board loses access); «Удалить» revokes the login. The simulator
 ## Users
 
 `dotnet run --project backend/src/Hive.Api -- --add-user <login> <admin|member|viewer>` prints a one-time password.
+
+## Hive on the Raspberry Pi
+
+Raspberry Pi OS Lite **64-bit**, then from the PC (Git Bash, Docker Desktop running):
+
+```sh
+make images                          # deploy/build-images.sh: arm64 images → deploy/dist/*.tar.gz
+make ship PI=kirill@hive.local       # deploy/ship.sh: first time install.sh, afterwards update.sh
+```
+
+Four containers (Caddy with the UI, api, PostgreSQL, Mosquitto with dynamic security), sized for a 2 GB RPi 4.
+The UI is HTTPS (Caddy's own CA, `/ca.crt`); hornets upload and enroll over plain HTTP on port 80.
+The hive reports its own air temperature (DS18B20 on GPIO4), CPU temperature and disk usage as device
+`hive-home`. Step by step, in Russian: [docs/deploy.md](docs/deploy.md); access from the city over WireGuard:
+[docs/remote-access.md](docs/remote-access.md).
