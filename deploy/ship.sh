@@ -25,7 +25,8 @@ scp -rq "$stage/hive-bundle" "$target:/tmp/"
 image="/tmp/hive-bundle/images/$(basename "$tarball")"
 ssh -t "$target" "
 	set -e
-	if sudo test -f /opt/hive/.env; then
+	# Update only when the hive is running: a half-finished install has a .env but no database yet.
+	if sudo test -f /opt/hive/.env && sudo docker compose -f /opt/hive/compose.yaml -f /opt/hive/compose.home.yaml --project-directory /opt/hive ps -q postgres | grep -q .; then
 		sudo cp -r /tmp/hive-bundle/compose.yaml /tmp/hive-bundle/compose.home.yaml /tmp/hive-bundle/.env.example \
 			/tmp/hive-bundle/mosquitto /tmp/hive-bundle/install.sh /tmp/hive-bundle/update.sh /opt/hive/
 		sudo bash /opt/hive/update.sh '$version' '$image'
