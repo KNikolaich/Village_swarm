@@ -27,6 +27,7 @@ export function LoginPage() {
           ? await api.POST('/api/auth/login', { body: { login, password, rememberMe: true } })
           : await api.POST('/api/auth/totp', { body: { code, rememberMe: true, rememberDevice: false } })
       if (response.status === 423) return setError(t('login.locked'))
+      if (response.status >= 500) return setError(t('login.serverError'))
       if (!response.ok || !data) return setError(t(step === 'password' ? 'login.failed' : 'login.totpFailed'))
       if (data.status === 'totpRequired') {
         setStep('totp')
