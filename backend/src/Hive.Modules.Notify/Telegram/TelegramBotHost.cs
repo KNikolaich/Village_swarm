@@ -64,6 +64,8 @@ public sealed class TelegramBotHost(
                 // The library cannot read this batch. Skip past it (ids only are logged, never the messages),
                 // otherwise the same batch would be requested again forever.
                 var path = (ex.InnerException as System.Text.Json.JsonException)?.Path;
+                // The library's message names the type it failed to build (e.g. an enum), not the message text.
+                var reason = ex.InnerException?.Message is { } message ? message[..Math.Min(300, message.Length)] : null;
                 var ids = new List<long>();
                 var shape = "";
                 try
@@ -76,14 +78,14 @@ public sealed class TelegramBotHost(
                 }
                 if (ids.Count == 0)
                 {
-                    logger.LogWarning("Telegram reply could not be read at {Path}; shape {Shape}; retry in {Delay}s", path, shape, backoff.TotalSeconds);
+                    logger.LogWarning("Telegram reply could not be read at {Path}; reason {Reason}; shape {Shape}; retry in {Delay}s", path, reason, shape, backoff.TotalSeconds);
                     await Task.Delay(backoff, time, stoppingToken);
                     backoff = TimeSpan.FromSeconds(Math.Min(backoff.TotalSeconds * 2, 120));
                     continue;
                 }
                 offset = (int)(ids.Max() + 1);
-                logger.LogWarning("Skipped {Count} Telegram update(s) the client could not read: ids {Ids}, at {Path}; shape {Shape}",
-                    ids.Count, string.Join(", ", ids), path, shape);
+                logger.LogWarning("Skipped {Count} Telegram update(s) the client could not read: ids {Ids}, at {Path}; reason {Reason}; shape {Shape}",
+                    ids.Count, string.Join(", ", ids), path, reason, shape);
                 backoff = TimeSpan.FromSeconds(2);
             }
             catch (Exception ex)
