@@ -84,7 +84,9 @@ public sealed class TelegramGateway : IDisposable
             }
             // Long polling holds the request for PollTimeoutS; leave room for slow 4G.
             var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(_options.PollTimeoutS + 30) };
-            var client = new TelegramBotClient(new TelegramBotClientOptions(_options.Token!, string.IsNullOrEmpty(endpoint.BaseUrl) ? null : endpoint.BaseUrl), http);
+            // The library appends "/bot<token>/<method>"; a trailing slash in the setting would make "//bot…", which a
+            // path-prefix proxy forwards as an unknown URL and Telegram answers with an HTML page.
+            var client = new TelegramBotClient(new TelegramBotClientOptions(_options.Token!, string.IsNullOrEmpty(endpoint.BaseUrl) ? null : endpoint.BaseUrl.TrimEnd('/')), http);
             _clients.Add((endpoint, client, http));
         }
     }
