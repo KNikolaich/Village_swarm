@@ -1,4 +1,7 @@
 using System.Net;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Telegram.Bot;
@@ -111,9 +114,39 @@ public sealed class TelegramGateway : IDisposable
     public Task CallAsync(Func<ITelegramBotClient, Task> call, CancellationToken ct) =>
         CallAsync(async c => { await call(c); return true; }, ct);
 
+    /// <summary>
+    /// A reply that cannot be read (JSON shape the library does not know) is not a network problem: switching
+    /// endpoints would not help, and the poller handles it by skipping that batch.
+    /// </summary>
     public static bool IsNetworkError(Exception ex) =>
         ex is HttpRequestException or TaskCanceledException or TimeoutException
-        || (ex is RequestException && ex is not ApiRequestException);
+        || (ex is RequestException && ex is not ApiRequestException && !IsUnreadableReply(ex));
+
+    public static bool IsUnreadableReply(Exception ex) => ex is RequestException && ex.InnerException is JsonException;
+
+    /// <summary>
+    /// Ids of the updates waiting for us, read from the raw reply. Used to move the offset past a batch the
+    /// library cannot deserialize, so one unreadable update does not block the bot forever.
+    /// </summary>
+    public async Task<List<long>> PeekUpdateIdsAsync(int? offset, CancellationToken ct)
+    {
+        var ids = new List<long>();
+        if (!Enabled)
+            return ids;
+        var endpoint = _clients[_current].Endpoint;
+        var baseUrl = string.IsNullOrEmpty(endpoint.BaseUrl) ? "https://api.telegram.org" : endpoint.BaseUrl.TrimEnd('/');
+        var body = new Dictionary<string, object?> { ["limit"] = 50, ["timeout"] = 0 };
+        if (offset is not null)
+            body["offset"] = offset;
+        using var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        using var response = await _clients[_current].Http.PostAsync($"{baseUrl}/bot{_options.Token}/getUpdates", content, ct);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        if (doc.RootElement.TryGetProperty("result", out var result) && result.ValueKind == JsonValueKind.Array)
+            foreach (var item in result.EnumerateArray())
+                if (item.TryGetProperty("update_id", out var id) && id.TryGetInt64(out var value))
+                    ids.Add(value);
+        return ids;
+    }
 
     public void Dispose()
     {

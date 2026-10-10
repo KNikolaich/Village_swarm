@@ -59,6 +59,32 @@ public sealed class TelegramBotHost(
                 logger.LogWarning("Another client polls this bot token (409 Conflict); is the bot running twice? Retrying in 30 s");
                 await Task.Delay(TimeSpan.FromSeconds(30), time, stoppingToken);
             }
+            catch (RequestException ex) when (TelegramGateway.IsUnreadableReply(ex))
+            {
+                // The library cannot read this batch. Skip past it (ids only are logged, never the messages),
+                // otherwise the same batch would be requested again forever.
+                var path = (ex.InnerException as System.Text.Json.JsonException)?.Path;
+                var ids = new List<long>();
+                try
+                {
+                    ids = await telegram.PeekUpdateIdsAsync(offset, stoppingToken);
+                }
+                catch (Exception peek) when (!stoppingToken.IsCancellationRequested)
+                {
+                    logger.LogWarning("Could not re-read the waiting updates: {Error}", peek.Message);
+                }
+                if (ids.Count == 0)
+                {
+                    logger.LogWarning("Telegram reply could not be read at {Path}; retry in {Delay}s", path, backoff.TotalSeconds);
+                    await Task.Delay(backoff, time, stoppingToken);
+                    backoff = TimeSpan.FromSeconds(Math.Min(backoff.TotalSeconds * 2, 120));
+                    continue;
+                }
+                offset = (int)(ids.Max() + 1);
+                logger.LogWarning("Skipped {Count} Telegram update(s) the client could not read: ids {Ids}, at {Path}",
+                    ids.Count, string.Join(", ", ids), path);
+                backoff = TimeSpan.FromSeconds(2);
+            }
             catch (Exception ex)
             {
                 logger.LogWarning("Telegram polling failed via {Endpoint}: {Error}. Retry in {Delay}s", telegram.CurrentEndpoint, ex.Message, backoff.TotalSeconds);
