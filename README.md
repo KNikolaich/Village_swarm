@@ -100,8 +100,8 @@ the old board loses access); «Удалить» revokes the login. The simulator
 Raspberry Pi OS Lite **64-bit**, then from the PC (Git Bash, Docker Desktop running):
 
 ```sh
-make images                          # deploy/build-images.sh: arm64 images → deploy/dist/*.tar.gz
-make ship PI=kirill@hive.local       # deploy/ship.sh: first time install.sh, afterwards update.sh
+bash deploy/build-images.sh linux/arm64                          # arm64 images → deploy/dist/*.tar.gz
+bash deploy/ship.sh kirill@192.168.10.4 --host 192.168.10.4      # first time install.sh, afterwards update.sh
 ```
 
 Four containers (Caddy with the UI, api, PostgreSQL, Mosquitto with dynamic security), sized for a 2 GB RPi 4.
