@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Bell, Hexagon, Images, LayoutDashboard, LogOut, Network, Settings } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 import { api } from '@/api/client'
+import { keys } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { t } from '@/i18n'
 import type { LiveState } from '@/lib/live'
@@ -31,8 +32,9 @@ export function AppShell({ live }: { live: LiveState }) {
 
   async function logout() {
     await api.POST('/api/auth/logout')
-    qc.clear()
-    await qc.invalidateQueries()
+    // Drop everything the previous user saw, but keep the "me" query: App shows the login page when it is null.
+    qc.removeQueries({ predicate: (q) => q.queryKey[0] !== keys.me[0] })
+    qc.setQueryData(keys.me, null)
   }
 
   return (
