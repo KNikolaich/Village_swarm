@@ -34,6 +34,10 @@ docker compose exec -T postgres pg_dump -U hive -d hive | gzip >"$dump"
 # Keep the last five pre-update dumps.
 ls -1t "$data"/backups/pre-update-*.sql.gz 2>/dev/null | tail -n +6 | xargs -r rm -f
 
+# Folders added by newer versions (the first install creates them; an update must too).
+mkdir -p "$data/keys"
+chown 1654:1654 "$data/keys" # "app" user of the .NET image
+
 set_env HIVE_VERSION "$version"
 [ -n "$tarball" ] || docker compose pull api web
 docker compose up -d --remove-orphans
