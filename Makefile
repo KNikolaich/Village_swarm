@@ -26,9 +26,9 @@ dev-up:
 dev-down:
 	$(COMPOSE_DEV) down
 
-# Hive images for the RPi, packed into deploy/dist (docs/deploy.md). `make ship PI=kirill@172.16.1.2`.
+# Hive images for the RPi, packed into deploy/dist (docs/deploy.md). `make ship PI=kirill@172.16.1.2 ARGS="--host 172.16.1.2"`.
 images:
 	bash deploy/build-images.sh linux/arm64
 
 ship:
-	bash deploy/ship.sh $(PI)
+	bash deploy/ship.sh $(PI) $(ARGS)
