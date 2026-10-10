@@ -150,6 +150,11 @@ fi
 
 data="$(get_env HIVE_DATA)"
 data="${data:-/srv/hive}"
+# New passwords cannot open data left by an earlier install (PostgreSQL and Mosquitto keep the first ones).
+if [ "$first_install" -eq 1 ] && { [ -n "$(ls -A "$data/pg" 2>/dev/null)" ] || [ -f "$data/mosquitto/dynamic-security.json" ]; }; then
+	rm -f "$ENV"
+	die "в $data остались данные прошлой установки, а пароли в новом .env другие, и они не подойдут. Если там нет нужных данных, удалите: sudo rm -rf $data/pg $data/mosquitto/dynamic-security.json — и запустите установку снова"
+fi
 mkdir -p "$data"/{pg,media,mosquitto,caddy,backups}
 chown -R 1654:1654 "$data/media"     # "app" user of the .NET image
 chown -R 1883:1883 "$data/mosquitto" # "mosquitto" user of the broker image
