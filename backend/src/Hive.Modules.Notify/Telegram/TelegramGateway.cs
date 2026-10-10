@@ -68,7 +68,12 @@ public sealed class TelegramGateway : IDisposable
         var endpoints = _options.Endpoints.Count > 0 ? _options.Endpoints : [new TelegramEndpoint()];
         foreach (var endpoint in endpoints)
         {
-            var handler = new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) };
+            // A proxy may answer gzip-compressed; without decompression the library reads compressed bytes as JSON.
+            var handler = new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli,
+            };
             if (!string.IsNullOrEmpty(endpoint.Proxy))
             {
                 handler.Proxy = new WebProxy(endpoint.Proxy)
