@@ -1,4 +1,5 @@
 using System.Net;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -125,14 +126,15 @@ public sealed class TelegramGateway : IDisposable
     public static bool IsUnreadableReply(Exception ex) => ex is RequestException && ex.InnerException is JsonException;
 
     /// <summary>
-    /// Ids of the updates waiting for us, read from the raw reply. Used to move the offset past a batch the
-    /// library cannot deserialize, so one unreadable update does not block the bot forever.
+    /// Ids of the updates waiting for us, read from the raw reply, plus the shape of that reply (field names and
+    /// types, never values). Used to move the offset past a batch the library cannot deserialize, and to log what
+    /// the batch looked like without logging the messages.
     /// </summary>
-    public async Task<List<long>> PeekUpdateIdsAsync(int? offset, CancellationToken ct)
+    public async Task<(List<long> Ids, string Shape)> PeekUpdatesAsync(int? offset, CancellationToken ct)
     {
         var ids = new List<long>();
         if (!Enabled)
-            return ids;
+            return (ids, "");
         var endpoint = _clients[_current].Endpoint;
         var baseUrl = string.IsNullOrEmpty(endpoint.BaseUrl) ? "https://api.telegram.org" : endpoint.BaseUrl.TrimEnd('/');
         var body = new Dictionary<string, object?> { ["limit"] = 50, ["timeout"] = 0 };
@@ -145,8 +147,28 @@ public sealed class TelegramGateway : IDisposable
             foreach (var item in result.EnumerateArray())
                 if (item.TryGetProperty("update_id", out var id) && id.TryGetInt64(out var value))
                     ids.Add(value);
-        return ids;
+        return (ids, Shape(doc.RootElement));
     }
+
+    /// <summary>
+    /// The structure of a JSON value: field names and types, the first element of each array, no values.
+    /// Example: {ok:bool,result:[{update_id:num,message:{text:str}}]}
+    /// </summary>
+    public static string Shape(JsonElement element)
+    {
+        var text = ShapeOf(element);
+        return text.Length <= 1500 ? text : text[..1500] + "…";
+    }
+
+    private static string ShapeOf(JsonElement e) => e.ValueKind switch
+    {
+        JsonValueKind.Object => "{" + string.Join(",", e.EnumerateObject().Select(p => $"{p.Name}:{ShapeOf(p.Value)}")) + "}",
+        JsonValueKind.Array => "[" + (e.GetArrayLength() > 0 ? ShapeOf(e.EnumerateArray().First()) : "") + "]",
+        JsonValueKind.Number => "num",
+        JsonValueKind.True or JsonValueKind.False => "bool",
+        JsonValueKind.Null => "null",
+        _ => "str",
+    };
 
     public void Dispose()
     {

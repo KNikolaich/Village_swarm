@@ -29,4 +29,13 @@ public class TelegramErrorTests
         Assert.False(TelegramGateway.IsNetworkError(ex));
         Assert.False(TelegramGateway.IsUnreadableReply(ex));
     }
+
+    [Fact]
+    public void Shape_lists_field_names_and_types_without_values()
+    {
+        using var doc = JsonDocument.Parse("""{"ok":true,"result":[{"update_id":7477,"message":{"text":"secret text","entities":[{"offset":0}]}}]}""");
+        var shape = TelegramGateway.Shape(doc.RootElement);
+        Assert.Equal("{ok:bool,result:[{update_id:num,message:{text:str,entities:[{offset:num}]}}]}", shape);
+        Assert.DoesNotContain("secret", shape);
+    }
 }

@@ -65,9 +65,10 @@ public sealed class TelegramBotHost(
                 // otherwise the same batch would be requested again forever.
                 var path = (ex.InnerException as System.Text.Json.JsonException)?.Path;
                 var ids = new List<long>();
+                var shape = "";
                 try
                 {
-                    ids = await telegram.PeekUpdateIdsAsync(offset, stoppingToken);
+                    (ids, shape) = await telegram.PeekUpdatesAsync(offset, stoppingToken);
                 }
                 catch (Exception peek) when (!stoppingToken.IsCancellationRequested)
                 {
@@ -75,14 +76,14 @@ public sealed class TelegramBotHost(
                 }
                 if (ids.Count == 0)
                 {
-                    logger.LogWarning("Telegram reply could not be read at {Path}; retry in {Delay}s", path, backoff.TotalSeconds);
+                    logger.LogWarning("Telegram reply could not be read at {Path}; shape {Shape}; retry in {Delay}s", path, shape, backoff.TotalSeconds);
                     await Task.Delay(backoff, time, stoppingToken);
                     backoff = TimeSpan.FromSeconds(Math.Min(backoff.TotalSeconds * 2, 120));
                     continue;
                 }
                 offset = (int)(ids.Max() + 1);
-                logger.LogWarning("Skipped {Count} Telegram update(s) the client could not read: ids {Ids}, at {Path}",
-                    ids.Count, string.Join(", ", ids), path);
+                logger.LogWarning("Skipped {Count} Telegram update(s) the client could not read: ids {Ids}, at {Path}; shape {Shape}",
+                    ids.Count, string.Join(", ", ids), path, shape);
                 backoff = TimeSpan.FromSeconds(2);
             }
             catch (Exception ex)
