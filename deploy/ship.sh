@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Delivers the hive from the PC to the RPi over SSH and installs or updates it:
-#   deploy/ship.sh kirill@172.16.1.2 [install.sh options, e.g. --rtc]
+#   deploy/ship.sh kirill@192.168.10.4 [install.sh options, e.g. --host 192.168.10.4 --rtc]
 # Uses the images from deploy/build-images.sh. First time: install.sh (asks for the bot token);
 # afterwards: update.sh with a database dump and rollback. Works from Git Bash on Windows.
 set -euo pipefail
