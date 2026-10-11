@@ -3,6 +3,7 @@ import { Hexagon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { api } from '@/api/client'
 import { keys } from '@/api/queries'
+import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, Input } from '@/components/ui/primitives'
 import { t } from '@/i18n'
@@ -34,8 +35,11 @@ export function LoginPage() {
         return
       }
       await qc.invalidateQueries({ queryKey: keys.me })
-    } catch {
-      setError(t('errors.generic'))
+    } catch (e) {
+      // The browser could not complete the request at all: say what it reported, it differs between browsers
+      // (certificate exception, blocked HTTP/3, offline) and is the only hint when the page looks fine.
+      console.error('login request failed', e)
+      setError(`${t('errors.network')}: ${e instanceof Error ? `${e.name}: ${e.message}` : String(e)}`)
     } finally {
       setBusy(false)
     }
@@ -56,7 +60,7 @@ export function LoginPage() {
             {step === 'password' ? (
               <>
                 <Input autoFocus autoComplete="username" placeholder={t('login.login')} value={login} onChange={(e) => setLogin(e.target.value)} />
-                <Input type="password" autoComplete="current-password" placeholder={t('login.password')} value={password} onChange={(e) => setPassword(e.target.value)} />
+                <PasswordInput autoComplete="current-password" placeholder={t('login.password')} value={password} onChange={(e) => setPassword(e.target.value)} />
               </>
             ) : (
               <>

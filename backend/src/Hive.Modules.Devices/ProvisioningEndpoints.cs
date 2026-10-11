@@ -86,9 +86,10 @@ public static class ProvisioningEndpoints
                 ["builds"] = new JsonArray { new JsonObject { ["chipFamily"] = b.ChipFamily, ["parts"] = parts } },
             });
         });
-        firmware.MapGet("/{build}/{file}", Results<PhysicalFileHttpResult, NotFound> (string build, string file, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
+        firmware.MapGet("/{build}/{file}", Results<PhysicalFileHttpResult, NotFound> (string build, string file, string? download, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
             ReadBuild(build, options.Value, env) is { } b && b.Parts.Any(p => p.File == file)
-                ? TypedResults.PhysicalFile(Path.Combine(b.Dir, file), "application/octet-stream")
+                // ?download=1 names the file after the build (meteo-esp01dht.bin) instead of firmware.bin.
+                ? TypedResults.PhysicalFile(Path.Combine(b.Dir, file), "application/octet-stream", download is "1" or "true" ? $"{build}-{file}" : null)
                 : TypedResults.NotFound());
         firmware.MapGet("", (IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
         {

@@ -7,6 +7,11 @@
 	skip_install_trust
 	# Port 80 is ours (the :80 site below): hornets upload over plain HTTP, no automatic redirect for them.
 	auto_https disable_redirects
+	# No HTTP/3: Caddy would advertise it (Alt-Svc) but the UDP port is not published, and a browser that trusts
+	# the certificate only through an exception can fail the upgrade; the LAN gains nothing from QUIC.
+	servers {
+		protocols h1 h2
+	}
 	default_sni {$HIVE_DEFAULT_SNI:localhost}
 }
 

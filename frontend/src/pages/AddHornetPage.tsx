@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Copy, Cpu, Usb } from 'lucide-react'
+import { CheckCircle2, Copy, Cpu, Download, Usb } from 'lucide-react'
 import { createElement, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
+import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui/primitives'
 import { t } from '@/i18n'
@@ -152,6 +153,15 @@ function FlashStep({ type, builds, selected, onSelect }: {
         {available && ready && selected &&
           createElement('esp-web-install-button', { key: selected, manifest: `/api/firmware/${selected}/manifest.json` },
             createElement(Button, { slot: 'activate' } as never, createElement(Cpu), t('add.flash')))}
+        {available && selected && (
+          <a
+            href={`/api/firmware/${selected}/firmware.bin?download=1`}
+            className="inline-flex items-center gap-2 text-amber-400 hover:underline"
+          >
+            <Download className="size-4" />{t('add.download')}
+          </a>
+        )}
+        {available && <p className="text-xs text-neutral-500">{t('add.downloadHint')}</p>}
         <p className="text-xs text-neutral-500">{t('add.alreadyFlashed')}</p>
       </CardContent>
     </Card>
@@ -202,7 +212,7 @@ function ConfigureStep({ code, deviceId }: { code: string; deviceId: string }) {
       <CardHeader><CardTitle>3. {t('add.step3')}</CardTitle>{isOnline && <Badge tone="ok"><CheckCircle2 className="size-3" />{t('status.online')}</Badge>}</CardHeader>
       <CardContent className="space-y-2 text-sm">
         <Input placeholder={t('add.ssid')} value={ssid} onChange={(e) => setSsid(e.target.value)} />
-        <Input type="password" placeholder={t('add.pass')} value={pass} onChange={(e) => setPass(e.target.value)} />
+        <PasswordInput placeholder={t('add.pass')} value={pass} onChange={(e) => setPass(e.target.value)} />
         <Input placeholder="http://192.168.1.10:5080" value={hive} onChange={(e) => setHive(e.target.value)} />
         <p className="text-xs text-neutral-500">{t('add.hiveHint')}</p>
         {serialSupported() && (

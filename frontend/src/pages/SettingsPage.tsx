@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { keys, useMe, useTelegram } from '@/api/queries'
+import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Skeleton } from '@/components/ui/primitives'
 import { t } from '@/i18n'
@@ -176,8 +177,8 @@ function PasswordCard() {
       <CardHeader><CardTitle>{t('settings.password')}</CardTitle></CardHeader>
       <CardContent>
         <form onSubmit={submit} className="space-y-2">
-          <Input type="password" autoComplete="current-password" placeholder={t('settings.currentPassword')} value={current} onChange={(e) => setCurrent(e.target.value)} />
-          <Input type="password" autoComplete="new-password" placeholder={t('settings.newPassword')} value={next} onChange={(e) => setNext(e.target.value)} />
+          <PasswordInput autoComplete="current-password" placeholder={t('settings.currentPassword')} value={current} onChange={(e) => setCurrent(e.target.value)} />
+          <PasswordInput autoComplete="new-password" placeholder={t('settings.newPassword')} value={next} onChange={(e) => setNext(e.target.value)} />
           <Button type="submit" variant="secondary" disabled={busy || !current || next.length < 10}>{t('settings.save')}</Button>
         </form>
       </CardContent>

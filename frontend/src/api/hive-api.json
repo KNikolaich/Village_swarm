@@ -650,6 +650,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
