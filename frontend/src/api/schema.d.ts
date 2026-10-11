@@ -1502,6 +1502,7 @@ export interface components {
             configAppliedRev: null | number;
             /** Format: int32 */
             sleepS: null | number;
+            sleepMode: string;
         };
         EnrollmentCodeDto: {
             code: string;
@@ -1653,6 +1654,8 @@ export interface components {
         SetArmedRequest: {
             armed: boolean;
         };
+        /** @enum {unknown} */
+        SleepMode: "deep" | "light" | null;
         TelegramLinkDto: {
             /** Format: int32 */
             id: number;
@@ -1689,6 +1692,7 @@ export interface components {
             sleepS?: null | number;
             /** Format: int32 */
             teleIntervalS?: null | number;
+            sleepMode?: null | components["schemas"]["SleepMode"];
         };
     };
     responses: never;

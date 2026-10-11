@@ -24,7 +24,7 @@ const sleepChoices = [0, 300, 600, 900, 1800, 3600]
 
 /** A battery hornet between wake-ups: status stays online (clean disconnect), but it has not spoken lately. */
 function asleep(d: DeviceDto): boolean {
-  if (!d.sleepS || d.status !== 'online' || !d.lastSeenAt) return false
+  if (!d.sleepS || d.sleepMode !== 'deep' || d.status !== 'online' || !d.lastSeenAt) return false
   return Date.now() - new Date(d.lastSeenAt).getTime() > 90_000
 }
 
@@ -46,8 +46,8 @@ export function SwarmPage() {
     setReplaceCode({ deviceId, code: code.code, expiresAt: code.expiresAt })
   }
 
-  async function setSleep(d: DeviceDto, sleepS: number) {
-    await call(api.PATCH('/api/devices/{deviceId}/config', { params: { path: { deviceId: d.deviceId } }, body: { sleepS } }))
+  async function setSleep(d: DeviceDto, body: { sleepS?: number; sleepMode?: 'deep' | 'light' }) {
+    await call(api.PATCH('/api/devices/{deviceId}/config', { params: { path: { deviceId: d.deviceId } }, body }))
     toast.success(t('swarm.sleepSaved'))
     await qc.invalidateQueries({ queryKey: keys.devices })
   }
@@ -96,13 +96,24 @@ export function SwarmPage() {
                     {t('swarm.sleep')}
                     <Select
                       value={d.sleepS ?? 0}
-                      onChange={(e) => void setSleep(d, Number(e.target.value))}
+                      onChange={(e) => void setSleep(d, { sleepS: Number(e.target.value) })}
                       className="h-7 text-xs"
                     >
                       {sleepChoices.map((s) => (
                         <option key={s} value={s}>{s === 0 ? t('swarm.sleepNever') : t('swarm.sleepMinutes').replace('{n}', String(s / 60))}</option>
                       ))}
                     </Select>
+                    {!!d.sleepS && (
+                      <Select
+                        value={d.sleepMode}
+                        onChange={(e) => void setSleep(d, { sleepMode: e.target.value as 'deep' | 'light' })}
+                        className="h-7 text-xs"
+                        aria-label={t('swarm.sleepMode')}
+                      >
+                        <option value="deep">{t('swarm.sleepDeep')}</option>
+                        <option value="light">{t('swarm.sleepLight')}</option>
+                      </Select>
+                    )}
                   </label>
                 )}
               </div>

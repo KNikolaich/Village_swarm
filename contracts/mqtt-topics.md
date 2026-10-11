@@ -25,11 +25,13 @@ Prefix: `vs/v1/`. `{id}` is a hornet device_id, e.g. `guard-gate1`.
 | `vs/v1/hive/broadcast/cmd/{name}` | hive → dev | no | 1 | `cmd-{name}` |
 | `vs/v1/prov/{mac}/...` | provisioning | — | — | step 10 |
 
-Sleeping hornets (config `sleep_s` > 0): on each wake-up the hornet connects, publishes `status` `online`,
+Sleeping hornets (config `sleep_s` > 0, `sleep_mode` `deep` or absent): on each wake-up the hornet connects, publishes `status` `online`,
 `info`, `health` and its readings, then disconnects cleanly and sleeps. A clean disconnect does not fire the LWT,
 so `status` stays `online` while it sleeps; the hive marks it offline when it misses several wake-ups
 (last message older than 3 x `sleep_s` + 60 s). Commands are not delivered while it sleeps; config is retained
 and applied at the next wake-up.
+With `sleep_mode` `light` the hornet stays connected (Wi-Fi power saving, readings every `sleep_s`), so it
+behaves like any other hornet: LWT, commands and config work as usual.
 
 Rules:
 - device_id matches `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, max 32 chars (`guard-gate1`, `meteo-out1`).

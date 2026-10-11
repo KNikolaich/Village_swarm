@@ -75,6 +75,7 @@ void Core::begin() {
     } else {
         WiFi.begin(settings_.ssid.c_str(), settings_.pass.c_str());
     }
+    applyWifiPowerSave();
     if (sleepy()) Serial.printf("[hornet] battery mode: sleep %u s between readings (type 'awake' to stay up)\n", static_cast<unsigned>(sleepS_));
 
     configTime(0, 0, settings_.ntp.c_str(), settings_.mqttHost.c_str());
@@ -112,6 +113,17 @@ void Core::loop() {
         }
     }
     role_.loop(*this);
+    // An idle CPU lets the chip nap between Wi-Fi beacons; 50 ms keeps commands and the button responsive.
+    if (lightSleep()) delay(50);
+}
+
+// Light sleep: the radio naps between beacons and wakes for traffic, so MQTT stays connected.
+void Core::applyWifiPowerSave() {
+#if defined(ESP8266)
+    WiFi.setSleepMode(lightSleep() ? WIFI_LIGHT_SLEEP : WIFI_NONE_SLEEP, lightSleep() ? 3 : 0);
+#else
+    WiFi.setSleep(lightSleep());
+#endif
 }
 
 void Core::readingDone() {
@@ -294,6 +306,8 @@ void Core::applyConfig(const String& payload, bool fromHive) {
     config_ = doc;
     healthIntervalS_ = doc["health_interval_s"] | 60U;
     sleepS_ = doc["sleep_s"] | 0U;
+    lightSleep_ = String(doc["sleep_mode"] | "deep") == "light";
+    applyWifiPowerSave();
     role_.applyConfig(*this, config_.as<JsonObjectConst>());
     if (!fromHive) return;
 

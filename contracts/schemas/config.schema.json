@@ -38,6 +38,10 @@
         { "minimum": 60, "maximum": 86400 }
       ]
     },
+    "sleep_mode": {
+      "enum": ["deep", "light"],
+      "description": "How a hornet with sleep_s > 0 saves power. deep (default): radio and CPU off between readings, disconnects; needs GPIO16 wired to RST on ESP8266. light: stays connected with Wi-Fi power saving and reads every sleep_s; works on any board, saves far less"
+    },
     "failsafe": {
       "type": "object",
       "properties": {

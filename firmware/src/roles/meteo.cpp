@@ -103,7 +103,7 @@ public:
         // Battery mode: one reading per wake-up, sent once the hornet is online (nothing is buffered for tele).
         if (core.sleepy() && (!core.online() || sent_)) return;
         const uint32_t now = millis();
-        if (!converting_ && (!started_ || now - lastReadMs_ >= teleIntervalMs_)) {
+        if (!converting_ && (!started_ || now - lastReadMs_ >= core.readingIntervalMs(teleIntervalMs_))) {
             started_ = true;  // first reading right after boot
             lastReadMs_ = now;
             if (dsCount_ > 0) dallas_.requestTemperatures();  // non-blocking, read after kConversionMs

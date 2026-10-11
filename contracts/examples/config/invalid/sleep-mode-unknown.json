@@ -1,0 +1,4 @@
+{
+  "v": 1, "rev": 4, "name": "Сарай",
+  "health_interval_s": 60, "sleep_s": 300, "sleep_mode": "hibernate"
+}

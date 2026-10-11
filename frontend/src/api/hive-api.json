@@ -1283,7 +1283,8 @@
           "state",
           "configRev",
           "configAppliedRev",
-          "sleepS"
+          "sleepS",
+          "sleepMode"
         ],
         "type": "object",
         "properties": {
@@ -1394,6 +1395,9 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "sleepMode": {
+            "type": "string"
           }
         }
       },
@@ -1989,6 +1993,13 @@
           }
         }
       },
+      "SleepMode": {
+        "enum": [
+          "deep",
+          "light",
+          null
+        ]
+      },
       "TelegramLinkDto": {
         "required": [
           "id",
@@ -2116,6 +2127,16 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "sleepMode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SleepMode"
+              }
+            ]
           }
         }
       }

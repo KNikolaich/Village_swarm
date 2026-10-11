@@ -13,7 +13,7 @@ using Microsoft.Extensions.Logging;
 namespace Hive.Modules.Devices;
 
 /// <summary>PATCH /api/devices/{id}/config: the settings a person changes from the swarm screen. Null keeps the value.</summary>
-public sealed record UpdateDeviceConfigRequest(int? SleepS = null, int? TeleIntervalS = null);
+public sealed record UpdateDeviceConfigRequest(int? SleepS = null, int? TeleIntervalS = null, Hive.Contracts.Messages.SleepMode? SleepMode = null);
 
 public enum ConfigUpdateStatus { Updated, NotFound, BadRequest }
 
@@ -28,7 +28,7 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
 
     public static string? Validate(UpdateDeviceConfigRequest r)
     {
-        if (r.SleepS is null && r.TeleIntervalS is null)
+        if (r.SleepS is null && r.TeleIntervalS is null && r.SleepMode is null)
             return "Nothing to change";
         if (r.SleepS is { } s && s != 0 && s is < MinSleepS or > MaxSleepS)
             return $"sleepS must be 0 or between {MinSleepS} and {MaxSleepS}";
@@ -57,11 +57,13 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         }
         if (r.TeleIntervalS is { } tele)
             config["tele_interval_s"] = tele;
+        if (r.SleepMode is { } mode)
+            config["sleep_mode"] = mode == Hive.Contracts.Messages.SleepMode.Light ? "light" : "deep";
         device.ConfigRev++;
         config["rev"] = device.ConfigRev;
         device.Config = JsonDocument.Parse(config.ToJsonString());
 
-        Audit.Record(db, time.GetUtcNow(), by, "device_config", deviceId, new { r.SleepS, r.TeleIntervalS });
+        Audit.Record(db, time.GetUtcNow(), by, "device_config", deviceId, new { r.SleepS, r.TeleIntervalS, r.SleepMode });
         await db.SaveChangesAsync(ct);
         if (mqtt.IsConnected)
             await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
@@ -70,6 +72,10 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
 
     public static int? SleepS(Device d) =>
         d.Config?.RootElement.TryGetProperty("sleep_s", out var s) == true && s.TryGetInt32(out var v) && v > 0 ? v : null;
+
+    /// <summary>light or deep; deep when sleep_mode is absent (the contract default).</summary>
+    public static string SleepMode(Device d) =>
+        d.Config?.RootElement.TryGetProperty("sleep_mode", out var m) == true && m.GetString() == "light" ? "light" : "deep";
 }
 
 /// <summary>
@@ -105,7 +111,9 @@ public sealed class SleepingDeviceWatch(IServiceScopeFactory scopes, TimeProvide
         var online = await db.Devices.Where(d => d.Status == DeviceStatus.Online && d.Config != null).ToListAsync(ct);
         foreach (var device in online)
         {
-            if (DeviceConfigService.SleepS(device) is { } sleep && IsOverdue(sleep, device.LastSeenAt, now))
+            // Light sleepers stay connected and have the LWT; only deep sleepers need this check.
+            if (DeviceConfigService.SleepS(device) is { } sleep && DeviceConfigService.SleepMode(device) == "deep"
+                && IsOverdue(sleep, device.LastSeenAt, now))
             {
                 device.Status = DeviceStatus.Offline;
                 logger.LogInformation("{Device} missed its wake-ups (sleep {Sleep} s, last seen {Seen}); marked offline", device.DeviceId, sleep, device.LastSeenAt);

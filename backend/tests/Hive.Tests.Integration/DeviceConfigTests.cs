@@ -103,6 +103,24 @@ public sealed class DeviceConfigTests(HiveFixture hive)
         Assert.Equal(DeviceStatus.Offline, await hive.QueryAsync(db => db.Devices.Where(d => d.DeviceId == "meteo-sleep3").Select(d => d.Status).SingleAsync()));
     }
 
+    [Fact]
+    public async Task Light_sleepers_stay_connected_and_are_not_judged_by_wake_ups()
+    {
+        await RegisterAsync("meteo-sleep4");
+        var admin = await hive.LoginAsync();
+        using var response = await admin.PatchAsJsonAsync("/api/devices/meteo-sleep4/config", new { sleepS = 300, sleepMode = "light" });
+        var dto = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("light", dto.GetProperty("sleepMode").GetString());
+        using var config = JsonDocument.Parse(await RetainedConfigAsync("meteo-sleep4", dto.GetProperty("configRev").GetInt32()));
+        Assert.Equal("light", config.RootElement.GetProperty("sleep_mode").GetString());
+
+        // A light sleeper keeps its LWT, so an old last-seen does not make it offline.
+        await hive.QueryAsync(db => db.Devices.Where(d => d.DeviceId == "meteo-sleep4")
+            .ExecuteUpdateAsync(u => u.SetProperty(d => d.LastSeenAt, DateTimeOffset.UtcNow.AddHours(-1))));
+        await hive.App.Services.GetRequiredService<SleepingDeviceWatch>().CheckAsync(CancellationToken.None);
+        Assert.Equal(DeviceStatus.Online, await hive.QueryAsync(db => db.Devices.Where(d => d.DeviceId == "meteo-sleep4").Select(d => d.Status).SingleAsync()));
+    }
+
     [Theory]
     [InlineData(600, 30, false)]
     [InlineData(600, 1859, false)]

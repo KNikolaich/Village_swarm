@@ -111,7 +111,12 @@ public:
 
     // Battery mode (config sleep_s > 0): the role sends its readings once per wake-up while online, then calls
     // readingDone(); the core lets the messages leave, disconnects cleanly and deep-sleeps for sleep_s.
-    bool sleepy() const { return sleepS_ > 0 && !stayAwake_; }
+    bool sleepy() const { return sleepS_ > 0 && !lightSleep_ && !stayAwake_; }
+
+    // Light mode (sleep_mode "light"): stays connected with Wi-Fi power saving; the role reads every
+    // readingIntervalMs() instead of tele_interval_s.
+    bool lightSleep() const { return sleepS_ > 0 && lightSleep_; }
+    uint32_t readingIntervalMs(uint32_t teleIntervalMs) const { return lightSleep() ? sleepS_ * 1000UL : teleIntervalMs; }
     void readingDone();
 
     // Last applied config (empty object until the hive sends one).
@@ -131,6 +136,7 @@ private:
     void serialConsole();
     bool enroll(const String& hiveUrl, const String& code);
     [[noreturn]] void sleepNow();
+    void applyWifiPowerSave();
 
     Role& role_;
     Settings settings_;
@@ -144,7 +150,8 @@ private:
     bool mqttWasConnected_ = false;
     uint32_t sleepS_ = 0;
     unsigned long sleepAtMs_ = 0;
-    bool stayAwake_ = false;  // console "awake": no sleep until reboot, to change settings
+    bool stayAwake_ = false;
+    bool lightSleep_ = false;  // console "awake": no sleep until reboot, to change settings
     String rxTopic_;
     String rxPayload_;
     String consoleLine_;

@@ -40,6 +40,8 @@ public sealed record SnapshotCommand : Command
 
 public enum RelaySet { On, Off }
 
+public enum SleepMode { Deep, Light }
+
 /// <summary>vs/v1/dev/{id}/config (retained). Sections a role does not use stay null.</summary>
 public sealed record DeviceConfig
 {
@@ -51,6 +53,9 @@ public sealed record DeviceConfig
 
     /// <summary>Battery hornets sleep this long between readings; null or 0: always awake.</summary>
     public int? SleepS { get; init; }
+
+    /// <summary>deep (default) or light: see contracts/schemas/config.schema.json sleep_mode.</summary>
+    public SleepMode? SleepMode { get; init; }
 
     public FailsafeConfig? Failsafe { get; init; }
     public GuardConfig? Guard { get; init; }
