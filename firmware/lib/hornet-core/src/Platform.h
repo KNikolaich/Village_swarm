@@ -34,6 +34,19 @@ const char* chip();
 bool hasPsram();
 uint32_t freePsram();
 
+// Deep sleep for battery hornets (config sleep_s). The ESP8266 wakes only if GPIO16 is wired to RST.
+[[noreturn]] void deepSleep(uint64_t microseconds);
+
+// Wi-Fi channel and access point kept in RTC memory across deep sleep: reconnecting without a scan saves
+// a second or two awake on every wake-up.
+struct WifiHint {
+    uint8_t channel = 0;
+    uint8_t bssid[6] = {};
+};
+bool loadWifiHint(WifiHint& hint);
+void saveWifiHint(const WifiHint& hint);
+void clearWifiHint();
+
 using Headers = std::vector<std::pair<String, String>>;
 
 // Plain HTTP POST; returns the status code (negative on connection errors) and fills response.

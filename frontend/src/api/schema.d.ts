@@ -573,6 +573,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/devices/{deviceId}/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["UpdateDeviceConfigRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        trace?: never;
+    };
     "/api/provision/codes": {
         parameters: {
             query?: never;
@@ -1443,6 +1500,8 @@ export interface components {
             configRev: number;
             /** Format: int32 */
             configAppliedRev: null | number;
+            /** Format: int32 */
+            sleepS: null | number;
         };
         EnrollmentCodeDto: {
             code: string;
@@ -1624,6 +1683,12 @@ export interface components {
         TotpSetupDto: {
             sharedKey: string;
             authenticatorUri: string;
+        };
+        UpdateDeviceConfigRequest: {
+            /** Format: int32 */
+            sleepS?: null | number;
+            /** Format: int32 */
+            teleIntervalS?: null | number;
         };
     };
     responses: never;

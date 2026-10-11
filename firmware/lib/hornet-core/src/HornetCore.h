@@ -109,6 +109,11 @@ public:
 
     void onCommand(const char* name, CommandHandler handler);
 
+    // Battery mode (config sleep_s > 0): the role sends its readings once per wake-up while online, then calls
+    // readingDone(); the core lets the messages leave, disconnects cleanly and deep-sleeps for sleep_s.
+    bool sleepy() const { return sleepS_ > 0 && !stayAwake_; }
+    void readingDone();
+
     // Last applied config (empty object until the hive sends one).
     JsonObjectConst config() const { return config_.as<JsonObjectConst>(); }
 
@@ -125,6 +130,7 @@ private:
     void flushOutbox();
     void serialConsole();
     bool enroll(const String& hiveUrl, const String& code);
+    [[noreturn]] void sleepNow();
 
     Role& role_;
     Settings settings_;
@@ -136,6 +142,9 @@ private:
     unsigned long nextMqttAttemptMs_ = 0;
     unsigned mqttAttempts_ = 0;
     bool mqttWasConnected_ = false;
+    uint32_t sleepS_ = 0;
+    unsigned long sleepAtMs_ = 0;
+    bool stayAwake_ = false;  // console "awake": no sleep until reboot, to change settings
     String rxTopic_;
     String rxPayload_;
     String consoleLine_;

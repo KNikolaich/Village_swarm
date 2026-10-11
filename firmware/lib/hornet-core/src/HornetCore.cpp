@@ -24,6 +24,10 @@ CommandGuard<16> guard;
 
 constexpr uint32_t kWatchdogMs = 30000;  // spec 4.5: reboot if the loop hangs for 30 s
 constexpr uint64_t kSaneEpochMs = 1700000000000ULL;
+// A sleeping hornet that cannot reach Wi-Fi or the broker gives up after this long and sleeps again.
+constexpr unsigned long kAwakeLimitMs = 30000;
+// Time for the last QoS 0/1 messages to leave before the clean disconnect.
+constexpr unsigned long kFlushBeforeSleepMs = 1500;
 
 String willTopic;
 
@@ -65,7 +69,13 @@ void Core::begin() {
     WiFi.setAutoReconnect(true);
     WiFi.persistent(false);
     WiFi.setHostname(settings_.deviceId.c_str());
-    WiFi.begin(settings_.ssid.c_str(), settings_.pass.c_str());
+    platform::WifiHint hint;
+    if (sleepy() && platform::loadWifiHint(hint)) {
+        WiFi.begin(settings_.ssid.c_str(), settings_.pass.c_str(), hint.channel, hint.bssid);  // no scan
+    } else {
+        WiFi.begin(settings_.ssid.c_str(), settings_.pass.c_str());
+    }
+    if (sleepy()) Serial.printf("[hornet] battery mode: sleep %u s between readings (type 'awake' to stay up)\n", static_cast<unsigned>(sleepS_));
 
     configTime(0, 0, settings_.ntp.c_str(), settings_.mqttHost.c_str());
 
@@ -91,8 +101,35 @@ void Core::loop() {
             lastHealthMs_ = millis();
             publishHealth();
         }
+        if (sleepy()) {
+            if (sleepAtMs_ && millis() >= sleepAtMs_) sleepNow();
+            if (millis() > kAwakeLimitMs) {
+                // No network this time; a stale access point hint may be the reason, so scan next time.
+                if (WiFi.status() != WL_CONNECTED) platform::clearWifiHint();
+                Serial.println("[hornet] no connection, sleeping anyway");
+                sleepNow();
+            }
+        }
     }
     role_.loop(*this);
+}
+
+void Core::readingDone() {
+    if (sleepy() && !sleepAtMs_) sleepAtMs_ = millis() + kFlushBeforeSleepMs;
+}
+
+void Core::sleepNow() {
+    Serial.printf("[hornet] sleeping %u s\n", static_cast<unsigned>(sleepS_));
+    flushOutbox();
+    // A clean DISCONNECT does not fire the LWT: the status stays "online" while the hornet sleeps (contracts/mqtt-topics.md).
+    mqtt.disconnect();
+    for (int i = 0; i < 30 && mqtt.connected(); ++i) {
+        mqtt.loop();
+        delay(10);
+    }
+    WiFi.disconnect(true);
+    Serial.flush();
+    platform::deepSleep(static_cast<uint64_t>(sleepS_) * 1000000ULL);
 }
 
 bool Core::online() const { return mqtt.connected(); }
@@ -151,6 +188,12 @@ void Core::onMqttConnected() {
     mqtt.subscribe(topics::cmdWildcard(dev).c_str(), 1);
     mqtt.subscribe(topics::config(dev).c_str(), 1);
     mqtt.publish(willTopic.c_str(), 1, true, "online");
+    if (sleepy()) {
+        platform::WifiHint hint;
+        hint.channel = static_cast<uint8_t>(WiFi.channel());
+        memcpy(hint.bssid, WiFi.BSSID(), sizeof hint.bssid);
+        platform::saveWifiHint(hint);
+    }
     publishInfo();
     flushOutbox();
     lastHealthMs_ = 0;  // health right away
@@ -250,6 +293,7 @@ void Core::applyConfig(const String& payload, bool fromHive) {
     configRev_ = rev;
     config_ = doc;
     healthIntervalS_ = doc["health_interval_s"] | 60U;
+    sleepS_ = doc["sleep_s"] | 0U;
     role_.applyConfig(*this, config_.as<JsonObjectConst>());
     if (!fromHive) return;
 
@@ -366,6 +410,10 @@ void Core::serialConsole() {
         if (!line.length()) continue;
         if (line == "show") settings_.print(Serial);
         else if (line == "reboot") ESP.restart();
+        else if (line == "awake") {
+            stayAwake_ = true;
+            Serial.println("staying awake until reboot");
+        }
         else if (line == "factory") {
             settings_.clear();
             Serial.println("settings cleared, rebooting");
@@ -378,7 +426,7 @@ void Core::serialConsole() {
                 delay(200);
                 ESP.restart();
             }
-        } else if (!settings_.command(line, Serial)) Serial.println("commands: show | set <ssid|pass|mqtt|mqttuser|mqttpass|id|upload|token|ntp> <value> | enroll <hive-url> <code> | reboot | factory");
+        } else if (!settings_.command(line, Serial)) Serial.println("commands: show | set <ssid|pass|mqtt|mqttuser|mqttpass|id|upload|token|ntp> <value> | enroll <hive-url> <code> | awake | reboot | factory");
     }
 }
 

@@ -30,6 +30,14 @@
       "type": "integer",
       "minimum": 1
     },
+    "sleep_s": {
+      "type": "integer",
+      "description": "Battery hornets: deep sleep this long between readings (wake, send, sleep). 0 or absent: always awake. While asleep the hornet keeps its last status; the hive treats it as lost after several missed wake-ups",
+      "anyOf": [
+        { "const": 0 },
+        { "minimum": 60, "maximum": 86400 }
+      ]
+    },
     "failsafe": {
       "type": "object",
       "properties": {

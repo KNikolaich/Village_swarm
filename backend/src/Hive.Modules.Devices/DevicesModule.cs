@@ -15,7 +15,7 @@ namespace Hive.Modules.Devices;
 public sealed record DeviceDto(
     string DeviceId, string Name, string Type, string Status, int? ZoneId, string? Zone,
     string? Hw, string? Fw, string? Mac, string? Ip, int? Rssi, int? Boot, DateTimeOffset? LastSeenAt,
-    JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev);
+    JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev, int? SleepS);
 
 /// <summary>Device registry reads (spec 6.5). Editing, commands and provisioning come in later steps.</summary>
 public sealed class DeviceQueries(HiveDbContext db)
@@ -40,7 +40,7 @@ public sealed class DeviceQueries(HiveDbContext db)
     private static DeviceDto ToDto(Device d) => new(
         d.DeviceId, d.Name, d.TypeCode, d.Status.ToString().ToLowerInvariant(), d.ZoneId, d.Zone?.Name,
         d.Hw, d.FwVersion, d.Mac, d.Ip, d.Rssi, d.Boot, d.LastSeenAt,
-        d.Info?.RootElement.Clone(), d.State?.RootElement.Clone(), d.ConfigRev, d.ConfigAppliedRev);
+        d.Info?.RootElement.Clone(), d.State?.RootElement.Clone(), d.ConfigRev, d.ConfigAppliedRev, DeviceConfigService.SleepS(d));
 }
 
 public static class DevicesModule
@@ -56,6 +56,9 @@ public static class DevicesModule
         services.AddScoped<ProvisioningService>();
         services.AddHostedService<DynamicSecurityBootstrap>();
         services.AddHostedService<CommandTimeoutJob>();
+        services.AddScoped<DeviceConfigService>();
+        services.AddSingleton<SleepingDeviceWatch>();
+        services.AddHostedService(sp => sp.GetRequiredService<SleepingDeviceWatch>());
         return services;
     }
 
@@ -82,6 +85,17 @@ public static class DevicesModule
             .RequireAuthorization(HiveRoles.CanControl);
         devices.MapGet("/{deviceId}/commands/{cid}", async Task<Results<Ok<CommandDto>, NotFound>> (string deviceId, string cid, CommandService commands, CancellationToken ct) =>
             await commands.GetAsync(deviceId, cid, ct) is { } c ? TypedResults.Ok(CommandDto.From(c)) : TypedResults.NotFound());
+
+        devices.MapPatch("/{deviceId}/config", async Task<Results<Ok<DeviceDto>, NotFound, ValidationProblem>> (
+                string deviceId, UpdateDeviceConfigRequest request, ClaimsPrincipal user, DeviceConfigService configs, DeviceQueries q, CancellationToken ct) =>
+            {
+                if (DeviceConfigService.Validate(request) is { } error)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["request"] = [error] });
+                return await configs.UpdateAsync(deviceId, request, $"user:{user.Identity?.Name}", ct) == ConfigUpdateStatus.NotFound
+                    ? TypedResults.NotFound()
+                    : TypedResults.Ok((await q.GetAsync(deviceId, ct))!);
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
 
         app.MapProvisioningEndpoints();
 

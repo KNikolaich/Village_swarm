@@ -1,12 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Plus, RefreshCw, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { Moon, Plus, RefreshCw, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto } from '@/api/client'
 import { keys, useDevices, useMe } from '@/api/queries'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardContent, Empty, Skeleton } from '@/components/ui/primitives'
+import { Badge, Card, CardContent, Empty, Select, Skeleton } from '@/components/ui/primitives'
 import { statusLabel, t } from '@/i18n'
 import { formatAgo } from '@/lib/format'
 import { CodeBox } from '@/pages/AddHornetPage'
@@ -19,12 +19,22 @@ function badness(d: DeviceDto): number {
   return 2
 }
 
+/** Battery intervals offered in the UI; the contract allows 60..86400 s. 0 = always awake. */
+const sleepChoices = [0, 300, 600, 900, 1800, 3600]
+
+/** A battery hornet between wake-ups: status stays online (clean disconnect), but it has not spoken lately. */
+function asleep(d: DeviceDto): boolean {
+  if (!d.sleepS || d.status !== 'online' || !d.lastSeenAt) return false
+  return Date.now() - new Date(d.lastSeenAt).getTime() > 90_000
+}
+
 /** Screen 5 (spec 8.2): every hornet, sorted by trouble, with replace and remove. */
 export function SwarmPage() {
   const qc = useQueryClient()
   const devices = useDevices()
   const me = useMe()
   const isAdmin = me.data?.roles.includes('admin') ?? false
+  const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
   const [replaceCode, setReplaceCode] = useState<{ deviceId: string; code: string; expiresAt: string } | null>(null)
   const list = useMemo(
     () => [...(devices.data ?? [])].sort((a, b) => badness(a) - badness(b) || a.deviceId.localeCompare(b.deviceId)),
@@ -34,6 +44,12 @@ export function SwarmPage() {
   async function replace(deviceId: string) {
     const code = await call(api.POST('/api/devices/{deviceId}/replace', { params: { path: { deviceId } } }))
     setReplaceCode({ deviceId, code: code.code, expiresAt: code.expiresAt })
+  }
+
+  async function setSleep(d: DeviceDto, sleepS: number) {
+    await call(api.PATCH('/api/devices/{deviceId}/config', { params: { path: { deviceId: d.deviceId } }, body: { sleepS } }))
+    toast.success(t('swarm.sleepSaved'))
+    await qc.invalidateQueries({ queryKey: keys.devices })
   }
 
   async function remove(d: DeviceDto) {
@@ -74,15 +90,34 @@ export function SwarmPage() {
                 <p className="truncate text-xs text-neutral-500">
                   {d.deviceId} · {d.type} · {d.fw ?? '—'} · {formatAgo(d.lastSeenAt)}
                 </p>
+                {canControl && d.type === 'meteo' && d.status !== 'disabled' && (
+                  <label className="mt-1 flex items-center gap-2 text-xs text-neutral-400" title={t('swarm.sleepHint')}>
+                    <Moon className="size-3" />
+                    {t('swarm.sleep')}
+                    <Select
+                      value={d.sleepS ?? 0}
+                      onChange={(e) => void setSleep(d, Number(e.target.value))}
+                      className="h-7 text-xs"
+                    >
+                      {sleepChoices.map((s) => (
+                        <option key={s} value={s}>{s === 0 ? t('swarm.sleepNever') : t('swarm.sleepMinutes').replace('{n}', String(s / 60))}</option>
+                      ))}
+                    </Select>
+                  </label>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {d.rssi != null && d.status === 'online' && (
                   <span className={`text-xs tabular-nums ${d.rssi < -80 ? 'text-amber-400' : 'text-neutral-500'}`}>{d.rssi} dBm</span>
                 )}
-                <Badge tone={d.status === 'online' ? 'ok' : d.status === 'disabled' || d.status === 'pending' ? 'neutral' : 'alarm'}>
-                  {d.status === 'online' ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
-                  {statusLabel(d.status)}
-                </Badge>
+                {asleep(d) ? (
+                  <Badge tone="neutral"><Moon className="size-3" />{t('swarm.sleeping')}</Badge>
+                ) : (
+                  <Badge tone={d.status === 'online' ? 'ok' : d.status === 'disabled' || d.status === 'pending' ? 'neutral' : 'alarm'}>
+                    {d.status === 'online' ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
+                    {statusLabel(d.status)}
+                  </Badge>
+                )}
                 {isAdmin && d.status !== 'disabled' && (
                   <>
                     <Button variant="ghost" size="icon" title={t('swarm.replace')} onClick={() => void replace(d.deviceId)}><RefreshCw /></Button>

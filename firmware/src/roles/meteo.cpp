@@ -100,6 +100,8 @@ public:
     }
 
     void loop(Core& core) override {
+        // Battery mode: one reading per wake-up, sent once the hornet is online (nothing is buffered for tele).
+        if (core.sleepy() && (!core.online() || sent_)) return;
         const uint32_t now = millis();
         if (!converting_ && (!started_ || now - lastReadMs_ >= teleIntervalMs_)) {
             started_ = true;  // first reading right after boot
@@ -111,6 +113,10 @@ public:
         if (converting_ && now - conversionStartMs_ >= (dsCount_ > 0 ? kConversionMs : 0)) {
             converting_ = false;
             publish(core);
+            if (core.sleepy()) {
+                sent_ = true;
+                core.readingDone();
+            }
         }
     }
 
@@ -290,6 +296,7 @@ private:
     uint32_t conversionStartMs_ = 0;
     bool converting_ = false;
     bool started_ = false;
+    bool sent_ = false;  // battery mode: this wake-up's reading has gone out
 };
 
 Meteo role;

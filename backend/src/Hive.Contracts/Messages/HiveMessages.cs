@@ -48,6 +48,10 @@ public sealed record DeviceConfig
     public required string Name { get; init; }
     public required int HealthIntervalS { get; init; }
     public int? TeleIntervalS { get; init; }
+
+    /// <summary>Battery hornets sleep this long between readings; null or 0: always awake.</summary>
+    public int? SleepS { get; init; }
+
     public FailsafeConfig? Failsafe { get; init; }
     public GuardConfig? Guard { get; init; }
     public CameraConfig? Camera { get; init; }

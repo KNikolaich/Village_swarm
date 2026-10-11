@@ -440,6 +440,58 @@
         }
       }
     },
+    "/api/devices/{deviceId}/config": {
+      "patch": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDeviceConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/provision/codes": {
       "post": {
         "tags": [
@@ -1230,7 +1282,8 @@
           "info",
           "state",
           "configRev",
-          "configAppliedRev"
+          "configAppliedRev",
+          "sleepS"
         ],
         "type": "object",
         "properties": {
@@ -1329,6 +1382,13 @@
             "format": "int32"
           },
           "configAppliedRev": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "sleepS": {
             "type": [
               "null",
               "integer"
@@ -2037,6 +2097,25 @@
           },
           "authenticatorUri": {
             "type": "string"
+          }
+        }
+      },
+      "UpdateDeviceConfigRequest": {
+        "type": "object",
+        "properties": {
+          "sleepS": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "teleIntervalS": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           }
         }
       }

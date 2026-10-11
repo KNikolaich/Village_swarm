@@ -3,6 +3,7 @@
 #if defined(ESP32)
 #include <HTTPClient.h>
 #include <esp_random.h>
+#include <esp_sleep.h>
 #include <esp_system.h>
 #include <esp_task_wdt.h>
 #elif defined(ESP8266)
@@ -12,6 +13,16 @@
 
 namespace hornet {
 namespace platform {
+
+namespace {
+constexpr uint32_t kHintMagic = 0x56534831;  // "VSH1": RTC memory holds a hint written by this firmware
+struct RtcHint {
+    uint32_t magic;
+    uint8_t channel;
+    uint8_t bssid[6];
+    uint8_t pad;  // RTC user memory is read and written in 4-byte words
+};
+}  // namespace
 
 #if defined(ESP32)
 
@@ -49,6 +60,28 @@ const char* chip() {
     return "esp32";
 #endif
 }
+
+RTC_DATA_ATTR RtcHint rtcHint;
+
+void deepSleep(uint64_t microseconds) {
+    esp_sleep_enable_timer_wakeup(microseconds);
+    esp_deep_sleep_start();
+}
+
+bool loadWifiHint(WifiHint& hint) {
+    if (rtcHint.magic != kHintMagic || rtcHint.channel == 0) return false;
+    hint.channel = rtcHint.channel;
+    memcpy(hint.bssid, rtcHint.bssid, sizeof hint.bssid);
+    return true;
+}
+
+void saveWifiHint(const WifiHint& hint) {
+    rtcHint.magic = kHintMagic;
+    rtcHint.channel = hint.channel;
+    memcpy(rtcHint.bssid, hint.bssid, sizeof hint.bssid);
+}
+
+void clearWifiHint() { rtcHint.magic = 0; }
 
 bool hasPsram() { return psramFound(); }
 uint32_t freePsram() { return psramFound() ? ESP.getFreePsram() : 0; }
@@ -95,6 +128,31 @@ const char* resetReason() {
 }
 
 const char* chip() { return "esp8266"; }
+
+void deepSleep(uint64_t microseconds) {
+    ESP.deepSleep(microseconds);
+    for (;;) delay(100);  // not reached: the chip is off until GPIO16 pulls RST low
+}
+
+bool loadWifiHint(WifiHint& hint) {
+    RtcHint rtc{};
+    if (!ESP.rtcUserMemoryRead(0, reinterpret_cast<uint32_t*>(&rtc), sizeof rtc) || rtc.magic != kHintMagic || rtc.channel == 0)
+        return false;
+    hint.channel = rtc.channel;
+    memcpy(hint.bssid, rtc.bssid, sizeof hint.bssid);
+    return true;
+}
+
+void saveWifiHint(const WifiHint& hint) {
+    RtcHint rtc{kHintMagic, hint.channel, {}, 0};
+    memcpy(rtc.bssid, hint.bssid, sizeof rtc.bssid);
+    ESP.rtcUserMemoryWrite(0, reinterpret_cast<uint32_t*>(&rtc), sizeof rtc);
+}
+
+void clearWifiHint() {
+    RtcHint rtc{};
+    ESP.rtcUserMemoryWrite(0, reinterpret_cast<uint32_t*>(&rtc), sizeof rtc);
+}
 
 bool hasPsram() { return false; }
 uint32_t freePsram() { return 0; }
