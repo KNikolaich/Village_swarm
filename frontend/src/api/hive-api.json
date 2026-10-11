@@ -879,6 +879,41 @@
         }
       }
     },
+    "/api/events/ack": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AckAllRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AckAllResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/media": {
       "get": {
         "tags": [
@@ -1151,6 +1186,43 @@
   },
   "components": {
     "schemas": {
+      "AckAllRequest": {
+        "type": "object",
+        "properties": {
+          "device": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "from": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "to": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "AckAllResult": {
+        "required": [
+          "acknowledged"
+        ],
+        "type": "object",
+        "properties": {
+          "acknowledged": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "ArmedDto": {
         "required": [
           "armed",

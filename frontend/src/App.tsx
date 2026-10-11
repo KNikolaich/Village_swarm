@@ -43,7 +43,9 @@ export default function App() {
 
   // Any 401 (expired session) drops back to the login screen.
   useEffect(() => {
-    const onUnauthorized = () => qc.setQueryData(keys.me, null)
+    // One 401 is not proof the session is gone (a single request can be refused for its own reason): re-ask
+    // "who am I" instead, and the login screen comes only if that answer is 401 too.
+    const onUnauthorized = () => void qc.invalidateQueries({ queryKey: keys.me })
     window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
     return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
   }, [qc])

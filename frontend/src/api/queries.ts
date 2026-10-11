@@ -68,6 +68,15 @@ export function useAckEvent() {
   })
 }
 
+/** "Просмотрено" for every unseen event of the filter (device, from, to), the same on the web and in Telegram. */
+export function useAckAll() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (filter: { device?: string }) => call(api.POST('/api/events/ack', { body: filter })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.eventsAll }),
+  })
+}
+
 export function usePin() {
   const qc = useQueryClient()
   return useMutation({

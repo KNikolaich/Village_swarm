@@ -24,6 +24,10 @@ public sealed record EventFilter(
     string? Type, string? Device, int? Zone, string? Severity, DateTimeOffset? From, DateTimeOffset? To, string? Cursor, int? Limit);
 
 /// <summary>Event feed and acknowledgement (spec 6.5, 6.7).</summary>
+public sealed record AckAllRequest(string? Device = null, DateTimeOffset? From = null, DateTimeOffset? To = null);
+
+public sealed record AckAllResult(int Acknowledged);
+
 public sealed class EventQueries(HiveDbContext db, TimeProvider time)
 {
     public async Task<Page<EventDto>> ListAsync(EventFilter f, CancellationToken ct)
@@ -64,6 +68,20 @@ public sealed class EventQueries(HiveDbContext db, TimeProvider time)
         await db.Events.Where(e => e.Id == id && e.AcknowledgedAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(e => e.AcknowledgedAt, now).SetProperty(e => e.AcknowledgedBy, by), ct);
         return await GetAsync(id, ct);
+    }
+
+    /// <summary>Marks every unseen event in the filter as viewed; returns how many changed. Same meaning on the web and in Telegram.</summary>
+    public async Task<int> AcknowledgeManyAsync(AckAllRequest r, string by, CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        var query = db.Events.Where(e => e.AcknowledgedAt == null);
+        if (!string.IsNullOrEmpty(r.Device))
+            query = query.Where(e => e.DeviceId == r.Device);
+        if (r.From is { } from)
+            query = query.Where(e => e.Ts >= from);
+        if (r.To is { } to)
+            query = query.Where(e => e.Ts < to);
+        return await query.ExecuteUpdateAsync(s => s.SetProperty(e => e.AcknowledgedAt, now).SetProperty(e => e.AcknowledgedBy, by), ct);
     }
 
     private async Task<List<EventDto>> ToDtosAsync(List<DeviceEvent> events, CancellationToken ct)
@@ -109,6 +127,10 @@ public static class EventsModule
             await q.GetAsync(id, ct) is { } e ? TypedResults.Ok(e) : TypedResults.NotFound());
         events.MapPost("/{id}/ack", async Task<Results<Ok<EventDto>, NotFound>> (string id, ClaimsPrincipal user, EventQueries q, CancellationToken ct) =>
                 await q.AcknowledgeAsync(id, $"user:{user.Identity?.Name}", ct) is { } e ? TypedResults.Ok(e) : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.CanControl);
+        // "Отметить все просмотренными": the filter of the feed (device, from, to). Body may be empty.
+        events.MapPost("/ack", async Task<Ok<AckAllResult>> (AckAllRequest? request, ClaimsPrincipal user, EventQueries q, CancellationToken ct) =>
+                TypedResults.Ok(new AckAllResult(await q.AcknowledgeManyAsync(request ?? new AckAllRequest(), $"user:{user.Identity?.Name}", ct))))
             .RequireAuthorization(HiveRoles.CanControl);
         return app;
     }

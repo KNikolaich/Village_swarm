@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
-import { useDevices, useEvents, type EventFilters } from '@/api/queries'
+import { useAckAll, useDevices, useEvents, type EventFilters } from '@/api/queries'
 import { EventCard, type PhotoRef } from '@/components/EventCard'
 import { Lightbox } from '@/components/Lightbox'
 import { Button } from '@/components/ui/button'
@@ -42,6 +42,8 @@ export function EventsPage() {
   }
 
   const items = events.data?.pages.flatMap((p) => p.items) ?? []
+  const ackAll = useAckAll()
+  const unseen = items.filter((e) => !e.acknowledgedAt).length
 
   return (
     <div className="space-y-3">
@@ -59,6 +61,13 @@ export function EventsPage() {
           <option value="">{t('events.allSeverities')}</option>
           {severities.map((x) => <option key={x} value={x}>{severityLabel(x)}+</option>)}
         </Select>
+        <Button
+          variant="secondary"
+          disabled={unseen === 0 || ackAll.isPending}
+          onClick={() => ackAll.mutate({ device: filters.device })}
+        >
+          {t('events.ackAll')} {unseen > 0 && `(${unseen})`}
+        </Button>
       </div>
 
       {events.isLoading && Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-28" />)}

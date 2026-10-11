@@ -845,7 +845,9 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    download?: string;
+                };
                 header?: never;
                 path: {
                     build: string;
@@ -1088,6 +1090,45 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events/ack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": null | components["schemas"]["AckAllRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AckAllResult"];
+                    };
                 };
             };
         };
@@ -1445,6 +1486,17 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AckAllRequest: {
+            device?: null | string;
+            /** Format: date-time */
+            from?: null | string;
+            /** Format: date-time */
+            to?: null | string;
+        };
+        AckAllResult: {
+            /** Format: int32 */
+            acknowledged: number;
+        };
         ArmedDto: {
             armed: boolean;
             /** Format: date-time */
