@@ -22,6 +22,7 @@ In VS Code the PlatformIO toolbar does the same (✓ build, → upload, plug ico
 | `meteo-d1mini`, `relay-d1mini` | Wemos D1 mini | ESP8266 |
 | `meteo-nodemcu`, `relay-nodemcu` | NodeMCU v3 | ESP8266 |
 | `meteo-esp01`, `relay-esp01` | ESP-01 / ESP-01S (1 MB), incl. "ESP-01 Relay v1.0" and DS18B20 modules | ESP8266 |
+| `meteo-esp01dht` | "ESP-01S DHT11 v1.0" module: DHT11 on GPIO2, powered 3.7–12 V through its own regulator | ESP8266 |
 
 Every build lands in `firmware/dist/<env>/` with a `build.json` (chip, flash offsets); the web flasher in
 "Добавить шершня" offers the boards that exist there for the chosen role.
@@ -40,6 +41,9 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
 
 - **meteo**: detects a BME280 (0x76/0x77) and any number of DS18B20 at start. Publishes `temperature`,
   `humidity`, `pressure` (hPa) and further thermometers as `temperature_2`, `temperature_3`...
+- **DHT11** (`meteo-esp01dht`): temperature and humidity once per `tele_interval_s`; the DHT shares GPIO2 with
+  1-Wire and I2C on the ESP-01, so that build reads only the DHT. Accuracy ±2 °C / ±5 %, and the ESP next to it
+  warms it by a degree or two.
 - **Battery voltage** (any meteo build): wire a divider from the 12 V battery to an ADC pin and set
   `hw.vbat_pin` and `hw.vbat_ratio` = (R1+R2)/R2. Example: 47 kΩ + 10 kΩ gives 5.7, so 15 V at most reaches
   2.6 V on the pin (keep it under ~3 V on ESP32-C3; on ESP32-C3 only GPIO0–4 have the ADC). Published as

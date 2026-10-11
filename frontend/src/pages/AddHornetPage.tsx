@@ -28,6 +28,7 @@ const boardTitles: Record<string, string> = {
   'wemos-d1-mini': 'Wemos D1 mini',
   'nodemcu-v3': 'NodeMCU v3',
   'esp-01': 'ESP-01 / ESP-01S (1 МБ)',
+  'esp-01-dht11': 'ESP-01S с датчиком DHT11 (модуль «ESP-01S DHT11»)',
 }
 const boardTitle = (board: string) => boardTitles[board] ?? board
 

@@ -6,6 +6,9 @@
 // temperature_3... with the BME280 first and the DS18B20s after it in bus order. With hw.vbat_pin set, a
 // battery behind a voltage divider is measured as battery_voltage (V).
 //
+// Builds with HW_DHT_PIN (meteo-esp01dht: the "ESP-01S DHT11" module) read a DHT11/DHT22 there instead and
+// publish temperature and humidity; that pin is shared with 1-Wire and I2C on the ESP-01, so those are skipped.
+//
 // Builds with HORNET_DISPLAY (meteo-c3oled) also drive the 0.42" SSD1306 OLED (72x40): two metrics in large
 // digits, chosen by config display.lines, and a dot in the corner while the hornet is online.
 
@@ -21,6 +24,13 @@
 #include <U8g2lib.h>
 #endif
 
+#ifdef HW_DHT_PIN
+#include <DHTesp.h>
+#ifndef HW_DHT_TYPE
+#define HW_DHT_TYPE 11
+#endif
+#endif
+
 #ifndef HW_VBAT_PIN
 #define HW_VBAT_PIN -1
 #endif
@@ -30,6 +40,12 @@
 // ESP8266 A0: volts at analogRead() = 1023 (1.0 on a bare ESP-12/ESP-01, 3.2 with the D1 mini / NodeMCU divider).
 #ifndef HW_ADC_FULL_SCALE
 #define HW_ADC_FULL_SCALE 3.2
+#endif
+
+#ifdef HW_DHT_PIN
+#define HW_DHT_TYPE_NAME (HW_DHT_TYPE == 22 ? "sensor.dht22" : "sensor.dht11")
+#else
+#define HW_DHT_TYPE_NAME "sensor.dht"
 #endif
 
 namespace {
@@ -47,6 +63,7 @@ public:
         std::vector<const char*> c;
         if (dsCount_ > 0) c.push_back("sensor.ds18b20");
         if (bmeOk_) c.push_back("sensor.bme280");
+        if (dhtOk_) c.push_back(HW_DHT_TYPE_NAME);
         return c;
     }
 
@@ -57,6 +74,7 @@ public:
             m.push_back("humidity");
             m.push_back("pressure");
         }
+        if (dhtOk_) m.push_back("humidity");
         if (vbatPin_ >= 0) m.push_back("battery_voltage");
         return m;
     }
@@ -98,6 +116,15 @@ public:
 
 private:
     void initSensors() {
+#ifdef HW_DHT_PIN
+        // The module wires the DHT to GPIO2; 1-Wire and I2C would fight over the same pin, so only the DHT runs.
+        dht_.setup(HW_DHT_PIN, HW_DHT_TYPE == 22 ? DHTesp::DHT22 : DHTesp::DHT11);
+        dhtOk_ = true;
+        names_.clear();
+        names_.push_back("temperature");
+        Serial.printf("[meteo] dht%d on gpio %d\n", HW_DHT_TYPE, HW_DHT_PIN);
+        return;
+#endif
         if (onewirePin_ < 0) {
             onewirePin_ = HW_ONEWIRE_PIN;
             sdaPin_ = HW_SDA_PIN;
@@ -133,6 +160,11 @@ private:
 
     void publish(Core& core) {
         if (vbatPin_ >= 0) report(core, "battery_voltage", readBattery(), "V");
+#ifdef HW_DHT_PIN
+        readDht(core);
+        draw(core);
+        return;
+#endif
         if (!bmeOk_ && dsCount_ == 0) {
             if (!warned_ && vbatPin_ < 0) core.log(LogLevel::Warn, "no sensor found (DS18B20 or BME280)");
             warned_ = true;
@@ -159,6 +191,20 @@ private:
         }
         draw(core);
     }
+
+#ifdef HW_DHT_PIN
+    // One read takes about 25 ms (start pulse + 40 bits); the DHT11 must not be read more often than once a second.
+    void readDht(Core& core) {
+        const TempAndHumidity v = dht_.getTempAndHumidity();
+        if (dht_.getStatus() != DHTesp::ERROR_NONE || isnan(v.temperature) || isnan(v.humidity)) {
+            if (++dhtFailures_ == 3) core.log(LogLevel::Warn, String("DHT read failed: ") + dht_.getStatusString());
+            return;
+        }
+        dhtFailures_ = 0;
+        report(core, "temperature", v.temperature, "C");
+        report(core, "humidity", v.humidity, "%");
+    }
+#endif
 
     void report(Core& core, const char* metric, float value, const char* unit) {
         core.publishTele(metric, value, unit);
@@ -223,6 +269,11 @@ private:
     int sclPin_ = -1;
     uint8_t dsCount_ = 0;
     bool bmeOk_ = false;
+    bool dhtOk_ = false;
+#ifdef HW_DHT_PIN
+    DHTesp dht_;
+    uint8_t dhtFailures_ = 0;
+#endif
     bool warned_ = false;
     std::vector<String> names_;
     std::vector<String> lines_;
