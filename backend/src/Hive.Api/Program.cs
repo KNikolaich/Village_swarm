@@ -102,6 +102,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapUsersEndpoints();
+app.MapSettingsEndpoints();
 app.MapTelemetryEndpoints();
 app.MapDevicesEndpoints();
 app.MapEventsEndpoints();

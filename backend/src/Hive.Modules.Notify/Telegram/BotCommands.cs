@@ -88,6 +88,14 @@ public sealed class BotCommands(
             case "/devices":
                 await ReplyAsync(chat, await DevicesAsync(ct), ct);
                 break;
+            case "/viewed" when Require(caller):
+                // The same action as "Отметить все просмотренными" on the events page (optional device id).
+                var marked = await events.AcknowledgeManyAsync(new AckAllRequest(args.FirstOrDefault()), caller.Actor, ct);
+                await ReplyAsync(chat, marked > 0 ? $"👁 Отмечено просмотренными: {marked}" : "Непросмотренных событий нет", ct);
+                break;
+            case "/viewed":
+                await ReplyAsync(chat, "⛔ Недостаточно прав: у вас роль только для просмотра.", ct);
+                break;
             case "/mute":
                 var hours = args.Length > 0 && double.TryParse(args[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var h) ? Math.Clamp(h, 0, 72) : 1;
                 await MuteAsync(caller, hours, ct);
@@ -195,7 +203,9 @@ public sealed class BotCommands(
         sb.AppendLine(mode.Armed ? "🛡 Охрана: <b>включена</b>" : "🔓 Охрана: <b>снята</b>");
         sb.AppendLine($"🐝 Рой: {online}/{devices.Count} на связи");
         sb.AppendLine(await TemperaturesAsync(ct));
-        sb.Append(unacked > 0 ? $"🚨 Неподтверждённых тревог за сутки: {unacked}" : "✅ Неподтверждённых тревог нет");
+        sb.Append(unacked > 0
+            ? $"🚨 Непросмотренных тревог за сутки: {unacked} (/viewed — отметить)"
+            : "✅ Непросмотренных тревог нет");
         return sb.ToString();
     }
 

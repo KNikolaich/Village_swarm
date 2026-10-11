@@ -1,0 +1,187 @@
+{
+  "app": {
+    "title": "Hive",
+    "subtitle": "Village Swarm"
+  },
+  "nav": {
+    "overview": "Overview",
+    "events": "Events",
+    "photos": "Photos",
+    "settings": "Settings",
+    "logout": "Log out",
+    "swarm": "Swarm"
+  },
+  "live": {
+    "connected": "Connected",
+    "connecting": "Connecting…",
+    "disconnected": "No connection to the hive"
+  },
+  "login": {
+    "title": "Sign in to the hive",
+    "login": "Login",
+    "password": "Password",
+    "submit": "Sign in",
+    "failed": "Wrong login or password",
+    "serverError": "The hive could not process the sign-in (server error). See the log: docker compose logs api",
+    "locked": "Too many attempts. Sign-in is locked for 15 minutes",
+    "totpTitle": "Code from the app",
+    "totpHint": "Enter the 6 digits from your authenticator app or a recovery code",
+    "totpFailed": "Wrong code",
+    "back": "Back"
+  },
+  "overview": {
+    "swarm": "Swarm",
+    "online": "online",
+    "climate": "Temperature",
+    "noClimate": "No recent readings",
+    "latestEvents": "Latest events",
+    "allEvents": "All events",
+    "devices": "Hornets",
+    "noDevices": "No hornet has come online yet",
+    "guard": "Guard",
+    "armed": "On",
+    "disarmed": "Off",
+    "arm": "Arm guard",
+    "disarm": "Disarm guard",
+    "disarmConfirm": "Disarm the guard on all cameras?",
+    "cameras": "cameras",
+    "unacknowledged": "Unviewed alarms"
+  },
+  "events": {
+    "title": "Events",
+    "empty": "No events",
+    "loadMore": "Show more",
+    "ack": "Viewed",
+    "ackAll": "Mark all as viewed",
+    "acked": "Viewed",
+    "allTypes": "All types",
+    "allDevices": "All hornets",
+    "allSeverities": "Any severity",
+    "photosPending": "Photos are uploading…",
+    "photosMissing": "Photos did not reach the hive",
+    "new": "New event"
+  },
+  "photos": {
+    "title": "Photo archive",
+    "noPhotos": "No photos on this day",
+    "today": "Today",
+    "photosCount": "photos",
+    "download": "Download",
+    "pin": "Keep",
+    "unpin": "Remove mark",
+    "pinned": "Kept forever",
+    "close": "Close"
+  },
+  "eventTypes": {
+    "motion": "Motion",
+    "door_open": "Door opened",
+    "leak": "Leak",
+    "failsafe": "Heater failsafe",
+    "config_applied": "Settings applied",
+    "snapshot": "Snapshot",
+    "photo_failed": "Photo failed to upload",
+    "tamper": "Camera covered or moved"
+  },
+  "severity": {
+    "info": "Info",
+    "warn": "Warning",
+    "alarm": "Alarm",
+    "critical": "Critical"
+  },
+  "status": {
+    "online": "online",
+    "offline": "offline",
+    "pending": "pending",
+    "disabled": "disabled"
+  },
+  "metrics": {
+    "temperature": "Temperature",
+    "humidity": "Humidity"
+  },
+  "settings": {
+    "title": "Settings",
+    "account": "Account",
+    "telegram": "Telegram",
+    "telegramOff": "The bot is not configured: add TELEGRAM__TOKEN to deploy/.env and restart the hive.",
+    "telegramLinked": "Linked chats",
+    "telegramNone": "No chats linked",
+    "getCode": "Get a link code",
+    "codeHint": "Send the bot this command within 10 minutes:",
+    "unlink": "Unlink",
+    "totp": "Sign-in with an app code",
+    "totpOn": "On",
+    "totpOff": "Off",
+    "totpSetup": "Set up",
+    "totpScan": "Scan the QR code in Google Authenticator or a similar app, then enter the 6 digits:",
+    "totpEnable": "Turn on",
+    "totpDisable": "Turn off",
+    "totpCodeHint": "Code from the app",
+    "recovery": "Recovery codes. Keep them: each works once, if the phone is not at hand.",
+    "password": "Change password",
+    "currentPassword": "Current password",
+    "newPassword": "New password (at least 10 characters)",
+    "save": "Save",
+    "saved": "Saved",
+    "wrongCode": "Wrong code",
+    "language": "Interface language",
+    "languageHint": "One setting for the whole hive. Applies to everyone after the page reloads."
+  },
+  "password": {
+    "show": "Show password",
+    "hide": "Hide password"
+  },
+  "errors": {
+    "generic": "Something went wrong",
+    "network": "Could not reach the hive",
+    "forbidden": "Not allowed"
+  },
+  "swarm": {
+    "title": "Swarm",
+    "add": "Add a hornet",
+    "replace": "Replace the board",
+    "remove": "Remove",
+    "removeConfirm": "Remove “{name}”? The board loses access to the hive; its history stays.",
+    "removed": "Hornet removed",
+    "replaceHint": "New board for {id}: flash it and enter this code in the wizard's setup step (or with the enroll command). The old board loses access.",
+    "sleeping": "asleep",
+    "sleep": "Sleep between readings",
+    "sleepNever": "never sleeps (mains power)",
+    "sleepMode": "mode",
+    "sleepDeep": "deep (needs the jumper)",
+    "sleepLight": "light (stays connected)",
+    "sleepMinutes": "{n} min",
+    "sleepSaved": "Saved. The hornet applies it at its next wake-up",
+    "sleepHint": "For battery hornets: wakes, sends a reading and sleeps. Needs a GPIO16–RST jumper (docs/hornet-esp01-battery.md)"
+  },
+  "add": {
+    "step1": "Hornet and code",
+    "step2": "Firmware",
+    "step3": "Wi-Fi and linking",
+    "idPlaceholder": "Identifier, e.g. guard-gate1",
+    "idHint": "Latin letters in lower case, digits and dashes; starts with a letter",
+    "namePlaceholder": "Name, e.g. “Gate camera”",
+    "getCode": "Get a code",
+    "replaces": "replaces an existing one",
+    "flashHint": "Connect the board over USB (ESP32-CAM-MB or a USB-UART adapter). Flashing takes about a minute.",
+    "noSerial": "This browser has no Web Serial: open this page in Chrome or Edge on a computer.",
+    "noFirmware": "No built firmware for type {type}: build it in PlatformIO (env {type}-<board>).",
+    "flash": "Flash",
+    "download": "Download the firmware (.bin)",
+    "downloadHint": "You can flash the file by hand (esptool or another flasher) or later over the air (OTA). A browser without Web Serial, such as Firefox, cannot flash, but it can download the file.",
+    "alreadyFlashed": "If the board is already flashed, go to step 3.",
+    "ssid": "Wi-Fi network (2.4 GHz)",
+    "pass": "Wi-Fi password",
+    "hiveHint": "The hive address as the board sees it: the IP of the computer or Raspberry Pi, not localhost.",
+    "send": "Send to the board over USB",
+    "waitingOnline": "The board got its login and is rebooting; waiting for it to come online…",
+    "done": "Done: the hornet is online.",
+    "failed": "It did not work. Check the Wi-Fi, the hive address and that the code has not expired; the board log is above.",
+    "manual": "By hand, in the serial monitor"
+  },
+  "time": {
+    "justNow": "just now",
+    "minutesAgo": "{n} min ago",
+    "hoursAgo": "{n} h ago",
+    "yesterday": "yesterday"
+  }
+}

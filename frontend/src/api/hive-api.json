@@ -216,6 +216,55 @@
         }
       }
     },
+    "/api/settings/language": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LanguageDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LanguageDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/telemetry/latest": {
       "get": {
         "tags": [
@@ -1772,6 +1821,17 @@
       "JsonObject": {
         "type": "object"
       },
+      "LanguageDto": {
+        "required": [
+          "language"
+        ],
+        "type": "object",
+        "properties": {
+          "language": {
+            "type": "string"
+          }
+        }
+      },
       "LatestValueDto": {
         "required": [
           "deviceId",
@@ -2227,6 +2287,9 @@
     },
     {
       "name": "me"
+    },
+    {
+      "name": "settings"
     },
     {
       "name": "telemetry"

@@ -7,8 +7,8 @@ import { api, call } from '@/api/client'
 import { keys, useMe, useTelegram } from '@/api/queries'
 import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Skeleton } from '@/components/ui/primitives'
-import { t } from '@/i18n'
+import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Skeleton } from '@/components/ui/primitives'
+import { getLanguage, t, type Language } from '@/i18n'
 import { formatAgo } from '@/lib/format'
 
 /** Own account: Telegram link (spec 9.4), TOTP (spec 12), password. */
@@ -19,7 +19,39 @@ export function SettingsPage() {
       <TelegramCard />
       <TotpCard />
       <PasswordCard />
+      <LanguageCard />
     </div>
+  )
+}
+
+/** One language for the whole hive (admins only); the page reloads so every string switches at once. */
+function LanguageCard() {
+  const me = useMe()
+  const isAdmin = me.data?.roles.includes('admin') ?? false
+  const [saving, setSaving] = useState(false)
+
+  async function change(language: Language) {
+    setSaving(true)
+    try {
+      await call(api.PUT('/api/settings/language', { body: { language } }))
+      window.location.reload()
+    } catch {
+      toast.error(t('errors.generic'))
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>{t('settings.language')}</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-xs text-neutral-500">{t('settings.languageHint')}</p>
+        <Select value={getLanguage()} disabled={!isAdmin || saving} onChange={(e) => void change(e.target.value as Language)} className="h-11 w-full max-w-xs">
+          <option value="ru">Русский</option>
+          <option value="en">English</option>
+        </Select>
+      </CardContent>
+    </Card>
   )
 }
 

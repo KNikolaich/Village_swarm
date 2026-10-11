@@ -84,6 +84,7 @@ public static class UsersModule
 
         services.AddScoped<AuthService>();
         services.AddHostedService<AdminBootstrap>();
+        services.AddScoped<HiveSettingsService>();
         return services;
     }
 

@@ -144,6 +144,22 @@ public sealed class TelegramTests(HiveFixture hive) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Viewed_command_marks_events_like_the_web_button()
+    {
+        const long chat = 900_060;
+        await LinkAsync(chat);
+        var (hornet, role, _) = await CameraAsync("guard-tg4");
+        hornet.Enqueue(now => role.TriggerMotion(now));
+        await Tg.WaitForAsync(s => s.ChatId == chat && s.Method == "sendmessage" && s.Text?.Contains("guard-tg4") == true, "alarm");
+        var unseen = await hive.QueryAsync(db => db.Events.CountAsync(e => e.DeviceId == "guard-tg4" && e.AcknowledgedAt == null));
+        Assert.True(unseen > 0);
+
+        Tg.UserSays(chat, "/viewed guard-tg4");
+        await Tg.WaitForAsync(s => s.ChatId == chat && s.Text == $"👁 Отмечено просмотренными: {unseen}", "viewed reply");
+        Assert.Equal(0, await hive.QueryAsync(db => db.Events.CountAsync(e => e.DeviceId == "guard-tg4" && e.AcknowledgedAt == null)));
+    }
+
+    [Fact]
     public async Task Viewer_cannot_arm_from_telegram()
     {
         await hive.CreateUserAsync("tg-viewer", "tg-viewer-password", Hive.Infrastructure.Identity.HiveRoles.Viewer);
