@@ -56,7 +56,7 @@ public sealed class TelegramGateway : IDisposable
 {
     private readonly TelegramOptions _options;
     private readonly ILogger<TelegramGateway> _logger;
-    private readonly List<(TelegramEndpoint Endpoint, TelegramBotClient Client, HttpClient Http)> _clients = [];
+    private readonly List<(TelegramEndpoint Endpoint, TelegramBotClient Client, HttpClient Http, string Root)> _clients = [];
     private int _current;
 
     public TelegramGateway(IOptions<TelegramOptions> options, ILogger<TelegramGateway> logger)
@@ -82,12 +82,14 @@ public sealed class TelegramGateway : IDisposable
                 };
                 handler.UseProxy = true;
             }
+            // The library keeps only scheme, host and port of BaseUrl and drops any path, so a proxy behind a secret
+            // path (https://vps/secret/) would be called at https://vps/bot…. The path goes back in through a handler.
+            var (root, prefix) = SplitBaseUrl(endpoint.BaseUrl);
+            HttpMessageHandler pipeline = prefix.Length == 0 ? handler : new PathPrefixHandler(prefix) { InnerHandler = handler };
             // Long polling holds the request for PollTimeoutS; leave room for slow 4G.
-            var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(_options.PollTimeoutS + 30) };
-            // The library appends "/bot<token>/<method>"; a trailing slash in the setting would make "//bot…", which a
-            // path-prefix proxy forwards as an unknown URL and Telegram answers with an HTML page.
-            var client = new TelegramBotClient(new TelegramBotClientOptions(_options.Token!, string.IsNullOrEmpty(endpoint.BaseUrl) ? null : endpoint.BaseUrl.TrimEnd('/')), http);
-            _clients.Add((endpoint, client, http));
+            var http = new HttpClient(pipeline) { Timeout = TimeSpan.FromSeconds(_options.PollTimeoutS + 30) };
+            var client = new TelegramBotClient(new TelegramBotClientOptions(_options.Token!, root), http);
+            _clients.Add((endpoint, client, http, root));
         }
     }
 
@@ -142,8 +144,8 @@ public sealed class TelegramGateway : IDisposable
         var ids = new List<long>();
         if (!Enabled)
             return (ids, "");
-        var endpoint = _clients[_current].Endpoint;
-        var baseUrl = string.IsNullOrEmpty(endpoint.BaseUrl) ? "https://api.telegram.org" : endpoint.BaseUrl.TrimEnd('/');
+        // Same root as the library; the path prefix is added by the client's handler.
+        var baseUrl = _clients[_current].Root;
         var body = new Dictionary<string, object?> { ["limit"] = 50, ["timeout"] = 0 };
         if (offset is not null)
             body["offset"] = offset;
@@ -155,6 +157,15 @@ public sealed class TelegramGateway : IDisposable
                 if (item.TryGetProperty("update_id", out var id) && id.TryGetInt64(out var value))
                     ids.Add(value);
         return (ids, Shape(doc.RootElement));
+    }
+
+    /// <summary>"https://vps:8443/secret/" → ("https://vps:8443", "/secret"); empty → the official API, no prefix.</summary>
+    public static (string Root, string Prefix) SplitBaseUrl(string? baseUrl)
+    {
+        if (string.IsNullOrWhiteSpace(baseUrl))
+            return ("https://api.telegram.org", "");
+        var uri = new Uri(baseUrl);
+        return (uri.GetLeftPart(UriPartial.Authority), uri.AbsolutePath.TrimEnd('/'));
     }
 
     /// <summary>
@@ -179,7 +190,18 @@ public sealed class TelegramGateway : IDisposable
 
     public void Dispose()
     {
-        foreach (var (_, _, http) in _clients)
+        foreach (var (_, _, http, _) in _clients)
             http.Dispose();
+    }
+}
+
+/// <summary>Puts the proxy's path prefix in front of every Bot API request path (/bot…/getUpdates → /secret/bot…/getUpdates).</summary>
+public sealed class PathPrefixHandler(string prefix) : DelegatingHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (request.RequestUri is { } uri && !uri.AbsolutePath.StartsWith(prefix + "/", StringComparison.Ordinal))
+            request.RequestUri = new UriBuilder(uri) { Path = prefix + uri.AbsolutePath }.Uri;
+        return base.SendAsync(request, cancellationToken);
     }
 }
