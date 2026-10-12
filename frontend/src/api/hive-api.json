@@ -920,6 +920,35 @@
         }
       }
     },
+    "/api/monitor": {
+      "get": {
+        "tags": [
+          "monitor"
+        ],
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitorPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/firmware/{build}/manifest.json": {
       "get": {
         "tags": [
@@ -2353,6 +2382,54 @@
           }
         }
       },
+      "MonitorEntry": {
+        "required": [
+          "seq",
+          "at",
+          "topic",
+          "retained",
+          "payload"
+        ],
+        "type": "object",
+        "properties": {
+          "seq": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "topic": {
+            "type": "string"
+          },
+          "retained": {
+            "type": "boolean"
+          },
+          "payload": {
+            "type": "string"
+          }
+        }
+      },
+      "MonitorPage": {
+        "required": [
+          "last",
+          "entries"
+        ],
+        "type": "object",
+        "properties": {
+          "last": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonitorEntry"
+            }
+          }
+        }
+      },
       "PageOfEventDto": {
         "required": [
           "items",
@@ -2800,6 +2877,9 @@
     },
     {
       "name": "ingest"
+    },
+    {
+      "name": "monitor"
     },
     {
       "name": "firmware"

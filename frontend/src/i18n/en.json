@@ -129,7 +129,10 @@
     "wifi": "Wi-Fi for hornets",
     "wifiHint": "The network and password for boards that join the hive. The password is stored encrypted and never shown.",
     "wifiPasswordKept": "Password is set (leave empty to keep it)",
-    "languageAdminOnly": "Only an admin changes the hive language"
+    "languageAdminOnly": "Only an admin changes the hive language",
+    "monitor": "MQTT monitor",
+    "monitorHint": "See how the hornets and the hive talk, read-only.",
+    "monitorOpen": "Open the monitor"
   },
   "password": {
     "show": "Show password",
@@ -241,5 +244,15 @@
   },
   "common": {
     "copied": "Copied"
+  },
+  "monitor": {
+    "title": "MQTT monitor",
+    "hint": "Read-only: the latest messages from hornets and the hive. Nothing is sent from here, and no broker login is needed.",
+    "filter": "Filter by topic or text",
+    "pause": "Pause",
+    "resume": "Resume",
+    "clear": "Clear",
+    "empty": "No messages yet",
+    "failed": "Could not get the messages (admin sign-in needed)"
   }
 }

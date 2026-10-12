@@ -3,6 +3,7 @@ using Hive.Api.Live;
 using Microsoft.AspNetCore.DataProtection;
 using Hive.Infrastructure;
 using Hive.Infrastructure.Data;
+using Hive.Infrastructure.Identity;
 using Hive.Infrastructure.Mqtt;
 using Hive.Modules.Devices;
 using Hive.Modules.Events;
@@ -48,6 +49,9 @@ builder.Services.AddNotifyModule(builder.Configuration);
 
 builder.Services.AddSignalR().AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
 builder.Services.AddSingleton<IIngestListener, LiveNotifier>();
+// Read-only MQTT window for administrators (GET /api/monitor): the last messages of vs/v1/#.
+builder.Services.AddSingleton<MqttMonitor>();
+builder.Services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<MqttMonitor>());
 builder.Services.AddOpenApi();
 
 // Behind Caddy on the hive (deploy/compose.yaml): client IP for the login rate limit, https for secure cookies.
@@ -110,6 +114,9 @@ app.MapEventsEndpoints();
 app.MapMediaEndpoints();
 app.MapNotifyEndpoints();
 app.MapHub<LiveHub>(LiveHub.Path);
+app.MapGet("/api/monitor", (long? since, MqttMonitor monitor) => TypedResults.Ok(monitor.Since(since ?? 0)))
+    .RequireAuthorization(HiveRoles.AdminOnly)
+    .WithTags("monitor");
 
 app.MapGet("/healthz", () => TypedResults.Ok(new { status = "ok" })).AllowAnonymous().ExcludeFromDescription();
 

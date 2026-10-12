@@ -12,6 +12,7 @@ import { LoginPage } from '@/pages/LoginPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { PhotosPage } from '@/pages/PhotosPage'
 import { AddHornetPage } from '@/pages/AddHornetPage'
+import { MonitorPage } from '@/pages/MonitorPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { SwarmPage } from '@/pages/SwarmPage'
 
@@ -32,6 +33,7 @@ const router = createBrowserRouter([
       { path: 'swarm', element: <SwarmPage /> },
       { path: 'swarm/add', element: <AddHornetPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'monitor', element: <MonitorPage /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },

@@ -1,6 +1,7 @@
 import { Copy, Send, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router'
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
@@ -21,7 +22,23 @@ export function SettingsPage() {
       <PasswordCard />
       <WifiCard />
       <LanguageCard />
+      <MonitorCard />
     </div>
+  )
+}
+
+/** The live MQTT window (admins only): read-only, no broker login needed. */
+function MonitorCard() {
+  const me = useMe()
+  if (!(me.data?.roles.includes('admin') ?? false)) return null
+  return (
+    <Card>
+      <CardHeader><CardTitle>{t('settings.monitor')}</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-xs text-neutral-500">{t('settings.monitorHint')}</p>
+        <Link to="/monitor" className="text-amber-400">{t('settings.monitorOpen')}</Link>
+      </CardContent>
+    </Card>
   )
 }
 

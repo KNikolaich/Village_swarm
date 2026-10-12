@@ -1182,6 +1182,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/monitor": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    since?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MonitorPage"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/firmware/{build}/manifest.json": {
         parameters: {
             query?: never;
@@ -2082,6 +2119,20 @@ export interface components {
             displayName: null | string;
             roles: string[];
             totpEnabled: boolean;
+        };
+        MonitorEntry: {
+            /** Format: int64 */
+            seq: number;
+            /** Format: date-time */
+            at: string;
+            topic: string;
+            retained: boolean;
+            payload: string;
+        };
+        MonitorPage: {
+            /** Format: int64 */
+            last: number;
+            entries: components["schemas"]["MonitorEntry"][];
         };
         PageOfEventDto: {
             items: components["schemas"]["EventDto"][];
