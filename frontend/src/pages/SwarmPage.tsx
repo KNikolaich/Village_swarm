@@ -1,12 +1,12 @@
-import { useQueryClient } from '@tanstack/react-query'
-import { Moon, Plus, RefreshCw, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Moon, Pin, Plus, RefreshCw, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto } from '@/api/client'
 import { keys, useDevices, useMe } from '@/api/queries'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardContent, Empty, Select, Skeleton } from '@/components/ui/primitives'
+import { Badge, Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { statusLabel, t } from '@/i18n'
 import { formatAgo } from '@/lib/format'
 import { CodeBox } from '@/pages/AddHornetPage'
@@ -28,6 +28,70 @@ function asleep(d: DeviceDto): boolean {
   return Date.now() - new Date(d.lastSeenAt).getTime() > 90_000
 }
 
+/** Pins of one hornet: what each function uses (board default or set by hand), conflicts shown, and editing. */
+function PinsPanel({ deviceId, editable }: { deviceId: string; editable: boolean }) {
+  const qc = useQueryClient()
+  const pins = useQuery({ queryKey: ['devices', deviceId, 'pins'], queryFn: () => call(api.GET('/api/devices/{deviceId}/pins', { params: { path: { deviceId } } })) })
+  const [draft, setDraft] = useState<Record<string, string>>({})
+  const keys = [['onewirePin', 'onewire'], ['sdaPin', 'sda'], ['sclPin', 'scl'], ['relayPin', 'relay'], ['buttonPin', 'button'], ['vbatPin', 'vbat']] as const
+
+  async function save() {
+    const body: Record<string, number | null> = {}
+    for (const [field] of keys) {
+      const value = draft[field]
+      if (value === undefined) continue
+      body[field] = value === '' ? null : Number(value)
+    }
+    try {
+      await call(api.PUT('/api/devices/{deviceId}/pins', { params: { path: { deviceId } }, body }))
+      setDraft({})
+      toast.success(t('swarm.pinsSaved'))
+      await qc.invalidateQueries({ queryKey: ['devices', deviceId, 'pins'] })
+    } catch {
+      toast.error(t('swarm.pinsRejected'))
+    }
+  }
+
+  if (pins.isLoading) return <Skeleton className="h-16" />
+  const rows = pins.data?.pins ?? []
+  return (
+    <div className="space-y-2 text-xs">
+      {pins.data?.conflicts.length ? <p className="text-red-400">{t('swarm.pinsConflict')}: {pins.data.conflicts.join('; ')}</p> : null}
+      {rows.length === 0 && <p className="text-neutral-500">{t('swarm.pinsNone')}</p>}
+      {rows.length > 0 && (
+        <table className="w-full">
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.function} className="border-t border-neutral-800">
+                <td className="py-1 pr-2 text-neutral-400">{r.function}</td>
+                <td className="py-1 pr-2 tabular-nums">GPIO{r.pin}</td>
+                <td className="py-1 text-neutral-500">{r.source === 'config' ? t('swarm.pinsByHand') : t('swarm.pinsDefault')}{r.note ? ` · ${r.note}` : ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {editable && (
+        <div className="grid grid-cols-3 gap-2">
+          {keys.map(([field, label]) => (
+            <label key={field} className="space-y-1">
+              <span className="text-neutral-500">{label}</span>
+              <Input
+                inputMode="numeric"
+                placeholder={rows.find((r) => r.function === label)?.pin?.toString() ?? '—'}
+                value={draft[field] ?? ''}
+                onChange={(e) => setDraft({ ...draft, [field]: e.target.value })}
+                className="h-8 text-xs"
+              />
+            </label>
+          ))}
+          <Button size="sm" className="col-span-3" onClick={() => void save()} disabled={Object.keys(draft).length === 0}>{t('swarm.pinsSave')}</Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Screen 5 (spec 8.2): every hornet, sorted by trouble, with replace and remove. */
 export function SwarmPage() {
   const qc = useQueryClient()
@@ -35,6 +99,7 @@ export function SwarmPage() {
   const me = useMe()
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
+  const [pinsOpen, setPinsOpen] = useState<string | null>(null)
   const [replaceCode, setReplaceCode] = useState<{ deviceId: string; code: string; expiresAt: string } | null>(null)
   const list = useMemo(
     () => [...(devices.data ?? [])].sort((a, b) => badness(a) - badness(b) || a.deviceId.localeCompare(b.deviceId)),
@@ -129,6 +194,9 @@ export function SwarmPage() {
                     {statusLabel(d.status)}
                   </Badge>
                 )}
+                {d.status !== 'disabled' && (
+                  <Button variant="ghost" size="icon" title={t('swarm.pins')} onClick={() => setPinsOpen(pinsOpen === d.deviceId ? null : d.deviceId)}><Pin /></Button>
+                )}
                 {isAdmin && d.status !== 'disabled' && (
                   <>
                     <Button variant="ghost" size="icon" title={t('swarm.replace')} onClick={() => void replace(d.deviceId)}><RefreshCw /></Button>
@@ -137,6 +205,11 @@ export function SwarmPage() {
                 )}
               </div>
             </CardContent>
+            {pinsOpen === d.deviceId && (
+              <CardContent className="border-t border-neutral-800 pt-3">
+                <PinsPanel deviceId={d.deviceId} editable={isAdmin} />
+              </CardContent>
+            )}
           </Card>
         ))}
       </div>

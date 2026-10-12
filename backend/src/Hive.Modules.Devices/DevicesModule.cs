@@ -18,6 +18,9 @@ public sealed record DeviceDto(
     JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev, int? SleepS, string SleepMode);
 
 /// <summary>Device registry reads (spec 6.5). Editing, commands and provisioning come in later steps.</summary>
+/// <summary>Pins of a hornet: what each function uses, from the board default or the config, and conflicts.</summary>
+public sealed record PinsView(IReadOnlyList<BoardPins.PinRow> Pins, IReadOnlyList<string> Conflicts);
+
 public sealed class DeviceQueries(HiveDbContext db)
 {
     public async Task<IReadOnlyList<DeviceDto>> ListAsync(int? zone, string? type, string? status, CancellationToken ct)
@@ -94,6 +97,24 @@ public static class DevicesModule
                 return await configs.UpdateAsync(deviceId, request, $"user:{user.Identity?.Name}", ct) == ConfigUpdateStatus.NotFound
                     ? TypedResults.NotFound()
                     : TypedResults.Ok((await q.GetAsync(deviceId, ct))!);
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
+
+        devices.MapGet("/{deviceId}/pins", async Task<Results<Ok<PinsView>, NotFound>> (string deviceId, DeviceConfigService configs, CancellationToken ct) =>
+            await configs.GetPinsAsync(deviceId, ct) is { Status: ConfigUpdateStatus.Updated } r
+                ? TypedResults.Ok(new PinsView(r.Rows, r.Conflicts))
+                : TypedResults.NotFound());
+
+        devices.MapPut("/{deviceId}/pins", async Task<Results<Ok<PinsView>, NotFound, ValidationProblem>> (
+                string deviceId, DeviceConfigService.PinsRequest request, ClaimsPrincipal user, DeviceConfigService configs, CancellationToken ct) =>
+            {
+                var r = await configs.SetPinsAsync(deviceId, request, $"user:{user.Identity?.Name}", ct);
+                return r.Status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["pins"] = [r.Error ?? "bad pins"] }),
+                    _ => TypedResults.Ok(new PinsView(r.Rows, r.Conflicts)),
+                };
             })
             .RequireAuthorization(HiveRoles.CanControl);
 

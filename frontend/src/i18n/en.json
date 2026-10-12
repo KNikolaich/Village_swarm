@@ -154,7 +154,15 @@
     "sleepLight": "light (stays connected)",
     "sleepMinutes": "{n} min",
     "sleepSaved": "Saved. The hornet applies it at its next wake-up",
-    "sleepHint": "For battery hornets: wakes, sends a reading and sleeps. Needs a GPIO16–RST jumper (docs/hornet-esp01-battery.md)"
+    "sleepHint": "For battery hornets: wakes, sends a reading and sleeps. Needs a GPIO16–RST jumper (docs/hornet-esp01-battery.md)",
+    "pins": "Pins",
+    "pinsSaved": "Pins saved. The hornet applies them on its next connection",
+    "pinsRejected": "Pins not saved: a conflict or a bad number",
+    "pinsConflict": "Conflict",
+    "pinsNone": "No pins to set for this type",
+    "pinsByHand": "set by hand",
+    "pinsDefault": "board default",
+    "pinsSave": "Save pins"
   },
   "add": {
     "step1": "Hornet and code",

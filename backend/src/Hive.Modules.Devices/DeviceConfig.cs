@@ -70,6 +70,67 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         return ConfigUpdateStatus.Updated;
     }
 
+    /// <summary>Pins to override, keyed as in the config "hw" section (onewire_pin, sda_pin, …). Null keeps the board default.</summary>
+    public sealed record PinsRequest(int? OnewirePin = null, int? SdaPin = null, int? SclPin = null, int? RelayPin = null, int? ButtonPin = null, int? VbatPin = null);
+
+    public sealed record PinsResult(ConfigUpdateStatus Status, string? Error, IReadOnlyList<BoardPins.PinRow> Rows, IReadOnlyList<string> Conflicts);
+
+    /// <summary>
+    /// Sets pins by hand (where a sensor is wired is not always the default). Rejected when a pin is out of range or
+    /// two functions of the hornet's role end up on the same pin. The new "hw" goes out as the retained config.
+    /// </summary>
+    public async Task<PinsResult> SetPinsAsync(string deviceId, PinsRequest r, string by, CancellationToken ct)
+    {
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null)
+            return new PinsResult(ConfigUpdateStatus.NotFound, null, [], []);
+        foreach (var pin in new[] { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin })
+            if (pin is { } p && !BoardPins.ValidPin(p))
+                return new PinsResult(ConfigUpdateStatus.BadRequest, "pin: от 0 до 39", [], []);
+
+        var config = device.Config is { } current
+            ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
+            : new JsonObject { ["v"] = 1, ["name"] = device.Name, ["health_interval_s"] = 60 };
+        var hw = config["hw"] as JsonObject ?? new JsonObject();
+        void Set(string key, int? value)
+        {
+            if (value is { } v) hw[key] = v;
+            else hw.Remove(key);
+        }
+        Set("onewire_pin", r.OnewirePin);
+        Set("sda_pin", r.SdaPin);
+        Set("scl_pin", r.SclPin);
+        Set("relay_pin", r.RelayPin);
+        Set("button_pin", r.ButtonPin);
+        Set("vbat_pin", r.VbatPin);
+        var hwElement = JsonDocument.Parse(hw.ToJsonString()).RootElement;
+        var rows = BoardPins.Rows(device.Hw, device.TypeCode, hwElement);
+        var conflicts = BoardPins.Conflicts(device.TypeCode, rows);
+        if (conflicts.Count > 0)
+            return new PinsResult(ConfigUpdateStatus.BadRequest, "Пины конфликтуют: " + string.Join("; ", conflicts), rows, conflicts);
+
+        if (hw.Count == 0) config.Remove("hw"); else config["hw"] = hw;
+        device.ConfigRev++;
+        config["rev"] = device.ConfigRev;
+        device.Config = JsonDocument.Parse(config.ToJsonString());
+        Audit.Record(db, time.GetUtcNow(), by, "device_pins", deviceId, new { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin });
+        await db.SaveChangesAsync(ct);
+        if (mqtt.IsConnected)
+            await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
+        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, conflicts);
+    }
+
+    /// <summary>The pins a hornet uses now, with where each one comes from, and any conflict.</summary>
+    public async Task<PinsResult> GetPinsAsync(string deviceId, CancellationToken ct)
+    {
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null)
+            return new PinsResult(ConfigUpdateStatus.NotFound, null, [], []);
+        JsonElement? hw = device.Config?.RootElement.TryGetProperty("hw", out var h) == true ? h : null;
+        var rows = BoardPins.Rows(device.Hw, device.TypeCode, hw);
+        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, BoardPins.Conflicts(device.TypeCode, rows));
+    }
+
     public static int? SleepS(Device d) =>
         d.Config?.RootElement.TryGetProperty("sleep_s", out var s) == true && s.TryGetInt32(out var v) && v > 0 ? v : null;
 

@@ -1,0 +1,70 @@
+namespace Hive.Modules.Devices;
+
+/// <summary>
+/// Which pin does what on each board, as the firmware builds it (firmware/platformio.ini HW_* defaults). The hive
+/// shows this per hornet and can override it with the config "hw" section; the firmware still has the final say.
+/// </summary>
+public static class BoardPins
+{
+    public sealed record Defaults(int? OneWire, int? Sda, int? Scl, int? Relay, int? Button, int? Dht, bool RelayActiveLow, string Note);
+
+    public sealed record PinRow(string Function, string Key, int? Pin, string Source, string? Note);
+
+    private static readonly Dictionary<string, Defaults> Boards = new()
+    {
+        ["esp32cam-aithinker"] = new(null, null, null, null, null, null, false, "PIR on GPIO13 (guard-cam, fixed); microSD in 1-bit mode"),
+        ["esp32c3-mini"] = new(3, 8, 9, 10, null, null, false, "SuperMini: 1-Wire GPIO3, I2C GPIO8/GPIO9, relay GPIO10"),
+        ["esp32c3-oled-042"] = new(3, 5, 6, null, null, null, false, "0,42\" OLED on the same I2C bus (GPIO5/GPIO6)"),
+        ["wemos-d1-mini"] = new(14, 4, 5, 12, 0, null, false, "D5/D2/D1 for 1-Wire/I2C, D6 relay, D3 button"),
+        ["nodemcu-v3"] = new(14, 4, 5, 12, 0, null, false, "as Wemos D1 mini; D3 is the FLASH button"),
+        ["esp-01"] = new(2, 0, 2, 0, null, null, true, "GPIO2 is shared by 1-Wire and I2C SCL; wire one kind of sensor only"),
+        ["esp-01-dht11"] = new(null, null, null, null, null, 2, false, "ESP-01S DHT11 module: DHT11 on GPIO2, nothing else"),
+    };
+
+    /// <summary>Roles and the functions they use: a pin is checked for conflicts only among these.</summary>
+    private static readonly Dictionary<string, string[]> RoleFunctions = new()
+    {
+        ["meteo"] = ["onewire", "sda", "scl", "vbat", "dht"],
+        ["relay"] = ["relay", "button"],
+    };
+
+    public static bool KnownBoard(string board) => Boards.ContainsKey(board);
+
+    public static Defaults? For(string? board) => board is not null && Boards.TryGetValue(board, out var d) ? d : null;
+
+    /// <summary>Effective pins: the config "hw" override where given, else the board default.</summary>
+    public static IReadOnlyList<PinRow> Rows(string? board, string type, System.Text.Json.JsonElement? hw)
+    {
+        var d = For(board) ?? new Defaults(null, null, null, null, null, null, false, "unknown board: pins are whatever the config says");
+        int? Pick(string key, int? fallback) =>
+            hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
+                ? v.GetInt32() : fallback;
+        var rows = new List<PinRow>
+        {
+            new("onewire", "onewire_pin", Pick("onewire_pin", d.OneWire), Source(hw, "onewire_pin"), "DS18B20"),
+            new("sda", "sda_pin", Pick("sda_pin", d.Sda), Source(hw, "sda_pin"), "I2C SDA (BME280, OLED)"),
+            new("scl", "scl_pin", Pick("scl_pin", d.Scl), Source(hw, "scl_pin"), "I2C SCL"),
+            new("relay", "relay_pin", Pick("relay_pin", d.Relay), Source(hw, "relay_pin"), d.RelayActiveLow ? "active low" : "active high"),
+            new("button", "button_pin", Pick("button_pin", d.Button), Source(hw, "button_pin"), "local toggle"),
+            new("vbat", "vbat_pin", Pick("vbat_pin", null), Source(hw, "vbat_pin"), "battery divider (ADC)"),
+            new("dht", "dht_pin", d.Dht, "default", "DHT11/22 data"),
+        };
+        return rows.Where(r => r.Pin is not null).ToList();
+    }
+
+    private static string Source(System.Text.Json.JsonElement? hw, string key) =>
+        hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty(key, out _) ? "config" : "default";
+
+    /// <summary>Pins used twice by the functions a role uses; empty when the wiring is clean.</summary>
+    public static IReadOnlyList<string> Conflicts(string type, IReadOnlyList<PinRow> rows)
+    {
+        var used = RoleFunctions.TryGetValue(type, out var fns) ? fns : Array.Empty<string>();
+        return rows.Where(r => used.Contains(r.Function) && r.Pin is not null)
+            .GroupBy(r => r.Pin!.Value)
+            .Where(g => g.Count() > 1)
+            .Select(g => $"GPIO{g.Key}: {string.Join(", ", g.Select(r => r.Function))}")
+            .ToList();
+    }
+
+    public static bool ValidPin(int pin) => pin is >= 0 and <= 39;
+}

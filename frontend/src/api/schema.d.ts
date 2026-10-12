@@ -802,6 +802,91 @@ export interface paths {
         };
         trace?: never;
     };
+    "/api/devices/{deviceId}/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PinsView"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PinsRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PinsView"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/provision/codes": {
         parameters: {
             query?: never;
@@ -1947,6 +2032,32 @@ export interface components {
         PageOfMediaDto: {
             items: components["schemas"]["MediaDto"][];
             nextCursor: null | string;
+        };
+        PinRow: {
+            function: string;
+            key: string;
+            /** Format: int32 */
+            pin: null | number;
+            source: string;
+            note: null | string;
+        };
+        PinsRequest: {
+            /** Format: int32 */
+            onewirePin?: null | number;
+            /** Format: int32 */
+            sdaPin?: null | number;
+            /** Format: int32 */
+            sclPin?: null | number;
+            /** Format: int32 */
+            relayPin?: null | number;
+            /** Format: int32 */
+            buttonPin?: null | number;
+            /** Format: int32 */
+            vbatPin?: null | number;
+        };
+        PinsView: {
+            pins: components["schemas"]["PinRow"][];
+            conflicts: string[];
         };
         RecoveryCodesDto: {
             recoveryCodes: string[];
