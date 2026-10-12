@@ -85,6 +85,7 @@ public static class UsersModule
         services.AddScoped<AuthService>();
         services.AddHostedService<AdminBootstrap>();
         services.AddScoped<HiveSettingsService>();
+        services.AddScoped<HiveWifiService>();
         return services;
     }
 

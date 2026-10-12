@@ -124,7 +124,10 @@
     "saved": "Saved",
     "wrongCode": "Wrong code",
     "language": "Interface language",
-    "languageHint": "One setting for the whole hive. Applies to everyone after the page reloads."
+    "languageHint": "One setting for the whole hive. Applies to everyone after the page reloads.",
+    "wifi": "Wi-Fi for hornets",
+    "wifiHint": "The network and password for boards that join the hive. The password is stored encrypted and never shown.",
+    "wifiPasswordKept": "Password is set (leave empty to keep it)"
   },
   "password": {
     "show": "Show password",
@@ -185,7 +188,8 @@
     "batchCreate": "Create the batch",
     "batchQueue": "Batch queue",
     "batchNew": "New batch",
-    "batchHint": "Pick a hornet, flash its board (you can close the window and come back later: the queue is on the server), then set it up. Wi-Fi and the hive address are entered for each board."
+    "batchHint": "Pick a hornet, flash its board (you can close the window and come back later: the queue is on the server), then set it up. Wi-Fi and the hive address are entered for each board.",
+    "wifiFromHive": "Wi-Fi and the hive address come from the hive settings"
   },
   "time": {
     "justNow": "just now",

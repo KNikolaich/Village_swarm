@@ -265,6 +265,77 @@
         }
       }
     },
+    "/api/settings/wifi": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WifiSettingsDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WifiSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/wifi/reveal": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WifiSecrets"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/telemetry/latest": {
       "get": {
         "tags": [
@@ -2380,6 +2451,75 @@
                 "$ref": "#/components/schemas/SleepMode"
               }
             ]
+          }
+        }
+      },
+      "WifiSecrets": {
+        "required": [
+          "ssid",
+          "password",
+          "hiveUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "ssid": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "hiveUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "WifiSettingsDto": {
+        "required": [
+          "ssid",
+          "passwordSet",
+          "hiveUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "ssid": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "passwordSet": {
+            "type": "boolean"
+          },
+          "hiveUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "WifiSettingsRequest": {
+        "required": [
+          "ssid",
+          "password",
+          "hiveUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "ssid": {
+            "type": "string"
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "hiveUrl": {
+            "type": "string"
           }
         }
       }

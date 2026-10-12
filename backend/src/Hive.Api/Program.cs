@@ -103,6 +103,7 @@ app.UseAuthorization();
 
 app.MapUsersEndpoints();
 app.MapSettingsEndpoints();
+app.MapWifiEndpoints();
 app.MapTelemetryEndpoints();
 app.MapDevicesEndpoints();
 app.MapEventsEndpoints();

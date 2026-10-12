@@ -271,6 +271,17 @@ function ConfigureStep({ code, deviceId }: { code: string; deviceId: string }) {
   const [ssid, setSsid] = useState('')
   const [pass, setPass] = useState('')
   const [hive, setHive] = useState(defaultHiveUrl)
+  // The hive keeps the Wi-Fi network once (Settings → Wi-Fi for hornets); admins get it filled in here.
+  const [saved, setSaved] = useState(false)
+  useEffect(() => {
+    void api.GET('/api/settings/wifi/reveal').then(({ data }) => {
+      if (!data) return
+      setSsid(data.ssid)
+      setPass(data.password)
+      if (data.hiveUrl) setHive(data.hiveUrl)
+      setSaved(true)
+    })
+  }, [])
   const [log, setLog] = useState<string[]>([])
   const [state, setState] = useState<'idle' | 'sending' | 'enrolled' | 'failed'>('idle')
   const serial = useRef<HornetSerial | null>(null)
@@ -310,6 +321,7 @@ function ConfigureStep({ code, deviceId }: { code: string; deviceId: string }) {
     <Card>
       <CardHeader><CardTitle>3. {t('add.step3')}</CardTitle>{isOnline && <Badge tone="ok"><CheckCircle2 className="size-3" />{t('status.online')}</Badge>}</CardHeader>
       <CardContent className="space-y-2 text-sm">
+        {saved && <p className="text-xs text-emerald-400">{t('add.wifiFromHive')}</p>}
         <Input placeholder={t('add.ssid')} value={ssid} onChange={(e) => setSsid(e.target.value)} />
         <PasswordInput placeholder={t('add.pass')} value={pass} onChange={(e) => setPass(e.target.value)} />
         <Input placeholder="http://192.168.1.10:5080" value={hive} onChange={(e) => setHive(e.target.value)} />

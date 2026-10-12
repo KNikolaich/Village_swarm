@@ -1,6 +1,6 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { Copy, Send, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
@@ -19,8 +19,51 @@ export function SettingsPage() {
       <TelegramCard />
       <TotpCard />
       <PasswordCard />
+      <WifiCard />
       <LanguageCard />
     </div>
+  )
+}
+
+/** Wi-Fi and the hive address for hornets: entered once here, filled in by the setup wizard (admins only). */
+function WifiCard() {
+  const qc = useQueryClient()
+  const wifi = useQuery({ queryKey: ['settings', 'wifi'], queryFn: () => call(api.GET('/api/settings/wifi')) })
+  const [ssid, setSsid] = useState('')
+  const [password, setPassword] = useState('')
+  const [hiveUrl, setHiveUrl] = useState('')
+  useEffect(() => {
+    if (wifi.data) {
+      setSsid(wifi.data.ssid ?? '')
+      setHiveUrl(wifi.data.hiveUrl ?? '')
+    }
+  }, [wifi.data])
+
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    try {
+      await call(api.PUT('/api/settings/wifi', { body: { ssid, password: password || null, hiveUrl } }))
+      setPassword('')
+      toast.success(t('settings.saved'))
+      await qc.invalidateQueries({ queryKey: ['settings', 'wifi'] })
+    } catch {
+      toast.error(t('errors.generic'))
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>{t('settings.wifi')}</CardTitle></CardHeader>
+      <CardContent>
+        <form onSubmit={save} className="space-y-2">
+          <p className="text-xs text-neutral-500">{t('settings.wifiHint')}</p>
+          <Input placeholder={t('add.ssid')} value={ssid} onChange={(e) => setSsid(e.target.value)} />
+          <PasswordInput placeholder={wifi.data?.passwordSet ? t('settings.wifiPasswordKept') : t('add.pass')} value={password} onChange={(e) => setPassword(e.target.value)} />
+          <Input placeholder="http://192.168.10.4" value={hiveUrl} onChange={(e) => setHiveUrl(e.target.value)} />
+          <Button type="submit" disabled={!ssid.trim() || !hiveUrl.trim()}>{t('settings.save')}</Button>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
 
