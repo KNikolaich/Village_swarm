@@ -248,11 +248,14 @@
   "monitor": {
     "title": "MQTT monitor",
     "hint": "Read-only: the latest messages from hornets and the hive. Nothing is sent from here, and no broker login is needed.",
-    "filter": "Filter by topic or text",
+    "filter": "MAC, IP, topic or text",
     "pause": "Pause",
     "resume": "Resume",
     "clear": "Clear",
     "empty": "No messages yet",
-    "failed": "Could not get the messages (admin sign-in needed)"
+    "failed": "Could not get the messages (admin sign-in needed)",
+    "from": "From",
+    "to": "To",
+    "hintFilter": "MAC, IP, topic or text"
   }
 }
