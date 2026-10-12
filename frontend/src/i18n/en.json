@@ -127,7 +127,8 @@
     "languageHint": "One setting for the whole hive. Applies to everyone after the page reloads.",
     "wifi": "Wi-Fi for hornets",
     "wifiHint": "The network and password for boards that join the hive. The password is stored encrypted and never shown.",
-    "wifiPasswordKept": "Password is set (leave empty to keep it)"
+    "wifiPasswordKept": "Password is set (leave empty to keep it)",
+    "languageAdminOnly": "Only an admin changes the hive language"
   },
   "password": {
     "show": "Show password",
@@ -197,12 +198,42 @@
     "batchQueue": "Batch queue",
     "batchNew": "New batch",
     "batchHint": "Pick a hornet, flash its board (you can close the window and come back later: the queue is on the server), then set it up. Wi-Fi and the hive address are entered for each board.",
-    "wifiFromHive": "Wi-Fi and the hive address come from the hive settings"
+    "wifiFromHive": "Wi-Fi and the hive address come from the hive settings",
+    "until": "until"
   },
   "time": {
     "justNow": "just now",
     "minutesAgo": "{n} min ago",
     "hoursAgo": "{n} h ago",
     "yesterday": "yesterday"
+  },
+  "deviceTypes": {
+    "guard-cam": "Camera with a motion sensor",
+    "meteo": "Weather sensor",
+    "relay": "Relay (light, socket)",
+    "heat": "Heater",
+    "leak": "Leak sensor",
+    "plant": "Plants"
+  },
+  "boards": {
+    "esp32cam-aithinker": "ESP32-CAM AI-Thinker",
+    "esp32c3-mini": "ESP32-C3 mini (SuperMini)",
+    "esp32c3-oled-042": "ESP32-C3 with a 0.42\" screen",
+    "wemos-d1-mini": "Wemos D1 mini",
+    "nodemcu-v3": "NodeMCU v3",
+    "esp-01": "ESP-01 / ESP-01S (1 MB)",
+    "esp-01-dht11": "ESP-01S with a DHT11 sensor (the “ESP-01S DHT11” module)"
+  },
+  "weekdays": {
+    "mon": "Mon",
+    "tue": "Tue",
+    "wed": "Wed",
+    "thu": "Thu",
+    "fri": "Fri",
+    "sat": "Sat",
+    "sun": "Sun"
+  },
+  "common": {
+    "copied": "Copied"
   }
 }

@@ -10,7 +10,7 @@ import { t } from '@/i18n'
 import { formatDayMonth, formatMonthYear, formatTime, isoDate, parseIsoDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+const weekdayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
 /** Screen 3 (spec 8.2): calendar → day → thumbnails by device → viewer. URL: /photos/YYYY-MM-DD. */
 export function PhotosPage() {
@@ -55,7 +55,7 @@ function Calendar({ month, onMonth, selected, onSelect }: {
           <Button variant="ghost" size="icon" onClick={() => onMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}><ChevronRight /></Button>
         </div>
         <div className="grid grid-cols-7 gap-1 text-center text-xs">
-          {weekdays.map((w) => <span key={w} className="py-1 text-neutral-500">{w}</span>)}
+          {weekdayKeys.map((w) => <span key={w} className="py-1 text-neutral-500">{t(`weekdays.${w}`)}</span>)}
           {Array.from({ length: lead }, (_, i) => <span key={`pad${i}`} />)}
           {Array.from({ length: last.getDate() }, (_, i) => {
             const iso = isoDate(new Date(month.getFullYear(), month.getMonth(), i + 1))

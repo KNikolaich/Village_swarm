@@ -7,38 +7,23 @@ import { api, call } from '@/api/client'
 import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui/primitives'
-import { t } from '@/i18n'
+import { getLanguage, t } from '@/i18n'
 import { HornetSerial, serialSupported } from '@/lib/serial'
 
-const types = [
-  { code: 'guard-cam', title: 'Камера с датчиком движения' },
-  { code: 'meteo', title: 'Метеодатчик' },
-  { code: 'relay', title: 'Реле (свет, розетка)' },
-  { code: 'heat', title: 'Обогрев' },
-  { code: 'leak', title: 'Датчик протечки' },
-  { code: 'plant', title: 'Растения' },
-]
+const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant']
+const types = typeCodes.map((code) => ({ code, get title() { return t(`deviceTypes.${code}`) } }))
 
 const idPattern = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
 
-// Board ids from firmware/dist/<build>/build.json (HORNET_BOARD) → what people call the board.
-const boardTitles: Record<string, string> = {
-  'esp32cam-aithinker': 'ESP32-CAM AI-Thinker',
-  'esp32c3-mini': 'ESP32-C3 mini (SuperMini)',
-  'esp32c3-oled-042': 'ESP32-C3 с экраном 0,42"',
-  'wemos-d1-mini': 'Wemos D1 mini',
-  'nodemcu-v3': 'NodeMCU v3',
-  'esp-01': 'ESP-01 / ESP-01S (1 МБ)',
-  'esp-01-dht11': 'ESP-01S с датчиком DHT11 (модуль «ESP-01S DHT11»)',
-}
-const boardTitle = (board: string) => boardTitles[board] ?? board
+// Board ids from firmware/dist/<build>/build.json (HORNET_BOARD) → what people call the board (i18n boards.*).
+const boardTitle = (board: string) => t(`boards.${board}`, board)
 
 export function CodeBox({ code, expiresAt }: { code: string; expiresAt: string }) {
   return (
     <div className="flex items-center gap-2">
       <code className="flex-1 rounded bg-neutral-950 px-3 py-2 text-xl tracking-[0.2em] text-amber-300">{code}</code>
-      <Button variant="secondary" size="icon" onClick={() => void navigator.clipboard.writeText(code).then(() => toast.success('Скопировано'))}><Copy /></Button>
-      <span className="text-xs text-neutral-500">до {new Date(expiresAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>
+      <Button variant="secondary" size="icon" onClick={() => void navigator.clipboard.writeText(code).then(() => toast.success(t('common.copied')))}><Copy /></Button>
+      <span className="text-xs text-neutral-500">{t('add.until')} {new Date(expiresAt).toLocaleTimeString(getLanguage() === 'en' ? 'en-US' : 'ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>
     </div>
   )
 }

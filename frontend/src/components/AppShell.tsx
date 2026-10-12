@@ -7,8 +7,11 @@ import { Button } from '@/components/ui/button'
 import { t } from '@/i18n'
 import type { LiveState } from '@/lib/live'
 import { cn } from '@/lib/utils'
+import { LanguageSwitch } from '@/components/LanguageSwitch'
 
-const nav = [
+// Labels are looked up when the shell renders, not when this file loads: the hive language is read before the
+// first render, but after the modules are imported.
+const nav = () => [
   { to: '/', label: t('nav.overview'), icon: LayoutDashboard, end: true },
   { to: '/events', label: t('nav.events'), icon: Bell, end: false },
   { to: '/photos', label: t('nav.photos'), icon: Images, end: false },
@@ -45,7 +48,7 @@ export function AppShell({ live }: { live: LiveState }) {
           <span className="font-semibold">{t('app.title')}</span>
         </div>
         <nav className="space-y-1">
-          {nav.map(({ to, label, icon: Icon, end }) => (
+          {nav().map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -69,6 +72,7 @@ export function AppShell({ live }: { live: LiveState }) {
           </div>
           <div className="hidden md:block" />
           <div className="flex items-center gap-3">
+            <LanguageSwitch />
             <LiveDot state={live} />
             <Button variant="ghost" size="icon" onClick={logout} aria-label={t('nav.logout')} title={t('nav.logout')}>
               <LogOut />
@@ -82,7 +86,7 @@ export function AppShell({ live }: { live: LiveState }) {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-neutral-800 bg-neutral-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-        {nav.map(({ to, label, icon: Icon, end }) => (
+        {nav().map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}

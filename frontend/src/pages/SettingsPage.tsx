@@ -147,7 +147,7 @@ function TelegramCard() {
                 <p className="text-sm text-neutral-300">{t('settings.codeHint')}</p>
                 <div className="flex items-center gap-2">
                   <code className="flex-1 rounded bg-neutral-950 px-3 py-2 text-lg tracking-wider text-amber-300">{command}</code>
-                  <Button variant="secondary" size="icon" onClick={() => void navigator.clipboard.writeText(command).then(() => toast.success('Скопировано'))}><Copy /></Button>
+                  <Button variant="secondary" size="icon" onClick={() => void navigator.clipboard.writeText(command).then(() => toast.success(t('common.copied')))}><Copy /></Button>
                 </div>
                 {code.bot && (
                   <a className="inline-flex items-center gap-1 text-sm text-amber-400" href={`https://t.me/${code.bot}`} target="_blank" rel="noreferrer">
