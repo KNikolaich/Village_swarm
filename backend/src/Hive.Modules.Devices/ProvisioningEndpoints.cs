@@ -33,6 +33,20 @@ public static class ProvisioningEndpoints
             })
             .RequireAuthorization(HiveRoles.AdminOnly);
 
+        provision.MapPost("/batches", async Task<Results<Ok<BatchDto>, ValidationProblem>> (
+                CreateBatchRequest request, ClaimsPrincipal user, ProvisioningService service, CancellationToken ct) =>
+            {
+                var (batch, error) = await service.CreateBatchAsync(request, $"user:{user.Identity?.Name}", ct);
+                return batch is not null
+                    ? TypedResults.Ok(batch)
+                    : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["request"] = [error!] });
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
+        provision.MapGet("/codes", async Task<Ok<IReadOnlyList<EnrollmentCodeDto>>> (ProvisioningService service, CancellationToken ct) =>
+                TypedResults.Ok(await service.PendingCodesAsync(ct)))
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
         // Called by the hornet itself with the one-time code; no session (spec 6.5).
         provision.MapPost("/enroll", async Task<Results<Ok<EnrollResponse>, ForbidHttpResult, BadRequest>> (
                 EnrollRequest request, HttpContext http, ProvisioningService service, CancellationToken ct) =>

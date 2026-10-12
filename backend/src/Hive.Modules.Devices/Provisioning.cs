@@ -34,6 +34,11 @@ public sealed record CreateCodeRequest(string DeviceId, string Type, string Name
 
 public sealed record EnrollmentCodeDto(string Code, string DeviceId, string Type, string Name, DateTimeOffset ExpiresAt, bool Replaces);
 
+/// <summary>A batch of N hornets of one type: ids <c>{IdPrefix}1…{IdPrefix}N</c>, names "{NamePrefix} 1…N", one code each.</summary>
+public sealed record CreateBatchRequest(string Type, string IdPrefix, string NamePrefix, int Count, int? Minutes = null);
+
+public sealed record BatchDto(IReadOnlyList<EnrollmentCodeDto> Items);
+
 public sealed record EnrollRequest(string Code, string Mac, string? Hw = null, string? Fw = null);
 
 public sealed record EnrollMqtt(string Host, int Port, string? User, string? Pass);
@@ -53,7 +58,41 @@ public sealed class ProvisioningService(
     // No 0/O, 1/I: typed from a screen.
     private const string CodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-    public async Task<(EnrollmentCodeDto? Code, string? Error)> CreateCodeAsync(CreateCodeRequest r, string by, CancellationToken ct)
+    public const int MaxBatch = 20;
+
+    /// <summary>
+    /// Codes for a whole batch, kept on the server so closing the wizard loses nothing. The lifetime is longer than
+    /// a single code's (a batch is flashed and configured board by board over hours); 30 to 1440 minutes.
+    /// </summary>
+    public async Task<(BatchDto? Batch, string? Error)> CreateBatchAsync(CreateBatchRequest r, string by, CancellationToken ct)
+    {
+        if (r.Count is < 1 or > MaxBatch)
+            return (null, $"count: от 1 до {MaxBatch}");
+        if (string.IsNullOrWhiteSpace(r.NamePrefix))
+            return (null, "namePrefix is required");
+        var minutes = Math.Clamp(r.Minutes ?? 240, 30, 1440);
+        var items = new List<EnrollmentCodeDto>();
+        for (var i = 1; i <= r.Count; i++)
+        {
+            var (code, error) = await CreateCodeAsync(new CreateCodeRequest($"{r.IdPrefix}{i}", r.Type, $"{r.NamePrefix} {i}"), by, ct, minutes);
+            if (code is null)
+                return (null, error);
+            items.Add(code);
+        }
+        return (new BatchDto(items), null);
+    }
+
+    /// <summary>Codes that are not used yet and not expired: the batch queue shown in the wizard.</summary>
+    public async Task<IReadOnlyList<EnrollmentCodeDto>> PendingCodesAsync(CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        var rows = await db.EnrollmentCodes.AsNoTracking()
+            .Where(c => c.UsedAt == null && c.ExpiresAt > now)
+            .OrderBy(c => c.DeviceId).ToListAsync(ct);
+        return rows.Select(c => new EnrollmentCodeDto(c.Code, c.DeviceId, c.TypeCode, c.Name, c.ExpiresAt, false)).ToList();
+    }
+
+    public async Task<(EnrollmentCodeDto? Code, string? Error)> CreateCodeAsync(CreateCodeRequest r, string by, CancellationToken ct, int? minutes = null)
     {
         if (!Topics.IsValidDeviceId(r.DeviceId))
             return (null, "device_id: латиница в нижнем регистре, цифры и дефисы, например guard-gate1");
@@ -70,7 +109,7 @@ public sealed class ProvisioningService(
             TypeCode = r.Type,
             Name = r.Name.Trim(),
             ZoneId = r.ZoneId,
-            ExpiresAt = now.AddMinutes(options.Value.CodeMinutes),
+            ExpiresAt = now.AddMinutes(minutes ?? options.Value.CodeMinutes),
             CreatedBy = by,
         };
         db.EnrollmentCodes.Add(code);

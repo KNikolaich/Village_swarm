@@ -176,7 +176,16 @@
     "waitingOnline": "The board got its login and is rebooting; waiting for it to come online…",
     "done": "Done: the hornet is online.",
     "failed": "It did not work. Check the Wi-Fi, the hive address and that the code has not expired; the board log is above.",
-    "manual": "By hand, in the serial monitor"
+    "manual": "By hand, in the serial monitor",
+    "modeOne": "One hornet",
+    "modeBatch": "Batch",
+    "batchTitle": "A batch of hornets of one type",
+    "batchIdPlaceholder": "Id prefix, e.g. greenhouse-meteo (gets -1, -2…)",
+    "batchNamePlaceholder": "Name prefix, e.g. “Greenhouse”",
+    "batchCreate": "Create the batch",
+    "batchQueue": "Batch queue",
+    "batchNew": "New batch",
+    "batchHint": "Pick a hornet, flash its board (you can close the window and come back later: the queue is on the server), then set it up. Wi-Fi and the hive address are entered for each board."
   },
   "time": {
     "justNow": "just now",

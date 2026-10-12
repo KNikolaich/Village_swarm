@@ -702,7 +702,26 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EnrollmentCodeDto"][];
+                    };
+                };
+            };
+        };
         put?: never;
         post: {
             parameters: {
@@ -724,6 +743,54 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["EnrollmentCodeDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/provision/batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateBatchRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BatchDto"];
                     };
                 };
                 /** @description Bad Request */
@@ -1570,6 +1637,9 @@ export interface components {
             /** Format: int32 */
             cameras: number;
         };
+        BatchDto: {
+            items: components["schemas"]["EnrollmentCodeDto"][];
+        };
         ChangePasswordRequest: {
             currentPassword: string;
             newPassword: string;
@@ -1585,6 +1655,15 @@ export interface components {
             /** Format: date-time */
             ackAt: null | string;
             ack: null | components["schemas"]["JsonElement"];
+        };
+        CreateBatchRequest: {
+            type: string;
+            idPrefix: string;
+            namePrefix: string;
+            /** Format: int32 */
+            count: number;
+            /** Format: int32 */
+            minutes?: null | number;
         };
         CreateCodeRequest: {
             deviceId: string;

@@ -58,6 +58,110 @@ function defaultHiveUrl() {
  * → wait until the hornet is online. Every step also shows the manual way.
  */
 export function AddHornetPage() {
+  const [mode, setMode] = useState<'one' | 'batch'>('one')
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold">{t('swarm.add')}</h1>
+        <Link to="/swarm" className="text-sm text-amber-400">{t('swarm.title')}</Link>
+      </div>
+      <div className="flex gap-2">
+        <Button variant={mode === 'one' ? 'default' : 'secondary'} onClick={() => setMode('one')}>{t('add.modeOne')}</Button>
+        <Button variant={mode === 'batch' ? 'default' : 'secondary'} onClick={() => setMode('batch')}>{t('add.modeBatch')}</Button>
+      </div>
+      {mode === 'one' ? <OneHornet /> : <BatchPanel />}
+    </div>
+  )
+}
+
+/** Batch: N boards of one type, one queue on the server. Flash and set up each board in turn (USB, one at a time). */
+function BatchPanel() {
+  const [type, setType] = useState('meteo')
+  const [idPrefix, setIdPrefix] = useState('')
+  const [namePrefix, setNamePrefix] = useState('')
+  const [count, setCount] = useState(3)
+  const [items, setItems] = useState<{ deviceId: string; name: string; code: string; expiresAt: string }[]>([])
+  const [active, setActive] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const firmware = useQuery({ queryKey: ['firmware'], queryFn: () => call(api.GET('/api/firmware')) })
+  const builds = (firmware.data ?? []).filter((b) => b.role === type)
+  const [build, setBuild] = useState('')
+  const selectedBuild = builds.find((b) => b.build === build) ?? builds[0]
+
+  async function create(e: FormEvent) {
+    e.preventDefault()
+    setError(null)
+    const { data, error: err, response } = await api.POST('/api/provision/batches', { body: { type, idPrefix, namePrefix, count } })
+    if (!response.ok || !data) {
+      setError((err as { errors?: Record<string, string[]> } | undefined)?.errors?.request?.[0] ?? t('errors.generic'))
+      return
+    }
+    setItems(data.items.map((c) => ({ deviceId: c.deviceId, name: c.name, code: c.code, expiresAt: c.expiresAt })))
+    setActive(data.items[0]?.deviceId ?? null)
+  }
+
+  const idValid = /^[a-z][a-z0-9]*(-[a-z0-9]+)*-?$/.test(idPrefix) && idPrefix.length <= 28
+  const current = items.find((i) => i.deviceId === active)
+
+  return (
+    <div className="space-y-4">
+      {items.length === 0 && (
+        <Card>
+          <CardHeader><CardTitle>{t('add.batchTitle')}</CardTitle></CardHeader>
+          <CardContent>
+            <form onSubmit={create} className="space-y-2">
+              <Select value={type} onChange={(e) => { setType(e.target.value); setBuild('') }} className="h-11 w-full">
+                {types.map((x) => <option key={x.code} value={x.code}>{x.title}</option>)}
+              </Select>
+              <Input placeholder={t('add.batchIdPlaceholder')} value={idPrefix} onChange={(e) => setIdPrefix(e.target.value.toLowerCase())} />
+              {idPrefix && !idValid && <p className="text-xs text-amber-300">{t('add.idHint')}</p>}
+              <Input placeholder={t('add.batchNamePlaceholder')} value={namePrefix} onChange={(e) => setNamePrefix(e.target.value)} />
+              <Input type="number" min={1} max={20} value={count} onChange={(e) => setCount(Number(e.target.value))} />
+              {error && <p className="text-sm text-red-400">{error}</p>}
+              <Button type="submit" disabled={!idValid || !namePrefix.trim() || count < 1 || count > 20}>{t('add.batchCreate')}</Button>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {items.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle>{t('add.batchQueue')}</CardTitle><Button variant="ghost" size="sm" onClick={() => setItems([])}>{t('add.batchNew')}</Button></CardHeader>
+          <CardContent className="space-y-2">
+            <p className="text-xs text-neutral-500">{t('add.batchHint')}</p>
+            {items.map((i) => (
+              <div key={i.deviceId} className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border p-2 ${i.deviceId === active ? 'border-amber-400' : 'border-neutral-800'}`}>
+                <button type="button" className="min-w-0 text-left" onClick={() => setActive(i.deviceId)}>
+                  <p className="truncate text-sm font-medium">{i.name}</p>
+                  <p className="truncate text-xs text-neutral-500">{i.deviceId}</p>
+                </button>
+                <code className="text-sm tracking-widest text-amber-300">{i.code}</code>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {current && (
+        <>
+          <Card>
+            <CardHeader><CardTitle>{current.name}</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              <CodeBox code={current.code} expiresAt={current.expiresAt} />
+              <Select value={build} onChange={(e) => setBuild(e.target.value)} className="h-11 w-full">
+                {builds.map((b) => <option key={b.build} value={b.build}>{boardTitle(b.board)} · {b.chipFamily}</option>)}
+              </Select>
+            </CardContent>
+          </Card>
+          <FlashStep type={type} builds={builds} selected={selectedBuild?.build} onSelect={setBuild} />
+          <ConfigureStep code={current.code} deviceId={current.deviceId} />
+        </>
+      )}
+    </div>
+  )
+}
+
+function OneHornet() {
   const [type, setType] = useState('guard-cam')
   const [deviceId, setDeviceId] = useState('')
   const [name, setName] = useState('')
@@ -83,11 +187,6 @@ export function AddHornetPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{t('swarm.add')}</h1>
-        <Link to="/swarm" className="text-sm text-amber-400">{t('swarm.title')}</Link>
-      </div>
-
       <Card>
         <CardHeader><CardTitle>1. {t('add.step1')}</CardTitle>{code && <Badge tone="ok">{code.code}</Badge>}</CardHeader>
         <CardContent>
