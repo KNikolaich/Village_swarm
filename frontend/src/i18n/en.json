@@ -80,7 +80,8 @@
     "config_applied": "Settings applied",
     "snapshot": "Snapshot",
     "photo_failed": "Photo failed to upload",
-    "tamper": "Camera covered or moved"
+    "tamper": "Camera covered or moved",
+    "ota": "Firmware update"
   },
   "severity": {
     "info": "Info",
@@ -163,7 +164,12 @@
     "pinsNone": "No pins to set for this type",
     "pinsByHand": "set by hand",
     "pinsDefault": "board default",
-    "pinsSave": "Save pins"
+    "pinsSave": "Save pins",
+    "update": "Update firmware",
+    "updateConfirm": "Update “{name}” over the air: {from} → {to}? The hornet downloads the firmware, restarts and reports the result.",
+    "updateRisk": "The ESP-01 keeps the new image beside the old one and cannot roll back: if power fails during the copy, the board must be reflashed over USB. Update one hornet first.",
+    "updateStarted": "Update started: progress shows in events",
+    "updateRefused": "The update was not started (check the board, the version and the hive address in Settings)"
   },
   "add": {
     "step1": "Hornet and code",

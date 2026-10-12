@@ -28,6 +28,9 @@ public sealed class HiveFixture : IAsyncLifetime
 
     public string MediaRoot { get; } = Path.Combine(Path.GetTempPath(), $"hive-media-{Guid.NewGuid():N}");
 
+    /// <summary>Test firmware builds (OtaTests): firmware/dist layout with build.json and a firmware.bin each.</summary>
+    public string FirmwareRoot { get; } = Path.Combine(Path.GetTempPath(), $"hive-firmware-{Guid.NewGuid():N}");
+
     public const string AdminPassword = "test-admin-password";
 
     /// <summary>HttpClient with a logged-in session cookie.</summary>
@@ -69,6 +72,8 @@ public sealed class HiveFixture : IAsyncLifetime
             b.UseSetting("Mqtt:ClientId", $"hive-api-test-{Guid.NewGuid():N}");
             b.UseSetting("Database:MigrateOnStartup", "true");
             b.UseSetting("Media:Root", MediaRoot);
+            b.UseSetting("Provisioning:FirmwareDir", FirmwareRoot);
+            b.UseSetting("Provisioning:UploadUrl", "http://hive.test");
             b.UseSetting("Media:AllowUploadsWithoutToken", "true");
             b.UseSetting("Hive:TimeZone", "Europe/Moscow");
             b.UseSetting("Auth:BootstrapAdminPassword", AdminPassword);
@@ -88,6 +93,8 @@ public sealed class HiveFixture : IAsyncLifetime
         await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _mosquitto.DisposeAsync().AsTask());
         if (Directory.Exists(MediaRoot))
             Directory.Delete(MediaRoot, recursive: true);
+        if (Directory.Exists(FirmwareRoot))
+            Directory.Delete(FirmwareRoot, recursive: true);
     }
 
     public async Task<T> QueryAsync<T>(Func<HiveDbContext, Task<T>> query)

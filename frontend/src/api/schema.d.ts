@@ -1092,6 +1092,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/devices/{deviceId}/ota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["StartOtaRequest"];
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CommandDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ingest/photo": {
         parameters: {
             query?: never;
@@ -1951,6 +2008,7 @@ export interface components {
             chipFamily: string;
             /** Format: date-time */
             built: string;
+            version: null | string;
         };
         HttpValidationProblemDetails: {
             type?: null | string;
@@ -2073,6 +2131,9 @@ export interface components {
         };
         /** @enum {unknown} */
         SleepMode: "deep" | "light" | null;
+        StartOtaRequest: {
+            build: string;
+        };
         TelegramLinkDto: {
             /** Format: int32 */
             id: number;

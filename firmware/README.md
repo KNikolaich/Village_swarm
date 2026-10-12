@@ -44,6 +44,8 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
 - **DHT11** (`meteo-esp01dht`): temperature and humidity once per `tele_interval_s`; the DHT shares GPIO2 with
   1-Wire and I2C on the ESP-01, so that build reads only the DHT. Accuracy ±2 °C / ±5 %, and the ESP next to it
   warms it by a degree or two.
+- **OTA**: every build can be updated over the air with the `ota` command (see [docs/ota.md](../docs/ota.md)); the version is
+  `0.2.0+<commit>` (scripts/version.py) and goes into `build.json`. ESP8266 has no rollback.
 - **Battery mode** (any meteo build): config `sleep_s` (set in the swarm screen) makes the hornet wake, send one
   reading, disconnect cleanly and deep-sleep. ESP8266 boards need GPIO16 wired to RST (see
   [docs/hornet-esp01-battery.md](../docs/hornet-esp01-battery.md)); type `awake` on the console to keep it up.

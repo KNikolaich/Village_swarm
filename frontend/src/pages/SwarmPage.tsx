@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Moon, Pin, Plus, RefreshCw, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { ArrowUpCircle, Moon, Pin, Plus, RefreshCw, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -100,6 +100,7 @@ export function SwarmPage() {
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
   const [pinsOpen, setPinsOpen] = useState<string | null>(null)
+  const firmware = useQuery({ queryKey: ['firmware'], queryFn: () => call(api.GET('/api/firmware')), enabled: isAdmin })
   const [replaceCode, setReplaceCode] = useState<{ deviceId: string; code: string; expiresAt: string } | null>(null)
   const list = useMemo(
     () => [...(devices.data ?? [])].sort((a, b) => badness(a) - badness(b) || a.deviceId.localeCompare(b.deviceId)),
@@ -109,6 +110,27 @@ export function SwarmPage() {
   async function replace(deviceId: string) {
     const code = await call(api.POST('/api/devices/{deviceId}/replace', { params: { path: { deviceId } } }))
     setReplaceCode({ deviceId, code: code.code, expiresAt: code.expiresAt })
+  }
+
+  /** A build for this hornet's role and board that is not the version it runs now (null: nothing to offer). */
+  function newerBuild(d: DeviceDto) {
+    return (firmware.data ?? []).find((b) => b.role === d.type && b.board === d.hw && b.version && b.version !== d.fw) ?? null
+  }
+
+  async function update(d: DeviceDto) {
+    const build = newerBuild(d)
+    if (!build) return
+    const risky = (d.hw ?? '').startsWith('esp-01')
+    const text = t('swarm.updateConfirm').replace('{name}', d.name).replace('{from}', d.fw ?? '?').replace('{to}', build.version ?? '?')
+    if (!window.confirm(risky ? `${text}
+
+${t('swarm.updateRisk')}` : text)) return
+    try {
+      await call(api.POST('/api/devices/{deviceId}/ota', { params: { path: { deviceId: d.deviceId } }, body: { build: build.build } }))
+      toast.success(t('swarm.updateStarted'))
+    } catch {
+      toast.error(t('swarm.updateRefused'))
+    }
   }
 
   async function setSleep(d: DeviceDto, body: { sleepS?: number; sleepMode?: 'deep' | 'light' }) {
@@ -193,6 +215,9 @@ export function SwarmPage() {
                     {d.status === 'online' ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
                     {statusLabel(d.status)}
                   </Badge>
+                )}
+                {isAdmin && d.status === 'online' && newerBuild(d) && (
+                  <Button variant="ghost" size="icon" title={t('swarm.update')} className="text-amber-400" onClick={() => void update(d)}><ArrowUpCircle /></Button>
                 )}
                 {d.status !== 'disabled' && (
                   <Button variant="ghost" size="icon" title={t('swarm.pins')} onClick={() => setPinsOpen(pinsOpen === d.deviceId ? null : d.deviceId)}><Pin /></Button>

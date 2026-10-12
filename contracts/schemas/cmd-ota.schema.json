@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/cmd-ota.schema.json",
+  "title": "vs/v1/dev/{id}/cmd/ota: update the firmware over the air (spec 5.5)",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "cmd.schema.json"
+    }
+  ],
+  "required": [
+    "url",
+    "md5",
+    "size",
+    "version"
+  ],
+  "properties": {
+    "url": {
+      "type": "string",
+      "pattern": "^http://[^\\s]+\\.bin(\\?[^\\s]*)?$",
+      "description": "Where the hornet downloads the image (the hive, plain HTTP inside the IoT segment)"
+    },
+    "md5": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "Checked before the image is installed; arrives over the authenticated MQTT channel, so it also binds the content to the hive"
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 1024,
+      "description": "Image size in bytes; the hornet refuses an image that does not fit its flash"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version the image reports as fw after the update"
+    }
+  },
+  "unevaluatedProperties": false
+}

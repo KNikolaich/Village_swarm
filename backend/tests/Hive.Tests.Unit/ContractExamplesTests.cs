@@ -30,6 +30,8 @@ public class ContractExamplesTests
         ["cmd-relay"] = typeof(RelayCommand),
         ["cmd-arm"] = typeof(ArmCommand),
         ["cmd-snapshot"] = typeof(SnapshotCommand),
+        ["cmd-ota"] = typeof(OtaCommand),
+        ["event-ota"] = typeof(OtaEvent),
         ["ack"] = typeof(AckMessage),
         ["config"] = typeof(DeviceConfig),
         ["heartbeat"] = typeof(HeartbeatMessage),

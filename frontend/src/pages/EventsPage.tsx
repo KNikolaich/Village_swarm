@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Empty, Select, Skeleton } from '@/components/ui/primitives'
 import { eventTypeLabel, severityLabel, t } from '@/i18n'
 
-const types = ['motion', 'door_open', 'leak', 'failsafe', 'snapshot', 'config_applied']
+const types = ['motion', 'door_open', 'leak', 'failsafe', 'snapshot', 'config_applied', 'ota']
 const severities = ['warn', 'alarm', 'critical']
 
 /** Screen 2 (spec 8.2): filtered feed with infinite scroll, photos and acknowledgement. Filters live in the URL. */

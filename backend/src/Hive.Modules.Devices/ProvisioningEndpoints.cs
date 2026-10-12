@@ -113,19 +113,19 @@ public static class ProvisioningEndpoints
             return Directory.GetDirectories(root)
                 .Select(d => ReadBuild(Path.GetFileName(d), options.Value, env))
                 .Where(b => b is not null)
-                .Select(b => new FirmwareBuildDto(b!.Name, b.Role, b.Board, b.ChipFamily, b.Built))
+                .Select(b => new FirmwareBuildDto(b!.Name, b.Role, b.Board, b.ChipFamily, b.Built, b.Version))
                 .OrderBy(b => b.Build, StringComparer.Ordinal)
                 .ToArray();
         });
         return app;
     }
 
-    private sealed record Part(string File, int Offset);
+    internal sealed record Part(string File, int Offset);
 
-    private sealed record Build(string Name, string Dir, string Role, string Board, string ChipFamily, IReadOnlyList<Part> Parts, DateTime Built);
+    internal sealed record Build(string Name, string Dir, string Role, string Board, string ChipFamily, IReadOnlyList<Part> Parts, DateTime Built, string? Version);
 
     /// <summary>firmware/dist/<build>/build.json (written by firmware/scripts/dist.py), or the classic ESP32 layout without it.</summary>
-    private static Build? ReadBuild(string name, ProvisioningOptions options, IHostEnvironment env)
+    internal static Build? ReadBuild(string name, ProvisioningOptions options, IHostEnvironment env)
     {
         var dir = FirmwareDir(name, options, env);
         if (dir is null)
@@ -133,6 +133,7 @@ public static class ProvisioningEndpoints
         var role = name;
         var board = name;
         var chip = "ESP32";
+        string? version = null;
         IReadOnlyList<Part> parts = Esp32Parts.Select(p => new Part(p.File, p.Offset)).ToList();
         var meta = Path.Combine(dir, "build.json");
         if (File.Exists(meta))
@@ -141,11 +142,12 @@ public static class ProvisioningEndpoints
             role = json["role"]?.GetValue<string>() ?? role;
             board = json["board"]?.GetValue<string>() ?? board;
             chip = json["chipFamily"]?.GetValue<string>() ?? chip;
+            version = json["version"]?.GetValue<string>();
             parts = json["parts"]!.AsArray().Select(p => new Part(p!["file"]!.GetValue<string>(), p["offset"]!.GetValue<int>())).ToList();
         }
         if (!parts.All(p => File.Exists(Path.Combine(dir, p.File))))
             return null;
-        return new Build(name, dir, role, board, chip, parts, File.GetLastWriteTimeUtc(Path.Combine(dir, "firmware.bin")));
+        return new Build(name, dir, role, board, chip, parts, File.GetLastWriteTimeUtc(Path.Combine(dir, "firmware.bin")), version);
     }
 
     private static string? FirmwareDir(string type, ProvisioningOptions options, IHostEnvironment env)
@@ -158,4 +160,4 @@ public static class ProvisioningEndpoints
 }
 
 /// <summary>A flashable firmware image: build env (role-board), role (device type), board name and chip.</summary>
-public sealed record FirmwareBuildDto(string Build, string Role, string Board, string ChipFamily, DateTime Built);
+public sealed record FirmwareBuildDto(string Build, string Role, string Board, string ChipFamily, DateTime Built, string? Version);

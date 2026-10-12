@@ -18,6 +18,7 @@ public static class Texts
         "photo_failed" => "Фото не загрузилось",
         "tamper" => "Камера закрыта или сдвинута",
         "snapshot" => "Снимок",
+        "ota" => "Обновление прошивки",
         "overheat" => "Улей перегревается",
         "overheat_cleared" => "Температура улья в норме",
         "disk_full" => "Диск улья почти заполнен",
@@ -39,6 +40,8 @@ public static class Texts
     public static string Event(DeviceEvent e, string place, DateTimeOffset localTs, int repeat = 1)
     {
         var text = $"{Icon(e.Severity)} <b>{H(EventType(e.Type))}</b>: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}";
+        if (e.Type == "ota")
+            text += OtaDetail(e.Payload.RootElement);
         if (e.Type == "failsafe" && e.Payload.RootElement.TryGetProperty("rule", out var rule))
             text += $"\nправило: {H(rule.GetString())}";
         if (e.Type.StartsWith("overheat", StringComparison.Ordinal) || e.Type.StartsWith("disk_full", StringComparison.Ordinal))
@@ -61,6 +64,23 @@ public static class Texts
             var other => (other ?? "", ""),
         };
         return $"\n{H(label)}: {v.GetDouble().ToString("0.#", Ru)}{unit} (порог {l.GetDouble().ToString("0.#", Ru)}{unit})";
+    }
+
+    /// <summary>One line on what an update did, e.g. "0.2.0+abc: установлена и работает" (contracts event-ota).</summary>
+    private static string OtaDetail(System.Text.Json.JsonElement p)
+    {
+        var phase = p.TryGetProperty("phase", out var ph) ? ph.GetString() : null;
+        var version = p.TryGetProperty("version", out var v) ? v.GetString() : "";
+        var error = p.TryGetProperty("error", out var er) ? er.GetString() : null;
+        var what = phase switch
+        {
+            "started" => "началась",
+            "applied" => "установлена и работает",
+            "failed" => "не удалась",
+            "rolled_back" => "не вышла на связь, возвращена прежняя версия",
+            _ => phase ?? "",
+        };
+        return $"\n{H(version)}: {what}" + (string.IsNullOrEmpty(error) ? "" : $" ({H(error)})");
     }
 
     public static string Temperature(double value) => $"{value.ToString("0.#", Ru)}°";

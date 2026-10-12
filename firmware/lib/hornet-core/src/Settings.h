@@ -19,12 +19,15 @@ struct Settings {
     String uploadToken;  // Bearer token for photo uploads
     String ntp = "pool.ntp.org";
     uint32_t boot = 0;   // incremented on every start (envelope "boot")
+    String otaPending;     // version just installed over the air, until the new image has reached the broker
+    String otaRolledBack;  // version that did not come online and was rolled back, until reported
 
     bool complete() const { return ssid.length() && mqttHost.length() && deviceId.length(); }
 
     void load();
     void save() const;
     void saveBoot() const;
+    void saveOta() const;
     void clear();
 
     // Raw retained config JSON from the hive, so the hornet works after a reboot without the broker.

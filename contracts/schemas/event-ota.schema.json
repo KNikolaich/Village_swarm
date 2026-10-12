@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/event-ota.schema.json",
+  "title": "vs/v1/dev/{id}/event/ota: progress of an update (spec 5.5)",
+  "type": "object",
+  "allOf": [{ "$ref": "event.schema.json" }],
+  "required": ["phase", "version"],
+  "properties": {
+    "phase": {
+      "enum": ["started", "applied", "failed", "rolled_back"],
+      "description": "started: downloading; applied: the new image runs and reached the broker; failed: nothing was installed; rolled_back: the new image did not come online and the previous one is back (ESP32 only)"
+    },
+    "version": { "type": "string", "minLength": 1 },
+    "error": { "type": "string", "maxLength": 200 }
+  },
+  "unevaluatedProperties": false
+}

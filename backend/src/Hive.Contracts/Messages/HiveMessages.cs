@@ -32,6 +32,15 @@ public sealed record ArmCommand : Command
     public required bool Armed { get; init; }
 }
 
+/// <summary>vs/v1/dev/{id}/cmd/ota: download <see cref="Url"/>, check <see cref="Md5"/> and install.</summary>
+public sealed record OtaCommand : Command
+{
+    public required string Url { get; init; }
+    public required string Md5 { get; init; }
+    public required long Size { get; init; }
+    public required string Version { get; init; }
+}
+
 /// <summary>vs/v1/dev/{id}/cmd/snapshot</summary>
 public sealed record SnapshotCommand : Command
 {

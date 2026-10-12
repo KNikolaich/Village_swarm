@@ -24,6 +24,8 @@ void Settings::load() {
     uploadToken = p.getString("token", "");
     ntp = p.getString("ntp", "pool.ntp.org");
     boot = p.getUInt("boot", 0);
+    otaPending = p.getString("otapend", "");
+    otaRolledBack = p.getString("otarb", "");
     p.end();
 }
 
@@ -47,6 +49,14 @@ void Settings::saveBoot() const {
     Preferences p;
     p.begin(kNs, false);
     p.putUInt("boot", boot);
+    p.end();
+}
+
+void Settings::saveOta() const {
+    Preferences p;
+    p.begin(kNs, false);
+    p.putString("otapend", otaPending);
+    p.putString("otarb", otaRolledBack);
     p.end();
 }
 

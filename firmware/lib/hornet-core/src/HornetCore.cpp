@@ -5,6 +5,7 @@
 #include <sys/time.h>
 
 #include "CommandGuard.h"
+#include "Ota.h"
 #include "Outbox.h"
 #include "Platform.h"
 #include "Ulid.h"
@@ -28,6 +29,8 @@ constexpr uint64_t kSaneEpochMs = 1700000000000ULL;
 constexpr unsigned long kAwakeLimitMs = 30000;
 // Time for the last QoS 0/1 messages to leave before the clean disconnect.
 constexpr unsigned long kFlushBeforeSleepMs = 1500;
+// A freshly updated image that has not reached the broker by then is judged broken (ESP32 rolls back).
+constexpr unsigned long kOtaConfirmMs = 120000;
 
 String willTopic;
 
@@ -57,6 +60,8 @@ void Core::begin() {
     // Last config from NVS: the hornet behaves the same after a reboot without the broker (spec 5.6).
     const String saved = settings_.loadConfig();
     role_.setup(*this);
+    // Over-the-air update, available to every role (spec 5.5).
+    onCommand("ota", [this](JsonObjectConst payload) { return queueOta(payload); });
     if (saved.length()) applyConfig(saved, false);
 
     if (!settings_.complete()) {
@@ -102,6 +107,8 @@ void Core::loop() {
             lastHealthMs_ = millis();
             publishHealth();
         }
+        if (ota_.queued && online()) runOta();
+        checkOtaOutcome();
         if (sleepy()) {
             if (sleepAtMs_ && millis() >= sleepAtMs_) sleepNow();
             if (millis() > kAwakeLimitMs) {
@@ -124,6 +131,77 @@ void Core::applyWifiPowerSave() {
 #else
     WiFi.setSleep(lightSleep());
 #endif
+}
+
+// The command only queues the update and is acknowledged at once; the download runs from loop() once the ack is out.
+AckResult Core::queueOta(JsonObjectConst payload) {
+    const String url = payload["url"] | "";
+    const String md5 = payload["md5"] | "";
+    const String version = payload["version"] | "";
+    const uint32_t size = payload["size"] | 0U;
+    if (!url.startsWith("http://") || md5.length() != 32 || !size || !version.length()) return AckResult::error("bad ota command");
+    if (ota_.queued) return AckResult::error("update already running");
+    if (version == HORNET_FW_VERSION) return AckResult(AckStatus::Rejected, "already on " + version);
+    if (size > ota::freeSpace()) return AckResult(AckStatus::Rejected, "image does not fit: " + String(size) + " > " + String(ota::freeSpace()));
+    ota_.queued = true;
+    ota_.url = url;
+    ota_.md5 = md5;
+    ota_.size = size;
+    ota_.version = version;
+    return AckResult::ok();
+}
+
+void Core::runOta() {
+    JsonDocument started;
+    started["phase"] = "started";
+    started["version"] = ota_.version;
+    publishEvent("ota", started);
+    for (int i = 0; i < 10; ++i) {  // let the ack and the event leave before the network goes quiet
+        mqtt.loop();
+        delay(10);
+    }
+    Serial.printf("[ota] %s (%u bytes)\n", ota_.url.c_str(), static_cast<unsigned>(ota_.size));
+
+    String error;
+    const bool ok = ota::download(ota_.url, settings_.uploadToken, ota_.size, ota_.md5, error, platform::watchdogFeed);
+    if (!ok) {
+        Serial.printf("[ota] failed: %s\n", error.c_str());
+        JsonDocument failed;
+        failed["phase"] = "failed";
+        failed["severity"] = "warn";
+        failed["version"] = ota_.version;
+        failed["error"] = error.substring(0, 200);
+        publishEvent("ota", failed);
+        ota_ = PendingOta{};
+        return;
+    }
+    // The new image runs next: remember what to confirm. It is "applied" only once it reaches the broker.
+    settings_.otaPending = ota_.version;
+    settings_.saveOta();
+    Serial.println("[ota] installed, restarting");
+    mqtt.disconnect();
+    for (int i = 0; i < 10; ++i) {
+        mqtt.loop();
+        delay(10);
+    }
+    ESP.restart();
+}
+
+// After an update: report once the new image is online; if it never gets there, ESP32 goes back to the old one.
+void Core::checkOtaOutcome() {
+    if (!settings_.otaPending.length() || online()) return;
+    if (millis() < kOtaConfirmMs) return;
+    const String version = settings_.otaPending;
+    settings_.otaPending = "";
+    if (ota::rollBack()) {
+        settings_.otaRolledBack = version;
+        settings_.saveOta();
+        Serial.println("[ota] new image did not come online, rolling back");
+        delay(100);
+        ESP.restart();
+    }
+    // No old image to go back to (ESP8266): keep running, and report "applied" if it gets online later.
+    settings_.otaPending = version;
 }
 
 void Core::readingDone() {
@@ -200,6 +278,17 @@ void Core::onMqttConnected() {
     mqtt.subscribe(topics::cmdWildcard(dev).c_str(), 1);
     mqtt.subscribe(topics::config(dev).c_str(), 1);
     mqtt.publish(willTopic.c_str(), 1, true, "online");
+    if (settings_.otaPending.length() || settings_.otaRolledBack.length()) {
+        JsonDocument outcome;
+        const bool rolledBack = settings_.otaRolledBack.length() > 0;
+        outcome["phase"] = rolledBack ? "rolled_back" : "applied";
+        if (rolledBack) outcome["severity"] = "warn";
+        outcome["version"] = rolledBack ? settings_.otaRolledBack : settings_.otaPending;
+        publishEvent("ota", outcome);
+        settings_.otaPending = "";
+        settings_.otaRolledBack = "";
+        settings_.saveOta();
+    }
     if (sleepy()) {
         platform::WifiHint hint;
         hint.channel = static_cast<uint8_t>(WiFi.channel());

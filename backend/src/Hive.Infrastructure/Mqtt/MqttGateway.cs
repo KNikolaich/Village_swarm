@@ -44,6 +44,10 @@ public sealed class MqttGateway(
 
     public bool IsConnected => _client.IsConnected;
 
+    // True once the subscriptions are in place after a (re)connect. A command whose answer arrives on a subscribed
+    // topic (dynamic security) must not be sent before that, or the answer is lost.
+    private volatile bool _ready;
+
     /// <summary>Raised after every (re)connect, once subscriptions are in place.</summary>
     public event Func<CancellationToken, Task>? Connected;
 
@@ -54,9 +58,9 @@ public sealed class MqttGateway(
     public async Task<bool> WaitConnectedAsync(TimeSpan timeout, CancellationToken ct)
     {
         var deadline = time.GetUtcNow() + timeout;
-        while (!_client.IsConnected && time.GetUtcNow() < deadline)
+        while (!(_client.IsConnected && _ready) && time.GetUtcNow() < deadline)
             await Task.Delay(TimeSpan.FromMilliseconds(100), time, ct);
-        return _client.IsConnected;
+        return _client.IsConnected && _ready;
     }
 
     public Task PublishAsync(string topic, string payload, bool retain, CancellationToken ct) =>
@@ -105,6 +109,7 @@ public sealed class MqttGateway(
         {
             if (!_client.IsConnected)
             {
+                _ready = false;
                 try
                 {
                     var result = await _client.ConnectAsync(clientOptions, stoppingToken);
@@ -126,6 +131,7 @@ public sealed class MqttGateway(
                     // An on-connect step may have just granted our own ACLs (dynsec): subscribe again so it takes effect.
                     if (Connected is not null)
                         await SubscribeAsync(handlerList, stoppingToken);
+                    _ready = true;
                 }
                 catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
                 {

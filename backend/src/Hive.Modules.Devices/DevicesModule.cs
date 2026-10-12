@@ -60,6 +60,7 @@ public static class DevicesModule
         services.AddHostedService<DynamicSecurityBootstrap>();
         services.AddHostedService<CommandTimeoutJob>();
         services.AddScoped<DeviceConfigService>();
+        services.AddScoped<OtaService>();
         services.AddSingleton<SleepingDeviceWatch>();
         services.AddHostedService(sp => sp.GetRequiredService<SleepingDeviceWatch>());
         return services;
@@ -119,6 +120,7 @@ public static class DevicesModule
             .RequireAuthorization(HiveRoles.CanControl);
 
         app.MapProvisioningEndpoints();
+        app.MapOtaEndpoints();
 
         var modes = app.MapGroup("/api/modes").WithTags("modes");
         modes.MapGet("/armed", (ArmService arm, CancellationToken ct) => arm.GetAsync(ct));

@@ -136,6 +136,9 @@ private:
     void serialConsole();
     bool enroll(const String& hiveUrl, const String& code);
     [[noreturn]] void sleepNow();
+    AckResult queueOta(JsonObjectConst payload);
+    void runOta();
+    void checkOtaOutcome();
     void applyWifiPowerSave();
 
     Role& role_;
@@ -151,7 +154,12 @@ private:
     uint32_t sleepS_ = 0;
     unsigned long sleepAtMs_ = 0;
     bool stayAwake_ = false;
-    bool lightSleep_ = false;  // console "awake": no sleep until reboot, to change settings
+    bool lightSleep_ = false;
+    struct PendingOta {
+        bool queued = false;
+        String url, md5, version;
+        uint32_t size = 0;
+    } ota_;  // console "awake": no sleep until reboot, to change settings
     String rxTopic_;
     String rxPayload_;
     String consoleLine_;

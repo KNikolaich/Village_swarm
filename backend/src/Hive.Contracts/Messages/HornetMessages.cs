@@ -107,6 +107,23 @@ public sealed record ConfigAppliedEvent : EventMessage
     public required int Rev { get; init; }
 }
 
+/// <summary>vs/v1/dev/{id}/event/ota</summary>
+public sealed record OtaEvent : EventMessage
+{
+    public required OtaPhase Phase { get; init; }
+    public required string Version { get; init; }
+    public string? Error { get; init; }
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<OtaPhase>))]
+public enum OtaPhase
+{
+    Started,
+    Applied,
+    Failed,
+    [JsonStringEnumMemberName("rolled_back")] RolledBack,
+}
+
 /// <summary>vs/v1/dev/{id}/log</summary>
 public sealed record LogMessage : HornetMessage
 {

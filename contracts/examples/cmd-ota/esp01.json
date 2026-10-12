@@ -1,0 +1,3 @@
+{ "v": 1, "cid": "01J9Z3K7Q8M4N5P6R7S8T9V190", "ts": 1759387200123, "ttl_s": 600,
+  "url": "http://192.168.10.4/api/firmware/meteo-esp01dht/firmware.bin", "md5": "0f343b0931126a20f133d67c2b018a3b",
+  "size": 372752, "version": "0.2.0", "by": "user:kirill" }

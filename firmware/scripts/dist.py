@@ -31,14 +31,18 @@ def copy_images(source, target, env):
             shutil.copy2(os.path.join(build, file), os.path.join(out, file))
     role, _, board = name.partition("-")
     # HORNET_BOARD from the build flags names the board as people know it (esp-01, wemos-d1-mini...).
+    version = "unknown"
     for define in env.get("CPPDEFINES", []):
         if isinstance(define, (list, tuple)) and define[0] == "HORNET_BOARD":
             board = str(define[1]).strip('\\"')
+        if isinstance(define, (list, tuple)) and define[0] == "HORNET_FW_VERSION":
+            version = str(define[1]).strip('\\"')
     with open(os.path.join(out, "build.json"), "w", encoding="utf-8") as f:
         json.dump({
             "env": name,
             "role": role if name != "guard-cam" else "guard-cam",
             "board": board,
+            "version": version,
             "chipFamily": family,
             "parts": [{"file": file, "offset": offset} for file, offset in parts],
         }, f, indent=2)
