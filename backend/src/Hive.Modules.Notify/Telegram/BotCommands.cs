@@ -39,10 +39,29 @@ public sealed class BotCommands(
         public string Actor => $"tg:{Link.Username ?? Link.ChatId.ToString(CultureInfo.InvariantCulture)}";
     }
 
+    /// <summary>The menu buttons (reply keyboard) and the command each one stands for.</summary>
+    public static readonly IReadOnlyDictionary<string, string> MenuCommands = new Dictionary<string, string>
+    {
+        ["📊 Статус"] = "/status",
+        ["📷 Фото"] = "/photo",
+        ["👁 Просмотрено"] = "/viewed",
+        ["🎞 События"] = "/events",
+        ["🌡 Температура"] = "/temp",
+    };
+
+    public static ReplyKeyboardMarkup MenuKeyboard() => new(
+        [
+            [new KeyboardButton("📊 Статус"), new KeyboardButton("🌡 Температура")],
+            [new KeyboardButton("📷 Фото"), new KeyboardButton("🎞 События")],
+            [new KeyboardButton("👁 Просмотрено")],
+        ]) { ResizeKeyboard = true };
+
     public async Task HandleAsync(Update update, CancellationToken ct)
     {
-        if (update.Message is { Text: { } text } message && text.StartsWith('/'))
-            await OnCommandAsync(message, text, ct);
+        if (update.Message is { Text: { } text } message && MenuCommands.TryGetValue(text, out var menuCommand))
+            await OnCommandAsync(message, menuCommand, ct);
+        else if (update.Message is { Text: { } plain } message2 && plain.StartsWith('/'))
+            await OnCommandAsync(message2, plain, ct);
         else if (update.CallbackQuery is { } callback)
             await OnCallbackAsync(callback, ct);
     }
@@ -73,7 +92,7 @@ public sealed class BotCommands(
         switch (command)
         {
             case "/start" or "/help":
-                await ReplyAsync(chat, Help, ct);
+                await ReplyAsync(chat, Help, ct, MenuKeyboard());
                 break;
             case "/status":
                 await ReplyAsync(chat, await StatusAsync(ct), ct);
@@ -89,9 +108,12 @@ public sealed class BotCommands(
                 await ReplyAsync(chat, await DevicesAsync(ct), ct);
                 break;
             case "/viewed" when Require(caller):
-                // The same action as "Отметить все просмотренными" on the events page (optional device id).
-                var marked = await events.AcknowledgeManyAsync(new AckAllRequest(args.FirstOrDefault()), caller.Actor, ct);
-                await ReplyAsync(chat, marked > 0 ? $"👁 Отмечено просмотренными: {marked}" : "Непросмотренных событий нет", ct);
+                if (args.Length == 0 && await UnseenDevicesAsync(ct) is { Count: > 1 } unseen)
+                    await ReplyAsync(chat, "👁 Какие события отметить просмотренными?", ct, new InlineKeyboardMarkup(
+                        unseen.Select(u => new[] { InlineKeyboardButton.WithCallbackData($"{u.Name} ({u.Count})", $"viewed:{u.DeviceId}") })
+                            .Append([InlineKeyboardButton.WithCallbackData("Все шершни", "viewed:all")])));
+                else
+                    await MarkViewedAsync(caller, chat, args.FirstOrDefault(), ct);
                 break;
             case "/viewed":
                 await ReplyAsync(chat, "⛔ Недостаточно прав: у вас роль только для просмотра.", ct);
@@ -111,7 +133,13 @@ public sealed class BotCommands(
                 [[InlineKeyboardButton.WithCallbackData("Да, снять", "disarm:yes"), InlineKeyboardButton.WithCallbackData("Отмена", "disarm:no")]]));
                 break;
             case "/photo" when Require(caller):
-                await SnapshotAsync(caller, chat, args.FirstOrDefault(), message.MessageId, ct);
+                if (args.Length == 0 && await OnlineCamerasAsync(ct) is { Count: > 1 } cams)
+                    // Several cameras: ask which one instead of guessing (the menu button leads here too).
+                    await ReplyAsync(chat, "📷 Какую камеру снять?", ct, new InlineKeyboardMarkup(
+                        cams.Select(c => new[] { InlineKeyboardButton.WithCallbackData(c.Name, $"photo:{c.DeviceId}") })
+                            .Append([InlineKeyboardButton.WithCallbackData("Все камеры", "photo:all")])));
+                else
+                    await SnapshotAsync(caller, chat, args.FirstOrDefault(), message.MessageId, ct);
                 break;
             case "/arm" or "/disarm" or "/photo":
                 await ReplyAsync(chat, "⛔ Недостаточно прав: у вас роль только для просмотра.", ct);
@@ -141,8 +169,12 @@ public sealed class BotCommands(
                         : "Событие не найдено";
                     break;
                 case "photo" when Require(caller):
-                    await SnapshotAsync(caller, chat, arg, callback.Message?.MessageId, ct);
+                    await SnapshotAsync(caller, chat, arg == "all" ? null : arg, callback.Message?.MessageId, ct);
                     answer = "Снимаю…";
+                    break;
+                case "viewed" when Require(caller):
+                    var viewed = await events.AcknowledgeManyAsync(new AckAllRequest(arg == "all" ? null : arg), caller.Actor, ct);
+                    answer = viewed > 0 ? $"Отмечено: {viewed}" : "Непросмотренных нет";
                     break;
                 case "mute":
                     await MuteAsync(caller, double.TryParse(arg, CultureInfo.InvariantCulture, out var h) ? h : 1, ct);
@@ -242,6 +274,35 @@ public sealed class BotCommands(
         return sb.ToString().TrimEnd();
     }
 
+    private async Task<List<CameraChoice>?> OnlineCamerasAsync(CancellationToken ct) =>
+        await db.Devices.AsNoTracking()
+            .Where(d => d.TypeCode == "guard-cam" && d.Status == DeviceStatus.Online)
+            .OrderBy(d => d.Name)
+            .Select(d => new CameraChoice(d.DeviceId, d.Name))
+            .ToListAsync(ct);
+
+    private sealed record CameraChoice(string DeviceId, string Name);
+
+    private sealed record UnseenChoice(string DeviceId, string Name, int Count);
+
+    /// <summary>Devices with events nobody has viewed yet, for the "which ones" question.</summary>
+    private async Task<List<UnseenChoice>> UnseenDevicesAsync(CancellationToken ct)
+    {
+        var rows = await db.Events.AsNoTracking()
+            .Where(e => e.AcknowledgedAt == null && e.Severity >= EventSeverity.Alarm)
+            .GroupBy(e => e.DeviceId)
+            .Select(g => new { DeviceId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+        var names = await db.Devices.AsNoTracking().ToDictionaryAsync(d => d.DeviceId, d => d.Name, ct);
+        return rows.Select(r => new UnseenChoice(r.DeviceId, names.GetValueOrDefault(r.DeviceId, r.DeviceId), r.Count)).ToList();
+    }
+
+    private async Task MarkViewedAsync(Caller caller, long chat, string? device, CancellationToken ct)
+    {
+        var marked = await events.AcknowledgeManyAsync(new AckAllRequest(device), caller.Actor, ct);
+        await ReplyAsync(chat, marked > 0 ? $"👁 Отмечено просмотренными: {marked}" : "Непросмотренных событий нет", ct);
+    }
+
     private async Task SnapshotAsync(Caller caller, long chat, string? target, int? replyTo, CancellationToken ct)
     {
         var cameras = await db.Devices.AsNoTracking()
@@ -299,7 +360,7 @@ public sealed class BotCommands(
 
     private static bool Require(Caller caller) => caller.CanControl;
 
-    private Task<Message> ReplyAsync(long chat, string text, CancellationToken ct, InlineKeyboardMarkup? markup = null, int? replyTo = null) =>
+    private Task<Message> ReplyAsync(long chat, string text, CancellationToken ct, ReplyMarkup? markup = null, int? replyTo = null) =>
         telegram.CallAsync(bot => bot.SendMessage(chat, text, ParseMode.Html, replyMarkup: markup,
             replyParameters: replyTo is { } r ? new ReplyParameters { MessageId = r, AllowSendingWithoutReply = true } : null,
             cancellationToken: ct), ct);

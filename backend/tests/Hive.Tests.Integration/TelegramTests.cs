@@ -160,6 +160,28 @@ public sealed class TelegramTests(HiveFixture hive) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Photo_with_several_cameras_asks_which_one_and_the_menu_button_works()
+    {
+        const long chat = 900_070;
+        await LinkAsync(chat);
+        var (_, _, _) = await CameraAsync("guard-tg5");
+        var (_, _, _) = await CameraAsync("guard-tg6");
+        await hive.WaitForAsync(db => db.Devices.CountAsync(d => d.TypeCode == "guard-cam" && d.DeviceId.StartsWith("guard-tg") && d.Status == DeviceStatus.Online).ContinueWith(t => t.Result >= 2), "two cameras online");
+
+        // The menu button "📷 Фото" is the same as /photo: with two cameras the bot asks, it does not guess.
+        Tg.UserSays(chat, "📷 Фото");
+        var question = await Tg.WaitForAsync(s => s.ChatId == chat && s.Text == "📷 Какую камеру снять?", "which camera");
+        var buttons = JsonDocument.Parse(question.Buttons!).RootElement.GetProperty("inline_keyboard").EnumerateArray()
+            .SelectMany(row => row.EnumerateArray().Select(b => b.GetProperty("callback_data").GetString()))
+            .ToList();
+        Assert.Contains("photo:guard-tg5", buttons);
+        Assert.Contains("photo:all", buttons);
+
+        Tg.UserPresses(chat, question.MessageId, "photo:guard-tg5");
+        await Tg.WaitForAsync(s => s.Method == "answercallbackquery" && s.Text == "Снимаю…", "snapshot asked");
+    }
+
+    [Fact]
     public async Task Viewer_cannot_arm_from_telegram()
     {
         await hive.CreateUserAsync("tg-viewer", "tg-viewer-password", Hive.Infrastructure.Identity.HiveRoles.Viewer);
