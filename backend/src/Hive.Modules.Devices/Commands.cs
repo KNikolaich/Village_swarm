@@ -83,6 +83,11 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TimeProvi
         return (SendStatus.Sent, command);
     }
 
+    /// <summary>Newest commands of one device first (the history on the device page).</summary>
+    public async Task<IReadOnlyList<DeviceCommand>> ListAsync(string deviceId, int? limit, CancellationToken ct) =>
+        await db.Commands.AsNoTracking().Where(c => c.DeviceId == deviceId)
+            .OrderByDescending(c => c.IssuedAt).Take(Math.Clamp(limit ?? 20, 1, 100)).ToListAsync(ct);
+
     public async Task<DeviceCommand?> GetAsync(string deviceId, string cid, CancellationToken ct) =>
         await db.Commands.AsNoTracking().FirstOrDefaultAsync(c => c.Cid == cid && c.DeviceId == deviceId, ct);
 }

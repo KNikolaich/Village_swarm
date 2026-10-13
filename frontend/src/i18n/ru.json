@@ -167,7 +167,29 @@
     "relayOff": "Выключить",
     "reboot": "Перезагрузить",
     "commandSent": "Команда отправлена",
-    "commandRefused": "Команда не принята"
+    "commandRefused": "Команда не принята",
+    "history": "История",
+    "range": "Период",
+    "rangeHours": "{n} ч",
+    "rangeDays": "{n} дн",
+    "noData": "За этот период данных нет",
+    "memory": "Свободная память",
+    "battery": "Батарея",
+    "commandHistory": "Недавние команды",
+    "noCommands": "Команд ещё не было",
+    "commandStatus": {
+      "sent": "отправлена",
+      "ok": "выполнена",
+      "rejected": "отклонена",
+      "expired": "просрочена",
+      "error": "ошибка",
+      "unsupported": "не поддерживается",
+      "timeout": "нет ответа"
+    },
+    "logs": "Журнал шершня",
+    "logLevel": "Уровень",
+    "logAll": "все",
+    "noLogs": "Записей нет"
   },
   "swarm": {
     "title": "Рой",

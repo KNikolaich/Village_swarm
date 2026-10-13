@@ -87,6 +87,9 @@ public static class DevicesModule
                 };
             })
             .RequireAuthorization(HiveRoles.CanControl);
+        devices.MapGet("/{deviceId}/commands", async (string deviceId, int? limit, CommandService commands, CancellationToken ct) =>
+            (await commands.ListAsync(deviceId, limit, ct)).Select(CommandDto.From).ToList())
+            .RequireAuthorization(HiveRoles.CanControl);
         devices.MapGet("/{deviceId}/commands/{cid}", async Task<Results<Ok<CommandDto>, NotFound>> (string deviceId, string cid, CommandService commands, CancellationToken ct) =>
             await commands.GetAsync(deviceId, cid, ct) is { } c ? TypedResults.Ok(CommandDto.From(c)) : TypedResults.NotFound());
 

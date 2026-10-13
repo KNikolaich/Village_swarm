@@ -534,6 +534,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/telemetry/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    device: string;
+                    metric: string;
+                    from?: string;
+                    to?: string;
+                    points?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SeriesPointDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    device: string;
+                    from?: string;
+                    to?: string;
+                    points?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HealthPointDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    device: string;
+                    level?: string;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceLogDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/devices": {
         parameters: {
             query?: never;
@@ -650,7 +770,30 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CommandDto"][];
+                    };
+                };
+            };
+        };
         put?: never;
         post: {
             parameters: {
@@ -1986,6 +2129,15 @@ export interface components {
             sleepS: null | number;
             sleepMode: string;
         };
+        DeviceLogDto: {
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            ts: string;
+            level: string;
+            msg: string;
+            ctx: null | components["schemas"]["JsonElement"];
+        };
         EnrollmentCodeDto: {
             code: string;
             deviceId: string;
@@ -2046,6 +2198,16 @@ export interface components {
             /** Format: date-time */
             built: string;
             version: null | string;
+        };
+        HealthPointDto: {
+            /** Format: date-time */
+            ts: string;
+            /** Format: double */
+            rssi: number;
+            /** Format: double */
+            heapFree: number;
+            /** Format: double */
+            vbat: null | number;
         };
         HttpValidationProblemDetails: {
             type?: null | string;
@@ -2176,6 +2338,16 @@ export interface components {
             payload?: null | components["schemas"]["JsonObject"];
             /** Format: int32 */
             ttlS?: null | number;
+        };
+        SeriesPointDto: {
+            /** Format: date-time */
+            ts: string;
+            /** Format: double */
+            avg: number;
+            /** Format: double */
+            min: number;
+            /** Format: double */
+            max: number;
         };
         SetArmedRequest: {
             armed: boolean;

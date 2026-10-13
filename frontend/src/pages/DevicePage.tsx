@@ -1,13 +1,123 @@
 import { ArrowLeft, Camera, Power, PowerOff, RotateCw, Wifi, WifiOff } from 'lucide-react'
+import { useState } from 'react'
 import { Link, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto } from '@/api/client'
-import { useDevices, useLatestTelemetry, useMe } from '@/api/queries'
+import { historyWindow, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useSeries } from '@/api/queries'
+import { Chart, type ChartPoint } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Skeleton } from '@/components/ui/primitives'
+import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
-import { formatAgo, formatValue } from '@/lib/format'
+import { formatAgo, formatValue, formatWhen } from '@/lib/format'
 import { PinsPanel } from '@/pages/SwarmPage'
+
+/** Chart windows offered on the page, in hours. */
+const ranges = [6, 24, 168, 720]
+
+function rangeLabel(hours: number): string {
+  return hours < 24 ? t('device.rangeHours').replace('{n}', String(hours)) : t('device.rangeDays').replace('{n}', String(hours / 24))
+}
+
+function MetricChart({ device, metric, hours }: { device: string; metric: string; hours: number }) {
+  const series = useSeries(device, metric, hours)
+  const { from, to } = historyWindow(hours)
+  return (
+    <div className="space-y-1">
+      <p className="text-sm font-medium">{metricLabel(metric)}</p>
+      {series.isLoading ? <Skeleton className="h-36" /> : (
+        <Chart points={series.data ?? []} from={from} to={to} format={(v) => formatValue(metric, v)} />
+      )}
+    </div>
+  )
+}
+
+/** Signal, free memory and battery from the hornet's own health reports (a battery line only when it reports one). */
+function HealthCharts({ device, hours }: { device: string; hours: number }) {
+  const health = useHealthHistory(device, hours)
+  const { from, to } = historyWindow(hours)
+  if (health.isLoading) return <Skeleton className="h-36" />
+  const rows = health.data ?? []
+  const line = (pick: (r: (typeof rows)[number]) => number | null | undefined): ChartPoint[] =>
+    rows.flatMap((r) => {
+      const v = pick(r)
+      return v == null ? [] : [{ ts: r.ts, avg: v, min: v, max: v }]
+    })
+  const battery = line((r) => r.vbat)
+  return (
+    <>
+      <div className="space-y-1">
+        <p className="text-sm font-medium">{t('device.signal')}</p>
+        <Chart points={line((r) => r.rssi)} from={from} to={to} format={(v) => `${Math.round(v)} dBm`} />
+      </div>
+      <div className="space-y-1">
+        <p className="text-sm font-medium">{t('device.memory')}</p>
+        <Chart points={line((r) => r.heapFree)} from={from} to={to} format={(v) => `${Math.round(v / 1024)} KB`} />
+      </div>
+      {battery.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-sm font-medium">{t('device.battery')}</p>
+          <Chart points={battery} from={from} to={to} format={(v) => `${v.toFixed(2)} V`} />
+        </div>
+      )}
+    </>
+  )
+}
+
+function CommandHistory({ device }: { device: string }) {
+  const history = useCommandHistory(device, true)
+  const rows = history.data ?? []
+  return (
+    <Card>
+      <CardHeader><CardTitle>{t('device.commandHistory')}</CardTitle></CardHeader>
+      <CardContent>
+        {history.isLoading && <Skeleton className="h-16" />}
+        {!history.isLoading && rows.length === 0 && <p className="text-sm text-neutral-500">{t('device.noCommands')}</p>}
+        <ul className="divide-y divide-neutral-800">
+          {rows.map((c) => (
+            <li key={c.cid} className="flex items-center justify-between gap-3 py-2 text-sm">
+              <div className="min-w-0">
+                <p className="truncate font-medium">{c.name}</p>
+                <p className="truncate text-xs text-neutral-500">{c.issuedBy} · {formatWhen(c.issuedAt)}</p>
+              </div>
+              <Badge tone={c.status === 'ok' ? 'ok' : c.status === 'sent' ? 'neutral' : 'alarm'}>{t(`device.commandStatus.${c.status}`, c.status)}</Badge>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
+const logLevels = ['', 'error', 'warn', 'info', 'debug']
+
+function Logs({ device }: { device: string }) {
+  const [level, setLevel] = useState('')
+  const logs = useDeviceLogs(device, level)
+  const rows = logs.data ?? []
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('device.logs')}</CardTitle>
+        <Select value={level} onChange={(e) => setLevel(e.target.value)} className="h-8 w-auto text-xs" aria-label={t('device.logLevel')}>
+          {logLevels.map((l) => <option key={l} value={l}>{l === '' ? t('device.logAll') : l}</option>)}
+        </Select>
+      </CardHeader>
+      <CardContent>
+        {logs.isLoading && <Skeleton className="h-16" />}
+        {!logs.isLoading && rows.length === 0 && <p className="text-sm text-neutral-500">{t('device.noLogs')}</p>}
+        <ul className="space-y-1 font-mono text-xs">
+          {rows.map((l) => (
+            <li key={l.id} className="flex gap-2">
+              <span className="shrink-0 text-neutral-500">{formatWhen(l.ts)}</span>
+              <span className={l.level === 'error' ? 'shrink-0 text-red-400' : l.level === 'warn' ? 'shrink-0 text-amber-400' : 'shrink-0 text-neutral-400'}>{l.level}</span>
+              <span className="min-w-0 break-words">{l.msg}</span>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )
+}
 
 /** Command names the hornet announced in its info message (contracts/schemas/info.schema.json "commands"). */
 function announcedCommands(d: DeviceDto): string[] {
@@ -33,6 +143,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /** Screen 4 (spec 8.2): one hornet's status, readings, commands and pins. Charts and logs need history endpoints. */
 export function DevicePage() {
   const { deviceId = '' } = useParams()
+  const [hours, setHours] = useState(24)
   const devices = useDevices()
   const latest = useLatestTelemetry()
   const me = useMe()
@@ -113,6 +224,19 @@ export function DevicePage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('device.history')}</CardTitle>
+          <Select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-8 w-auto text-xs" aria-label={t('device.range')}>
+            {ranges.map((h) => <option key={h} value={h}>{rangeLabel(h)}</option>)}
+          </Select>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {readings.map((v) => <MetricChart key={v.metric} device={deviceId} metric={v.metric} hours={hours} />)}
+          <HealthCharts device={deviceId} hours={hours} />
+        </CardContent>
+      </Card>
+
       {canControl && online && (commands.includes('snapshot') || commands.includes('relay') || commands.includes('reboot')) && (
         <Card>
           <CardHeader><CardTitle>{t('device.commands')}</CardTitle></CardHeader>
@@ -133,6 +257,9 @@ export function DevicePage() {
           </CardContent>
         </Card>
       )}
+
+      {canControl && <CommandHistory device={deviceId} />}
+      <Logs device={deviceId} />
 
       {device.status !== 'disabled' && (
         <Card>

@@ -29,6 +29,12 @@ public static class TelemetryModule
     {
         var telemetry = app.MapGroup("/api/telemetry").WithTags("telemetry");
         telemetry.MapGet("/latest", (string? device, TelemetryQueries q, CancellationToken ct) => q.LatestAsync(device, ct));
+        telemetry.MapGet("/series", (string device, string metric, DateTimeOffset? from, DateTimeOffset? to, int? points, TelemetryQueries q, CancellationToken ct) =>
+            q.SeriesAsync(device, metric, from, to, points, ct));
+        telemetry.MapGet("/health", (string device, DateTimeOffset? from, DateTimeOffset? to, int? points, TelemetryQueries q, CancellationToken ct) =>
+            q.HealthAsync(device, from, to, points, ct));
+        telemetry.MapGet("/logs", (string device, string? level, int? limit, TelemetryQueries q, CancellationToken ct) =>
+            q.LogsAsync(device, level, limit, ct));
         return app;
     }
 }

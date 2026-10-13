@@ -167,7 +167,29 @@
     "relayOff": "Turn off",
     "reboot": "Reboot",
     "commandSent": "Command sent",
-    "commandRefused": "Command refused"
+    "commandRefused": "Command refused",
+    "history": "History",
+    "range": "Range",
+    "rangeHours": "{n} h",
+    "rangeDays": "{n} d",
+    "noData": "No data for this period",
+    "memory": "Free memory",
+    "battery": "Battery",
+    "commandHistory": "Recent commands",
+    "noCommands": "No commands yet",
+    "commandStatus": {
+      "sent": "sent",
+      "ok": "done",
+      "rejected": "rejected",
+      "expired": "expired",
+      "error": "error",
+      "unsupported": "not supported",
+      "timeout": "no answer"
+    },
+    "logs": "Hornet log",
+    "logLevel": "Level",
+    "logAll": "all",
+    "noLogs": "No entries"
   },
   "swarm": {
     "title": "Swarm",

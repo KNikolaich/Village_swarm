@@ -101,3 +101,44 @@ export function useSetArmed() {
 
 export const useTelegram = () =>
   useQuery({ queryKey: ['telegram'], queryFn: () => call(api.GET('/api/me/telegram')) })
+
+/** A window of `hours` ending now, rounded to the minute so the query key stays stable between refreshes. */
+export function historyWindow(hours: number) {
+  const to = new Date(Math.floor(Date.now() / 60_000) * 60_000)
+  return { from: new Date(to.getTime() - hours * 3_600_000), to }
+}
+
+export const useSeries = (device: string, metric: string, hours: number) =>
+  useQuery({
+    queryKey: ['telemetry', 'series', device, metric, hours],
+    queryFn: () => {
+      const { from, to } = historyWindow(hours)
+      return call(api.GET('/api/telemetry/series', { params: { query: { device, metric, from: from.toISOString(), to: to.toISOString() } } }))
+    },
+    refetchInterval: 5 * 60_000,
+  })
+
+export const useHealthHistory = (device: string, hours: number) =>
+  useQuery({
+    queryKey: ['telemetry', 'health', device, hours],
+    queryFn: () => {
+      const { from, to } = historyWindow(hours)
+      return call(api.GET('/api/telemetry/health', { params: { query: { device, from: from.toISOString(), to: to.toISOString() } } }))
+    },
+    refetchInterval: 5 * 60_000,
+  })
+
+export const useDeviceLogs = (device: string, level: string) =>
+  useQuery({
+    queryKey: ['telemetry', 'logs', device, level],
+    queryFn: () => call(api.GET('/api/telemetry/logs', { params: { query: { device, level: level || undefined, limit: 30 } } })),
+    refetchInterval: 30_000,
+  })
+
+export const useCommandHistory = (device: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['devices', device, 'commands'],
+    queryFn: () => call(api.GET('/api/devices/{deviceId}/commands', { params: { path: { deviceId: device }, query: { limit: 10 } } })),
+    enabled,
+    refetchInterval: 30_000,
+  })
