@@ -33,6 +33,8 @@
     "swarm": "Swarm",
     "online": "online",
     "climate": "Temperature",
+    "hive": "Hive",
+    "hiveNone": "The hive has not reported readings yet",
     "noClimate": "No recent readings",
     "latestEvents": "Latest events",
     "allEvents": "All events",
@@ -97,7 +99,9 @@
   },
   "metrics": {
     "temperature": "Temperature",
-    "humidity": "Humidity"
+    "humidity": "Humidity",
+    "cpu_temperature": "CPU",
+    "disk_used_pct": "Disk used"
   },
   "settings": {
     "title": "Settings",

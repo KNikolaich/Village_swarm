@@ -48,6 +48,6 @@ export function parseIsoDate(s: string): Date {
 }
 
 export function formatValue(metric: string, value: number): string {
-  const unit = metric === 'temperature' ? '°' : metric === 'humidity' ? '%' : ''
+  const unit = metric === 'temperature' || metric === 'cpu_temperature' ? '°' : metric === 'humidity' || metric === 'disk_used_pct' ? '%' : ''
   return `${value.toLocaleString(locale(), { maximumFractionDigits: 1 })}${unit}`
 }

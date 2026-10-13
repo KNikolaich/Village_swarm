@@ -47,6 +47,7 @@ export function OverviewPage() {
       </div>
 
       <Climate latest={latest.data ?? []} devices={list} loading={latest.isLoading} />
+      <HiveState device={list.find((d) => d.type === 'hive')} latest={latest.data ?? []} loading={latest.isLoading} />
 
       <Card>
         <CardHeader>
@@ -107,6 +108,33 @@ function Climate({ latest, devices, loading }: { latest: LatestValueDto[]; devic
               </div>
             )
           })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** The hive's own readings (CPU temperature, disk use), reported by the hive as device hive-<node>. */
+function HiveState({ device, latest, loading }: { device?: DeviceDto; latest: LatestValueDto[]; loading: boolean }) {
+  if (!device) return null
+  const own = latest.filter((v) => v.deviceId === device.deviceId && (v.metric === 'cpu_temperature' || v.metric === 'disk_used_pct'))
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t('overview.hive')}</CardTitle>
+        <Badge tone={device.status === 'online' ? 'ok' : 'alarm'}>{statusLabel(device.status)}</Badge>
+      </CardHeader>
+      <CardContent>
+        {loading && <Skeleton className="h-16" />}
+        {!loading && own.length === 0 && <p className="text-sm text-neutral-500">{t('overview.hiveNone')}</p>}
+        <div className="grid grid-cols-2 gap-3">
+          {own.map((v) => (
+            <div key={v.metric} className="rounded-lg bg-neutral-800/50 p-3">
+              <p className="truncate text-xs text-neutral-400">{metricLabel(v.metric)}</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums">{formatValue(v.metric, v.value)}</p>
+              <p className="text-xs text-neutral-500">{formatAgo(v.ts)}</p>
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>

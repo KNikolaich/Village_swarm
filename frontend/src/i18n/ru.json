@@ -33,6 +33,8 @@
     "swarm": "Рой",
     "online": "на связи",
     "climate": "Температура",
+    "hive": "Улей",
+    "hiveNone": "Улей пока не сообщил показания",
     "noClimate": "Нет свежих показаний",
     "latestEvents": "Последние события",
     "allEvents": "Все события",
@@ -97,7 +99,9 @@
   },
   "metrics": {
     "temperature": "Температура",
-    "humidity": "Влажность"
+    "humidity": "Влажность",
+    "cpu_temperature": "Процессор",
+    "disk_used_pct": "Диск занят"
   },
   "settings": {
     "title": "Настройки",
