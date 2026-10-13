@@ -29,7 +29,7 @@ function asleep(d: DeviceDto): boolean {
 }
 
 /** Pins of one hornet: what each function uses (board default or set by hand), conflicts shown, and editing. */
-function PinsPanel({ deviceId, editable }: { deviceId: string; editable: boolean }) {
+export function PinsPanel({ deviceId, editable }: { deviceId: string; editable: boolean }) {
   const qc = useQueryClient()
   const pins = useQuery({ queryKey: ['devices', deviceId, 'pins'], queryFn: () => call(api.GET('/api/devices/{deviceId}/pins', { params: { path: { deviceId } } })) })
   const [draft, setDraft] = useState<Record<string, string>>({})
@@ -173,7 +173,7 @@ ${t('swarm.updateRisk')}` : text)) return
           <Card key={d.deviceId} className={d.status === 'disabled' ? 'opacity-50' : undefined}>
             <CardContent className="flex items-center justify-between gap-3 py-3">
               <div className="min-w-0">
-                <p className="truncate font-medium">{d.name}</p>
+                <Link to={`/swarm/${encodeURIComponent(d.deviceId)}`} className="block truncate font-medium hover:text-amber-400">{d.name}</Link>
                 <p className="truncate text-xs text-neutral-500">
                   {d.deviceId} · {d.type} · {d.fw ?? '—'} · {formatAgo(d.lastSeenAt)}
                 </p>

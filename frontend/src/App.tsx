@@ -7,6 +7,7 @@ import { ApiError, UNAUTHORIZED_EVENT } from '@/api/client'
 import { keys, useMe } from '@/api/queries'
 import { AppShell } from '@/components/AppShell'
 import { useLive } from '@/lib/live'
+import { DevicePage } from '@/pages/DevicePage'
 import { EventsPage } from '@/pages/EventsPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { OverviewPage } from '@/pages/OverviewPage'
@@ -32,6 +33,7 @@ const router = createBrowserRouter([
       { path: 'photos/:date', element: <PhotosPage /> },
       { path: 'swarm', element: <SwarmPage /> },
       { path: 'swarm/add', element: <AddHornetPage /> },
+      { path: 'swarm/:deviceId', element: <DevicePage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'monitor', element: <MonitorPage /> },
       { path: '*', element: <Navigate to="/" replace /> },

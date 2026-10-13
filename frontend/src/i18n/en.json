@@ -147,6 +147,28 @@
     "network": "Could not reach the hive",
     "forbidden": "Not allowed"
   },
+  "device": {
+    "back": "Back to swarm",
+    "notFound": "No such hornet",
+    "about": "About",
+    "zone": "Zone",
+    "board": "Board",
+    "firmware": "Firmware",
+    "signal": "Signal",
+    "lastSeen": "Last seen",
+    "boots": "Boots",
+    "config": "Settings",
+    "configApplied": "applied",
+    "configPending": "waiting to apply",
+    "readings": "Readings",
+    "commands": "Commands",
+    "snapshot": "Snapshot",
+    "relayOn": "Turn on",
+    "relayOff": "Turn off",
+    "reboot": "Reboot",
+    "commandSent": "Command sent",
+    "commandRefused": "Command refused"
+  },
   "swarm": {
     "title": "Swarm",
     "add": "Add a hornet",

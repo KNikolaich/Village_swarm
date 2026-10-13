@@ -147,6 +147,28 @@
     "network": "Не удалось связаться с Ульем",
     "forbidden": "Недостаточно прав"
   },
+  "device": {
+    "back": "К рою",
+    "notFound": "Такого шершня нет",
+    "about": "О шершне",
+    "zone": "Зона",
+    "board": "Плата",
+    "firmware": "Прошивка",
+    "signal": "Сигнал",
+    "lastSeen": "Был на связи",
+    "boots": "Запусков",
+    "config": "Настройки",
+    "configApplied": "применены",
+    "configPending": "ждут применения",
+    "readings": "Показания",
+    "commands": "Команды",
+    "snapshot": "Снимок",
+    "relayOn": "Включить",
+    "relayOff": "Выключить",
+    "reboot": "Перезагрузить",
+    "commandSent": "Команда отправлена",
+    "commandRefused": "Команда не принята"
+  },
   "swarm": {
     "title": "Рой",
     "add": "Добавить шершня",
