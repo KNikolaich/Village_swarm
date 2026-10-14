@@ -1,11 +1,11 @@
-import { ChevronLeft, ChevronRight, Pin } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pin, Play } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router'
 import type { MediaDto } from '@/api/client'
 import { useDevices, useMediaDay, useMediaDays } from '@/api/queries'
 import { Lightbox } from '@/components/Lightbox'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, Empty, Skeleton } from '@/components/ui/primitives'
+import { Card, CardContent, Empty, Select, Skeleton } from '@/components/ui/primitives'
 import { t } from '@/i18n'
 import { formatDayMonth, formatMonthYear, formatTime, isoDate, parseIsoDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -21,27 +21,43 @@ export function PhotosPage() {
     const d = parseIsoDate(selected)
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
+  const [device, setDevice] = useState('')
+  const [pinnedOnly, setPinnedOnly] = useState(false)
+  const devices = useDevices()
+  // Only hornets that can have photos are offered: those with a camera role.
+  const cameras = (devices.data ?? []).filter((d) => d.type === 'guard-cam')
 
   return (
     <div className="space-y-4 md:grid md:grid-cols-[20rem_1fr] md:gap-4 md:space-y-0">
       <div className="space-y-2">
         <h1 className="text-lg font-semibold">{t('photos.title')}</h1>
-        <Calendar month={month} onMonth={setMonth} selected={selected} onSelect={(d) => navigate(`/photos/${d}`)} />
+        {cameras.length > 1 && (
+          <Select value={device} onChange={(e) => setDevice(e.target.value)} aria-label={t('photos.device')}>
+            <option value="">{t('photos.allDevices')}</option>
+            {cameras.map((c) => <option key={c.deviceId} value={c.deviceId}>{c.name}</option>)}
+          </Select>
+        )}
+        <label className="flex items-center gap-2 text-sm text-neutral-300">
+          <input type="checkbox" checked={pinnedOnly} onChange={(e) => setPinnedOnly(e.target.checked)} className="size-4 accent-amber-400" />
+          {t('photos.pinnedOnly')}
+        </label>
+        <Calendar month={month} onMonth={setMonth} selected={selected} device={device || undefined} onSelect={(d) => navigate(`/photos/${d}`)} />
       </div>
-      <Day date={selected} />
+      <Day date={selected} device={device || undefined} pinnedOnly={pinnedOnly} />
     </div>
   )
 }
 
-function Calendar({ month, onMonth, selected, onSelect }: {
+function Calendar({ month, onMonth, selected, device, onSelect }: {
   month: Date
   onMonth: (d: Date) => void
   selected: string
+  device?: string
   onSelect: (iso: string) => void
 }) {
   const first = month
   const last = new Date(month.getFullYear(), month.getMonth() + 1, 0)
-  const days = useMediaDays(isoDate(first), isoDate(last))
+  const days = useMediaDays(isoDate(first), isoDate(last), device)
   const counts = new Map((days.data ?? []).map((d) => [d.date, d.count]))
   const today = isoDate(new Date())
   const lead = (first.getDay() + 6) % 7 // Monday first
@@ -82,11 +98,12 @@ function Calendar({ month, onMonth, selected, onSelect }: {
   )
 }
 
-function Day({ date }: { date: string }) {
-  const media = useMediaDay(date)
+function Day({ date, device, pinnedOnly }: { date: string; device?: string; pinnedOnly: boolean }) {
+  const media = useMediaDay(date, device)
   const devices = useDevices()
-  const [open, setOpen] = useState<number | null>(null)
-  const items = useMemo(() => media.data ?? [], [media.data])
+  // The viewer opens on a list of photos and may start playing it as a timelapse.
+  const [open, setOpen] = useState<{ photos: MediaDto[]; index: number; play: boolean } | null>(null)
+  const items = useMemo(() => (media.data ?? []).filter((m) => !pinnedOnly || m.pinned), [media.data, pinnedOnly])
 
   const groups = useMemo(() => {
     const byDevice = new Map<string, MediaDto[]>()
@@ -97,6 +114,7 @@ function Day({ date }: { date: string }) {
   // Viewer pages through the whole day in the same order as the grid.
   const ordered = groups.flatMap(([, list]) => list)
   const name = (id: string) => devices.data?.find((d) => d.deviceId === id)?.name ?? id
+  const byTime = (list: MediaDto[]) => [...list].sort((a, b) => a.ts.localeCompare(b.ts))
 
   return (
     <div className="space-y-4">
@@ -108,13 +126,20 @@ function Day({ date }: { date: string }) {
       {!media.isLoading && items.length === 0 && <Empty>{t('photos.noPhotos')}</Empty>}
       {groups.map(([deviceId, list]) => (
         <section key={deviceId} className="space-y-2">
-          <h3 className="text-sm text-neutral-400">{name(deviceId)}</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm text-neutral-400">{name(deviceId)}</h3>
+            {list.length > 1 && (
+              <Button variant="ghost" size="sm" onClick={() => setOpen({ photos: byTime(list), index: 0, play: true })}>
+                <Play />{t('photos.timelapse')}
+              </Button>
+            )}
+          </div>
           <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5">
             {list.map((m) => (
               <button
                 key={m.id}
                 type="button"
-                onClick={() => setOpen(ordered.indexOf(m))}
+                onClick={() => setOpen({ photos: ordered, index: ordered.indexOf(m), play: false })}
                 className="group relative aspect-[4/3] overflow-hidden rounded-lg bg-neutral-900"
               >
                 <img src={m.thumbUrl} alt="" loading="lazy" className="size-full object-cover transition group-hover:opacity-80" />
@@ -127,9 +152,10 @@ function Day({ date }: { date: string }) {
       ))}
       {open !== null && (
         <Lightbox
-          photos={ordered.map((m) => ({ ...m, caption: `${name(m.deviceId)} · ${formatTime(m.ts)}` }))}
-          index={open}
-          onIndex={setOpen}
+          photos={open.photos.map((m) => ({ ...m, caption: `${name(m.deviceId)} · ${formatTime(m.ts)}` }))}
+          index={open.index}
+          autoplay={open.play}
+          onIndex={(index) => setOpen({ ...open, index })}
           onClose={() => setOpen(null)}
         />
       )}

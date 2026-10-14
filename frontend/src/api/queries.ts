@@ -7,8 +7,8 @@ export const keys = {
   latest: ['telemetry', 'latest'] as const,
   events: (filters: EventFilters) => ['events', filters] as const,
   eventsAll: ['events'] as const,
-  mediaDay: (date: string) => ['media', 'day', date] as const,
-  mediaDays: (from: string, to: string) => ['media', 'days', from, to] as const,
+  mediaDay: (date: string, device?: string) => ['media', 'day', date, device ?? ''] as const,
+  mediaDays: (from: string, to: string, device?: string) => ['media', 'days', from, to, device ?? ''] as const,
 }
 
 export type EventFilters = { type?: string; device?: string; severity?: string; limit?: number }
@@ -31,15 +31,15 @@ export const useEvents = (filters: EventFilters) =>
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   })
 
-export const useMediaDay = (date: string) =>
+export const useMediaDay = (date: string, device?: string) =>
   useQuery({
-    queryKey: keys.mediaDay(date),
+    queryKey: keys.mediaDay(date, device),
     queryFn: async () => {
       // A day of photos fits in a few pages; the archive shows the whole day at once.
       const items = []
       let cursor: string | undefined
       do {
-        const page = await call(api.GET('/api/media', { params: { query: { date, cursor, limit: 200 } } }))
+        const page = await call(api.GET('/api/media', { params: { query: { date, device, cursor, limit: 200 } } }))
         items.push(...page.items)
         cursor = page.nextCursor ?? undefined
       } while (cursor)
@@ -47,8 +47,8 @@ export const useMediaDay = (date: string) =>
     },
   })
 
-export const useMediaDays = (from: string, to: string) =>
-  useQuery({ queryKey: keys.mediaDays(from, to), queryFn: () => call(api.GET('/api/media/days', { params: { query: { from, to } } })) })
+export const useMediaDays = (from: string, to: string, device?: string) =>
+  useQuery({ queryKey: keys.mediaDays(from, to, device), queryFn: () => call(api.GET('/api/media/days', { params: { query: { from, to, device } } })) })
 
 /** Replaces an event in every cached events list (after ack, or when its photos arrive). */
 export function patchEventInCache(qc: ReturnType<typeof useQueryClient>, updated: EventDto) {

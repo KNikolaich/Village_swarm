@@ -64,6 +64,12 @@
     "new": "New event"
   },
   "photos": {
+    "device": "Camera",
+    "allDevices": "All cameras",
+    "pinnedOnly": "Saved only",
+    "timelapse": "Timelapse",
+    "play": "Play",
+    "pause": "Pause",
     "title": "Photo archive",
     "noPhotos": "No photos on this day",
     "today": "Today",

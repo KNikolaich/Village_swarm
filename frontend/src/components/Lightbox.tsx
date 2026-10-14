@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Download, Pin, PinOff, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, Pause, Pin, PinOff, Play, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePin } from '@/api/queries'
 import { Button } from '@/components/ui/button'
@@ -7,9 +7,11 @@ import { t } from '@/i18n'
 export type LightboxPhoto = { id: string; url: string; thumbUrl: string; caption?: string; pinned?: boolean }
 
 /** Full-screen viewer: arrows, swipe, Esc; download and "keep forever" (spec 8.2 screen 3). */
-export function Lightbox({ photos, index, onIndex, onClose }: {
+export function Lightbox({ photos, index, autoplay = false, onIndex, onClose }: {
   photos: LightboxPhoto[]
   index: number
+  /** Start playing as a timelapse (a frame every 700 ms, stops on the last photo). */
+  autoplay?: boolean
   onIndex: (i: number) => void
   onClose: () => void
 }) {
@@ -17,16 +19,31 @@ export function Lightbox({ photos, index, onIndex, onClose }: {
   const photo = photos[index]
   const [pinned, setPinned] = useState(photo?.pinned ?? false)
   const touchX = useRef<number | null>(null)
+  const [playing, setPlaying] = useState(autoplay && photos.length > 1)
 
   useEffect(() => setPinned(photo?.pinned ?? false), [photo])
 
   const go = useCallback((delta: number) => onIndex((index + delta + photos.length) % photos.length), [index, photos.length, onIndex])
 
   useEffect(() => {
+    if (!playing) return
+    if (index >= photos.length - 1) {
+      setPlaying(false)
+      return
+    }
+    const timer = window.setTimeout(() => onIndex(index + 1), 700)
+    return () => window.clearTimeout(timer)
+  }, [playing, index, photos.length, onIndex])
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
       if (e.key === 'ArrowLeft') go(-1)
       if (e.key === 'ArrowRight') go(1)
+      if (e.key === ' ') {
+        e.preventDefault()
+        setPlaying((p) => !p)
+      }
     }
     window.addEventListener('keydown', onKey)
     const overflow = document.body.style.overflow
@@ -55,6 +72,19 @@ export function Lightbox({ photos, index, onIndex, onClose }: {
       <div className="flex items-center justify-between gap-2 p-3 text-sm text-neutral-300">
         <span className="truncate">{[photo.caption, photos.length > 1 && `${index + 1}/${photos.length}`].filter(Boolean).join(' · ')}</span>
         <div className="flex shrink-0 items-center gap-1">
+          {photos.length > 1 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              title={playing ? t('photos.pause') : t('photos.play')}
+              onClick={() => {
+                if (!playing && index >= photos.length - 1) onIndex(0)
+                setPlaying(!playing)
+              }}
+            >
+              {playing ? <Pause /> : <Play />}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
