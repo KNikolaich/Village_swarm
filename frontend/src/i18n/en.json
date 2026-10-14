@@ -182,6 +182,7 @@
     "snapshot": "Snapshot",
     "photo_failed": "Photo failed to upload",
     "tamper": "Camera covered or moved",
+    "rule": "Rule",
     "ota": "Firmware update"
   },
   "severity": {

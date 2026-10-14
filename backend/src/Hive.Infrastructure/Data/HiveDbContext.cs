@@ -26,6 +26,8 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<EnrollmentCode> EnrollmentCodes => Set<EnrollmentCode>();
     public DbSet<WeatherSnapshot> WeatherSnapshots => Set<WeatherSnapshot>();
+    public DbSet<Rule> Rules => Set<Rule>();
+    public DbSet<RuleRun> RuleRuns => Set<RuleRun>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -129,6 +131,22 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.HasKey(x => x.Code);
             e.Property(x => x.Code).HasMaxLength(8);
             e.HasOne<HiveUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Rule>(e =>
+        {
+            e.ToTable("rules");
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.LastOutcome).HasMaxLength(16);
+            e.Property(x => x.UpdatedBy).HasMaxLength(64);
+        });
+
+        b.Entity<RuleRun>(e =>
+        {
+            e.ToTable("rule_runs");
+            e.Property(x => x.Outcome).HasMaxLength(16);
+            e.HasOne<Rule>().WithMany().HasForeignKey(x => x.RuleId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.RuleId, x.Ts });
         });
 
         b.Entity<WeatherSnapshot>(e =>

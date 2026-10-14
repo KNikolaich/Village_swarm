@@ -780,6 +780,94 @@ namespace Hive.Infrastructure.Data.Migrations
                     b.ToTable("notifications", (string)null);
                 });
 
+            modelBuilder.Entity("Hive.Domain.Rule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<JsonDocument>("Definition")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("definition");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<DateTimeOffset?>("LastFiredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_fired_at");
+
+                    b.Property<string>("LastOutcome")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("last_outcome");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("name");
+
+                    b.Property<JsonDocument>("State")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("state");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rules");
+
+                    b.ToTable("rules", (string)null);
+                });
+
+            modelBuilder.Entity("Hive.Domain.RuleRun", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<JsonDocument>("Details")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("details");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("outcome");
+
+                    b.Property<int>("RuleId")
+                        .HasColumnType("integer")
+                        .HasColumnName("rule_id");
+
+                    b.Property<DateTimeOffset>("Ts")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ts");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rule_runs");
+
+                    b.HasIndex("RuleId", "Ts")
+                        .HasDatabaseName("ix_rule_runs_rule_id_ts");
+
+                    b.ToTable("rule_runs", (string)null);
+                });
+
             modelBuilder.Entity("Hive.Domain.TelemetryPoint", b =>
                 {
                     b.Property<string>("DeviceId")
@@ -1234,6 +1322,16 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasConstraintName("fk_devices_zones_zone_id");
 
                     b.Navigation("Zone");
+                });
+
+            modelBuilder.Entity("Hive.Domain.RuleRun", b =>
+                {
+                    b.HasOne("Hive.Domain.Rule", null)
+                        .WithMany()
+                        .HasForeignKey("RuleId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_rule_runs_rules_rule_id");
                 });
 
             modelBuilder.Entity("Hive.Domain.TgLink", b =>

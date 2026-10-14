@@ -19,6 +19,7 @@
     <ProjectReference Include="../../src/Hive.Modules.Notify/Hive.Modules.Notify.csproj" />
     <ProjectReference Include="../../src/Hive.Modules.Media/Hive.Modules.Media.csproj" />
     <ProjectReference Include="../../src/Hive.Modules.Weather/Hive.Modules.Weather.csproj" />
+    <ProjectReference Include="../../src/Hive.Modules.Rules/Hive.Modules.Rules.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- The contract is the source of truth: tests read schemas and examples straight from contracts/. -->

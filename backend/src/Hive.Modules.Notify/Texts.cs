@@ -19,6 +19,7 @@ public static class Texts
         "tamper" => "Камера закрыта или сдвинута",
         "snapshot" => "Снимок",
         "ota" => "Обновление прошивки",
+        "rule" => "Правило",
         "overheat" => "Улей перегревается",
         "overheat_cleared" => "Температура улья в норме",
         "disk_full" => "Диск улья почти заполнен",
@@ -42,6 +43,8 @@ public static class Texts
         var text = $"{Icon(e.Severity)} <b>{H(EventType(e.Type))}</b>: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}";
         if (e.Type == "ota")
             text += OtaDetail(e.Payload.RootElement);
+        if (e.Type == "rule" && e.Payload.RootElement.TryGetProperty("text", out var said))
+            text += $"\n{H(said.GetString())}";
         if (e.Type == "failsafe" && e.Payload.RootElement.TryGetProperty("rule", out var rule))
             text += $"\nправило: {H(rule.GetString())}";
         if (e.Type.StartsWith("overheat", StringComparison.Ordinal) || e.Type.StartsWith("disk_full", StringComparison.Ordinal))

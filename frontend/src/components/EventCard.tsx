@@ -20,6 +20,8 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
   const ack = useAckEvent()
   const alarm = event.severity === 'alarm' || event.severity === 'critical'
   const expectedPhotos = (event.payload as { photos?: unknown[] } | null)?.photos?.length ?? 0
+  // A rule's own message: what the rule said, and which rule it was.
+  const said = event.type === 'rule' ? (event.payload as { rule?: string; text?: string } | null) : null
 
   return (
     <article className={cn('rounded-xl border bg-neutral-900/70 p-3', alarm && !event.acknowledgedAt ? 'border-red-900/70' : 'border-neutral-800')}>
@@ -31,8 +33,9 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
           </div>
           <p className="mt-0.5 truncate text-sm text-neutral-400">
             {event.zone ? `${event.zone} · ` : ''}
-            {event.deviceName ?? event.deviceId} · {formatWhen(event.ts)}
+            {said?.rule ?? event.deviceName ?? event.deviceId} · {formatWhen(event.ts)}
           </p>
+          {said?.text && <p className="mt-1 text-sm text-neutral-200">{said.text}</p>}
         </div>
         {alarm && !compact && (
           event.acknowledgedAt ? (
