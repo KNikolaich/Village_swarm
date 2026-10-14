@@ -175,3 +175,14 @@ export function useSendCommand(deviceId: string) {
     }
   }
 }
+
+export const useRules = () =>
+  useQuery({ queryKey: ['rules'] as const, queryFn: () => call(api.GET('/api/rules')) })
+
+export const useRuleRuns = (id: number | null) =>
+  useQuery({
+    queryKey: ['rules', id, 'runs'] as const,
+    queryFn: () => call(api.GET('/api/rules/{id}/runs', { params: { path: { id: id! }, query: { limit: 30 } } })),
+    enabled: id != null,
+    refetchInterval: 30_000,
+  })

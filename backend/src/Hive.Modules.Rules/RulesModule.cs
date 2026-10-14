@@ -84,7 +84,8 @@ public sealed class RuleService(HiveDbContext db, RuleStore store, RuleDataLoade
         var from = to.AddHours(-Math.Clamp(hours ?? 24, 1, MaxDryRunHours));
         var zone = hive.Value.Zone;
         var data = await loader.LoadAsync(rule, from, to, ct);
-        var notes = new List<string> { "modes, device states and the forecast are taken as they are now" };
+        // Notes are codes the UI translates: current_state, offline_not_replayed, truncated.
+        var notes = new List<string> { "current_state" };
 
         IEnumerable<DateTimeOffset> moments;
         var t = rule.Trigger;
@@ -106,7 +107,7 @@ public sealed class RuleService(HiveDbContext db, RuleStore store, RuleDataLoade
                 break;
             default:
                 moments = [];
-                notes.Add("offline triggers are not replayed");
+                notes.Add("offline_not_replayed");
                 break;
         }
 
@@ -131,7 +132,7 @@ public sealed class RuleService(HiveDbContext db, RuleStore store, RuleDataLoade
             lastWasNoData = verdict.Outcome == EvalOutcome.NoData;
             if (hits.Count >= MaxHits)
             {
-                notes.Add($"stopped after {MaxHits} results");
+                notes.Add("truncated");
                 break;
             }
         }

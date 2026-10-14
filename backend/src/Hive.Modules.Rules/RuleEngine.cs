@@ -157,8 +157,11 @@ public sealed class RuleRunner(
 
         var data = await loader.LoadAsync(rule, now, now, ct);
         var latches = ReadLatches(row.State);
+        var before = new Dictionary<int, bool>(latches);
         var verdict = RuleEvaluator.Evaluate(rule, data, now, hive.Value.Zone, latches);
-        row.State = JsonSerializer.SerializeToDocument(latches.ToDictionary(k => k.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), k => k.Value));
+        // Written only when a latch moved: readings come every few seconds and the hive lives on a small drive.
+        if (latches.Count != before.Count || latches.Any(l => !before.TryGetValue(l.Key, out var was) || was != l.Value))
+            row.State = JsonSerializer.SerializeToDocument(latches.ToDictionary(k => k.Key.ToString(System.Globalization.CultureInfo.InvariantCulture), k => k.Value));
 
         switch (verdict.Outcome)
         {
@@ -167,7 +170,7 @@ public sealed class RuleRunner(
                 if (row.LastOutcome != "no_data")
                 {
                     Log(row, now, "no_data", new { reason = verdict.Reason });
-                    Notify(now, "warn", row.Name, $"Правило «{row.Name}» не может работать: нет данных ({verdict.Reason})");
+                    Notify(now, "warn", row.Name, $"Правило «{row.Name}» не может работать: {Explain(verdict.Reason)}");
                     row.LastOutcome = "no_data";
                 }
                 break;
@@ -209,8 +212,13 @@ public sealed class RuleRunner(
                     return (status == SendStatus.Sent, status.ToString().ToLowerInvariant());
                 }
                 case "notify":
-                    Notify(now, action.Level ?? "warn", row.Name, Fill(action.Text!, row.Name, value, action.Device));
+                {
+                    // {device} is the hornet the rule is about: the one named in the action, else the trigger's.
+                    var about = action.Device ?? RuleStore.Read(row.Definition).Trigger.Device;
+                    var deviceName = about is null ? null : await db.Devices.AsNoTracking().Where(d => d.DeviceId == about).Select(d => d.Name).FirstOrDefaultAsync(ct) ?? about;
+                    Notify(now, action.Level ?? "warn", row.Name, Fill(action.Text!, row.Name, value, deviceName));
                     return (true, "queued");
+                }
                 case "set_mode":
                     if (string.Equals(action.Mode, Mode.Armed, StringComparison.OrdinalIgnoreCase))
                     {
@@ -238,6 +246,16 @@ public sealed class RuleRunner(
             return (false, ex.Message);
         }
     }
+
+    /// <summary>The missing-data code in words for Telegram (the hive's messages there are Russian).</summary>
+    internal static string Explain(string? reason) => reason?.Split(':') switch
+    {
+        ["stale", var device, var metric] => $"нет свежих данных «{metric}» от {device}",
+        ["no_sun"] => "в прогнозе нет восхода и заката",
+        ["no_past_weather"] => "нет данных о погоде за прошедшие часы",
+        ["no_forecast"] => "нет прогноза на ближайшие часы",
+        _ => reason ?? "нет данных",
+    };
 
     private static string Fill(string text, string rule, double? value, string? device) => text
         .Replace("{rule}", rule, StringComparison.Ordinal)

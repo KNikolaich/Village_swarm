@@ -56,7 +56,10 @@ public sealed class RuleData
 
 public enum EvalOutcome { Pass, Fail, NoData }
 
-/// <summary>The verdict; <see cref="Reason"/> names the condition that failed or the data that is missing.</summary>
+/// <summary>
+/// The verdict; <see cref="Reason"/> names the condition that failed or, as a code the UI translates, the data that is
+/// missing: stale:{device}:{metric}, no_sun, no_past_weather, no_forecast.
+/// </summary>
 public sealed record Evaluation(EvalOutcome Outcome, string? Reason, double? TriggerValue);
 
 /// <summary>Checks a rule's conditions against prepared data. Pure: no clock, no database.</summary>
@@ -96,7 +99,7 @@ public static class RuleEvaluator
             {
                 var latest = data.LatestAt(c.Device!, c.Metric!, at);
                 if (latest is null || at - latest.Value.Ts > TimeSpan.FromSeconds(c.MaxAgeS ?? DefaultMaxAgeS))
-                    return (false, $"no fresh {c.Metric} from {c.Device}");
+                    return (false, $"stale:{c.Device}:{c.Metric}");
                 var latched = c.Release is not null && latches.TryGetValue(index, out var l) && l;
                 var threshold = latched ? c.Release!.Value : c.Value!.Value;
                 var ok = Compare(latest.Value.Value, c.Op!, threshold);
@@ -117,19 +120,19 @@ public static class RuleEvaluator
             case "time":
                 return (InWindow(TimeZoneInfo.ConvertTime(at, zone), c.From!, c.To!, c.Days), null);
             case "dark":
-                return ForecastMath.IsDark(data.Days, at) is { } dark ? (dark, null) : (false, "no sunrise and sunset in the forecast");
+                return ForecastMath.IsDark(data.Days, at) is { } dark ? (dark, null) : (false, "no_sun");
             case "rain_past":
             {
                 var from = at.AddHours(-(c.Hours ?? 24));
                 if (!Covers(data.Hours, from, at))
-                    return (false, "no weather data for the past hours");
+                    return (false, "no_past_weather");
                 return (ForecastMath.Rain(data.Hours, from, at).Millimetres >= (c.Mm ?? 1), null);
             }
             case "rain_forecast":
             {
                 var to = at.AddHours(c.Hours ?? 12);
                 if (!Covers(data.Hours, at, to))
-                    return (false, "no forecast for the coming hours");
+                    return (false, "no_forecast");
                 var (mm, probability) = ForecastMath.Rain(data.Hours, at, to);
                 return (mm >= (c.Mm ?? 1) || (probability ?? 0) >= (c.Probability ?? 60), null);
             }

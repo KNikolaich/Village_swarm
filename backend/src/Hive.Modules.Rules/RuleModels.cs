@@ -67,7 +67,7 @@ public sealed record DryRunRequest(RuleDefinition Definition, int? Hours = null)
 public sealed record DryRunHit(DateTimeOffset Ts, string Outcome, double? Value, string? Reason);
 
 /// <summary>
-/// The dry run of a rule over past hours. <see cref="Notes"/> says what it could not replay exactly (modes, device
-/// states and the forecast are taken as they are now; offline triggers are not replayed).
+/// The dry run of a rule over past hours. <see cref="Notes"/> says, as codes, what it could not replay exactly:
+/// current_state (modes, device states and the forecast are taken as they are now), offline_not_replayed, truncated.
 /// </summary>
 public sealed record DryRunResult(DateTimeOffset From, DateTimeOffset To, int Checked, IReadOnlyList<DryRunHit> Hits, IReadOnlyList<string> Notes);

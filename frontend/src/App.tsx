@@ -10,6 +10,8 @@ import { useLive } from '@/lib/live'
 import { DevicePage } from '@/pages/DevicePage'
 import { ClimatePage } from '@/pages/ClimatePage'
 import { EventsPage } from '@/pages/EventsPage'
+import { RuleEditorPage } from '@/pages/RuleEditorPage'
+import { RulesPage } from '@/pages/RulesPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { PhotosPage } from '@/pages/PhotosPage'
@@ -30,6 +32,8 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <OverviewPage /> },
       { path: 'climate', element: <ClimatePage /> },
+      { path: 'rules', element: <RulesPage /> },
+      { path: 'rules/:id', element: <RuleEditorPage /> },
       { path: 'events', element: <EventsPage /> },
       { path: 'photos', element: <PhotosPage /> },
       { path: 'photos/:date', element: <PhotosPage /> },
