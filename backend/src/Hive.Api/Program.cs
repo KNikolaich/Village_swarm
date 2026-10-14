@@ -112,6 +112,7 @@ app.MapSettingsEndpoints();
 app.MapWifiEndpoints();
 app.MapTelemetryEndpoints();
 app.MapDevicesEndpoints();
+app.MapZoneEndpoints();
 app.MapEventsEndpoints();
 app.MapMediaEndpoints();
 app.MapNotifyEndpoints();

@@ -56,6 +56,8 @@ public static class DevicesModule
         services.AddScoped<DeviceQueries>();
         services.AddScoped<CommandService>();
         services.AddScoped<ArmService>();
+        services.AddScoped<ZoneService>();
+        services.AddHostedService<ZoneBootstrap>();
         services.AddScoped<ProvisioningService>();
         services.AddHostedService<DynamicSecurityBootstrap>();
         services.AddHostedService<CommandTimeoutJob>();
