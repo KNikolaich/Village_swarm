@@ -6,6 +6,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { keys, useMe, useTelegram } from '@/api/queries'
+import { CertificateCard } from '@/components/CertificateCard'
 import { PasswordInput } from '@/components/PasswordInput'
 import { WeatherSettingsCard } from '@/components/WeatherSettingsCard'
 import { Button } from '@/components/ui/button'
@@ -24,6 +25,7 @@ export function SettingsPage() {
       <WifiCard />
       <WeatherSettingsCard />
       <LanguageCard />
+      <CertificateCard />
       <MonitorCard />
     </div>
   )

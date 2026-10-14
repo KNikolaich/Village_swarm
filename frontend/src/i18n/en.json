@@ -570,5 +570,25 @@
     "from": "From",
     "to": "To",
     "hintFilter": "MAC, IP, topic or text"
+  },
+  "cert": {
+    "title": "Hive certificate (no more browser warning)",
+    "hint": "The hive serves HTTPS with its own certificate: it has no public name, so the browser warns. Install the hive's root certificate once on each device.",
+    "download": "Download the hive certificate",
+    "systems": {
+      "windows": "Windows (Chrome, Edge)",
+      "firefox": "Firefox",
+      "android": "Android",
+      "iphone": "iPhone, iPad",
+      "mac": "Mac"
+    },
+    "steps": {
+      "windows": "Download the certificate and open the file.|Click \"Install Certificate\", choose \"Local Machine\".|Choose \"Place all certificates in the following store\" → \"Trusted Root Certification Authorities\".|Restart the browser.",
+      "firefox": "Open Settings → Privacy & Security → \"Certificates\" at the bottom → \"View Certificates\".|\"Authorities\" tab → \"Import\" → pick the downloaded file.|Tick \"Trust this CA to identify websites\" and press OK.|If you added an exception for the hive before, remove it on the \"Servers\" tab.",
+      "android": "Download the certificate.|Settings → Security → Encryption & credentials → Install a certificate → CA certificate.|Pick the downloaded file and confirm.",
+      "iphone": "Open this page in Safari and download the certificate, allow the profile download.|Settings → Profile Downloaded → Install.|Settings → General → About → Certificate Trust Settings → turn the hive certificate on.",
+      "mac": "Download the certificate and open the file: it goes into Keychain Access.|Find it (Caddy Local Authority), open it, Trust → \"Always Trust\".|Restart the browser."
+    },
+    "once": "Once per device: the hive certificate is valid for 10 years. It is needed again only if the hive is reinstalled from scratch."
   }
 }

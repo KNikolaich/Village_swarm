@@ -12,7 +12,7 @@ export default defineConfig({
     // PWA (spec 8.1): installable on the phone, app shell cached offline. API data is never cached here.
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['apple-touch-icon.png'],
+      includeAssets: ['apple-touch-icon.png', 'favicon.svg'],
       manifest: {
         name: 'Улей — Village Swarm',
         short_name: 'Улей',
