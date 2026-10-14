@@ -12,7 +12,7 @@ backend:
 	dotnet test backend/Hive.slnx -c Release --no-build
 
 frontend:
-	cd frontend && npm ci && npm run lint && npm run build
+	cd frontend && npm ci && npm run lint && npm test && npm run build
 
 firmware: firmware-test
 	cd firmware && pio run -e guard-cam
