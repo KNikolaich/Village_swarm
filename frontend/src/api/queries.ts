@@ -1,4 +1,6 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
+import { toast } from 'sonner'
+import { t } from '@/i18n'
 import { api, call, type EventDto } from './client'
 
 export const keys = {
@@ -142,3 +144,34 @@ export const useCommandHistory = (device: string, enabled: boolean) =>
     enabled,
     refetchInterval: 30_000,
   })
+
+export const useWeather = () =>
+  useQuery({ queryKey: ['weather'] as const, queryFn: () => call(api.GET('/api/weather')), refetchInterval: 10 * 60_000 })
+
+export const useZones = () =>
+  useQuery({ queryKey: ['zones'] as const, queryFn: () => call(api.GET('/api/zones')) })
+
+/** The same metric of several devices over one window (one line each on a zone chart). */
+export const useDeviceSeries = (devices: string[], metric: string, hours: number) =>
+  useQueries({
+    queries: devices.map((device) => ({
+      queryKey: ['telemetry', 'series', device, metric, hours],
+      queryFn: () => {
+        const { from, to } = historyWindow(hours)
+        return call(api.GET('/api/telemetry/series', { params: { query: { device, metric, from: from.toISOString(), to: to.toISOString() } } }))
+      },
+      refetchInterval: 5 * 60_000,
+    })),
+  })
+
+/** Sends a command to a hornet, with a toast for the outcome. */
+export function useSendCommand(deviceId: string) {
+  return async (name: string, payload?: Record<string, unknown>) => {
+    try {
+      await call(api.POST('/api/devices/{deviceId}/commands', { params: { path: { deviceId } }, body: { name, payload: payload as Record<string, never> | undefined } }))
+      toast.success(t('device.commandSent'))
+    } catch {
+      toast.error(t('device.commandRefused'))
+    }
+  }
+}

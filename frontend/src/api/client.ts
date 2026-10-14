@@ -9,6 +9,8 @@ export type MediaDto = Schemas['MediaDto']
 export type MediaDayDto = Schemas['MediaDayDto']
 export type DeviceDto = Schemas['DeviceDto']
 export type LatestValueDto = Schemas['LatestValueDto']
+export type WeatherDto = Schemas['WeatherDto']
+export type ZoneDto = Schemas['ZoneDto']
 export type MeDto = Schemas['MeDto']
 export type LoginResult = Schemas['LoginResult']
 

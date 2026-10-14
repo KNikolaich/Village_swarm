@@ -65,3 +65,11 @@ export function formatTick(d: Date, stepMs: number): string {
     return new Intl.DateTimeFormat(locale(), { day: 'numeric', month: 'short' }).format(d).replace('.', '')
   return new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit', hour12: false }).format(d)
 }
+
+/** "13:00" from a timestamp, in the browser (house) time zone. */
+export const formatHm = (iso: string) =>
+  new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso))
+
+/** "Ср" / "Wed" for a calendar date "2026-10-14" (a date has no zone, so it is read as UTC and shown as UTC). */
+export const formatWeekdayShort = (date: string) =>
+  new Intl.DateTimeFormat(locale(), { weekday: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`))

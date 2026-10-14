@@ -1,22 +1,16 @@
 import { ArrowLeft, Camera, Power, PowerOff, RotateCw, Wifi, WifiOff } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { toast } from 'sonner'
-import { api, call, type DeviceDto } from '@/api/client'
-import { historyWindow, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useSeries } from '@/api/queries'
+import type { DeviceDto } from '@/api/client'
+import { historyWindow, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useSendCommand, useSeries } from '@/api/queries'
 import { Chart, TimeAxis, type ChartPoint } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
 import { formatAgo, formatFixed, formatValue, formatWhen, metricUnit } from '@/lib/format'
+import { ranges, rangeLabel } from '@/lib/ranges'
+import { ZoneSelect } from '@/pages/ClimatePage'
 import { PinsPanel } from '@/pages/SwarmPage'
-
-/** Chart windows offered on the page, in hours. */
-const ranges = [6, 24, 168, 720]
-
-function rangeLabel(hours: number): string {
-  return hours < 24 ? t('device.rangeHours').replace('{n}', String(hours)) : t('device.rangeDays').replace('{n}', String(hours / 24))
-}
 
 function MetricChart({ device, metric, hours }: { device: string; metric: string; hours: number }) {
   const series = useSeries(device, metric, hours)
@@ -151,6 +145,7 @@ export function DevicePage() {
   const { deviceId = '' } = useParams()
   const [hours, setHours] = useState(24)
   const devices = useDevices()
+  const zones = useZones()
   const latest = useLatestTelemetry()
   const me = useMe()
   const canControl = (me.data?.roles.includes('admin') ?? false) || (me.data?.roles.includes('member') ?? false)
@@ -158,14 +153,7 @@ export function DevicePage() {
   const device = (devices.data ?? []).find((d) => d.deviceId === deviceId)
   const readings = (latest.data ?? []).filter((v) => v.deviceId === deviceId).sort((a, b) => a.metric.localeCompare(b.metric))
 
-  async function send(name: string, payload?: Record<string, unknown>) {
-    try {
-      await call(api.POST('/api/devices/{deviceId}/commands', { params: { path: { deviceId } }, body: { name, payload: payload as Record<string, never> | undefined } }))
-      toast.success(t('device.commandSent'))
-    } catch {
-      toast.error(t('device.commandRefused'))
-    }
-  }
+  const send = useSendCommand(deviceId)
 
   const back = (
     <Link to="/swarm" className="flex items-center gap-1 text-sm text-amber-400">
@@ -198,7 +186,7 @@ export function DevicePage() {
         <CardHeader><CardTitle>{t('device.about')}</CardTitle></CardHeader>
         <CardContent>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Field label={t('device.zone')}>{device.zone}</Field>
+            <Field label={t('device.zone')}>{isAdmin ? <ZoneSelect device={device} zones={zones.data ?? []} /> : device.zone}</Field>
             <Field label={t('device.board')}>{device.hw}</Field>
             <Field label={t('device.firmware')}>{device.fw}</Field>
             <Field label="MAC">{device.mac}</Field>

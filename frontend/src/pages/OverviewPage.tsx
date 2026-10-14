@@ -6,6 +6,7 @@ import { useDevices, useEvents, useLatestTelemetry } from '@/api/queries'
 import { EventCard, type PhotoRef } from '@/components/EventCard'
 import { GuardCard } from '@/components/GuardCard'
 import { Lightbox } from '@/components/Lightbox'
+import { WeatherCard } from '@/components/WeatherCard'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
 import { formatAgo, formatValue } from '@/lib/format'
@@ -46,6 +47,7 @@ export function OverviewPage() {
         </Card>
       </div>
 
+      <WeatherCard />
       <Climate latest={latest.data ?? []} devices={list} loading={latest.isLoading} />
       <HiveState device={list.find((d) => d.type === 'hive')} latest={latest.data ?? []} loading={latest.isLoading} />
 

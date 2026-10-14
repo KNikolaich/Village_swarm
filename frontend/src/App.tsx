@@ -8,6 +8,7 @@ import { keys, useMe } from '@/api/queries'
 import { AppShell } from '@/components/AppShell'
 import { useLive } from '@/lib/live'
 import { DevicePage } from '@/pages/DevicePage'
+import { ClimatePage } from '@/pages/ClimatePage'
 import { EventsPage } from '@/pages/EventsPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { OverviewPage } from '@/pages/OverviewPage'
@@ -28,6 +29,7 @@ const router = createBrowserRouter([
     element: <Authenticated />,
     children: [
       { index: true, element: <OverviewPage /> },
+      { path: 'climate', element: <ClimatePage /> },
       { path: 'events', element: <EventsPage /> },
       { path: 'photos', element: <PhotosPage /> },
       { path: 'photos/:date', element: <PhotosPage /> },

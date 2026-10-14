@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { keys, useMe, useTelegram } from '@/api/queries'
 import { PasswordInput } from '@/components/PasswordInput'
+import { WeatherSettingsCard } from '@/components/WeatherSettingsCard'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { getLanguage, t, type Language } from '@/i18n'
@@ -21,6 +22,7 @@ export function SettingsPage() {
       <TotpCard />
       <PasswordCard />
       <WifiCard />
+      <WeatherSettingsCard />
       <LanguageCard />
       <MonitorCard />
     </div>
