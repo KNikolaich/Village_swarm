@@ -47,7 +47,21 @@ export function parseIsoDate(s: string): Date {
   return new Date(y, m - 1, d)
 }
 
+export const metricUnit = (metric: string) =>
+  metric === 'temperature' || metric === 'cpu_temperature' ? '°' : metric === 'humidity' || metric === 'disk_used_pct' ? '%' : ''
+
 export function formatValue(metric: string, value: number): string {
-  const unit = metric === 'temperature' || metric === 'cpu_temperature' ? '°' : metric === 'humidity' || metric === 'disk_used_pct' ? '%' : ''
-  return `${value.toLocaleString(locale(), { maximumFractionDigits: 1 })}${unit}`
+  return `${value.toLocaleString(locale(), { maximumFractionDigits: 1 })}${metricUnit(metric)}`
+}
+
+/** A number with a fixed count of decimals in the interface language, for axis labels. */
+export const formatFixed = (value: number, decimals: number) =>
+  value.toLocaleString(locale(), { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+
+/** "14:00" for marks inside a day; "12 окт" for midnights and for day-sized steps. */
+export function formatTick(d: Date, stepMs: number): string {
+  const midnight = d.getHours() === 0 && d.getMinutes() === 0
+  if (stepMs >= 86_400_000 || midnight)
+    return new Intl.DateTimeFormat(locale(), { day: 'numeric', month: 'short' }).format(d).replace('.', '')
+  return new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit', hour12: false }).format(d)
 }

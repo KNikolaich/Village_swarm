@@ -4,11 +4,11 @@ import { Link, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto } from '@/api/client'
 import { historyWindow, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useSeries } from '@/api/queries'
-import { Chart, type ChartPoint } from '@/components/Chart'
+import { Chart, TimeAxis, type ChartPoint } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
-import { formatAgo, formatValue, formatWhen } from '@/lib/format'
+import { formatAgo, formatFixed, formatValue, formatWhen, metricUnit } from '@/lib/format'
 import { PinsPanel } from '@/pages/SwarmPage'
 
 /** Chart windows offered on the page, in hours. */
@@ -25,7 +25,13 @@ function MetricChart({ device, metric, hours }: { device: string; metric: string
     <div className="space-y-1">
       <p className="text-sm font-medium">{metricLabel(metric)}</p>
       {series.isLoading ? <Skeleton className="h-36" /> : (
-        <Chart points={series.data ?? []} from={from} to={to} format={(v) => formatValue(metric, v)} />
+        <Chart
+          points={series.data ?? []}
+          from={from}
+          to={to}
+          format={(v) => formatValue(metric, v)}
+          axisFormat={(v, d) => `${formatFixed(v, d)}${metricUnit(metric)}`}
+        />
       )}
     </div>
   )
@@ -47,16 +53,16 @@ function HealthCharts({ device, hours }: { device: string; hours: number }) {
     <>
       <div className="space-y-1">
         <p className="text-sm font-medium">{t('device.signal')}</p>
-        <Chart points={line((r) => r.rssi)} from={from} to={to} format={(v) => `${Math.round(v)} dBm`} />
+        <Chart points={line((r) => r.rssi)} from={from} to={to} format={(v) => `${Math.round(v)} dBm`} axisFormat={(v, d) => formatFixed(v, d)} />
       </div>
       <div className="space-y-1">
         <p className="text-sm font-medium">{t('device.memory')}</p>
-        <Chart points={line((r) => r.heapFree)} from={from} to={to} format={(v) => `${Math.round(v / 1024)} KB`} />
+        <Chart points={line((r) => r.heapFree / 1024)} from={from} to={to} format={(v) => `${Math.round(v)} KB`} axisFormat={(v, d) => formatFixed(v, d)} />
       </div>
       {battery.length > 0 && (
         <div className="space-y-1">
           <p className="text-sm font-medium">{t('device.battery')}</p>
-          <Chart points={battery} from={from} to={to} format={(v) => `${v.toFixed(2)} V`} />
+          <Chart points={battery} from={from} to={to} format={(v) => `${v.toFixed(2)} V`} axisFormat={(v, d) => formatFixed(v, d)} />
         </div>
       )}
     </>
@@ -234,6 +240,7 @@ export function DevicePage() {
         <CardContent className="space-y-5">
           {readings.map((v) => <MetricChart key={v.metric} device={deviceId} metric={v.metric} hours={hours} />)}
           <HealthCharts device={deviceId} hours={hours} />
+          <TimeAxis {...historyWindow(hours)} />
         </CardContent>
       </Card>
 
