@@ -189,7 +189,7 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 48,
-          "description": "ADC pin with a voltage divider from the battery"
+          "description": "ADC pin with a voltage divider from the battery (roles meteo and relay; ESP8266 always reads A0 = 17)"
         },
         "vbat_ratio": {
           "type": "number",

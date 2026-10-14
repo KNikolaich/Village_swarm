@@ -365,7 +365,8 @@
     "temperature": "Temperature",
     "humidity": "Humidity",
     "cpu_temperature": "CPU",
-    "disk_used_pct": "Disk used"
+    "disk_used_pct": "Disk used",
+    "battery_voltage": "Battery voltage"
   },
   "settings": {
     "title": "Settings",
@@ -474,7 +475,7 @@
     "sleepSaved": "Saved. The hornet applies it at its next wake-up",
     "sleepHint": "For battery hornets: wakes, sends a reading and sleeps. Needs a GPIO16–RST jumper (docs/hornet-esp01-battery.md)",
     "pins": "Pins",
-    "pinsSaved": "Pins saved. The hornet applies them on its next connection",
+    "pinsSaved": "Saved. The hornet applies it as soon as it gets the new config: right away if online, or at its next wake-up",
     "pinsRejected": "Pins not saved: a conflict or a bad number",
     "pinsConflict": "Conflict",
     "pinsNone": "No pins to set for this type",
@@ -485,7 +486,28 @@
     "updateConfirm": "Update “{name}” over the air: {from} → {to}? The hornet downloads the firmware, restarts and reports the result.",
     "updateRisk": "The ESP-01 keeps the new image beside the old one and cannot roll back: if power fails during the copy, the board must be reflashed over USB. Update one hornet first.",
     "updateStarted": "Update started: progress shows in events",
-    "updateRefused": "The update was not started (check the board, the version and the hive address in Settings)"
+    "updateRefused": "The update was not started (check the board, the version and the hive address in Settings)",
+    "pinsNotNumber": "{field}: '{value}' is not a number. Enter the GPIO number in digits (A0 on the ESP8266 is 17)",
+    "ratio": "divider ×",
+    "ratioInvalid": "Divider ratio: a number above 0 and up to 100, e.g. 5.7",
+    "pinHelpLabel": "Help",
+    "pinHelp": {
+      "onewire": "1-Wire bus for DS18B20 sensors (meteo role). GPIO number.",
+      "onewireEsp8266": "NodeMCU and D1 mini default: D5 = GPIO14.",
+      "onewireEsp32c3": "C3 SuperMini default: GPIO3.",
+      "sda": "I2C data line for the BME280 and the display (meteo role). GPIO number.",
+      "sdaEsp8266": "NodeMCU and D1 mini default: D2 = GPIO4.",
+      "scl": "I2C clock line for the BME280 and the display (meteo role). GPIO number.",
+      "sclEsp8266": "NodeMCU and D1 mini default: D1 = GPIO5.",
+      "relay": "Output to the relay module. GPIO number.",
+      "relayEsp8266": "NodeMCU and D1 mini default: D6 = GPIO12. Numbering: D1=5, D2=4, D5=14, D6=12, D7=13.",
+      "button": "Local button that toggles the relay, shorts the pin to ground. GPIO number.",
+      "buttonEsp8266": "NodeMCU default: D3 = GPIO0, the FLASH button on the board.",
+      "vbat": "Battery or supply voltage through a divider. Works in the meteo and relay roles and arrives as the Battery voltage metric (V), usable in rules. Empty turns it off. Set the divider ratio too.",
+      "vbatEsp8266": "The ESP8266 has one analog input, A0: enter 17.",
+      "vbatEsp32c3": "On the ESP32-C3 the ADC is on GPIO0–GPIO4.",
+      "ratio": "Voltage divider ratio: (R1 + R2) / R2, R1 being the upper leg (to +), R2 the lower one (to ground). Voltage = pin reading × ratio. Empty = 1.\nExample: up to 15 V with R1 = 47 kΩ, R2 = 10 kΩ, ratio 5.7.\n+12V → R1 47k → A0 → R2 10k → ground.\nKeep the pin at or below 3.2 V (NodeMCU, D1 mini) or 3.3 V (ESP32).\nFine tuning: new ratio = current × (multimeter / hive reading)."
+    }
   },
   "add": {
     "step1": "Hornet and code",

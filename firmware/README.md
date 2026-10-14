@@ -49,10 +49,12 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
 - **Battery mode** (any meteo build): config `sleep_s` (set in the swarm screen) makes the hornet wake, send one
   reading, disconnect cleanly and deep-sleep. ESP8266 boards need GPIO16 wired to RST (see
   [docs/hornet-esp01-battery.md](../docs/hornet-esp01-battery.md)); type `awake` on the console to keep it up.
-- **Battery voltage** (any meteo build): wire a divider from the 12 V battery to an ADC pin and set
-  `hw.vbat_pin` and `hw.vbat_ratio` = (R1+R2)/R2. Example: 47 kΩ + 10 kΩ gives 5.7, so 15 V at most reaches
-  2.6 V on the pin (keep it under ~3 V on ESP32-C3; on ESP32-C3 only GPIO0–4 have the ADC). Published as
-  `battery_voltage` (V).
+- **Battery voltage** (any meteo or relay build): wire a divider from the 12 V battery to an ADC pin and set
+  `hw.vbat_pin` and `hw.vbat_ratio` = (R1+R2)/R2 (both in the swarm screen, pins panel). Example: 47 kΩ + 10 kΩ
+  gives 5.7, so 15 V at most reaches 2.6 V on the pin (keep it under ~3 V on ESP32-C3; on ESP32-C3 only GPIO0–4
+  have the ADC). ESP8266 has one ADC, A0: set `vbat_pin` to 17 (any number turns the reading on, A0 is read).
+  The NodeMCU / D1 mini A0 divider is in parallel with R2, so calibrate: new ratio = ratio × multimeter / reading.
+  Published as `battery_voltage` (V) every `tele_interval_s`.
 - **Screen** (`meteo-c3oled`): two values in large digits, `display.lines` in the config, e.g.
   `["temperature", "battery_voltage"]`; by default the first two of temperature, humidity, temperature_2,
   battery_voltage. A dot in the corner means the hornet is online.

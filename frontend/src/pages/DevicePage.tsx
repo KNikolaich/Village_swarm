@@ -259,7 +259,7 @@ export function DevicePage() {
       {device.status !== 'disabled' && (
         <Card>
           <CardHeader><CardTitle>{t('swarm.pins')}</CardTitle></CardHeader>
-          <CardContent><PinsPanel deviceId={device.deviceId} editable={isAdmin} /></CardContent>
+          <CardContent><PinsPanel deviceId={device.deviceId} editable={isAdmin} board={device.hw} type={device.type} /></CardContent>
         </Card>
       )}
     </div>

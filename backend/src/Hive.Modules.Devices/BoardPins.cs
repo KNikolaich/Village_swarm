@@ -25,7 +25,7 @@ public static class BoardPins
     private static readonly Dictionary<string, string[]> RoleFunctions = new()
     {
         ["meteo"] = ["onewire", "sda", "scl", "vbat", "dht"],
-        ["relay"] = ["relay", "button"],
+        ["relay"] = ["relay", "button", "vbat"],
     };
 
     public static bool KnownBoard(string board) => Boards.ContainsKey(board);
@@ -67,4 +67,12 @@ public static class BoardPins
     }
 
     public static bool ValidPin(int pin) => pin is >= 0 and <= 39;
+
+    /// <summary>Divider ratio (R1+R2)/R2: 5.7 for 47k over 10k. Above 100 the ADC step would be volts, not millivolts.</summary>
+    public static bool ValidVbatRatio(double ratio) => ratio > 0 && ratio <= 100 && double.IsFinite(ratio);
+
+    /// <summary>The config "hw".vbat_ratio, or null when the firmware default (1.0) applies.</summary>
+    public static double? VbatRatio(System.Text.Json.JsonElement? hw) =>
+        hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty("vbat_ratio", out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
+            ? v.GetDouble() : null;
 }

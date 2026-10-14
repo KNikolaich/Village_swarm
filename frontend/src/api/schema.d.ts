@@ -2967,10 +2967,14 @@ export interface components {
             buttonPin?: null | number;
             /** Format: int32 */
             vbatPin?: null | number;
+            /** Format: double */
+            vbatRatio?: null | number;
         };
         PinsView: {
             pins: components["schemas"]["PinRow"][];
             conflicts: string[];
+            /** Format: double */
+            vbatRatio: null | number;
         };
         RecoveryCodesDto: {
             recoveryCodes: string[];

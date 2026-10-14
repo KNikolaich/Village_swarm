@@ -2,7 +2,10 @@
 //   cmd/relay {channel, set: on|off, for_s}  ->  ack with state, retained state/{channel}
 // Off at every boot. Switches off by itself after for_s or config relay.max_on_s, whichever is shorter,
 // so a lost hive never leaves a load on. Heaters with temperature failsafe are a separate role (spec 5.6).
+// With hw.vbat_pin set, the supply/battery voltage is also published as battery_voltage (V) every
+// tele_interval_s, so a rule can switch the relay when it leaves its range.
 
+#include <Battery.h>
 #include <HornetCore.h>
 #include <RelayTimer.h>
 
@@ -18,6 +21,10 @@ public:
         if (buttonPin_ >= 0) return {"relay", "button"};
         return {"relay"};
     }
+    std::vector<const char*> metrics() const override {
+        if (battery_.enabled()) return {"battery_voltage"};
+        return {};
+    }
 
     void setup(Core& core) override {
         core_ = &core;
@@ -32,6 +39,8 @@ public:
         const char* ch = relay["channel"] | "relay";
         if (topics::isValidSegment(ch)) channel_ = ch;
         maxOnS_ = relay["max_on_s"] | 0U;
+        teleIntervalMs_ = (config["tele_interval_s"] | 60U) * 1000UL;
+        battery_.configure(hw);
         publishState(core);
     }
 
@@ -52,6 +61,11 @@ public:
             buttonDown_ = pressed;
         }
         if (!statePublished_ && core.online()) publishState(core);
+        if (battery_.enabled() && core.online() && (!batterySent_ || millis() - lastBatteryMs_ >= teleIntervalMs_)) {
+            batterySent_ = true;  // first reading as soon as the hornet is online
+            lastBatteryMs_ = millis();
+            core.publishTele("battery_voltage", battery_.read(), "V");
+        }
     }
 
 private:
@@ -106,6 +120,10 @@ private:
     uint32_t maxOnS_ = 0;
     bool statePublished_ = false;
     RelayTimer timer_;
+    Battery battery_;
+    uint32_t teleIntervalMs_ = 60000;
+    uint32_t lastBatteryMs_ = 0;
+    bool batterySent_ = false;
 };
 
 Relay role;

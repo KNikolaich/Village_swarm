@@ -52,6 +52,35 @@ public sealed class PinsTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task Battery_divider_ratio_is_kept_in_the_config_and_shown_with_the_pins()
+    {
+        await RegisterAsync("meteo-pins3");
+        var admin = await hive.LoginAsync();
+
+        using var tooHigh = await admin.PutAsJsonAsync("/api/devices/meteo-pins3/pins", new { vbatPin = 17, vbatRatio = 1000.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, tooHigh.StatusCode);
+        using var zero = await admin.PutAsJsonAsync("/api/devices/meteo-pins3/pins", new { vbatPin = 17, vbatRatio = 0.0 });
+        Assert.Equal(HttpStatusCode.BadRequest, zero.StatusCode);
+
+        using var ok = await admin.PutAsJsonAsync("/api/devices/meteo-pins3/pins", new { vbatPin = 17, vbatRatio = 5.5 });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        var device = await hive.QueryAsync(db => db.Devices.SingleAsync(d => d.DeviceId == "meteo-pins3"));
+        var hw = device.Config!.RootElement.GetProperty("hw");
+        Assert.Equal((17, 5.5), (hw.GetProperty("vbat_pin").GetInt32(), hw.GetProperty("vbat_ratio").GetDouble()));
+
+        using var view = await admin.GetAsync("/api/devices/meteo-pins3/pins");
+        var body = await view.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(5.5, body.GetProperty("vbatRatio").GetDouble());
+        Assert.Contains(body.GetProperty("pins").EnumerateArray(), p => p.GetProperty("function").GetString() == "vbat" && p.GetProperty("pin").GetInt32() == 17);
+
+        // Without a ratio the firmware default (1.0) applies and the config keeps no vbat_ratio.
+        using var reset = await admin.PutAsJsonAsync("/api/devices/meteo-pins3/pins", new { vbatPin = 17 });
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+        device = await hive.QueryAsync(db => db.Devices.SingleAsync(d => d.DeviceId == "meteo-pins3"));
+        Assert.False(device.Config!.RootElement.GetProperty("hw").TryGetProperty("vbat_ratio", out _));
+    }
+
+    [Fact]
     public async Task Viewers_cannot_move_pins()
     {
         await RegisterAsync("meteo-pins2");

@@ -18,8 +18,8 @@ public sealed record DeviceDto(
     JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev, int? SleepS, string SleepMode);
 
 /// <summary>Device registry reads (spec 6.5). Editing, commands and provisioning come in later steps.</summary>
-/// <summary>Pins of a hornet: what each function uses, from the board default or the config, and conflicts.</summary>
-public sealed record PinsView(IReadOnlyList<BoardPins.PinRow> Pins, IReadOnlyList<string> Conflicts);
+/// <summary>Pins of a hornet: what each function uses, from the board default or the config, and conflicts. VbatRatio is the battery divider ratio set in the config (null: 1.0).</summary>
+public sealed record PinsView(IReadOnlyList<BoardPins.PinRow> Pins, IReadOnlyList<string> Conflicts, double? VbatRatio);
 
 public sealed class DeviceQueries(HiveDbContext db)
 {
@@ -108,7 +108,7 @@ public static class DevicesModule
 
         devices.MapGet("/{deviceId}/pins", async Task<Results<Ok<PinsView>, NotFound>> (string deviceId, DeviceConfigService configs, CancellationToken ct) =>
             await configs.GetPinsAsync(deviceId, ct) is { Status: ConfigUpdateStatus.Updated } r
-                ? TypedResults.Ok(new PinsView(r.Rows, r.Conflicts))
+                ? TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio))
                 : TypedResults.NotFound());
 
         devices.MapPut("/{deviceId}/pins", async Task<Results<Ok<PinsView>, NotFound, ValidationProblem>> (
@@ -119,7 +119,7 @@ public static class DevicesModule
                 {
                     ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
                     ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["pins"] = [r.Error ?? "bad pins"] }),
-                    _ => TypedResults.Ok(new PinsView(r.Rows, r.Conflicts)),
+                    _ => TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio)),
                 };
             })
             .RequireAuthorization(HiveRoles.CanControl);

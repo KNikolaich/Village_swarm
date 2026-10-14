@@ -70,10 +70,13 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         return ConfigUpdateStatus.Updated;
     }
 
-    /// <summary>Pins to override, keyed as in the config "hw" section (onewire_pin, sda_pin, …). Null keeps the board default.</summary>
-    public sealed record PinsRequest(int? OnewirePin = null, int? SdaPin = null, int? SclPin = null, int? RelayPin = null, int? ButtonPin = null, int? VbatPin = null);
+    /// <summary>
+    /// Pins to override, keyed as in the config "hw" section (onewire_pin, sda_pin, …). Null keeps the board default.
+    /// VbatRatio is the battery divider ratio (R1+R2)/R2 that turns the ADC voltage into the battery voltage.
+    /// </summary>
+    public sealed record PinsRequest(int? OnewirePin = null, int? SdaPin = null, int? SclPin = null, int? RelayPin = null, int? ButtonPin = null, int? VbatPin = null, double? VbatRatio = null);
 
-    public sealed record PinsResult(ConfigUpdateStatus Status, string? Error, IReadOnlyList<BoardPins.PinRow> Rows, IReadOnlyList<string> Conflicts);
+    public sealed record PinsResult(ConfigUpdateStatus Status, string? Error, IReadOnlyList<BoardPins.PinRow> Rows, IReadOnlyList<string> Conflicts, double? VbatRatio = null);
 
     /// <summary>
     /// Sets pins by hand (where a sensor is wired is not always the default). Rejected when a pin is out of range or
@@ -87,6 +90,8 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         foreach (var pin in new[] { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin })
             if (pin is { } p && !BoardPins.ValidPin(p))
                 return new PinsResult(ConfigUpdateStatus.BadRequest, "pin: от 0 до 39", [], []);
+        if (r.VbatRatio is { } ratio && !BoardPins.ValidVbatRatio(ratio))
+            return new PinsResult(ConfigUpdateStatus.BadRequest, "Коэффициент делителя: больше 0 и не больше 100", [], []);
 
         var config = device.Config is { } current
             ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
@@ -103,6 +108,8 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         Set("relay_pin", r.RelayPin);
         Set("button_pin", r.ButtonPin);
         Set("vbat_pin", r.VbatPin);
+        if (r.VbatRatio is { } vr) hw["vbat_ratio"] = vr;
+        else hw.Remove("vbat_ratio");
         var hwElement = JsonDocument.Parse(hw.ToJsonString()).RootElement;
         var rows = BoardPins.Rows(device.Hw, device.TypeCode, hwElement);
         var conflicts = BoardPins.Conflicts(device.TypeCode, rows);
@@ -113,11 +120,11 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         device.ConfigRev++;
         config["rev"] = device.ConfigRev;
         device.Config = JsonDocument.Parse(config.ToJsonString());
-        Audit.Record(db, time.GetUtcNow(), by, "device_pins", deviceId, new { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin });
+        Audit.Record(db, time.GetUtcNow(), by, "device_pins", deviceId, new { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin, r.VbatRatio });
         await db.SaveChangesAsync(ct);
         if (mqtt.IsConnected)
             await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
-        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, conflicts);
+        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, conflicts, r.VbatRatio);
     }
 
     /// <summary>The pins a hornet uses now, with where each one comes from, and any conflict.</summary>
@@ -128,7 +135,7 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
             return new PinsResult(ConfigUpdateStatus.NotFound, null, [], []);
         JsonElement? hw = device.Config?.RootElement.TryGetProperty("hw", out var h) == true ? h : null;
         var rows = BoardPins.Rows(device.Hw, device.TypeCode, hw);
-        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, BoardPins.Conflicts(device.TypeCode, rows));
+        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, BoardPins.Conflicts(device.TypeCode, rows), BoardPins.VbatRatio(hw));
     }
 
     public static int? SleepS(Device d) =>

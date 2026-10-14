@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowUpCircle, Moon, Pin, Plus, RefreshCw, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { ArrowUpCircle, CircleHelp, Moon, Pin, Plus, RefreshCw, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -28,20 +28,69 @@ function asleep(d: DeviceDto): boolean {
   return Date.now() - new Date(d.lastSeenAt).getTime() > 90_000
 }
 
+/** Pin fields per role; an unknown type shows them all. The firmware uses only these (BoardPins.RoleFunctions). */
+const pinFields = [['onewirePin', 'onewire'], ['sdaPin', 'sda'], ['sclPin', 'scl'], ['relayPin', 'relay'], ['buttonPin', 'button'], ['vbatPin', 'vbat']] as const
+const roleFunctions: Record<string, readonly string[]> = {
+  meteo: ['onewire', 'sda', 'scl', 'vbat'],
+  relay: ['relay', 'button', 'vbat'],
+}
+
+/** ESP8266 boards: one ADC (A0 = GPIO17) and D-labels on the silkscreen. */
+const esp8266Boards = ['nodemcu-v3', 'wemos-d1-mini', 'esp-01', 'esp-01-dht11']
+
+/** Short help for a pin field: what it is for and, where the board is known, what to type. */
+function pinHelp(fn: string, board: string | null | undefined): string {
+  const base = t(`swarm.pinHelp.${fn}`)
+  if (!board) return base
+  const extra = esp8266Boards.includes(board) ? t(`swarm.pinHelp.${fn}Esp8266`, '') : board.startsWith('esp32c3') ? t(`swarm.pinHelp.${fn}Esp32c3`, '') : ''
+  return extra ? `${base} ${extra}` : base
+}
+
+/** A "?" next to a field: hover shows the hint, a tap opens it under the field (phones have no hover). */
+function HelpTip({ text, open, onToggle }: { text: string; open: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" title={text} aria-label={t('swarm.pinHelpLabel')} aria-expanded={open} onClick={onToggle}
+      className={`inline-flex align-middle ${open ? 'text-amber-400' : 'text-neutral-500 hover:text-neutral-300'}`}>
+      <CircleHelp className="size-3.5" />
+    </button>
+  )
+}
+
 /** Pins of one hornet: what each function uses (board default or set by hand), conflicts shown, and editing. */
-export function PinsPanel({ deviceId, editable }: { deviceId: string; editable: boolean }) {
+export function PinsPanel({ deviceId, editable, board, type }: { deviceId: string; editable: boolean; board?: string | null; type?: string }) {
   const qc = useQueryClient()
   const pins = useQuery({ queryKey: ['devices', deviceId, 'pins'], queryFn: () => call(api.GET('/api/devices/{deviceId}/pins', { params: { path: { deviceId } } })) })
   const [draft, setDraft] = useState<Record<string, string>>({})
-  const keys = [['onewirePin', 'onewire'], ['sdaPin', 'sda'], ['sclPin', 'scl'], ['relayPin', 'relay'], ['buttonPin', 'button'], ['vbatPin', 'vbat']] as const
+  const [help, setHelp] = useState<string | null>(null)
+  const used = type ? roleFunctions[type] : undefined
+  const keys = used ? pinFields.filter(([, fn]) => used.includes(fn)) : pinFields
+  const showRatio = keys.some(([, fn]) => fn === 'vbat')
 
   async function save() {
+    // The request is the whole set of hand-set pins: fields left alone keep what is set now, an emptied one goes back to the default.
+    const rows = pins.data?.pins ?? []
     const body: Record<string, number | null> = {}
-    for (const [field] of keys) {
+    for (const [field, fn] of pinFields) {
       const value = draft[field]
-      if (value === undefined) continue
-      body[field] = value === '' ? null : Number(value)
+      if (value === undefined) {
+        const row = rows.find((r) => r.function === fn)
+        body[field] = row?.source === 'config' ? (row.pin ?? null) : null
+        continue
+      }
+      const text = value.trim()
+      if (text !== '' && !/^\d+$/.test(text)) {
+        toast.error(t('swarm.pinsNotNumber').replace('{field}', fn).replace('{value}', text))
+        return
+      }
+      body[field] = text === '' ? null : Number(text)
     }
+    const ratioText = draft.vbatRatio?.trim().replace(',', '.')
+    if (ratioText === undefined) body.vbatRatio = pins.data?.vbatRatio ?? null
+    else if (ratioText === '') body.vbatRatio = null
+    else if (!/^\d+(\.\d+)?$/.test(ratioText) || Number(ratioText) <= 0 || Number(ratioText) > 100) {
+      toast.error(t('swarm.ratioInvalid'))
+      return
+    } else body.vbatRatio = Number(ratioText)
     try {
       await call(api.PUT('/api/devices/{deviceId}/pins', { params: { path: { deviceId } }, body }))
       setDraft({})
@@ -54,6 +103,7 @@ export function PinsPanel({ deviceId, editable }: { deviceId: string; editable: 
 
   if (pins.isLoading) return <Skeleton className="h-16" />
   const rows = pins.data?.pins ?? []
+  const ratio = pins.data?.vbatRatio
   return (
     <div className="space-y-2 text-xs">
       {pins.data?.conflicts.length ? <p className="text-red-400">{t('swarm.pinsConflict')}: {pins.data.conflicts.join('; ')}</p> : null}
@@ -64,8 +114,11 @@ export function PinsPanel({ deviceId, editable }: { deviceId: string; editable: 
             {rows.map((r) => (
               <tr key={r.function} className="border-t border-neutral-800">
                 <td className="py-1 pr-2 text-neutral-400">{r.function}</td>
-                <td className="py-1 pr-2 tabular-nums">GPIO{r.pin}</td>
-                <td className="py-1 text-neutral-500">{r.source === 'config' ? t('swarm.pinsByHand') : t('swarm.pinsDefault')}{r.note ? ` · ${r.note}` : ''}</td>
+                <td className="py-1 pr-2 tabular-nums">{r.function === 'vbat' && board && esp8266Boards.includes(board) ? 'A0' : `GPIO${r.pin}`}</td>
+                <td className="py-1 text-neutral-500">
+                  {r.source === 'config' ? t('swarm.pinsByHand') : t('swarm.pinsDefault')}{r.note ? ` · ${r.note}` : ''}
+                  {r.function === 'vbat' ? ` · ×${ratio ?? 1}` : ''}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -75,7 +128,10 @@ export function PinsPanel({ deviceId, editable }: { deviceId: string; editable: 
         <div className="grid grid-cols-3 gap-2">
           {keys.map(([field, label]) => (
             <label key={field} className="space-y-1">
-              <span className="text-neutral-500">{label}</span>
+              <span className="flex items-center gap-1 text-neutral-500">
+                {label}
+                <HelpTip text={pinHelp(label, board)} open={help === label} onToggle={() => setHelp(help === label ? null : label)} />
+              </span>
               <Input
                 inputMode="numeric"
                 placeholder={rows.find((r) => r.function === label)?.pin?.toString() ?? '—'}
@@ -85,6 +141,22 @@ export function PinsPanel({ deviceId, editable }: { deviceId: string; editable: 
               />
             </label>
           ))}
+          {showRatio && (
+            <label className="space-y-1">
+              <span className="flex items-center gap-1 text-neutral-500">
+                {t('swarm.ratio')}
+                <HelpTip text={t('swarm.pinHelp.ratio')} open={help === 'ratio'} onToggle={() => setHelp(help === 'ratio' ? null : 'ratio')} />
+              </span>
+              <Input
+                inputMode="decimal"
+                placeholder={ratio?.toString() ?? '1'}
+                value={draft.vbatRatio ?? ''}
+                onChange={(e) => setDraft({ ...draft, vbatRatio: e.target.value })}
+                className="h-8 text-xs"
+              />
+            </label>
+          )}
+          {help && <p className="col-span-3 whitespace-pre-line rounded-lg bg-neutral-900 p-2 text-neutral-300">{help === 'ratio' ? t('swarm.pinHelp.ratio') : pinHelp(help, board)}</p>}
           <Button size="sm" className="col-span-3" onClick={() => void save()} disabled={Object.keys(draft).length === 0}>{t('swarm.pinsSave')}</Button>
         </div>
       )}
@@ -232,7 +304,7 @@ ${t('swarm.updateRisk')}` : text)) return
             </CardContent>
             {pinsOpen === d.deviceId && (
               <CardContent className="border-t border-neutral-800 pt-3">
-                <PinsPanel deviceId={d.deviceId} editable={isAdmin} />
+                <PinsPanel deviceId={d.deviceId} editable={isAdmin} board={d.hw} type={d.type} />
               </CardContent>
             )}
           </Card>

@@ -3427,13 +3427,21 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "vbatRatio": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
           }
         }
       },
       "PinsView": {
         "required": [
           "pins",
-          "conflicts"
+          "conflicts",
+          "vbatRatio"
         ],
         "type": "object",
         "properties": {
@@ -3448,6 +3456,13 @@
             "items": {
               "type": "string"
             }
+          },
+          "vbatRatio": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
           }
         }
       },

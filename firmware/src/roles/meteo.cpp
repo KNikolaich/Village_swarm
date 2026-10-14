@@ -13,6 +13,7 @@
 // digits, chosen by config display.lines, and a dot in the corner while the hornet is online.
 
 #include <Adafruit_BME280.h>
+#include <Battery.h>
 #include <DallasTemperature.h>
 #include <HornetCore.h>
 #include <OneWire.h>
@@ -31,16 +32,6 @@
 #endif
 #endif
 
-#ifndef HW_VBAT_PIN
-#define HW_VBAT_PIN -1
-#endif
-#ifndef HW_VBAT_RATIO
-#define HW_VBAT_RATIO 1.0
-#endif
-// ESP8266 A0: volts at analogRead() = 1023 (1.0 on a bare ESP-12/ESP-01, 3.2 with the D1 mini / NodeMCU divider).
-#ifndef HW_ADC_FULL_SCALE
-#define HW_ADC_FULL_SCALE 3.2
-#endif
 
 #ifdef HW_DHT_PIN
 #define HW_DHT_TYPE_NAME (HW_DHT_TYPE == 22 ? "sensor.dht22" : "sensor.dht11")
@@ -75,7 +66,7 @@ public:
             m.push_back("pressure");
         }
         if (dhtOk_) m.push_back("humidity");
-        if (vbatPin_ >= 0) m.push_back("battery_voltage");
+        if (battery_.enabled()) m.push_back("battery_voltage");
         return m;
     }
 
@@ -87,8 +78,7 @@ public:
         const int onewire = hw["onewire_pin"] | HW_ONEWIRE_PIN;
         const int sda = hw["sda_pin"] | HW_SDA_PIN;
         const int scl = hw["scl_pin"] | HW_SCL_PIN;
-        vbatPin_ = hw["vbat_pin"] | HW_VBAT_PIN;
-        vbatRatio_ = hw["vbat_ratio"] | HW_VBAT_RATIO;
+        battery_.configure(hw);
         lines_.clear();
         for (JsonVariantConst line : config["display"]["lines"].as<JsonArrayConst>()) lines_.push_back(line.as<String>());
         if (onewire != onewirePin_ || sda != sdaPin_ || scl != sclPin_) {
@@ -165,14 +155,14 @@ private:
     }
 
     void publish(Core& core) {
-        if (vbatPin_ >= 0) report(core, "battery_voltage", readBattery(), "V");
+        if (battery_.enabled()) report(core, "battery_voltage", battery_.read(), "V");
 #ifdef HW_DHT_PIN
         readDht(core);
         draw(core);
         return;
 #endif
         if (!bmeOk_ && dsCount_ == 0) {
-            if (!warned_ && vbatPin_ < 0) core.log(LogLevel::Warn, "no sensor found (DS18B20 or BME280)");
+            if (!warned_ && !battery_.enabled()) core.log(LogLevel::Warn, "no sensor found (DS18B20 or BME280)");
             warned_ = true;
             draw(core);
             return;
@@ -215,20 +205,6 @@ private:
     void report(Core& core, const char* metric, float value, const char* unit) {
         core.publishTele(metric, value, unit);
         values_[metric] = value;
-    }
-
-    // Averaged ADC reading times the divider ratio.
-    float readBattery() const {
-        uint32_t sum = 0;
-        constexpr int kSamples = 16;
-        for (int i = 0; i < kSamples; ++i) {
-#if defined(ESP32)
-            sum += analogReadMilliVolts(vbatPin_);
-#else
-            sum += static_cast<uint32_t>(analogRead(A0) * (HW_ADC_FULL_SCALE * 1000.0) / 1023.0);
-#endif
-        }
-        return sum / static_cast<float>(kSamples) / 1000.0F * vbatRatio_;
     }
 
     // What goes on the screen when the config does not say: the first two of these that exist.
@@ -284,8 +260,7 @@ private:
     std::vector<String> names_;
     std::vector<String> lines_;
     std::map<String, float> values_;
-    int vbatPin_ = HW_VBAT_PIN;
-    float vbatRatio_ = HW_VBAT_RATIO;
+    Battery battery_;
 #if HORNET_DISPLAY
     // SSD1306 72x40 on the ESP32-C3 0.42" board, hardware I2C on the shared bus.
     U8G2_SSD1306_72X40_ER_F_HW_I2C oled_{U8G2_R0, U8X8_PIN_NONE};
