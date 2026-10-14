@@ -25,6 +25,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     public DbSet<TgLinkCode> TgLinkCodes => Set<TgLinkCode>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<EnrollmentCode> EnrollmentCodes => Set<EnrollmentCode>();
+    public DbSet<WeatherSnapshot> WeatherSnapshots => Set<WeatherSnapshot>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -128,6 +129,13 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.HasKey(x => x.Code);
             e.Property(x => x.Code).HasMaxLength(8);
             e.HasOne<HiveUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<WeatherSnapshot>(e =>
+        {
+            e.ToTable("weather_snapshot");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedNever();
         });
 
         b.Entity<EnrollmentCode>(e =>

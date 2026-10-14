@@ -21,5 +21,6 @@
     <ProjectReference Include="../Hive.Modules.Notify/Hive.Modules.Notify.csproj" />
     <ProjectReference Include="../Hive.Modules.Cluster/Hive.Modules.Cluster.csproj" />
     <ProjectReference Include="../Hive.Modules.Users/Hive.Modules.Users.csproj" />
+    <ProjectReference Include="../Hive.Modules.Weather/Hive.Modules.Weather.csproj" />
   </ItemGroup>
 </Project>

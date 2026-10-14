@@ -1729,6 +1729,100 @@
           }
         }
       }
+    },
+    "/api/weather": {
+      "get": {
+        "tags": [
+          "weather"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/weather/refresh": {
+      "post": {
+        "tags": [
+          "weather"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/weather": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherSettingsDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WeatherSettingsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WeatherDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3083,6 +3177,277 @@
           }
         }
       },
+      "WeatherCurrentDto": {
+        "required": [
+          "time",
+          "temperature",
+          "apparent",
+          "humidity",
+          "precipitation",
+          "weatherCode",
+          "windSpeed",
+          "windDirection"
+        ],
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "temperature": {
+            "type": "number",
+            "format": "double"
+          },
+          "apparent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "humidity": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "precipitation": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "weatherCode": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "windSpeed": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "windDirection": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "WeatherDayDto": {
+        "required": [
+          "date",
+          "temperatureMin",
+          "temperatureMax",
+          "precipitationSum",
+          "precipitationProbabilityMax",
+          "weatherCode",
+          "sunrise",
+          "sunset"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "temperatureMin": {
+            "type": "number",
+            "format": "double"
+          },
+          "temperatureMax": {
+            "type": "number",
+            "format": "double"
+          },
+          "precipitationSum": {
+            "type": "number",
+            "format": "double"
+          },
+          "precipitationProbabilityMax": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "weatherCode": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sunrise": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "sunset": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "WeatherDto": {
+        "required": [
+          "configured",
+          "fetchedAt",
+          "stale",
+          "error",
+          "current",
+          "hourly",
+          "daily"
+        ],
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "fetchedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "current": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WeatherCurrentDto"
+              }
+            ]
+          },
+          "hourly": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeatherHourDto"
+            }
+          },
+          "daily": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WeatherDayDto"
+            }
+          }
+        }
+      },
+      "WeatherHourDto": {
+        "required": [
+          "time",
+          "temperature",
+          "apparent",
+          "precipitationProbability",
+          "precipitation",
+          "weatherCode",
+          "windSpeed",
+          "windDirection",
+          "humidity"
+        ],
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "temperature": {
+            "type": "number",
+            "format": "double"
+          },
+          "apparent": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "precipitationProbability": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "precipitation": {
+            "type": "number",
+            "format": "double"
+          },
+          "weatherCode": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "windSpeed": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "windDirection": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "humidity": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "WeatherSettingsDto": {
+        "required": [
+          "baseUrl",
+          "latitude",
+          "longitude",
+          "timezone"
+        ],
+        "type": "object",
+        "properties": {
+          "baseUrl": {
+            "type": "string"
+          },
+          "latitude": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "longitude": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "timezone": {
+            "type": "string"
+          }
+        }
+      },
       "WifiSecrets": {
         "required": [
           "ssid",
@@ -3193,6 +3558,9 @@
     },
     {
       "name": "telegram"
+    },
+    {
+      "name": "weather"
     }
   ]
 }

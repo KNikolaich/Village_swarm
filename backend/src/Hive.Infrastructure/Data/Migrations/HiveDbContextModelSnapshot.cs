@@ -887,6 +887,27 @@ namespace Hive.Infrastructure.Data.Migrations
                     b.ToTable("tg_link_codes", (string)null);
                 });
 
+            modelBuilder.Entity("Hive.Domain.WeatherSnapshot", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("FetchedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fetched_at");
+
+                    b.Property<JsonDocument>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload");
+
+                    b.HasKey("Id")
+                        .HasName("pk_weather_snapshot");
+
+                    b.ToTable("weather_snapshot", (string)null);
+                });
+
             modelBuilder.Entity("Hive.Domain.Zone", b =>
                 {
                     b.Property<int>("Id")

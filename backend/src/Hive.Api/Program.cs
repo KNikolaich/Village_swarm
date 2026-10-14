@@ -12,6 +12,7 @@ using Hive.Modules.Notify;
 using Hive.Modules.Telemetry;
 using Hive.Modules.Telemetry.Ingest;
 using Hive.Modules.Users;
+using Hive.Modules.Weather;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -46,6 +47,7 @@ builder.Services.AddDevicesModule(builder.Configuration);
 builder.Services.AddEventsModule();
 builder.Services.AddMediaModule(builder.Configuration);
 builder.Services.AddNotifyModule(builder.Configuration);
+builder.Services.AddWeatherModule(builder.Configuration);
 
 builder.Services.AddSignalR().AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
 builder.Services.AddSingleton<IIngestListener, LiveNotifier>();
@@ -113,6 +115,7 @@ app.MapDevicesEndpoints();
 app.MapEventsEndpoints();
 app.MapMediaEndpoints();
 app.MapNotifyEndpoints();
+app.MapWeatherEndpoints();
 app.MapHub<LiveHub>(LiveHub.Path);
 app.MapGet("/api/monitor", (long? since, MqttMonitor monitor) => TypedResults.Ok(monitor.Since(since ?? 0)))
     .RequireAuthorization(HiveRoles.AdminOnly)

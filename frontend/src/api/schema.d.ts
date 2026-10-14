@@ -2043,6 +2043,143 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/weather": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WeatherDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/weather/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WeatherDto"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/weather": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WeatherSettingsDto"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["WeatherSettingsDto"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["WeatherDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2394,6 +2531,80 @@ export interface components {
             /** Format: int32 */
             teleIntervalS?: null | number;
             sleepMode?: null | components["schemas"]["SleepMode"];
+        };
+        WeatherCurrentDto: {
+            /** Format: date-time */
+            time: string;
+            /** Format: double */
+            temperature: number;
+            /** Format: double */
+            apparent: null | number;
+            /** Format: double */
+            humidity: null | number;
+            /** Format: double */
+            precipitation: null | number;
+            /** Format: int32 */
+            weatherCode: number;
+            /** Format: double */
+            windSpeed: null | number;
+            /** Format: int32 */
+            windDirection: null | number;
+        };
+        WeatherDayDto: {
+            /** Format: date */
+            date: string;
+            /** Format: double */
+            temperatureMin: number;
+            /** Format: double */
+            temperatureMax: number;
+            /** Format: double */
+            precipitationSum: number;
+            /** Format: int32 */
+            precipitationProbabilityMax: null | number;
+            /** Format: int32 */
+            weatherCode: number;
+            /** Format: date-time */
+            sunrise: null | string;
+            /** Format: date-time */
+            sunset: null | string;
+        };
+        WeatherDto: {
+            configured: boolean;
+            /** Format: date-time */
+            fetchedAt: null | string;
+            stale: boolean;
+            error: null | string;
+            current: null | components["schemas"]["WeatherCurrentDto"];
+            hourly: components["schemas"]["WeatherHourDto"][];
+            daily: components["schemas"]["WeatherDayDto"][];
+        };
+        WeatherHourDto: {
+            /** Format: date-time */
+            time: string;
+            /** Format: double */
+            temperature: number;
+            /** Format: double */
+            apparent: null | number;
+            /** Format: int32 */
+            precipitationProbability: null | number;
+            /** Format: double */
+            precipitation: number;
+            /** Format: int32 */
+            weatherCode: number;
+            /** Format: double */
+            windSpeed: null | number;
+            /** Format: int32 */
+            windDirection: null | number;
+            /** Format: double */
+            humidity: null | number;
+        };
+        WeatherSettingsDto: {
+            baseUrl: string;
+            /** Format: double */
+            latitude: null | number;
+            /** Format: double */
+            longitude: null | number;
+            timezone: string;
         };
         WifiSecrets: {
             ssid: string;

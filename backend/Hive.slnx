@@ -12,6 +12,7 @@
     <Project Path="src/Hive.Modules.Rules/Hive.Modules.Rules.csproj" />
     <Project Path="src/Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
     <Project Path="src/Hive.Modules.Users/Hive.Modules.Users.csproj" />
+    <Project Path="src/Hive.Modules.Weather/Hive.Modules.Weather.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Hive.Tests.Integration/Hive.Tests.Integration.csproj" />
