@@ -22,6 +22,8 @@ public static class TelemetryModule
         services.AddScoped<TelemetryQueries>();
         services.AddOptions<HiveSensorOptions>().BindConfiguration(HiveSensorOptions.Section);
         services.AddHostedService<HiveSensors>();
+        services.AddOptions<OfflineWatchOptions>().BindConfiguration(OfflineWatchOptions.Section);
+        services.AddHostedService<OfflineWatch>();
         return services;
     }
 

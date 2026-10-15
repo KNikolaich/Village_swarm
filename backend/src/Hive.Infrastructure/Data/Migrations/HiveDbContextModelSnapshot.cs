@@ -187,6 +187,10 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("notes");
 
+                    b.Property<DateTimeOffset?>("OfflineReportedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("offline_reported_at");
+
                     b.Property<int?>("Rssi")
                         .HasColumnType("integer")
                         .HasColumnName("rssi");

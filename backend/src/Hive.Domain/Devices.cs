@@ -52,6 +52,9 @@ public class Device
     public string? FwVersion { get; set; }
     public DeviceStatus Status { get; set; } = DeviceStatus.Pending;
     public DateTimeOffset? LastSeenAt { get; set; }
+
+    /// <summary>When the family was told this hornet is gone (null: not reported, or back again).</summary>
+    public DateTimeOffset? OfflineReportedAt { get; set; }
     public string? Ip { get; set; }
     public int? Rssi { get; set; }
     public int? Boot { get; set; }

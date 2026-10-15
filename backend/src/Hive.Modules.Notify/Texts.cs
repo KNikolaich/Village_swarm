@@ -19,6 +19,8 @@ public static class Texts
         "tamper" => "Камера закрыта или сдвинута",
         "snapshot" => "Снимок",
         "ota" => "Обновление прошивки",
+        "device_offline" => "Шершень не на связи",
+        "device_online" => "Шершень снова на связи",
         "backup" => "Проблема с бэкапом",
         "disk_cleanup" => "Диск заполнен: удалены старые фото",
         "backup_cleared" => "Бэкапы снова в порядке",
@@ -46,6 +48,8 @@ public static class Texts
         var text = $"{Icon(e.Severity)} <b>{H(EventType(e.Type))}</b>: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}";
         if (e.Type == "ota")
             text += OtaDetail(e.Payload.RootElement);
+        if (e.Type == "device_offline" && e.Payload.RootElement.TryGetProperty("minutes", out var gone))
+            text += $"\nне отвечает уже {gone.GetInt32()} мин";
         if (e.Type == "disk_cleanup")
             text += CleanupDetail(e.Payload.RootElement);
         if (e.Type == "backup")

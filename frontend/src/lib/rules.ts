@@ -74,6 +74,36 @@ export function templates(devices: DeviceDto[]): { key: string; name: string; de
       },
     },
     {
+      key: 'cold',
+      name: t('rules.templates.cold'),
+      definition: {
+        trigger: { kind: 'telemetry', device: sensor, metric: 'temperature', offsetMin: 0 },
+        conditions: [{ kind: 'value', not: false, device: sensor, metric: 'temperature', op: '<', value: 3, release: 5, forS: 600 }],
+        actions: [{ kind: 'notify', text: t('rules.defaults.cold'), level: 'critical' }],
+        cooldownS: 3 * 3600,
+      },
+    },
+    {
+      key: 'armNight',
+      name: t('rules.templates.armNight'),
+      definition: {
+        trigger: { kind: 'schedule', at: '23:00', offsetMin: 0 },
+        conditions: [],
+        actions: [{ kind: 'set_mode', mode: 'armed', value: 'true' }, { kind: 'notify', text: t('rules.defaults.armed'), level: 'info' }],
+        cooldownS: 0,
+      },
+    },
+    {
+      key: 'disarmMorning',
+      name: t('rules.templates.disarmMorning'),
+      definition: {
+        trigger: { kind: 'schedule', at: '07:00', offsetMin: 0 },
+        conditions: [],
+        actions: [{ kind: 'set_mode', mode: 'armed', value: 'false' }, { kind: 'notify', text: t('rules.defaults.disarmed'), level: 'info' }],
+        cooldownS: 0,
+      },
+    },
+    {
       key: 'lights',
       name: t('rules.templates.lights'),
       definition: {

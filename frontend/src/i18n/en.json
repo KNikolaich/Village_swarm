@@ -289,12 +289,18 @@
     },
     "defaults": {
       "notify": "Rule \"{rule}\" fired: {value}",
-      "frost": "{value}° at {device}, heating on"
+      "frost": "{value}° at {device}, heating on",
+      "cold": "It is cold at {device}: {value}°. Check the heating",
+      "armed": "Guard is on for the night",
+      "disarmed": "Guard is off for the day"
     },
     "templates": {
       "frost": "Frost guard",
       "watering": "Watering unless it rained",
-      "lights": "Lights at sunset"
+      "lights": "Lights at sunset",
+      "cold": "Cold in the house: alarm",
+      "armNight": "Guard on for the night",
+      "disarmMorning": "Guard off in the morning"
     },
     "reasons": {
       "stale": "no fresh {metric} from {device}",
@@ -361,7 +367,9 @@
     "ota": "Firmware update",
     "backup": "Backup problem",
     "backup_cleared": "Backups are well again",
-    "disk_cleanup": "Disk full: old photos deleted"
+    "disk_cleanup": "Disk full: old photos deleted",
+    "device_offline": "Hornet offline",
+    "device_online": "Hornet back online"
   },
   "severity": {
     "info": "Info",
