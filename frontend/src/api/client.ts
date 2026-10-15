@@ -20,6 +20,7 @@ export type DryRunResult = Schemas['DryRunResult']
 export type RuleRunDto = Schemas['RuleRunDto']
 export type BackupStatusDto = Schemas['BackupStatusDto']
 export type BackupRunDto = Schemas['BackupRunDto']
+export type RetentionStatusDto = Schemas['RetentionStatusDto']
 export type MeDto = Schemas['MeDto']
 export type LoginResult = Schemas['LoginResult']
 

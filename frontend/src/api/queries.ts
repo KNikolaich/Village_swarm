@@ -191,3 +191,6 @@ export const useRuleRuns = (id: number | null) =>
 
 export const useBackups = (enabled: boolean) =>
   useQuery({ queryKey: ['backups'] as const, queryFn: () => call(api.GET('/api/backups')), enabled, refetchInterval: 5 * 60_000 })
+
+export const useRetention = (enabled: boolean) =>
+  useQuery({ queryKey: ['retention'] as const, queryFn: () => call(api.GET('/api/retention')), enabled, refetchInterval: 5 * 60_000 })

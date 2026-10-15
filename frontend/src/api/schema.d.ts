@@ -1507,6 +1507,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RetentionStatusDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/monitor": {
         parameters: {
             query?: never;
@@ -3139,6 +3174,47 @@ export interface components {
         };
         RenameDeviceRequest: {
             name: string;
+        };
+        RetentionOptions: {
+            /** Format: int32 */
+            alarmPhotoDays?: number;
+            /** Format: int32 */
+            otherPhotoDays?: number;
+            /** Format: int32 */
+            timelapseFrameDays?: number;
+            /** Format: int32 */
+            rawTelemetryDays?: number;
+            /** Format: int32 */
+            healthDays?: number;
+            /** Format: int32 */
+            logDays?: number;
+            /** Format: int32 */
+            housekeepingDays?: number;
+            /** Format: double */
+            diskHighPct?: number;
+            /** Format: double */
+            diskTargetPct?: number;
+            /** Format: int32 */
+            alarmFloorDays?: number;
+            /** Format: int32 */
+            runAtHour?: number;
+            /** Format: int32 */
+            diskCheckMinutes?: number;
+        };
+        RetentionStatusDto: {
+            /** Format: double */
+            diskUsedPct: null | number;
+            /** Format: double */
+            diskHighPct: number;
+            /** Format: date-time */
+            lastRunAt: null | string;
+            /** Format: int32 */
+            lastPhotosDeleted: number;
+            /** Format: int64 */
+            lastPhotoBytes: number;
+            /** Format: date-time */
+            telemetryHourlyBefore: null | string;
+            settings: components["schemas"]["RetentionOptions"];
         };
         RuleAction: {
             kind: string;

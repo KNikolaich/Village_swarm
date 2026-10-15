@@ -20,6 +20,7 @@ public static class Texts
         "snapshot" => "Снимок",
         "ota" => "Обновление прошивки",
         "backup" => "Проблема с бэкапом",
+        "disk_cleanup" => "Диск заполнен: удалены старые фото",
         "backup_cleared" => "Бэкапы снова в порядке",
         "rule" => "Правило",
         "overheat" => "Улей перегревается",
@@ -45,6 +46,8 @@ public static class Texts
         var text = $"{Icon(e.Severity)} <b>{H(EventType(e.Type))}</b>: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}";
         if (e.Type == "ota")
             text += OtaDetail(e.Payload.RootElement);
+        if (e.Type == "disk_cleanup")
+            text += CleanupDetail(e.Payload.RootElement);
         if (e.Type == "backup")
             text += BackupDetail(e.Payload.RootElement);
         if (e.Type == "rule" && e.Payload.RootElement.TryGetProperty("text", out var said))
@@ -56,6 +59,15 @@ public static class Texts
         if (repeat > 1)
             text += $"\n<b>×{repeat}</b> подряд";
         return text;
+    }
+
+    /// <summary>"\nудалено фото: 120 (диск был занят на 88%)" after an emergency cleanup (Hive.Modules.Retention).</summary>
+    private static string CleanupDetail(System.Text.Json.JsonElement p)
+    {
+        var photos = p.TryGetProperty("photos", out var n) ? n.GetInt32() : 0;
+        var used = p.TryGetProperty("usedPct", out var u) ? $" (диск был занят на {u.GetDouble().ToString("0.#", Ru)}%)" : "";
+        var oldAlarms = p.TryGetProperty("level", out var l) && l.GetInt32() >= 2 ? "\nПришлось удалить и часть старых фото тревог: проверьте диск." : "";
+        return $"\nудалено фото: {photos}{used}{oldAlarms}";
     }
 
     /// <summary>One line per problem the backup watch found (Hive.Modules.Backup), e.g. "нет свежего дампа базы".</summary>

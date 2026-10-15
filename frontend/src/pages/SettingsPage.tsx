@@ -9,6 +9,7 @@ import { keys, useMe, useTelegram } from '@/api/queries'
 import { BackupCard } from '@/components/BackupCard'
 import { CertificateCard } from '@/components/CertificateCard'
 import { PasswordInput } from '@/components/PasswordInput'
+import { RetentionCard } from '@/components/RetentionCard'
 import { WeatherSettingsCard } from '@/components/WeatherSettingsCard'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Skeleton } from '@/components/ui/primitives'
@@ -27,6 +28,7 @@ export function SettingsPage() {
       <WeatherSettingsCard />
       <LanguageCard />
       <BackupCard />
+      <RetentionCard />
       <CertificateCard />
       <MonitorCard />
       <HiveVersion />

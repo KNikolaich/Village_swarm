@@ -913,6 +913,44 @@ namespace Hive.Infrastructure.Data.Migrations
                     b.ToTable("rule_runs", (string)null);
                 });
 
+            modelBuilder.Entity("Hive.Domain.TelemetryHourly", b =>
+                {
+                    b.Property<string>("DeviceId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("device_id");
+
+                    b.Property<string>("Metric")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("metric");
+
+                    b.Property<DateTimeOffset>("Hour")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("hour");
+
+                    b.Property<double>("Avg")
+                        .HasColumnType("double precision")
+                        .HasColumnName("avg");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer")
+                        .HasColumnName("count");
+
+                    b.Property<double>("Max")
+                        .HasColumnType("double precision")
+                        .HasColumnName("max");
+
+                    b.Property<double>("Min")
+                        .HasColumnType("double precision")
+                        .HasColumnName("min");
+
+                    b.HasKey("DeviceId", "Metric", "Hour")
+                        .HasName("pk_telemetry_hourly");
+
+                    b.ToTable("telemetry_hourly", (string)null);
+                });
+
             modelBuilder.Entity("Hive.Domain.TelemetryPoint", b =>
                 {
                     b.Property<string>("DeviceId")

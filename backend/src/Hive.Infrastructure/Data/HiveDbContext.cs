@@ -27,6 +27,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     public DbSet<EnrollmentCode> EnrollmentCodes => Set<EnrollmentCode>();
     public DbSet<WeatherSnapshot> WeatherSnapshots => Set<WeatherSnapshot>();
     public DbSet<BackupRun> BackupRuns => Set<BackupRun>();
+    public DbSet<TelemetryHourly> TelemetryHourly => Set<TelemetryHourly>();
     public DbSet<Rule> Rules => Set<Rule>();
     public DbSet<RuleRun> RuleRuns => Set<RuleRun>();
 
@@ -132,6 +133,14 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.HasKey(x => x.Code);
             e.Property(x => x.Code).HasMaxLength(8);
             e.HasOne<HiveUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<TelemetryHourly>(e =>
+        {
+            e.ToTable("telemetry_hourly");
+            e.HasKey(x => new { x.DeviceId, x.Metric, x.Hour });
+            e.Property(x => x.DeviceId).HasMaxLength(32);
+            e.Property(x => x.Metric).HasMaxLength(32);
         });
 
         b.Entity<BackupRun>(e =>

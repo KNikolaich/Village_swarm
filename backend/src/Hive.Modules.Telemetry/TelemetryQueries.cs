@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Hive.Domain;
 using Hive.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -59,11 +60,24 @@ public sealed class TelemetryQueries(HiveDbContext db, TimeProvider time)
         string device, string metric, DateTimeOffset? from, DateTimeOffset? to, int? points, CancellationToken ct)
     {
         var (start, end, bucket) = Window(from, to, points);
+        // Readings before the cut exist only as hourly aggregates (retention), later ones only raw: no overlap.
+        var cut = await db.Modes.AsNoTracking().Where(m => m.Key == Mode.TelemetryCut).Select(m => m.Value).FirstOrDefaultAsync(ct) is { } text
+                  && DateTimeOffset.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed)
+            ? parsed
+            : DateTimeOffset.UnixEpoch;
         var rows = await db.Database.SqlQuery<SeriesRow>($"""
+            WITH src AS (
+                SELECT ts, value AS a, value AS lo, value AS hi, 1 AS n
+                FROM telemetry
+                WHERE device_id = {device} AND metric = {metric} AND ts >= {start} AND ts < {end} AND ts >= {cut}
+                UNION ALL
+                SELECT hour, avg, min, max, count
+                FROM telemetry_hourly
+                WHERE device_id = {device} AND metric = {metric} AND hour >= {start} AND hour < {end} AND hour < {cut}
+            )
             SELECT date_bin(make_interval(secs => {bucket}), ts, TIMESTAMPTZ '2000-01-01') AS "Ts",
-                   avg(value) AS "Avg", min(value) AS "Min", max(value) AS "Max"
-            FROM telemetry
-            WHERE device_id = {device} AND metric = {metric} AND ts >= {start} AND ts < {end}
+                   (sum(a * n) / sum(n))::float8 AS "Avg", min(lo) AS "Min", max(hi) AS "Max"
+            FROM src
             GROUP BY 1
             ORDER BY 1
             """).ToListAsync(ct);

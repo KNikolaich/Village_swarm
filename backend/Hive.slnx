@@ -10,6 +10,7 @@
     <Project Path="src/Hive.Modules.Events/Hive.Modules.Events.csproj" />
     <Project Path="src/Hive.Modules.Media/Hive.Modules.Media.csproj" />
     <Project Path="src/Hive.Modules.Notify/Hive.Modules.Notify.csproj" />
+    <Project Path="src/Hive.Modules.Retention/Hive.Modules.Retention.csproj" />
     <Project Path="src/Hive.Modules.Rules/Hive.Modules.Rules.csproj" />
     <Project Path="src/Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
     <Project Path="src/Hive.Modules.Users/Hive.Modules.Users.csproj" />

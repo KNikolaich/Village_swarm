@@ -35,6 +35,9 @@ public class DeviceCommand
 public class Mode
 {
     public const string Armed = "armed";
+
+    /// <summary>Readings older than this moment live only as hourly aggregates (Hive.Modules.Retention); UTC ISO text.</summary>
+    public const string TelemetryCut = "retention.telemetry_cut";
     public const string Presence = "presence";
     public const string PresenceHome = "home";
     public const string PresenceAway = "away";

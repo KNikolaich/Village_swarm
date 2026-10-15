@@ -1260,6 +1260,25 @@
         }
       }
     },
+    "/api/retention": {
+      "get": {
+        "tags": [
+          "retention"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionStatusDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/monitor": {
       "get": {
         "tags": [
@@ -3699,6 +3718,109 @@
           }
         }
       },
+      "RetentionOptions": {
+        "type": "object",
+        "properties": {
+          "alarmPhotoDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "otherPhotoDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "timelapseFrameDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "rawTelemetryDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "healthDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "logDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "housekeepingDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "diskHighPct": {
+            "type": "number",
+            "format": "double"
+          },
+          "diskTargetPct": {
+            "type": "number",
+            "format": "double"
+          },
+          "alarmFloorDays": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "runAtHour": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "diskCheckMinutes": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "RetentionStatusDto": {
+        "required": [
+          "diskUsedPct",
+          "diskHighPct",
+          "lastRunAt",
+          "lastPhotosDeleted",
+          "lastPhotoBytes",
+          "telemetryHourlyBefore",
+          "settings"
+        ],
+        "type": "object",
+        "properties": {
+          "diskUsedPct": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "diskHighPct": {
+            "type": "number",
+            "format": "double"
+          },
+          "lastRunAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "lastPhotosDeleted": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lastPhotoBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "telemetryHourlyBefore": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/RetentionOptions"
+          }
+        }
+      },
       "RuleAction": {
         "required": [
           "kind"
@@ -4734,6 +4856,9 @@
     },
     {
       "name": "backups"
+    },
+    {
+      "name": "retention"
     },
     {
       "name": "monitor"

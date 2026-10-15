@@ -360,7 +360,8 @@
     "rule": "Rule",
     "ota": "Firmware update",
     "backup": "Backup problem",
-    "backup_cleared": "Backups are well again"
+    "backup_cleared": "Backups are well again",
+    "disk_cleanup": "Disk full: old photos deleted"
   },
   "severity": {
     "info": "Info",
@@ -678,5 +679,17 @@
       "offsite": "off-site copy",
       "verify": "check"
     }
+  },
+  "retention": {
+    "title": "Disk and retention",
+    "disk": "Disk used",
+    "diskHint": "From {n}% the hive deletes old photos by itself, ordinary ones first; alarm and kept-forever photos go last or stay.",
+    "lastRun": "Last cleanup: {when}, photos deleted: {photos} ({size}).",
+    "neverRun": "No cleanup yet: the first one is tonight.",
+    "keepAlarm": "Alarm photos are kept {n} days.",
+    "keepOther": "Other photos and snapshots are kept {n} days.",
+    "keepPinned": "Photos marked keep-forever are kept for good.",
+    "keepRaw": "Sensor readings: {n} days in detail, then hourly for good (year charts keep working).",
+    "keepLogs": "Hornet health {health} days, logs {logs} days."
   }
 }
