@@ -318,7 +318,16 @@
     "allSeverities": "Any severity",
     "photosPending": "Photos are uploading…",
     "photosMissing": "Photos did not reach the hive",
-    "new": "New event"
+    "new": "New event",
+    "ota": {
+      "started": "update started, the hornet is downloading",
+      "applied": "installed and running",
+      "failed": "failed, the hornet stays on its old firmware",
+      "rolled_back": "the new firmware did not come online, the old one is back",
+      "hintNoConnection": "The hornet could not reach the hive: check the hive address in Settings → Wi-Fi for hornets (http, port 80 reachable by boards)",
+      "hintToken": "The hive did not accept the hornet's token: re-enroll it",
+      "hintNoBuild": "The hive has no such build: deploy the hive again"
+    }
   },
   "photos": {
     "device": "Camera",

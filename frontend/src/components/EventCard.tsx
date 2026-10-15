@@ -7,6 +7,18 @@ import { eventTypeLabel, severityLabel, t } from '@/i18n'
 import { formatWhen } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+/** What an over-the-air update did (contracts event-ota: phase, version, error), with a hint for the usual failures. */
+function otaLine(payload: unknown): string | null {
+  const p = payload as { phase?: string; version?: string; error?: string } | null
+  if (!p?.phase) return null
+  const what = t(`events.ota.${p.phase}`, p.phase)
+  const hint = p.error?.startsWith('HTTP -') ? t('events.ota.hintNoConnection')
+    : p.error === 'HTTP 401' ? t('events.ota.hintToken')
+      : p.error === 'HTTP 404' ? t('events.ota.hintNoBuild')
+        : ''
+  return `${p.version ?? '?'}: ${what}${p.error ? ` (${p.error})` : ''}${hint ? `. ${hint}` : ''}`
+}
+
 const severityTone: Record<string, BadgeTone> = { info: 'neutral', warn: 'warn', alarm: 'alarm', critical: 'critical' }
 
 export type PhotoRef = { id: string; url: string; thumbUrl: string }
@@ -22,6 +34,7 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
   const expectedPhotos = (event.payload as { photos?: unknown[] } | null)?.photos?.length ?? 0
   // A rule's own message: what the rule said, and which rule it was.
   const said = event.type === 'rule' ? (event.payload as { rule?: string; text?: string } | null) : null
+  const ota = event.type === 'ota' ? otaLine(event.payload) : null
 
   return (
     <article className={cn('rounded-xl border bg-neutral-900/70 p-3', alarm && !event.acknowledgedAt ? 'border-red-900/70' : 'border-neutral-800')}>
@@ -36,6 +49,7 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
             {said?.rule ?? event.deviceName ?? event.deviceId} · {formatWhen(event.ts)}
           </p>
           {said?.text && <p className="mt-1 text-sm text-neutral-200">{said.text}</p>}
+          {ota && <p className="mt-1 text-sm text-neutral-200">{ota}</p>}
         </div>
         {alarm && !compact && (
           event.acknowledgedAt ? (
