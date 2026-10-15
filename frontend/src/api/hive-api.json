@@ -1393,6 +1393,9 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Bad Request"
           }
         }
       }
@@ -2365,6 +2368,7 @@
       "ArmedDto": {
         "required": [
           "armed",
+          "mode",
           "updatedAt",
           "updatedBy",
           "cameras"
@@ -2373,6 +2377,9 @@
         "properties": {
           "armed": {
             "type": "boolean"
+          },
+          "mode": {
+            "type": "string"
           },
           "updatedAt": {
             "type": "string",
@@ -4005,6 +4012,12 @@
         "properties": {
           "armed": {
             "type": "boolean"
+          },
+          "mode": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

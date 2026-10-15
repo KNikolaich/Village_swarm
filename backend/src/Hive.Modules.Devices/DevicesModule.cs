@@ -142,8 +142,8 @@ public static class DevicesModule
 
         var modes = app.MapGroup("/api/modes").WithTags("modes");
         modes.MapGet("/armed", (ArmService arm, CancellationToken ct) => arm.GetAsync(ct));
-        modes.MapPut("/armed", (SetArmedRequest request, ClaimsPrincipal user, ArmService arm, CancellationToken ct) =>
-                arm.SetAsync(request.Armed, $"user:{user.Identity?.Name}", ct))
+        modes.MapPut("/armed", async Task<Results<Ok<ArmedDto>, BadRequest>> (SetArmedRequest request, ClaimsPrincipal user, ArmService arm, CancellationToken ct) =>
+                await arm.SetAsync(request, $"user:{user.Identity?.Name}", ct) is { } state ? (Results<Ok<ArmedDto>, BadRequest>)TypedResults.Ok(state) : TypedResults.BadRequest())
             .RequireAuthorization(HiveRoles.CanControl);
         return app;
     }

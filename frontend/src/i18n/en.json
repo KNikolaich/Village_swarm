@@ -45,8 +45,10 @@
     "guard": "Guard",
     "armed": "On",
     "disarmed": "Off",
-    "arm": "Arm guard",
-    "disarm": "Disarm guard",
+    "arriving": "Awaiting arrival",
+    "disarm": "Disarm",
+    "arm": "Arm",
+    "arrive": "Arriving",
     "disarmConfirm": "Disarm the guard on all cameras?",
     "cameras": "cameras",
     "unacknowledged": "Unviewed alarms"

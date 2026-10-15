@@ -35,6 +35,10 @@ public class DeviceCommand
 public class Mode
 {
     public const string Armed = "armed";
+    public const string Presence = "presence";
+    public const string PresenceHome = "home";
+    public const string PresenceAway = "away";
+    public const string PresenceArriving = "arriving";
 
     public required string Key { get; set; }
     public required string Value { get; set; }

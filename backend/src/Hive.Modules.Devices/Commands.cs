@@ -24,9 +24,11 @@ public sealed record CommandDto(
         c.AckPayload?.RootElement.Clone());
 }
 
-public sealed record ArmedDto(bool Armed, DateTimeOffset UpdatedAt, string? UpdatedBy, int Cameras);
+/// <summary>Mode is "disarmed", "armed" or "arriving" (armed while the owners are on their way, spec 6.6.2).</summary>
+public sealed record ArmedDto(bool Armed, string Mode, DateTimeOffset UpdatedAt, string? UpdatedBy, int Cameras);
 
-public sealed record SetArmedRequest(bool Armed);
+/// <summary>Mode, when given, wins over Armed: "arriving" arms every camera and sets presence to arriving.</summary>
+public sealed record SetArmedRequest(bool Armed, string? Mode = null);
 
 public enum SendStatus
 {
@@ -92,24 +94,59 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TimeProvi
         await db.Commands.AsNoTracking().FirstOrDefaultAsync(c => c.Cid == cid && c.DeviceId == deviceId, ct);
 }
 
-/// <summary>Guard mode (spec 6.5 /api/modes/armed): stored, and sent to every camera as cmd/arm.</summary>
+/// <summary>Guard mode (spec 6.5 /api/modes/armed): stored, and sent to every camera as cmd/arm.
+/// "Arriving" keeps the cameras armed and records presence = arriving (spec 6.6.1) so rules can tell it apart.</summary>
 public sealed class ArmService(HiveDbContext db, CommandService commands, TimeProvider time)
 {
+    public const string Disarmed = "disarmed";
+    public const string ArmedMode = "armed";
+    public const string Arriving = "arriving";
+
+    public static bool IsKnown(string mode) => mode is Disarmed or ArmedMode or Arriving;
+
     public async Task<ArmedDto> GetAsync(CancellationToken ct)
     {
         var mode = await db.Modes.AsNoTracking().FirstAsync(m => m.Key == Mode.Armed, ct);
+        var presence = await db.Modes.AsNoTracking().Where(m => m.Key == Mode.Presence).Select(m => m.Value).FirstOrDefaultAsync(ct);
         var cameras = await db.Devices.CountAsync(d => d.TypeCode == "guard-cam" && d.Status != DeviceStatus.Disabled, ct);
-        return new ArmedDto(mode.Value == "true", mode.UpdatedAt, mode.UpdatedBy, cameras);
+        var armed = mode.Value == "true";
+        var name = !armed ? Disarmed : presence == Mode.PresenceArriving ? Arriving : ArmedMode;
+        return new ArmedDto(armed, name, mode.UpdatedAt, mode.UpdatedBy, cameras);
     }
 
-    public async Task<ArmedDto> SetAsync(bool armed, string by, CancellationToken ct)
+    public Task<ArmedDto> SetAsync(bool armed, string by, CancellationToken ct) =>
+        SetModeAsync(armed ? ArmedMode : Disarmed, by, ct);
+
+    /// <summary>Null when the request names an unknown mode.</summary>
+    public async Task<ArmedDto?> SetAsync(SetArmedRequest request, string by, CancellationToken ct)
     {
+        var mode = request.Mode ?? (request.Armed ? ArmedMode : Disarmed);
+        return IsKnown(mode) ? await SetModeAsync(mode, by, ct) : null;
+    }
+
+    public async Task<ArmedDto> SetModeAsync(string guard, string by, CancellationToken ct)
+    {
+        if (!IsKnown(guard))
+            throw new ArgumentOutOfRangeException(nameof(guard), guard, "Unknown guard mode");
+        var armed = guard != Disarmed;
         var now = time.GetUtcNow();
         var mode = await db.Modes.FirstAsync(m => m.Key == Mode.Armed, ct);
         mode.Value = armed ? "true" : "false";
         mode.UpdatedAt = now;
         mode.UpdatedBy = by;
-        Audit.Record(db, now, by, armed ? "arm" : "disarm");
+
+        // Created on first use, so older databases need no migration.
+        var presence = await db.Modes.FirstOrDefaultAsync(m => m.Key == Mode.Presence, ct);
+        if (presence is null)
+        {
+            presence = new Mode { Key = Mode.Presence, Value = Mode.PresenceHome };
+            db.Modes.Add(presence);
+        }
+        presence.Value = guard switch { Arriving => Mode.PresenceArriving, ArmedMode => Mode.PresenceAway, _ => Mode.PresenceHome };
+        presence.UpdatedAt = now;
+        presence.UpdatedBy = by;
+
+        Audit.Record(db, now, by, guard switch { Arriving => "arm-arriving", ArmedMode => "arm", _ => "disarm" });
         await db.SaveChangesAsync(ct);
 
         // Online cameras switch now. Offline ones keep their last state until they are back

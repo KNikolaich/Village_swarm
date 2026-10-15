@@ -93,10 +93,12 @@ export function usePin() {
 export const useArmed = () =>
   useQuery({ queryKey: ['modes', 'armed'], queryFn: () => call(api.GET('/api/modes/armed')), refetchInterval: 60_000 })
 
+export type GuardMode = 'disarmed' | 'armed' | 'arriving'
+
 export function useSetArmed() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (armed: boolean) => call(api.PUT('/api/modes/armed', { body: { armed } })),
+    mutationFn: (mode: GuardMode) => call(api.PUT('/api/modes/armed', { body: { armed: mode !== 'disarmed', mode } })),
     onSuccess: (data) => qc.setQueryData(['modes', 'armed'], data),
   })
 }

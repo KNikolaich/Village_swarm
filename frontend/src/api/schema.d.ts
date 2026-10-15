@@ -1666,6 +1666,13 @@ export interface paths {
                         "application/json": components["schemas"]["ArmedDto"];
                     };
                 };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
             };
         };
         post?: never;
@@ -2771,6 +2778,7 @@ export interface components {
         };
         ArmedDto: {
             armed: boolean;
+            mode: string;
             /** Format: date-time */
             updatedAt: string;
             updatedBy: null | string;
@@ -3188,6 +3196,7 @@ export interface components {
         };
         SetArmedRequest: {
             armed: boolean;
+            mode?: null | string;
         };
         SetDeviceZoneRequest: {
             /** Format: int32 */

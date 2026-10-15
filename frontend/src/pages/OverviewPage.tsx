@@ -26,8 +26,8 @@ export function OverviewPage() {
 
   return (
     <div className="space-y-4">
-      <GuardCard />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <GuardCard className="sm:col-span-2 lg:col-span-1" />
         <Card>
           <CardContent>
             <p className="text-sm text-neutral-400">{t('overview.swarm')}</p>
