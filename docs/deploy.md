@@ -65,7 +65,7 @@ bash deploy/ship.sh kirill@192.168.10.4 --host 192.168.10.4 --rtc
 
 ## Одной кнопкой
 
-`deploy\deploy.bat` (двойной клик или из командной строки) собирает образы backend и frontend и доставляет их на RPi: то есть шаги 2 и 3 вместе. Он работает через WSL (Ubuntu с Docker Desktop):
+`deploy\deploy.bat` (двойной клик или из командной строки) собирает прошивки шершней (PlatformIO, для обновления по воздуху), затем образы backend и frontend и доставляет их на RPi: то есть шаги 2 и 3 вместе. Прошивки можно пропустить: `set SKIP_FIRMWARE=1` перед запуском. Он работает через WSL (Ubuntu с Docker Desktop):
 
 ```
 deploy\deploy.bat                        # kirill@192.168.10.4

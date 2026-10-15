@@ -2,6 +2,7 @@
 chcp 65001 >nul
 rem One click: build the hive images and deliver them to the RPi through WSL (docs/deploy.md).
 rem   deploy\deploy.bat [user@host] [extra install.sh options, e.g. --rtc]
+rem Builds every hornet firmware first (PlatformIO), so the hive can update hornets over the air.
 rem Needs: WSL with Ubuntu, Docker Desktop with WSL integration, ssh access to the RPi.
 setlocal
 set "TARGET=%~1"
@@ -26,6 +27,32 @@ set "WINDIR_REPO=%~dp0.."
 set "WINDIR_REPO=%WINDIR_REPO:\=/%"
 for /f "usebackq delims=" %%i in (`wsl wslpath -a "%WINDIR_REPO%"`) do set "REPO=%%i"
 
+rem Hornet firmware first: firmware/dist is baked into the api image, and the hive offers it in the "add hornet"
+rem wizard and for over-the-air updates. set SKIP_FIRMWARE=1 to reuse what firmware/dist already has.
+if "%SKIP_FIRMWARE%"=="1" goto images
+set "PIO=pio"
+where pio >nul 2>&1 || set "PIO=%USERPROFILE%\.platformio\penv\Scripts\platformio.exe"
+"%PIO%" --version >nul 2>&1
+if errorlevel 1 (
+  echo PlatformIO не найден: на Улье останутся прежние прошивки из firmware\dist.
+  goto images
+)
+echo.
+echo === Прошивки шершней ===
+set /a FWFAILED=0
+for /f "tokens=2 delims=:]" %%e in ('findstr /b /c:"[env:" "%~dp0..\firmware\platformio.ini"') do (
+  if not "%%e"=="native" (
+    echo --- %%e
+    "%PIO%" run -s -d "%~dp0..\firmware" -e %%e
+    if errorlevel 1 (
+      echo %%e не собралась, на Улье останется прежняя.
+      set /a FWFAILED+=1
+    )
+  )
+)
+if not "%FWFAILED%"=="0" echo Не собралось прошивок: %FWFAILED%. Ошибки выше.
+
+:images
 echo.
 echo === Образы backend и frontend, затем доставка на %TARGET% ===
 wsl bash -lc "cd '%REPO%' && bash deploy/build-images.sh linux/arm64 && bash deploy/ship.sh %TARGET% --host %HOST% %EXTRA%"

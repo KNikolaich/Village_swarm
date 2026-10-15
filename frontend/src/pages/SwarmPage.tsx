@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowUpCircle, Check, CircleHelp, Moon, Pencil, Pin, Plus, RefreshCw, Trash2, Wifi, WifiOff, X } from 'lucide-react'
+import { ArrowRightLeft, Check, CircleHelp, Cpu, Moon, Pencil, Pin, Plus, Trash2, Wifi, WifiOff, X } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { api, call, type DeviceDto } from '@/api/client'
+import { api, call, type DeviceDto, type Schemas } from '@/api/client'
 import { keys, useDevices, useMe } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
@@ -219,6 +219,54 @@ function DeviceName({ device, editable }: { device: DeviceDto; editable: boolean
   )
 }
 
+/** Over-the-air update of one hornet: the builds the hive has for its role and board, the running one marked. */
+function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: Schemas['FirmwareBuildDto'][]; onDone: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const env = `${device.type}-${device.hw ?? '?'}`
+  const suitable = builds.filter((b) => b.role === device.type && b.board === device.hw)
+
+  async function update(build: Schemas['FirmwareBuildDto']) {
+    const risky = (device.hw ?? '').startsWith('esp-01')
+    const text = t('swarm.updateConfirm').replace('{name}', device.name).replace('{from}', device.fw ?? '?').replace('{to}', build.version ?? '?')
+    if (!window.confirm(risky ? `${text}\n\n${t('swarm.updateRisk')}` : text)) return
+    setBusy(true)
+    const { response, error } = await api.POST('/api/devices/{deviceId}/ota', { params: { path: { deviceId: device.deviceId } }, body: { build: build.build } })
+    setBusy(false)
+    if (response.ok) {
+      toast.success(t('swarm.updateStarted'))
+      onDone()
+      return
+    }
+    const reason = (error as { errors?: Record<string, string[]> } | undefined)?.errors?.ota?.[0]
+    toast.error(reason ? `${t('swarm.updateRefused')}: ${reason}` : t('swarm.updateRefused'))
+  }
+
+  return (
+    <div className="space-y-2 text-xs">
+      <p className="text-neutral-400">{t('swarm.fwRunning').replace('{version}', device.fw ?? '?')}</p>
+      {suitable.length === 0 && <p className="text-neutral-500">{t('swarm.fwNone').replace('{env}', env)}</p>}
+      {suitable.map((b) => {
+        const current = b.version === device.fw
+        return (
+          <div key={b.build} className="flex items-center justify-between gap-2 border-t border-neutral-800 pt-2">
+            <div>
+              <p className="font-medium">{b.build} · {b.version ?? '?'}</p>
+              <p className="text-neutral-500">{t('swarm.fwBuilt').replace('{when}', formatAgo(b.built))}</p>
+            </div>
+            {current ? (
+              <span className="text-neutral-500">{t('swarm.fwCurrent')}</span>
+            ) : (
+              <Button size="sm" disabled={busy || device.status !== 'online'} onClick={() => void update(b)}>{t('swarm.fwInstall')}</Button>
+            )}
+          </div>
+        )
+      })}
+      {suitable.length > 0 && suitable.every((b) => b.version === device.fw) && <p className="text-neutral-500">{t('swarm.fwNoNewer')}</p>}
+      {device.status !== 'online' && <p className="text-amber-400">{t('swarm.fwOffline')}</p>}
+    </div>
+  )
+}
+
 /** Screen 5 (spec 8.2): every hornet, sorted by trouble, with replace and remove. */
 export function SwarmPage() {
   const qc = useQueryClient()
@@ -227,6 +275,7 @@ export function SwarmPage() {
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
   const [pinsOpen, setPinsOpen] = useState<string | null>(null)
+  const [fwOpen, setFwOpen] = useState<string | null>(null)
   const firmware = useQuery({ queryKey: ['firmware'], queryFn: () => call(api.GET('/api/firmware')), enabled: isAdmin })
   const [replaceCode, setReplaceCode] = useState<{ deviceId: string; code: string; expiresAt: string } | null>(null)
   const list = useMemo(
@@ -235,6 +284,7 @@ export function SwarmPage() {
   )
 
   async function replace(deviceId: string) {
+    if (!window.confirm(t('swarm.replaceConfirm').replace('{id}', deviceId))) return
     const code = await call(api.POST('/api/devices/{deviceId}/replace', { params: { path: { deviceId } } }))
     setReplaceCode({ deviceId, code: code.code, expiresAt: code.expiresAt })
   }
@@ -242,22 +292,6 @@ export function SwarmPage() {
   /** A build for this hornet's role and board that is not the version it runs now (null: nothing to offer). */
   function newerBuild(d: DeviceDto) {
     return (firmware.data ?? []).find((b) => b.role === d.type && b.board === d.hw && b.version && b.version !== d.fw) ?? null
-  }
-
-  async function update(d: DeviceDto) {
-    const build = newerBuild(d)
-    if (!build) return
-    const risky = (d.hw ?? '').startsWith('esp-01')
-    const text = t('swarm.updateConfirm').replace('{name}', d.name).replace('{from}', d.fw ?? '?').replace('{to}', build.version ?? '?')
-    if (!window.confirm(risky ? `${text}
-
-${t('swarm.updateRisk')}` : text)) return
-    try {
-      await call(api.POST('/api/devices/{deviceId}/ota', { params: { path: { deviceId: d.deviceId } }, body: { build: build.build } }))
-      toast.success(t('swarm.updateStarted'))
-    } catch {
-      toast.error(t('swarm.updateRefused'))
-    }
   }
 
   async function setSleep(d: DeviceDto, body: { sleepS?: number; sleepMode?: 'deep' | 'light' }) {
@@ -343,20 +377,26 @@ ${t('swarm.updateRisk')}` : text)) return
                     {statusLabel(d.status)}
                   </Badge>
                 )}
-                {isAdmin && d.status === 'online' && newerBuild(d) && (
-                  <Button variant="ghost" size="icon" title={t('swarm.update')} className="text-amber-400" onClick={() => void update(d)}><ArrowUpCircle /></Button>
+                {isAdmin && d.status !== 'disabled' && (
+                  <Button variant="ghost" size="icon" title={newerBuild(d) ? t('swarm.updateAvailable') : t('swarm.update')}
+                    className={newerBuild(d) ? 'text-amber-400' : undefined} onClick={() => setFwOpen(fwOpen === d.deviceId ? null : d.deviceId)}><Cpu /></Button>
                 )}
                 {d.status !== 'disabled' && (
                   <Button variant="ghost" size="icon" title={t('swarm.pins')} onClick={() => setPinsOpen(pinsOpen === d.deviceId ? null : d.deviceId)}><Pin /></Button>
                 )}
                 {isAdmin && d.status !== 'disabled' && (
                   <>
-                    <Button variant="ghost" size="icon" title={t('swarm.replace')} onClick={() => void replace(d.deviceId)}><RefreshCw /></Button>
+                    <Button variant="ghost" size="icon" title={t('swarm.replaceTitle')} onClick={() => void replace(d.deviceId)}><ArrowRightLeft /></Button>
                     <Button variant="ghost" size="icon" title={t('swarm.remove')} onClick={() => void remove(d)}><Trash2 /></Button>
                   </>
                 )}
               </div>
             </CardContent>
+            {fwOpen === d.deviceId && (
+              <CardContent className="border-t border-neutral-800 pt-3">
+                <FirmwarePanel device={d} builds={firmware.data ?? []} onDone={() => setFwOpen(null)} />
+              </CardContent>
+            )}
             {pinsOpen === d.deviceId && (
               <CardContent className="border-t border-neutral-800 pt-3">
                 <PinsPanel deviceId={d.deviceId} editable={isAdmin} board={d.hw} type={d.type} />

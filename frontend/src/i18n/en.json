@@ -483,7 +483,7 @@
     "pinsByHand": "set by hand",
     "pinsDefault": "board default",
     "pinsSave": "Save pins",
-    "update": "Update firmware",
+    "update": "Firmware: update over the air",
     "updateConfirm": "Update “{name}” over the air: {from} → {to}? The hornet downloads the firmware, restarts and reports the result.",
     "updateRisk": "The ESP-01 keeps the new image beside the old one and cannot roll back: if power fails during the copy, the board must be reflashed over USB. Update one hornet first.",
     "updateStarted": "Update started: progress shows in events",
@@ -511,7 +511,17 @@
     },
     "rename": "Rename",
     "renamed": "Name saved",
-    "renameFailed": "Could not rename"
+    "renameFailed": "Could not rename",
+    "updateAvailable": "New firmware available: update over the air",
+    "replaceTitle": "Replace the board: move this hornet to another board (the old one is cut off)",
+    "fwRunning": "Running now: {version}",
+    "fwBuilt": "built {when}",
+    "fwCurrent": "installed",
+    "fwInstall": "Update over the air",
+    "fwNone": "The hive has no {env} firmware. Build it (pio run in firmware) and deploy the hive: firmware reaches the hive with it.",
+    "fwNoNewer": "Nothing newer on the hive. To get a fresh one: build the firmware (pio run in firmware) and deploy the hive.",
+    "fwOffline": "The hornet is offline: it can be updated once it is back.",
+    "replaceConfirm": "Replace the board of \"{id}\"? The hive gives a code: flash a new board and enter it in the wizard. The hornet moves to the new board with its name, history and settings, and the old board loses access. Updating the firmware is the other button, the chip."
   },
   "add": {
     "step1": "Hornet and code",
