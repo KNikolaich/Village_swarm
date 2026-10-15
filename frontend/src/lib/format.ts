@@ -48,10 +48,15 @@ export function parseIsoDate(s: string): Date {
 }
 
 export const metricUnit = (metric: string) =>
-  metric === 'temperature' || metric === 'cpu_temperature' ? '°' : metric === 'humidity' || metric === 'disk_used_pct' ? '%' : ''
+  metric === 'temperature' || metric === 'cpu_temperature' ? '°'
+    : metric === 'humidity' || metric === 'disk_used_pct' ? '%'
+      : metric === 'battery_voltage' ? ' ' + t('units.volt')
+        : ''
 
 export function formatValue(metric: string, value: number): string {
-  return `${value.toLocaleString(locale(), { maximumFractionDigits: 1 })}${metricUnit(metric)}`
+  // Battery voltage needs hundredths: a 12 V battery's whole charge range is about 1.5 V.
+  const digits = metric === 'battery_voltage' ? 2 : 1
+  return `${value.toLocaleString(locale(), { maximumFractionDigits: digits })}${metricUnit(metric)}`
 }
 
 /** A number with a fixed count of decimals in the interface language, for axis labels. */

@@ -624,5 +624,8 @@
       "mac": "Download the certificate and open the file: it goes into Keychain Access.|Find it (Caddy Local Authority), open it, Trust → \"Always Trust\".|Restart the browser."
     },
     "once": "Once per device: the hive certificate is valid for 10 years. It is needed again only if the hive is reinstalled from scratch."
+  },
+  "units": {
+    "volt": "V"
   }
 }
