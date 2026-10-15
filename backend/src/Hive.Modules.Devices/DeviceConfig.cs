@@ -15,6 +15,9 @@ namespace Hive.Modules.Devices;
 /// <summary>PATCH /api/devices/{id}/config: the settings a person changes from the swarm screen. Null keeps the value.</summary>
 public sealed record UpdateDeviceConfigRequest(int? SleepS = null, int? TeleIntervalS = null, Hive.Contracts.Messages.SleepMode? SleepMode = null);
 
+/// <summary>PUT /api/devices/{id}/name: the human name shown everywhere (a typo made when adding the hornet).</summary>
+public sealed record RenameDeviceRequest(string Name);
+
 public enum ConfigUpdateStatus { Updated, NotFound, BadRequest }
 
 /// <summary>
@@ -66,6 +69,41 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         Audit.Record(db, time.GetUtcNow(), by, "device_config", deviceId, new { r.SleepS, r.TeleIntervalS, r.SleepMode });
         await db.SaveChangesAsync(ct);
         if (mqtt.IsConnected)
+            await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
+        return ConfigUpdateStatus.Updated;
+    }
+
+    public const int MaxNameLength = 128;
+
+    /// <summary>
+    /// Renames a hornet. The name also lives in its retained config (contracts: config.name), so a hornet that
+    /// already has a config gets a new rev with the new name.
+    /// </summary>
+    public async Task<ConfigUpdateStatus> RenameAsync(string deviceId, string? name, string by, CancellationToken ct)
+    {
+        var trimmed = name?.Trim() ?? "";
+        if (trimmed.Length is 0 or > MaxNameLength)
+            return ConfigUpdateStatus.BadRequest;
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null)
+            return ConfigUpdateStatus.NotFound;
+        if (device.Name == trimmed)
+            return ConfigUpdateStatus.Updated;
+
+        var from = device.Name;
+        device.Name = trimmed;
+        JsonObject? config = null;
+        if (device.Config is { } current)
+        {
+            config = JsonNode.Parse(current.RootElement.GetRawText())!.AsObject();
+            config["name"] = trimmed;
+            device.ConfigRev++;
+            config["rev"] = device.ConfigRev;
+            device.Config = JsonDocument.Parse(config.ToJsonString());
+        }
+        Audit.Record(db, time.GetUtcNow(), by, "device_rename", deviceId, new { from, to = trimmed });
+        await db.SaveChangesAsync(ct);
+        if (config is not null && mqtt.IsConnected && device.Status != DeviceStatus.Disabled)
             await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
         return ConfigUpdateStatus.Updated;
     }

@@ -121,6 +121,44 @@ public sealed class DeviceConfigTests(HiveFixture hive)
         Assert.Equal(DeviceStatus.Online, await hive.QueryAsync(db => db.Devices.Where(d => d.DeviceId == "meteo-sleep4").Select(d => d.Status).SingleAsync()));
     }
 
+    [Fact]
+    public async Task Rename_changes_the_name_and_the_retained_config()
+    {
+        await RegisterAsync("meteo-rename1");
+        var admin = await hive.LoginAsync();
+        // Gives the hornet a retained config, the way an enrolled one has.
+        (await admin.PatchAsJsonAsync("/api/devices/meteo-rename1/config", new { sleepS = 600 })).EnsureSuccessStatusCode();
+
+        using var response = await admin.PutAsJsonAsync("/api/devices/meteo-rename1/name", new { name = "  Теплица у бани  " });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var dto = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Теплица у бани", dto.GetProperty("name").GetString());
+        Assert.Equal("Теплица у бани", await hive.QueryAsync(db => db.Devices.Where(d => d.DeviceId == "meteo-rename1").Select(d => d.Name).SingleAsync()));
+
+        // The config carries the name too, with the other settings kept.
+        using var config = JsonDocument.Parse(await RetainedConfigAsync("meteo-rename1", dto.GetProperty("configRev").GetInt32()));
+        Assert.Equal("Теплица у бани", config.RootElement.GetProperty("name").GetString());
+        Assert.Equal(600, config.RootElement.GetProperty("sleep_s").GetInt32());
+    }
+
+    [Fact]
+    public async Task Empty_names_unknown_hornets_and_members_are_refused_rename()
+    {
+        await RegisterAsync("meteo-rename2");
+        var admin = await hive.LoginAsync();
+        using var empty = await admin.PutAsJsonAsync("/api/devices/meteo-rename2/name", new { name = "   " });
+        Assert.Equal(HttpStatusCode.BadRequest, empty.StatusCode);
+        using var tooLong = await admin.PutAsJsonAsync("/api/devices/meteo-rename2/name", new { name = new string('x', DeviceConfigService.MaxNameLength + 1) });
+        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        using var unknown = await admin.PutAsJsonAsync("/api/devices/nobody-here/name", new { name = "Кто-то" });
+        Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
+
+        await hive.CreateUserAsync("member-rename", "member-rename-password", "member");
+        var member = await hive.LoginAsync("member-rename", "member-rename-password");
+        using var forbidden = await member.PutAsJsonAsync("/api/devices/meteo-rename2/name", new { name = "Чужое имя" });
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+    }
+
     [Theory]
     [InlineData(600, 30, false)]
     [InlineData(600, 1859, false)]

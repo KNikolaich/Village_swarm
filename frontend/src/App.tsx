@@ -1,11 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Hexagon } from 'lucide-react'
 import { useEffect } from 'react'
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
 import { Toaster } from 'sonner'
 import { ApiError, UNAUTHORIZED_EVENT } from '@/api/client'
 import { keys, useMe } from '@/api/queries'
 import { AppShell } from '@/components/AppShell'
+import { HoneycombLogo } from '@/components/HoneycombLogo'
 import { useLive } from '@/lib/live'
 import { DevicePage } from '@/pages/DevicePage'
 import { ClimatePage } from '@/pages/ClimatePage'
@@ -66,7 +66,7 @@ export default function App() {
     <>
       {me.isLoading ? (
         <div className="flex min-h-dvh items-center justify-center">
-          <Hexagon className="size-10 animate-pulse text-amber-400" />
+          <HoneycombLogo className="size-12 animate-pulse" />
         </div>
       ) : loggedOut || !me.data ? (
         <LoginPage />

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowUpCircle, CircleHelp, Moon, Pin, Plus, RefreshCw, Trash2, Wifi, WifiOff } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { ArrowUpCircle, Check, CircleHelp, Moon, Pencil, Pin, Plus, RefreshCw, Trash2, Wifi, WifiOff, X } from 'lucide-react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto } from '@/api/client'
@@ -164,6 +164,61 @@ export function PinsPanel({ deviceId, editable, board, type }: { deviceId: strin
   )
 }
 
+/** The hornet's name, with an inline editor for admins (a typo made when adding it is fixed here). */
+function DeviceName({ device, editable }: { device: DeviceDto; editable: boolean }) {
+  const qc = useQueryClient()
+  const [draft, setDraft] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    const name = (draft ?? '').trim()
+    if (!name || name === device.name) {
+      setDraft(null)
+      return
+    }
+    setBusy(true)
+    try {
+      await call(api.PUT('/api/devices/{deviceId}/name', { params: { path: { deviceId: device.deviceId } }, body: { name } }))
+      toast.success(t('swarm.renamed'))
+      setDraft(null)
+      await qc.invalidateQueries({ queryKey: keys.devices })
+    } catch {
+      toast.error(t('swarm.renameFailed'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (draft === null)
+    return (
+      <div className="flex min-w-0 items-center gap-1">
+        <Link to={`/swarm/${encodeURIComponent(device.deviceId)}`} className="block truncate font-medium hover:text-amber-400">{device.name}</Link>
+        {editable && (
+          <Button variant="ghost" size="icon" className="size-7 shrink-0 text-neutral-500" title={t('swarm.rename')} aria-label={t('swarm.rename')} onClick={() => setDraft(device.name)}>
+            <Pencil className="size-3.5" />
+          </Button>
+        )}
+      </div>
+    )
+
+  return (
+    <form onSubmit={save} className="flex items-center gap-1">
+      <Input
+        autoFocus
+        value={draft}
+        maxLength={128}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Escape') setDraft(null) }}
+        className="h-8 min-w-0"
+        aria-label={t('swarm.rename')}
+      />
+      <Button type="submit" variant="ghost" size="icon" className="size-8 shrink-0 text-emerald-400" disabled={busy || !draft.trim()} title={t('common.save')} aria-label={t('common.save')}><Check /></Button>
+      <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => setDraft(null)} title={t('common.cancel')} aria-label={t('common.cancel')}><X /></Button>
+    </form>
+  )
+}
+
 /** Screen 5 (spec 8.2): every hornet, sorted by trouble, with replace and remove. */
 export function SwarmPage() {
   const qc = useQueryClient()
@@ -245,7 +300,7 @@ ${t('swarm.updateRisk')}` : text)) return
           <Card key={d.deviceId} className={d.status === 'disabled' ? 'opacity-50' : undefined}>
             <CardContent className="flex items-center justify-between gap-3 py-3">
               <div className="min-w-0">
-                <Link to={`/swarm/${encodeURIComponent(d.deviceId)}`} className="block truncate font-medium hover:text-amber-400">{d.name}</Link>
+                <DeviceName device={d} editable={isAdmin && d.status !== 'disabled'} />
                 <p className="truncate text-xs text-neutral-500">
                   {d.deviceId} · {d.type} · {d.fw ?? '—'} · {formatAgo(d.lastSeenAt)}
                 </p>

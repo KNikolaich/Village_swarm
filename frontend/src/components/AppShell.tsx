@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Bell, Hexagon, Images, LayoutDashboard, LogOut, Network, Settings, Thermometer, Workflow } from 'lucide-react'
+import { Bell, Images, LayoutDashboard, LogOut, Network, Settings, Thermometer, Workflow } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 import { api } from '@/api/client'
 import { keys } from '@/api/queries'
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { t } from '@/i18n'
 import type { LiveState } from '@/lib/live'
 import { cn } from '@/lib/utils'
+import { HoneycombLogo } from '@/components/HoneycombLogo'
 import { LanguageSwitch } from '@/components/LanguageSwitch'
 
 // Labels are looked up when the shell renders, not when this file loads: the hive language is read before the
@@ -46,7 +47,7 @@ export function AppShell({ live }: { live: LiveState }) {
     <div className="min-h-dvh md:flex">
       <aside className="hidden w-56 shrink-0 border-r border-neutral-800 p-4 md:block">
         <div className="mb-6 flex items-center gap-2 px-2">
-          <Hexagon className="size-6 fill-amber-400/20 text-amber-400" />
+          <HoneycombLogo className="size-7" />
           <span className="font-semibold">{t('app.title')}</span>
         </div>
         <nav className="space-y-1">
@@ -69,7 +70,7 @@ export function AppShell({ live }: { live: LiveState }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-neutral-800 bg-neutral-950/90 px-4 backdrop-blur">
           <div className="flex items-center gap-2 md:hidden">
-            <Hexagon className="size-5 fill-amber-400/20 text-amber-400" />
+            <HoneycombLogo className="size-6" />
             <span className="font-semibold">{t('app.title')}</span>
           </div>
           <div className="hidden md:block" />

@@ -1,4 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <path d="M16 1.5 28.6 8.75v14.5L16 30.5 3.4 23.25V8.75z" fill="#fbbf24"/>
-  <path d="M16 9.25 21.85 12.63v6.74L16 22.75l-5.85-3.38v-6.74z" fill="#0a0a0a"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd23f"/><stop offset="1" stop-color="#f59f00"/></linearGradient>
+    <radialGradient id="cell" cx=".4" cy=".35" r=".75"><stop offset="0" stop-color="#ffc21a"/><stop offset=".7" stop-color="#f7a10a"/><stop offset="1" stop-color="#e37b00"/></radialGradient>
+  </defs>
+  <polygon points="32.00,2.40 46.38,10.70 46.38,27.30 32.00,35.60 17.62,27.30 17.62,10.70" fill="url(#rim)"/>
+  <polygon points="32.00,6.00 43.26,12.50 43.26,25.50 32.00,32.00 20.74,25.50 20.74,12.50" fill="url(#cell)" stroke="#c05a00" stroke-width="1.1" stroke-linejoin="round"/>
+  <ellipse cx="27.40" cy="13.80" rx="4.2" ry="2.1" transform="rotate(-35 27.40 13.80)" fill="#fff" opacity=".55"/>
+  <polygon points="17.10,28.20 31.48,36.50 31.48,53.10 17.10,61.40 2.73,53.10 2.73,36.50" fill="url(#rim)"/>
+  <polygon points="17.10,31.80 28.36,38.30 28.36,51.30 17.10,57.80 5.85,51.30 5.85,38.30" fill="url(#cell)" stroke="#c05a00" stroke-width="1.1" stroke-linejoin="round"/>
+  <ellipse cx="12.50" cy="39.60" rx="4.2" ry="2.1" transform="rotate(-35 12.50 39.60)" fill="#fff" opacity=".55"/>
+  <polygon points="46.90,28.20 61.27,36.50 61.27,53.10 46.90,61.40 32.52,53.10 32.52,36.50" fill="url(#rim)"/>
+  <polygon points="46.90,31.80 58.15,38.30 58.15,51.30 46.90,57.80 35.64,51.30 35.64,38.30" fill="url(#cell)" stroke="#c05a00" stroke-width="1.1" stroke-linejoin="round"/>
+  <ellipse cx="42.30" cy="39.60" rx="4.2" ry="2.1" transform="rotate(-35 42.30 39.60)" fill="#fff" opacity=".55"/>
 </svg>

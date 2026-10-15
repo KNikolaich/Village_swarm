@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { CheckCircle2, Copy, Cpu, Download, Usb } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Copy, Cpu, Download, Usb } from 'lucide-react'
 import { createElement, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -8,6 +8,7 @@ import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui/primitives'
 import { getLanguage, t } from '@/i18n'
+import { translateEspWebTools } from '@/lib/espWebToolsRu'
 import { HornetSerial, serialSupported } from '@/lib/serial'
 
 const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant']
@@ -59,6 +60,75 @@ export function AddHornetPage() {
   )
 }
 
+type Build = { build: string; role: string; board: string; chipFamily: string; version: string | null }
+
+const buildTitle = (b: Build) => `${boardTitle(b.board)} · ${b.chipFamily}`
+
+function useBuilds() {
+  const firmware = useQuery({ queryKey: ['firmware'], queryFn: () => call(api.GET('/api/firmware')) })
+  return { builds: (firmware.data ?? []) as Build[], loading: firmware.isLoading }
+}
+
+/** The build to flash: the one picked for this type, or the first board that has a firmware for it. */
+function pickBuild(builds: Build[], type: string, build: string) {
+  const forType = builds.filter((b) => b.role === type)
+  return forType.find((b) => b.build === build) ?? forType[0]
+}
+
+/**
+ * Step 1 choice: the hornet type, then the board it is built on. Only boards with a firmware for the type are offered,
+ * and the table under them shows which boards go with which hornets.
+ */
+function TypeAndBoard({ type, onType, build, onBuild, builds, loading }: {
+  type: string
+  onType: (type: string) => void
+  build?: Build
+  onBuild: (build: string) => void
+  builds: Build[]
+  loading: boolean
+}) {
+  const forType = builds.filter((b) => b.role === type)
+  return (
+    <div className="space-y-2">
+      <label className="block space-y-1">
+        <span className="text-xs text-neutral-400">{t('add.type')}</span>
+        <Select value={type} onChange={(e) => onType(e.target.value)} className="h-11 w-full">
+          {types.map((x) => (
+            <option key={x.code} value={x.code}>
+              {x.title}{!loading && !builds.some((b) => b.role === x.code) ? ` (${t('add.noBuild')})` : ''}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <label className="block space-y-1">
+        <span className="text-xs text-neutral-400">{t('add.board')}</span>
+        {forType.length > 0 ? (
+          <Select value={build?.build} onChange={(e) => onBuild(e.target.value)} className="h-11 w-full">
+            {forType.map((b) => <option key={b.build} value={b.build}>{buildTitle(b)}</option>)}
+          </Select>
+        ) : (
+          !loading && <p className="text-xs text-amber-300">{t('add.noFirmware').replace('{type}', type)}</p>
+        )}
+      </label>
+      {builds.length > 0 && (
+        <details className="text-xs text-neutral-500">
+          <summary className="cursor-pointer">{t('add.boardsForTypes')}</summary>
+          <ul className="mt-1 space-y-0.5">
+            {types.map((x) => {
+              const boards = [...new Set(builds.filter((b) => b.role === x.code).map((b) => boardTitle(b.board)))]
+              return (
+                <li key={x.code}>
+                  <span className="text-neutral-300">{x.title}</span>: {boards.length ? boards.join(', ') : t('add.noBuild')}
+                </li>
+              )
+            })}
+          </ul>
+        </details>
+      )}
+    </div>
+  )
+}
+
 /** Batch: N boards of one type, one queue on the server. Flash and set up each board in turn (USB, one at a time). */
 function BatchPanel() {
   const [type, setType] = useState('meteo')
@@ -68,10 +138,9 @@ function BatchPanel() {
   const [items, setItems] = useState<{ deviceId: string; name: string; code: string; expiresAt: string }[]>([])
   const [active, setActive] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const firmware = useQuery({ queryKey: ['firmware'], queryFn: () => call(api.GET('/api/firmware')) })
-  const builds = (firmware.data ?? []).filter((b) => b.role === type)
+  const { builds, loading } = useBuilds()
   const [build, setBuild] = useState('')
-  const selectedBuild = builds.find((b) => b.build === build) ?? builds[0]
+  const selectedBuild = pickBuild(builds, type, build)
 
   async function create(e: FormEvent) {
     e.preventDefault()
@@ -95,9 +164,14 @@ function BatchPanel() {
           <CardHeader><CardTitle>{t('add.batchTitle')}</CardTitle></CardHeader>
           <CardContent>
             <form onSubmit={create} className="space-y-2">
-              <Select value={type} onChange={(e) => { setType(e.target.value); setBuild('') }} className="h-11 w-full">
-                {types.map((x) => <option key={x.code} value={x.code}>{x.title}</option>)}
-              </Select>
+              <TypeAndBoard
+                type={type}
+                onType={(x) => { setType(x); setBuild('') }}
+                build={selectedBuild}
+                onBuild={setBuild}
+                builds={builds}
+                loading={loading}
+              />
               <Input placeholder={t('add.batchIdPlaceholder')} value={idPrefix} onChange={(e) => setIdPrefix(e.target.value.toLowerCase())} />
               {idPrefix && !idValid && <p className="text-xs text-amber-300">{t('add.idHint')}</p>}
               <Input placeholder={t('add.batchNamePlaceholder')} value={namePrefix} onChange={(e) => setNamePrefix(e.target.value)} />
@@ -133,13 +207,10 @@ function BatchPanel() {
             <CardHeader><CardTitle>{current.name}</CardTitle></CardHeader>
             <CardContent className="space-y-2">
               <CodeBox code={current.code} expiresAt={current.expiresAt} />
-              <Select value={build} onChange={(e) => setBuild(e.target.value)} className="h-11 w-full">
-                {builds.map((b) => <option key={b.build} value={b.build}>{boardTitle(b.board)} · {b.chipFamily}</option>)}
-              </Select>
             </CardContent>
           </Card>
-          <FlashStep type={type} builds={builds} selected={selectedBuild?.build} onSelect={setBuild} />
-          <ConfigureStep code={current.code} deviceId={current.deviceId} />
+          <FlashStep type={type} build={selectedBuild} />
+          <ConfigureStep key={current.code} code={current.code} deviceId={current.deviceId} />
         </>
       )}
     </div>
@@ -150,74 +221,81 @@ function OneHornet() {
   const [type, setType] = useState('guard-cam')
   const [deviceId, setDeviceId] = useState('')
   const [name, setName] = useState('')
-  const [code, setCode] = useState<{ code: string; expiresAt: string; replaces: boolean } | null>(null)
+  const [code, setCode] = useState<{ code: string; expiresAt: string; replaces: boolean; key: string } | null>(null)
+  // Step 1 is open until a code is taken; "Back" reopens it with everything entered kept.
+  const [editing, setEditing] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const firmware = useQuery({ queryKey: ['firmware'], queryFn: () => call(api.GET('/api/firmware')) })
-  const builds = (firmware.data ?? []).filter((b) => b.role === type)
+  const { builds, loading } = useBuilds()
   const [build, setBuild] = useState('')
-  const selectedBuild = builds.find((b) => b.build === build) ?? builds[0]
+  const selectedBuild = pickBuild(builds, type, build)
+
+  // What the code was issued for: the board can change freely, the id, type and name need a new code.
+  const key = `${deviceId}\n${type}\n${name.trim()}`
+  const codeStillFits = code !== null && code.key === key && new Date(code.expiresAt) > new Date()
 
   async function createCode(e: FormEvent) {
     e.preventDefault()
     setError(null)
+    if (codeStillFits) {
+      setEditing(false)
+      return
+    }
     const { data, error: err, response } = await api.POST('/api/provision/codes', { body: { deviceId, type, name } })
     if (!response.ok || !data) {
       setError((err as { errors?: Record<string, string[]> } | undefined)?.errors?.request?.[0] ?? t('errors.generic'))
       return
     }
-    setCode({ code: data.code, expiresAt: data.expiresAt, replaces: data.replaces })
+    setCode({ code: data.code, expiresAt: data.expiresAt, replaces: data.replaces, key })
+    setEditing(false)
   }
 
   const idValid = idPattern.test(deviceId) && deviceId.length <= 32
+  const typeTitle = types.find((x) => x.code === type)?.title ?? type
 
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader><CardTitle>1. {t('add.step1')}</CardTitle>{code && <Badge tone="ok">{code.code}</Badge>}</CardHeader>
+        <CardHeader><CardTitle>1. {t('add.step1')}</CardTitle>{code && !editing && <Badge tone="ok">{code.code}</Badge>}</CardHeader>
         <CardContent>
-          {code ? (
+          {code && !editing ? (
             <div className="space-y-2 text-sm">
+              <p>{typeTitle} · {selectedBuild ? buildTitle(selectedBuild) : '—'}</p>
               <p>{deviceId} · {name}{code.replaces && <span className="text-amber-300"> · {t('add.replaces')}</span>}</p>
               <CodeBox code={code.code} expiresAt={code.expiresAt} />
+              <Button variant="secondary" size="sm" onClick={() => setEditing(true)}><ArrowLeft />{t('add.back')}</Button>
             </div>
           ) : (
             <form onSubmit={createCode} className="space-y-2">
-              <Select value={type} onChange={(e) => setType(e.target.value)} className="h-11 w-full">
-                {types.map((x) => <option key={x.code} value={x.code}>{x.title}</option>)}
-              </Select>
+              <TypeAndBoard
+                type={type}
+                onType={(x) => { setType(x); setBuild('') }}
+                build={selectedBuild}
+                onBuild={setBuild}
+                builds={builds}
+                loading={loading}
+              />
               <Input placeholder={t('add.idPlaceholder')} value={deviceId} onChange={(e) => setDeviceId(e.target.value.toLowerCase())} />
               {deviceId && !idValid && <p className="text-xs text-amber-300">{t('add.idHint')}</p>}
               <Input placeholder={t('add.namePlaceholder')} value={name} onChange={(e) => setName(e.target.value)} />
               {error && <p className="text-sm text-red-400">{error}</p>}
-              <Button type="submit" disabled={!idValid || !name.trim()}>{t('add.getCode')}</Button>
+              <Button type="submit" disabled={!idValid || !name.trim()}>{codeStillFits ? t('add.next') : t('add.getCode')}</Button>
             </form>
           )}
         </CardContent>
       </Card>
 
-      {code && (
-        <FlashStep
-          type={type}
-          builds={builds}
-          selected={selectedBuild?.build}
-          onSelect={setBuild}
-        />
-      )}
-      {code && <ConfigureStep code={code.code} deviceId={deviceId} />}
+      {code && !editing && <FlashStep type={type} build={selectedBuild} />}
+      {code && !editing && <ConfigureStep key={code.code} code={code.code} deviceId={deviceId} />}
     </div>
   )
 }
 
-function FlashStep({ type, builds, selected, onSelect }: {
-  type: string
-  builds: { build: string; board: string; chipFamily: string }[]
-  selected?: string
-  onSelect: (build: string) => void
-}) {
+function FlashStep({ type, build }: { type: string; build?: Build }) {
   const [ready, setReady] = useState(false)
-  const available = builds.length > 0
+  const available = build !== undefined
   useEffect(() => {
     if (!available || !serialSupported()) return
+    translateEspWebTools()
     // ESP Web Tools (a web component, ~100 KB) is only loaded for this step.
     void import('esp-web-tools/dist/web/install-button.js').then(() => setReady(true))
   }, [available])
@@ -226,24 +304,22 @@ function FlashStep({ type, builds, selected, onSelect }: {
     <Card>
       <CardHeader><CardTitle>2. {t('add.step2')}</CardTitle></CardHeader>
       <CardContent className="space-y-2 text-sm">
+        {build && <p>{t('add.boardLine').replace('{board}', buildTitle(build))}{build.version && <span className="text-neutral-500"> · {build.version}</span>}</p>}
         <p className="text-neutral-400">{t('add.flashHint')}</p>
         {!serialSupported() && <p className="text-amber-300">{t('add.noSerial')}</p>}
         {!available && <p className="text-amber-300">{t('add.noFirmware').replace('{type}', type)}</p>}
-        {available && (
-          <Select value={selected} onChange={(e) => onSelect(e.target.value)} className="h-11 w-full">
-            {builds.map((b) => <option key={b.build} value={b.build}>{boardTitle(b.board)} · {b.chipFamily}</option>)}
-          </Select>
-        )}
-        {available && ready && selected &&
-          createElement('esp-web-install-button', { key: selected, manifest: `/api/firmware/${selected}/manifest.json` },
-            createElement(Button, { slot: 'activate' } as never, createElement(Cpu), t('add.flash')))}
-        {available && selected && (
-          <a
-            href={`/api/firmware/${selected}/firmware.bin?download=1`}
-            className="inline-flex items-center gap-2 text-amber-400 hover:underline"
-          >
-            <Download className="size-4" />{t('add.download')}
-          </a>
+        {build && (
+          <div className="flex flex-wrap items-center gap-4">
+            {ready &&
+              createElement('esp-web-install-button', { key: build.build, manifest: `/api/firmware/${build.build}/manifest.json` },
+                createElement(Button, { slot: 'activate' } as never, createElement(Cpu), t('add.flash')))}
+            <a
+              href={`/api/firmware/${build.build}/firmware.bin?download=1`}
+              className="inline-flex items-center gap-2 text-amber-400 hover:underline"
+            >
+              <Download className="size-4" />{t('add.download')}
+            </a>
+          </div>
         )}
         {available && <p className="text-xs text-neutral-500">{t('add.downloadHint')}</p>}
         <p className="text-xs text-neutral-500">{t('add.alreadyFlashed')}</p>

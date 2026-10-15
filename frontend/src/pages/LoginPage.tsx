@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Hexagon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { api } from '@/api/client'
 import { keys } from '@/api/queries'
+import { HoneycombLogo } from '@/components/HoneycombLogo'
 import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, Input } from '@/components/ui/primitives'
@@ -50,7 +50,7 @@ export function LoginPage() {
       <Card className="w-full max-w-sm">
         <CardContent className="space-y-6 p-6">
           <div className="flex items-center gap-3">
-            <Hexagon className="size-9 fill-amber-400/20 text-amber-400" />
+            <HoneycombLogo className="size-10" />
             <div>
               <h1 className="text-xl font-semibold">{step === 'password' ? t('login.title') : t('login.totpTitle')}</h1>
               <p className="text-sm text-neutral-500">{t('app.subtitle')}</p>

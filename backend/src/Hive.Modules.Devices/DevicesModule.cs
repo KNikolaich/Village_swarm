@@ -106,6 +106,19 @@ public static class DevicesModule
             })
             .RequireAuthorization(HiveRoles.CanControl);
 
+        devices.MapPut("/{deviceId}/name", async Task<Results<Ok<DeviceDto>, NotFound, ValidationProblem>> (
+                string deviceId, RenameDeviceRequest request, ClaimsPrincipal user, DeviceConfigService configs, DeviceQueries q, CancellationToken ct) =>
+            {
+                return await configs.RenameAsync(deviceId, request.Name, $"user:{user.Identity?.Name}", ct) switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                        { ["name"] = [$"name: от 1 до {DeviceConfigService.MaxNameLength} символов"] }),
+                    _ => TypedResults.Ok((await q.GetAsync(deviceId, ct))!),
+                };
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
         devices.MapGet("/{deviceId}/pins", async Task<Results<Ok<PinsView>, NotFound>> (string deviceId, DeviceConfigService configs, CancellationToken ct) =>
             await configs.GetPinsAsync(deviceId, ct) is { Status: ConfigUpdateStatus.Updated } r
                 ? TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio))

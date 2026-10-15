@@ -507,7 +507,10 @@
       "vbatEsp8266": "The ESP8266 has one analog input, A0: enter 17.",
       "vbatEsp32c3": "On the ESP32-C3 the ADC is on GPIO0–GPIO4.",
       "ratio": "Voltage divider ratio: (R1 + R2) / R2, R1 being the upper leg (to +), R2 the lower one (to ground). Voltage = pin reading × ratio. Empty = 1.\nExample: up to 15 V with R1 = 47 kΩ, R2 = 10 kΩ, ratio 5.7.\n+12V → R1 47k → A0 → R2 10k → ground.\nKeep the pin at or below 3.2 V (NodeMCU, D1 mini) or 3.3 V (ESP32).\nFine tuning: new ratio = current × (multimeter / hive reading)."
-    }
+    },
+    "rename": "Rename",
+    "renamed": "Name saved",
+    "renameFailed": "Could not rename"
   },
   "add": {
     "step1": "Hornet and code",
@@ -543,7 +546,14 @@
     "batchNew": "New batch",
     "batchHint": "Pick a hornet, flash its board (you can close the window and come back later: the queue is on the server), then set it up. Wi-Fi and the hive address are entered for each board.",
     "wifiFromHive": "Wi-Fi and the hive address come from the hive settings",
-    "until": "until"
+    "until": "until",
+    "type": "Hornet type",
+    "board": "Board (hardware)",
+    "noBuild": "no firmware",
+    "boardsForTypes": "Which boards fit which hornets",
+    "back": "Back to step 1",
+    "next": "Next",
+    "boardLine": "Board: {board}"
   },
   "time": {
     "justNow": "just now",
@@ -578,7 +588,9 @@
     "sun": "Sun"
   },
   "common": {
-    "copied": "Copied"
+    "copied": "Copied",
+    "save": "Save",
+    "cancel": "Cancel"
   },
   "monitor": {
     "title": "MQTT monitor",
