@@ -1241,6 +1241,25 @@
         }
       }
     },
+    "/api/backups": {
+      "get": {
+        "tags": [
+          "backups"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupStatusDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/monitor": {
       "get": {
         "tags": [
@@ -2394,6 +2413,117 @@
           "cameras": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "BackupRunDto": {
+        "required": [
+          "id",
+          "kind",
+          "startedAt",
+          "finishedAt",
+          "ok",
+          "bytes",
+          "detail"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "bytes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "BackupStatusDto": {
+        "required": [
+          "ok",
+          "problems",
+          "lastGoodDumpAt",
+          "dump",
+          "offsite",
+          "verify",
+          "recent"
+        ],
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lastGoodDumpAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "dump": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BackupRunDto"
+              }
+            ]
+          },
+          "offsite": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BackupRunDto"
+              }
+            ]
+          },
+          "verify": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BackupRunDto"
+              }
+            ]
+          },
+          "recent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BackupRunDto"
+            }
           }
         }
       },
@@ -4601,6 +4731,9 @@
     },
     {
       "name": "ingest"
+    },
+    {
+      "name": "backups"
     },
     {
       "name": "monitor"

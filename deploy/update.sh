@@ -35,7 +35,7 @@ docker compose exec -T postgres pg_dump -U hive -d hive | gzip >"$dump"
 ls -1t "$data"/backups/pre-update-*.sql.gz 2>/dev/null | tail -n +6 | xargs -r rm -f
 
 # Folders added by newer versions (the first install creates them; an update must too).
-mkdir -p "$data/keys"
+mkdir -p "$data/keys" "$data/restic"
 chown 1654:1654 "$data/keys" # "app" user of the .NET image
 
 set_env HIVE_VERSION "$version"

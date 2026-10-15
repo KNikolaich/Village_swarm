@@ -1472,6 +1472,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BackupStatusDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/monitor": {
         parameters: {
             query?: never;
@@ -2784,6 +2819,29 @@ export interface components {
             updatedBy: null | string;
             /** Format: int32 */
             cameras: number;
+        };
+        BackupRunDto: {
+            /** Format: int64 */
+            id: number;
+            kind: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt: string;
+            ok: boolean;
+            /** Format: int64 */
+            bytes: null | number;
+            detail: null | string;
+        };
+        BackupStatusDto: {
+            ok: boolean;
+            problems: string[];
+            /** Format: date-time */
+            lastGoodDumpAt: null | string;
+            dump: null | components["schemas"]["BackupRunDto"];
+            offsite: null | components["schemas"]["BackupRunDto"];
+            verify: null | components["schemas"]["BackupRunDto"];
+            recent: components["schemas"]["BackupRunDto"][];
         };
         BatchDto: {
             items: components["schemas"]["EnrollmentCodeDto"][];

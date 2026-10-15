@@ -19,6 +19,8 @@ public static class Texts
         "tamper" => "Камера закрыта или сдвинута",
         "snapshot" => "Снимок",
         "ota" => "Обновление прошивки",
+        "backup" => "Проблема с бэкапом",
+        "backup_cleared" => "Бэкапы снова в порядке",
         "rule" => "Правило",
         "overheat" => "Улей перегревается",
         "overheat_cleared" => "Температура улья в норме",
@@ -43,6 +45,8 @@ public static class Texts
         var text = $"{Icon(e.Severity)} <b>{H(EventType(e.Type))}</b>: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}";
         if (e.Type == "ota")
             text += OtaDetail(e.Payload.RootElement);
+        if (e.Type == "backup")
+            text += BackupDetail(e.Payload.RootElement);
         if (e.Type == "rule" && e.Payload.RootElement.TryGetProperty("text", out var said))
             text += $"\n{H(said.GetString())}";
         if (e.Type == "failsafe" && e.Payload.RootElement.TryGetProperty("rule", out var rule))
@@ -52,6 +56,22 @@ public static class Texts
         if (repeat > 1)
             text += $"\n<b>×{repeat}</b> подряд";
         return text;
+    }
+
+    /// <summary>One line per problem the backup watch found (Hive.Modules.Backup), e.g. "нет свежего дампа базы".</summary>
+    private static string BackupDetail(System.Text.Json.JsonElement p)
+    {
+        if (!p.TryGetProperty("problems", out var list) || list.ValueKind != System.Text.Json.JsonValueKind.Array)
+            return "";
+        var lines = list.EnumerateArray().Select(x => x.GetString() switch
+        {
+            "dump_failed" => "дамп базы не удался",
+            "dump_stale" => "нет свежего дампа базы",
+            "offsite_failed" => "копия вне дома не удалась",
+            "verify_failed" => "проверка восстановления не прошла",
+            var other => other ?? "",
+        });
+        return string.Concat(lines.Select(l => $"\n{H(l)}"));
     }
 
     /// <summary>"\nвоздух у платы: 47,5° (порог 45°)" for the hive's own sensor events.</summary>

@@ -4,6 +4,7 @@
     <Project Path="src/Hive.Contracts/Hive.Contracts.csproj" />
     <Project Path="src/Hive.Domain/Hive.Domain.csproj" />
     <Project Path="src/Hive.Infrastructure/Hive.Infrastructure.csproj" />
+    <Project Path="src/Hive.Modules.Backup/Hive.Modules.Backup.csproj" />
     <Project Path="src/Hive.Modules.Cluster/Hive.Modules.Cluster.csproj" />
     <Project Path="src/Hive.Modules.Devices/Hive.Modules.Devices.csproj" />
     <Project Path="src/Hive.Modules.Events/Hive.Modules.Events.csproj" />

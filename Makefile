@@ -26,6 +26,10 @@ dev-up:
 dev-down:
 	$(COMPOSE_DEV) down
 
+# Tries the backup scripts for real in Docker (dump, rotation, restic copy, restore check, failures).
+backup-test:
+	bash deploy/backup/test.sh
+
 # Hive images for the RPi, packed into deploy/dist (docs/deploy.md). `make ship PI=kirill@192.168.10.4 ARGS="--host 192.168.10.4"`.
 images:
 	bash deploy/build-images.sh linux/arm64

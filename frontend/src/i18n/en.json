@@ -358,7 +358,9 @@
     "photo_failed": "Photo failed to upload",
     "tamper": "Camera covered or moved",
     "rule": "Rule",
-    "ota": "Firmware update"
+    "ota": "Firmware update",
+    "backup": "Backup problem",
+    "backup_cleared": "Backups are well again"
   },
   "severity": {
     "info": "Info",
@@ -649,5 +651,32 @@
   },
   "units": {
     "volt": "V"
+  },
+  "backups": {
+    "title": "Backups",
+    "allWell": "all well",
+    "trouble": "a problem",
+    "ok": "ok",
+    "failed": "failed",
+    "dump": "Database dump",
+    "offsite": "Off-site copy",
+    "verify": "Restore check",
+    "noDump": "Not made yet: the first dump is tonight",
+    "noOffsite": "Not set up",
+    "noVerify": "Not run yet: weekly, after the nightly backup",
+    "offsiteHint": "For now the backup sits on the same drive as the hive: if the drive dies, it goes too. Set up a copy to another drive or the cloud (RESTIC_REPOSITORY in .env, see docs/restore.md).",
+    "history": "Recent runs",
+    "manual": "Run now, on the hive:",
+    "problems": {
+      "dump_failed": "The last database dump failed",
+      "dump_stale": "No fresh database dump (older than 36 hours, or none at all)",
+      "offsite_failed": "The last off-site copy failed",
+      "verify_failed": "The restore check failed: the dump may not open"
+    },
+    "kinds": {
+      "dump": "dump",
+      "offsite": "off-site copy",
+      "verify": "check"
+    }
   }
 }

@@ -99,9 +99,9 @@ if [ "$SRC" != "$HIVE_DIR" ]; then
 	say "Копирую файлы в $HIVE_DIR"
 	mkdir -p "$HIVE_DIR"
 	cp -r "$SRC/compose.yaml" "$SRC/compose.home.yaml" "$SRC/.env.example" "$SRC/mosquitto" \
-		"$SRC/install.sh" "$SRC/update.sh" "$HIVE_DIR/"
+		"$SRC/install.sh" "$SRC/update.sh" "$SRC/restore.sh" "$HIVE_DIR/"
 fi
-chmod +x "$HIVE_DIR/install.sh" "$HIVE_DIR/update.sh"
+chmod +x "$HIVE_DIR/install.sh" "$HIVE_DIR/update.sh" "$HIVE_DIR/restore.sh"
 cd "$HIVE_DIR"
 
 ENV=.env
@@ -155,7 +155,7 @@ if [ "$first_install" -eq 1 ] && { [ -n "$(ls -A "$data/pg" 2>/dev/null)" ] || [
 	rm -f "$ENV"
 	die "в $data остались данные прошлой установки, а пароли в новом .env другие, и они не подойдут. Если там нет нужных данных, удалите: sudo rm -rf $data/pg $data/mosquitto/dynamic-security.json — и запустите установку снова"
 fi
-mkdir -p "$data"/{pg,media,keys,mosquitto,caddy,backups}
+mkdir -p "$data"/{pg,media,keys,mosquitto,caddy,backups,restic}
 chown -R 1654:1654 "$data/media" "$data/keys" # "app" user of the .NET image
 chown -R 1883:1883 "$data/mosquitto" # "mosquitto" user of the broker image
 

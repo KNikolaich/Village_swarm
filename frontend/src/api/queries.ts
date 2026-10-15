@@ -188,3 +188,6 @@ export const useRuleRuns = (id: number | null) =>
     enabled: id != null,
     refetchInterval: 30_000,
   })
+
+export const useBackups = (enabled: boolean) =>
+  useQuery({ queryKey: ['backups'] as const, queryFn: () => call(api.GET('/api/backups')), enabled, refetchInterval: 5 * 60_000 })

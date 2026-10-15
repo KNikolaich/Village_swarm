@@ -26,6 +26,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<EnrollmentCode> EnrollmentCodes => Set<EnrollmentCode>();
     public DbSet<WeatherSnapshot> WeatherSnapshots => Set<WeatherSnapshot>();
+    public DbSet<BackupRun> BackupRuns => Set<BackupRun>();
     public DbSet<Rule> Rules => Set<Rule>();
     public DbSet<RuleRun> RuleRuns => Set<RuleRun>();
 
@@ -131,6 +132,14 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.HasKey(x => x.Code);
             e.Property(x => x.Code).HasMaxLength(8);
             e.HasOne<HiveUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<BackupRun>(e =>
+        {
+            e.ToTable("backup_runs");
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Detail).HasMaxLength(512);
+            e.HasIndex(x => new { x.Kind, x.StartedAt });
         });
 
         b.Entity<Rule>(e =>

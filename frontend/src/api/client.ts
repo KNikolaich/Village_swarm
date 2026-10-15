@@ -18,6 +18,8 @@ export type RuleCondition = Schemas['RuleCondition']
 export type RuleAction = Schemas['RuleAction']
 export type DryRunResult = Schemas['DryRunResult']
 export type RuleRunDto = Schemas['RuleRunDto']
+export type BackupStatusDto = Schemas['BackupStatusDto']
+export type BackupRunDto = Schemas['BackupRunDto']
 export type MeDto = Schemas['MeDto']
 export type LoginResult = Schemas['LoginResult']
 

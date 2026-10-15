@@ -19,6 +19,7 @@
     <ProjectReference Include="../Hive.Modules.Media/Hive.Modules.Media.csproj" />
     <ProjectReference Include="../Hive.Modules.Rules/Hive.Modules.Rules.csproj" />
     <ProjectReference Include="../Hive.Modules.Notify/Hive.Modules.Notify.csproj" />
+    <ProjectReference Include="../Hive.Modules.Backup/Hive.Modules.Backup.csproj" />
     <ProjectReference Include="../Hive.Modules.Cluster/Hive.Modules.Cluster.csproj" />
     <ProjectReference Include="../Hive.Modules.Users/Hive.Modules.Users.csproj" />
     <ProjectReference Include="../Hive.Modules.Weather/Hive.Modules.Weather.csproj" />

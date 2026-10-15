@@ -78,3 +78,16 @@ export const formatHm = (iso: string) =>
 /** "Ср" / "Wed" for a calendar date "2026-10-14" (a date has no zone, so it is read as UTC and shown as UTC). */
 export const formatWeekdayShort = (date: string) =>
   new Intl.DateTimeFormat(locale(), { weekday: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`))
+
+/** "12,4 МБ" / "12.4 MB": file sizes for backups. */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null) return '—'
+  const units = getLanguage() === 'en' ? ['B', 'KB', 'MB', 'GB'] : ['Б', 'КБ', 'МБ', 'ГБ']
+  let value = bytes
+  let i = 0
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024
+    i++
+  }
+  return `${value.toLocaleString(locale(), { maximumFractionDigits: value < 10 && i > 0 ? 1 : 0 })} ${units[i]}`
+}

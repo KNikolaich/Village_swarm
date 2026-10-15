@@ -69,6 +69,37 @@ services:
       retries: 10
     mem_limit: 448m
 
+  # Nightly database dump, optional off-site copy (restic) and a weekly restore check (spec 10, docs/restore.md).
+  # Dumps stay in ${HIVE_DATA}/backups/db; set RESTIC_REPOSITORY and RESTIC_PASSWORD in .env for the off-site copy.
+  backup:
+    <<: *common
+    image: ${HIVE_IMAGES:-ghcr.io/knikolaich/village-swarm}-backup:${HIVE_VERSION:?set HIVE_VERSION in .env}
+    # Only what backups need: the bot token and the like stay out of this container.
+    environment:
+      PGHOST: postgres
+      PGUSER: hive
+      PGPASSWORD: ${PG_PASSWORD}
+      PGDATABASE: hive
+      TZ: ${HIVE_TIMEZONE:-Europe/Moscow}
+      BACKUP_AT: ${BACKUP_AT:-03:00}
+      BACKUP_VERIFY_DAY: ${BACKUP_VERIFY_DAY:-7}
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-}
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:-}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+    volumes:
+      - ${HIVE_DATA:-/srv/hive}/backups:/backups
+      - ${HIVE_DATA:-/srv/hive}/media:/source/media:ro
+      - ${HIVE_DATA:-/srv/hive}/keys:/source/keys:ro
+      - ${HIVE_DATA:-/srv/hive}/mosquitto:/source/mosquitto:ro
+      - ${HIVE_DATA:-/srv/hive}/caddy:/source/caddy:ro
+      - ./.env:/source/config/.env:ro
+      # A repository on another drive: RESTIC_REPOSITORY=/repo and BACKUP_REPO_DIR=<its folder on the host>.
+      - ${BACKUP_REPO_DIR:-/srv/hive/restic}:/repo
+    depends_on:
+      postgres: { condition: service_healthy }
+    mem_limit: 192m
+
   api:
     <<: *common
     image: ${HIVE_IMAGES:-ghcr.io/knikolaich/village-swarm}-api:${HIVE_VERSION:?set HIVE_VERSION in .env}

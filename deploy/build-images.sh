@@ -13,13 +13,13 @@ version="${VERSION:-$(git describe --tags --always --dirty | tr '+' '-')}"
 prefix="${HIVE_IMAGES:-ghcr.io/knikolaich/village-swarm}"
 mkdir -p deploy/dist
 
-for part in api web; do
+for part in api web backup; do
 	echo "==> $prefix-$part:$version ($platform)"
 	docker buildx build --platform "$platform" --build-arg HIVE_VERSION="$version" \
 		-f "deploy/docker/$part.Dockerfile" -t "$prefix-$part:$version" --load .
 done
 
 out="deploy/dist/hive-images-$version-$arch.tar.gz"
-docker save "$prefix-api:$version" "$prefix-web:$version" | gzip -1 >"$out"
+docker save "$prefix-api:$version" "$prefix-web:$version" "$prefix-backup:$version" | gzip -1 >"$out"
 echo "$version" >deploy/dist/VERSION
 echo "==> $out ($(du -h "$out" | cut -f1))"
