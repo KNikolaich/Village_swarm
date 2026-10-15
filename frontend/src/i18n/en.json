@@ -401,7 +401,8 @@
     "languageAdminOnly": "Only an admin changes the hive language",
     "monitor": "MQTT monitor",
     "monitorHint": "See how the hornets and the hive talk, read-only.",
-    "monitorOpen": "Open the monitor"
+    "monitorOpen": "Open the monitor",
+    "version": "Hive version {version}"
   },
   "password": {
     "show": "Show password",

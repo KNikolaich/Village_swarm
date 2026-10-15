@@ -12,6 +12,9 @@ namespace Hive.Modules.Users;
 
 public sealed record LanguageDto(string Language);
 
+/// <summary>What is running: the hive build (deploy/build-images.sh passes git describe, e.g. 8835483).</summary>
+public sealed record VersionDto(string Version);
+
 /// <summary>Settings shared by the whole hive (not per user): the interface language (spec 8.1).</summary>
 public sealed class HiveSettingsService(HiveDbContext db, TimeProvider time)
 {
@@ -56,6 +59,16 @@ public static class HiveSettingsEndpoints
                 return TypedResults.NoContent();
             })
             .RequireAuthorization(HiveRoles.AdminOnly);
+        settings.MapGet("/version", () => TypedResults.Ok(new VersionDto(HiveVersion())));
         return app;
+    }
+
+    /// <summary>The InformationalVersion set at publish (HIVE_VERSION), without the "+commit" suffix the SDK may add.</summary>
+    public static string HiveVersion()
+    {
+        var info = System.Reflection.Assembly.GetEntryAssembly()?
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion;
+        return string.IsNullOrEmpty(info) ? "dev" : info.Split('+')[0];
     }
 }

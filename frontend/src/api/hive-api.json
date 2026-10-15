@@ -265,6 +265,25 @@
         }
       }
     },
+    "/api/settings/version": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/settings/wifi": {
       "get": {
         "tags": [
@@ -4159,6 +4178,17 @@
                 "$ref": "#/components/schemas/SleepMode"
               }
             ]
+          }
+        }
+      },
+      "VersionDto": {
+        "required": [
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
           }
         }
       },

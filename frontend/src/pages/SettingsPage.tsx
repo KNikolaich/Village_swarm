@@ -27,8 +27,16 @@ export function SettingsPage() {
       <LanguageCard />
       <CertificateCard />
       <MonitorCard />
+      <HiveVersion />
     </div>
   )
+}
+
+/** Which hive build is running (the git commit it was built from), to tell whether a deploy went through. */
+function HiveVersion() {
+  const version = useQuery({ queryKey: ['settings', 'version'], queryFn: () => call(api.GET('/api/settings/version')), staleTime: 60_000 })
+  if (!version.data) return null
+  return <p className="text-center text-xs text-neutral-500">{t('settings.version').replace('{version}', version.data.version)}</p>
 }
 
 /** The live MQTT window (admins only): read-only, no broker login needed. */
