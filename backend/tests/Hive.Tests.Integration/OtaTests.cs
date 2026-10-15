@@ -17,16 +17,24 @@ public sealed class OtaTests(HiveFixture hive)
 {
     private const string Board = "esp32c3-supermini"; // what the simulator meteo hornet reports as hw
 
-    private byte[] AddBuild(string name, string role, string board, string version, int size = 4096)
+    /// <summary>
+    /// A build in firmware/dist layout. <paramref name="signature"/> is what scripts/dist.py writes for a signed build
+    /// (the hive only passes it on, so any 128 hex characters stand in for it); <paramref name="staleDigest"/> makes
+    /// build.json describe another image than the one on disk, as after a rebuild without re-signing.
+    /// </summary>
+    private byte[] AddBuild(string name, string role, string board, string version, int size = 4096, string? signature = null, bool staleDigest = false)
     {
         var dir = Path.Combine(hive.FirmwareRoot, name);
         Directory.CreateDirectory(dir);
         var image = RandomNumberGenerator.GetBytes(size);
         File.WriteAllBytes(Path.Combine(dir, "firmware.bin"), image);
+        var sha512 = Convert.ToHexStringLower(SHA512.HashData(staleDigest ? [1, 2, 3] : image));
         File.WriteAllText(Path.Combine(dir, "build.json"), JsonSerializer.Serialize(new
         {
             env = name, role, board, version, chipFamily = "ESP32-C3",
             parts = new[] { new { file = "firmware.bin", offset = 0 } },
+            sha512 = signature is null ? null : sha512,
+            signature,
         }));
         return image;
     }
@@ -73,6 +81,64 @@ public sealed class OtaTests(HiveFixture hive)
         Assert.Equal(Convert.ToHexStringLower(MD5.HashData(image)), cmd.RootElement.GetProperty("md5").GetString());
         Assert.Equal(image.Length, cmd.RootElement.GetProperty("size").GetInt32());
         Assert.Equal("9.9.9+test", cmd.RootElement.GetProperty("version").GetString());
+    }
+
+    [Fact]
+    public async Task A_signed_build_sends_its_signature_and_one_that_no_longer_matches_it_is_refused()
+    {
+        var signature = new string('a', 128);
+        AddBuild("meteo-ota-signed", "meteo", Board, "9.9.9+signed", signature: signature);
+        AddBuild("meteo-ota-stale", "meteo", Board, "9.9.9+stale", signature: signature, staleDigest: true);
+        await RegisterAsync("meteo-ota-sig");
+
+        using var client = new MqttClientFactory().CreateMqttClient();
+        string? seen = null;
+        client.ApplicationMessageReceivedAsync += m =>
+        {
+            seen = m.ApplicationMessage.ConvertPayloadToString();
+            return Task.CompletedTask;
+        };
+        await client.ConnectAsync(new MqttClientOptionsBuilder().WithTcpServer(hive.MqttHost, hive.MqttPort).WithClientId("ota-sig-watch").Build());
+        await client.SubscribeAsync("vs/v1/dev/meteo-ota-sig/cmd/ota");
+
+        var admin = await hive.LoginAsync();
+        using var stale = await admin.PostAsJsonAsync("/api/devices/meteo-ota-sig/ota", new { build = "meteo-ota-stale" });
+        Assert.Equal(HttpStatusCode.BadRequest, stale.StatusCode);
+
+        using var ok = await admin.PostAsJsonAsync("/api/devices/meteo-ota-sig/ota", new { build = "meteo-ota-signed" });
+        Assert.Equal(HttpStatusCode.Accepted, ok.StatusCode);
+        for (var i = 0; i < 50 && seen is null; i++)
+            await Task.Delay(100);
+        using var cmd = JsonDocument.Parse(seen ?? throw new TimeoutException("no ota command"));
+        Assert.Equal(signature, cmd.RootElement.GetProperty("sig").GetString());
+
+        var builds = await admin.GetFromJsonAsync<JsonElement>("/api/firmware");
+        Assert.True(builds.EnumerateArray().Single(b => b.GetProperty("build").GetString() == "meteo-ota-signed").GetProperty("signed").GetBoolean());
+    }
+
+    [Fact]
+    public async Task An_unsigned_build_sends_no_signature()
+    {
+        AddBuild("meteo-ota-plain", "meteo", Board, "9.9.9+plain");
+        await RegisterAsync("meteo-ota-nosig");
+
+        using var client = new MqttClientFactory().CreateMqttClient();
+        string? seen = null;
+        client.ApplicationMessageReceivedAsync += m =>
+        {
+            seen = m.ApplicationMessage.ConvertPayloadToString();
+            return Task.CompletedTask;
+        };
+        await client.ConnectAsync(new MqttClientOptionsBuilder().WithTcpServer(hive.MqttHost, hive.MqttPort).WithClientId("ota-nosig-watch").Build());
+        await client.SubscribeAsync("vs/v1/dev/meteo-ota-nosig/cmd/ota");
+
+        var admin = await hive.LoginAsync();
+        using var ok = await admin.PostAsJsonAsync("/api/devices/meteo-ota-nosig/ota", new { build = "meteo-ota-plain" });
+        Assert.Equal(HttpStatusCode.Accepted, ok.StatusCode);
+        for (var i = 0; i < 50 && seen is null; i++)
+            await Task.Delay(100);
+        using var cmd = JsonDocument.Parse(seen ?? throw new TimeoutException("no ota command"));
+        Assert.False(cmd.RootElement.TryGetProperty("sig", out _));
     }
 
     [Fact]

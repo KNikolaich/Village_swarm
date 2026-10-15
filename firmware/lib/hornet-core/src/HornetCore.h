@@ -159,7 +159,7 @@ private:
     bool lightSleep_ = false;
     struct PendingOta {
         bool queued = false;
-        String url, md5, version;
+        String url, md5, version, sig;
         uint32_t size = 0;
     } ota_;  // console "awake": no sleep until reboot, to change settings
     bool wifiTrial_ = false;               // this boot is trying settings_.wifiNext*

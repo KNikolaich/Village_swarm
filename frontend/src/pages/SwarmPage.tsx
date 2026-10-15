@@ -228,7 +228,8 @@ function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: 
   async function update(build: Schemas['FirmwareBuildDto']) {
     const risky = (device.hw ?? '').startsWith('esp-01')
     const text = t('swarm.updateConfirm').replace('{name}', device.name).replace('{from}', device.fw ?? '?').replace('{to}', build.version ?? '?')
-    if (!window.confirm(risky ? `${text}\n\n${t('swarm.updateRisk')}` : text)) return
+    const notes = [risky ? t('swarm.updateRisk') : '', build.signed ? '' : t('swarm.updateUnsigned')].filter(Boolean)
+    if (!window.confirm(notes.length ? `${text}\n\n${notes.join('\n\n')}` : text)) return
     setBusy(true)
     const { response, error } = await api.POST('/api/devices/{deviceId}/ota', { params: { path: { deviceId: device.deviceId } }, body: { build: build.build } })
     setBusy(false)

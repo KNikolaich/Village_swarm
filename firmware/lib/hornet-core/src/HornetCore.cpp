@@ -157,6 +157,8 @@ AckResult Core::queueOta(JsonObjectConst payload) {
     const String md5 = payload["md5"] | "";
     const String version = payload["version"] | "";
     const uint32_t size = payload["size"] | 0U;
+    const String sig = payload["sig"] | "";
+    if (ota::signatureRequired() && sig.length() != 128) return AckResult(AckStatus::Rejected, "unsigned image refused");
     if (!url.startsWith("http://") || md5.length() != 32 || !size || !version.length()) return AckResult::error("bad ota command");
     if (ota_.queued) return AckResult::error("update already running");
     if (version == HORNET_FW_VERSION) return AckResult(AckStatus::Rejected, "already on " + version);
@@ -166,6 +168,7 @@ AckResult Core::queueOta(JsonObjectConst payload) {
     ota_.md5 = md5;
     ota_.size = size;
     ota_.version = version;
+    ota_.sig = sig;
     return AckResult::ok();
 }
 
@@ -181,7 +184,7 @@ void Core::runOta() {
     Serial.printf("[ota] %s (%u bytes)\n", ota_.url.c_str(), static_cast<unsigned>(ota_.size));
 
     String error;
-    const bool ok = ota::download(ota_.url, settings_.uploadToken, ota_.size, ota_.md5, error, platform::watchdogFeed);
+    const bool ok = ota::download(ota_.url, settings_.uploadToken, ota_.size, ota_.md5, ota_.sig, error, platform::watchdogFeed);
     if (!ok) {
         Serial.printf("[ota] failed: %s\n", error.c_str());
         JsonDocument failed;
@@ -496,6 +499,7 @@ void Core::publishInfo() {
     info["ip"] = WiFi.localIP().toString();
     JsonArray caps = info["caps"].to<JsonArray>();
     for (auto c : role_.caps()) caps.add(c);
+    if (ota::signatureRequired()) caps.add("ota.signed");  // the hive can tell which hornets only take signed images
     JsonArray metrics = info["metrics"].to<JsonArray>();
     for (auto m : role_.metrics()) metrics.add(m);
     JsonArray commands = info["commands"].to<JsonArray>();

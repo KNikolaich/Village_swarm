@@ -66,7 +66,8 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
         if (string.IsNullOrEmpty(hive))
             return new OtaResult(OtaStatus.Refused, "set the hive address in Settings first");
 
-        var md5 = Convert.ToHexStringLower(MD5.HashData(await File.ReadAllBytesAsync(file, ct)));
+        var image = await File.ReadAllBytesAsync(file, ct);
+        var md5 = Convert.ToHexStringLower(MD5.HashData(image));
         var payload = new JsonObject
         {
             ["url"] = $"{hive.TrimEnd('/')}/api/ota/{build}/firmware.bin",
@@ -74,6 +75,16 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
             ["size"] = size,
             ["version"] = b.Version,
         };
+        // A signed build (scripts/ota_sign.py made it): the signature goes along, after a check that it belongs to the
+        // image on disk. A mismatch means the file changed since it was signed, and a hornet would refuse it anyway.
+        if (b.Signature is { } signature)
+        {
+            if (b.Sha512 is not null && !string.Equals(b.Sha512, Convert.ToHexStringLower(SHA512.HashData(image)), StringComparison.Ordinal))
+                return new OtaResult(OtaStatus.Refused, "the image does not match the signature in build.json: rebuild the firmware");
+            if (signature.Length != 128 || !signature.All(Uri.IsHexDigit))
+                return new OtaResult(OtaStatus.Refused, "build.json holds a malformed signature: rebuild the firmware");
+            payload["sig"] = signature.ToLowerInvariant();
+        }
         var (status, command) = await commands.SendAsync(deviceId, "ota", payload, by, 600, ct);
         return status switch
         {

@@ -34,6 +34,11 @@
       "type": "string",
       "minLength": 1,
       "description": "Version the image reports as fw after the update"
+    },
+    "sig": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$",
+      "description": "Ed25519 signature (hex) of the SHA-512 digest of the image, made with the developer's private key at build time. A hornet that carries the matching public key refuses an update without it, or with one that does not match, before the image is marked for the bootloader (docs/ota.md)"
     }
   },
   "unevaluatedProperties": false

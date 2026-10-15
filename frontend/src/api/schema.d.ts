@@ -3077,6 +3077,7 @@ export interface components {
             /** Format: date-time */
             built: string;
             version: null | string;
+            signed: boolean;
         };
         HealthPointDto: {
             /** Format: date-time */

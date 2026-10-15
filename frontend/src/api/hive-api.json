@@ -3195,7 +3195,8 @@
           "board",
           "chipFamily",
           "built",
-          "version"
+          "version",
+          "signed"
         ],
         "type": "object",
         "properties": {
@@ -3220,6 +3221,9 @@
               "null",
               "string"
             ]
+          },
+          "signed": {
+            "type": "boolean"
           }
         }
       },

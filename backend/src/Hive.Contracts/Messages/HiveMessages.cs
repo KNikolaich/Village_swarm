@@ -39,6 +39,9 @@ public sealed record OtaCommand : Command
     public required string Md5 { get; init; }
     public required long Size { get; init; }
     public required string Version { get; init; }
+
+    /// <summary>Ed25519 signature (hex) of the SHA-512 of the image; hornets that carry the public key require it.</summary>
+    public string? Sig { get; init; }
 }
 
 /// <summary>vs/v1/dev/{id}/cmd/wifi: try <see cref="Ssid"/>; if the hornet does not reach the hive over it, the old network comes back.</summary>

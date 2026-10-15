@@ -555,7 +555,8 @@
     "fwNone": "The hive has no {env} firmware. Build it (pio run in firmware) and deploy the hive: firmware reaches the hive with it.",
     "fwNoNewer": "Nothing newer on the hive. To get a fresh one: build the firmware (pio run in firmware) and deploy the hive.",
     "fwOffline": "The hornet is offline: it can be updated once it is back.",
-    "replaceConfirm": "Replace the board of \"{id}\"? The hive gives a code: flash a new board and enter it in the wizard. The hornet moves to the new board with its name, history and settings, and the old board loses access. Updating the firmware is the other button, the chip."
+    "replaceConfirm": "Replace the board of \"{id}\"? The hive gives a code: flash a new board and enter it in the wizard. The hornet moves to the new board with its name, history and settings, and the old board loses access. Updating the firmware is the other button, the chip.",
+    "updateUnsigned": "The image is not signed (built without the signing key): a hornet that only takes signed firmware will refuse it. See docs/ota.md."
   },
   "add": {
     "step1": "Hornet and code",
