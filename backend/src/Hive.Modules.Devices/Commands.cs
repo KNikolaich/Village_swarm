@@ -74,7 +74,7 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TimeProvi
             Cid = cid,
             DeviceId = deviceId,
             Name = name,
-            Payload = JsonDocument.Parse(message.ToJsonString()),
+            Payload = JsonDocument.Parse(Redacted(name, message).ToJsonString()),
             IssuedBy = issuedBy,
             IssuedAt = now,
             TtlS = ttl,
@@ -89,6 +89,19 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TimeProvi
     public async Task<IReadOnlyList<DeviceCommand>> ListAsync(string deviceId, int? limit, CancellationToken ct) =>
         await db.Commands.AsNoTracking().Where(c => c.DeviceId == deviceId)
             .OrderByDescending(c => c.IssuedAt).Take(Math.Clamp(limit ?? 20, 1, 100)).ToListAsync(ct);
+
+    /// <summary>
+    /// What the journal keeps of a message: a Wi-Fi password is sent to the hornet but never stored (the journal is read
+    /// by more people than the hornet), so cmd/wifi is stored with "***" in its place.
+    /// </summary>
+    internal static JsonObject Redacted(string name, JsonObject message)
+    {
+        if (name != "wifi" || !message.ContainsKey("pass"))
+            return message;
+        var copy = (JsonObject)message.DeepClone();
+        copy["pass"] = "***";
+        return copy;
+    }
 
     public async Task<DeviceCommand?> GetAsync(string deviceId, string cid, CancellationToken ct) =>
         await db.Commands.AsNoTracking().FirstOrDefaultAsync(c => c.Cid == cid && c.DeviceId == deviceId, ct);

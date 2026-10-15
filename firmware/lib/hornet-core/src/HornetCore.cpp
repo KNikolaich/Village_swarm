@@ -9,6 +9,7 @@
 #include "Outbox.h"
 #include "Platform.h"
 #include "Ulid.h"
+#include "WifiChange.h"
 
 namespace hornet {
 
@@ -62,6 +63,8 @@ void Core::begin() {
     role_.setup(*this);
     // Over-the-air update, available to every role (spec 5.5).
     onCommand("ota", [this](JsonObjectConst payload) { return queueOta(payload); });
+    // Moving to another Wi-Fi network, with a way back (contracts/mqtt-topics.md).
+    onCommand("wifi", [this](JsonObjectConst payload) { return queueWifi(payload); });
     if (saved.length()) applyConfig(saved, false);
 
     if (!settings_.complete()) {
@@ -74,8 +77,13 @@ void Core::begin() {
     WiFi.setAutoReconnect(true);
     WiFi.persistent(false);
     WiFi.setHostname(settings_.deviceId.c_str());
+    // After cmd/wifi this boot tries the new network; the old one is still in settings_ and comes back if it fails.
+    wifiTrial_ = settings_.wifiNextSsid.length() > 0;
     platform::WifiHint hint;
-    if (sleepy() && platform::loadWifiHint(hint)) {
+    if (wifiTrial_) {
+        Serial.printf("[hornet] trying the new Wi-Fi \"%s\"\n", settings_.wifiNextSsid.c_str());
+        WiFi.begin(settings_.wifiNextSsid.c_str(), settings_.wifiNextPass.c_str());  // the hint belongs to the old access point
+    } else if (sleepy() && platform::loadWifiHint(hint)) {
         WiFi.begin(settings_.ssid.c_str(), settings_.pass.c_str(), hint.channel, hint.bssid);  // no scan
     } else {
         WiFi.begin(settings_.ssid.c_str(), settings_.pass.c_str());
@@ -109,6 +117,16 @@ void Core::loop() {
         }
         if (ota_.queued && online()) runOta();
         checkOtaOutcome();
+        checkWifiTrial();  // before the sleep logic: a deep sleeper must decide before its awake limit
+        if (wifiRestartAtMs_ && millis() >= wifiRestartAtMs_) {
+            Serial.println("[wifi] restarting onto the new network");
+            mqtt.disconnect();
+            for (int i = 0; i < 10; ++i) {
+                mqtt.loop();
+                delay(10);
+            }
+            ESP.restart();
+        }
         if (sleepy()) {
             if (sleepAtMs_ && millis() >= sleepAtMs_) sleepNow();
             if (millis() > kAwakeLimitMs) {
@@ -204,6 +222,58 @@ void Core::checkOtaOutcome() {
     settings_.otaPending = version;
 }
 
+// The command only stores the new network next to the old one and is acknowledged at once; loop() restarts onto it
+// once the ack has left. Nothing about the working network changes until the new one has proven itself.
+AckResult Core::queueWifi(JsonObjectConst payload) {
+    const std::string ssid = (payload["ssid"] | "");
+    const std::string pass = (payload["pass"] | "");
+    if (!wifichange::validCredentials(ssid, pass)) return AckResult::error("bad wifi command");
+    if (wifichange::sameAsCurrent(ssid, pass, settings_.ssid.c_str(), settings_.pass.c_str()))
+        return AckResult(AckStatus::Rejected, "already on this network");
+    if (wifiRestartAtMs_ || wifiTrial_) return AckResult::error("a wifi change is already running");
+    settings_.wifiNextSsid = ssid.c_str();
+    settings_.wifiNextPass = pass.c_str();
+    settings_.wifiRolledBack = "";
+    settings_.saveWifiChange();
+    wifiRestartAtMs_ = millis() + 1500;
+    return AckResult::ok();
+}
+
+// Trial boot: the new network is the hornet's own once it has reached the broker over it; if it has not by the
+// deadline, the old one comes back. Which of the two happened is reported once the hornet is online again.
+void Core::checkWifiTrial() {
+    switch (wifichange::decide(wifiTrial_, online(), millis(), sleepy())) {
+        case wifichange::Trial::Commit: {
+            const String ssid = settings_.wifiNextSsid;
+            settings_.ssid = ssid;
+            settings_.pass = settings_.wifiNextPass;
+            settings_.wifiNextSsid = "";
+            settings_.wifiNextPass = "";
+            settings_.save();
+            settings_.saveWifiChange();
+            wifiTrial_ = false;
+            platform::clearWifiHint();  // channel and access point of the old network are of no use now
+            Serial.printf("[wifi] now on \"%s\"\n", ssid.c_str());
+            JsonDocument applied;
+            applied["phase"] = "applied";
+            applied["ssid"] = ssid;
+            publishEvent("wifi", applied);
+            break;
+        }
+        case wifichange::Trial::RollBack:
+            Serial.printf("[wifi] \"%s\" did not work, going back to the old network\n", settings_.wifiNextSsid.c_str());
+            settings_.wifiRolledBack = settings_.wifiNextSsid;
+            settings_.wifiNextSsid = "";
+            settings_.wifiNextPass = "";
+            settings_.saveWifiChange();
+            delay(100);
+            ESP.restart();
+            break;
+        default:
+            break;
+    }
+}
+
 void Core::readingDone() {
     if (sleepy() && !sleepAtMs_) sleepAtMs_ = millis() + kFlushBeforeSleepMs;
 }
@@ -289,7 +359,17 @@ void Core::onMqttConnected() {
         settings_.otaRolledBack = "";
         settings_.saveOta();
     }
-    if (sleepy()) {
+    if (settings_.wifiRolledBack.length()) {
+        JsonDocument failed;
+        failed["phase"] = "rolled_back";
+        failed["severity"] = "warn";
+        failed["ssid"] = settings_.wifiRolledBack;
+        failed["error"] = "no connection to the hive over it";
+        publishEvent("wifi", failed);
+        settings_.wifiRolledBack = "";
+        settings_.saveWifiChange();
+    }
+    if (sleepy() && !wifiTrial_) {  // during a trial the hint of the old access point must not be overwritten
         platform::WifiHint hint;
         hint.channel = static_cast<uint8_t>(WiFi.channel());
         memcpy(hint.bssid, WiFi.BSSID(), sizeof hint.bssid);

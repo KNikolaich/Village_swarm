@@ -26,6 +26,9 @@ void Settings::load() {
     boot = p.getUInt("boot", 0);
     otaPending = p.getString("otapend", "");
     otaRolledBack = p.getString("otarb", "");
+    wifiNextSsid = p.getString("wnssid", "");
+    wifiNextPass = p.getString("wnpass", "");
+    wifiRolledBack = p.getString("wrb", "");
     p.end();
 }
 
@@ -57,6 +60,15 @@ void Settings::saveOta() const {
     p.begin(kNs, false);
     p.putString("otapend", otaPending);
     p.putString("otarb", otaRolledBack);
+    p.end();
+}
+
+void Settings::saveWifiChange() const {
+    Preferences p;
+    p.begin(kNs, false);
+    p.putString("wnssid", wifiNextSsid);
+    p.putString("wnpass", wifiNextPass);
+    p.putString("wrb", wifiRolledBack);
     p.end();
 }
 

@@ -48,6 +48,14 @@ Rules:
 - Field names are snake_case, enum values lowercase strings. Unknown fields are rejected,
   except on generic events (`event.schema.json`), which allow type-specific extras.
 
+## Switching Wi-Fi (`cmd/wifi`, `event/wifi`)
+
+The hive can move a running hornet to another network (a new router or password) without a cable. The hornet acks the
+command, stores the new credentials **next to** the old ones, restarts and tries the new network. Once it has reached
+the broker over it, the new network becomes its own (`event/wifi` phase `applied`). If it has not within about a minute
+(sooner for deep sleepers), it forgets the new network, restarts on the old one and reports `rolled_back`. The password
+travels only in the command, and neither the hive's command journal nor its MQTT monitor shows it.
+
 ## Examples
 
 `examples/{schema}/{case}.json` must validate against `schemas/{schema}.schema.json`;

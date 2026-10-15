@@ -19,6 +19,7 @@ public static class Texts
         "tamper" => "Камера закрыта или сдвинута",
         "snapshot" => "Снимок",
         "ota" => "Обновление прошивки",
+        "wifi" => "Смена Wi-Fi",
         "device_offline" => "Шершень не на связи",
         "device_online" => "Шершень снова на связи",
         "backup" => "Проблема с бэкапом",
@@ -50,6 +51,8 @@ public static class Texts
             text += OtaDetail(e.Payload.RootElement);
         if (e.Type == "device_offline" && e.Payload.RootElement.TryGetProperty("minutes", out var gone))
             text += $"\nне отвечает уже {gone.GetInt32()} мин";
+        if (e.Type == "wifi" && e.Payload.RootElement.TryGetProperty("ssid", out var network))
+            text += WifiDetail(network.GetString(), e.Payload.RootElement.TryGetProperty("phase", out var phase) ? phase.GetString() : null);
         if (e.Type == "disk_cleanup")
             text += CleanupDetail(e.Payload.RootElement);
         if (e.Type == "backup")
@@ -73,6 +76,14 @@ public static class Texts
         var oldAlarms = p.TryGetProperty("level", out var l) && l.GetInt32() >= 2 ? "\nПришлось удалить и часть старых фото тревог: проверьте диск." : "";
         return $"\nудалено фото: {photos}{used}{oldAlarms}";
     }
+
+    /// <summary>"\nсеть «name»: подключился" / "осталась прежняя сеть" for the outcome of a Wi-Fi switch.</summary>
+    private static string WifiDetail(string? ssid, string? phase) => phase switch
+    {
+        "applied" => $"\nтеперь в сети «{H(ssid)}»",
+        "rolled_back" => $"\nсеть «{H(ssid)}» не подошла, осталась прежняя",
+        _ => "",
+    };
 
     /// <summary>One line per problem the backup watch found (Hive.Modules.Backup), e.g. "нет свежего дампа базы".</summary>
     private static string BackupDetail(System.Text.Json.JsonElement p)

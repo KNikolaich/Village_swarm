@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/event-wifi.schema.json",
+  "title": "vs/v1/dev/{id}/event/wifi: the outcome of a Wi-Fi switch",
+  "type": "object",
+  "allOf": [{ "$ref": "event.schema.json" }],
+  "required": ["phase", "ssid"],
+  "properties": {
+    "phase": {
+      "enum": ["applied", "rolled_back"],
+      "description": "applied: the hornet reached the broker over the new network, which is now its own; rolled_back: it did not, and the previous network is back"
+    },
+    "ssid": { "type": "string", "minLength": 1, "maxLength": 32, "description": "The network that was tried" },
+    "error": { "type": "string", "maxLength": 200 }
+  },
+  "unevaluatedProperties": false
+}

@@ -369,7 +369,8 @@
     "backup_cleared": "Backups are well again",
     "disk_cleanup": "Disk full: old photos deleted",
     "device_offline": "Hornet offline",
-    "device_online": "Hornet back online"
+    "device_online": "Hornet back online",
+    "wifi": "Wi-Fi switch"
   },
   "severity": {
     "info": "Info",
@@ -424,7 +425,18 @@
     "monitor": "MQTT monitor",
     "monitorHint": "See how the hornets and the hive talk, read-only.",
     "monitorOpen": "Open the monitor",
-    "version": "Hive version {version}"
+    "version": "Hive version {version}",
+    "wifiApply": "Apply to the hornets that are running",
+    "wifiApplyHint": "Sends the saved network to every hornet that is online now. Each tries the new network and, if it cannot reach the hive over it, goes back to the old one by itself. The outcome appears in Events.",
+    "wifiApplyConfirm": "Switch the running hornets to the network \"{ssid}\"? If the new network does not work, each goes back to its old one by itself.",
+    "wifiApplyNone": "No hornets to switch",
+    "wifiResult": {
+      "sent": "sent",
+      "offline": "offline",
+      "sleeping": "asleep: repeat when it wakes up",
+      "old_firmware": "old firmware: update over the air or by USB",
+      "failed": "could not be sent"
+    }
   },
   "password": {
     "show": "Show password",

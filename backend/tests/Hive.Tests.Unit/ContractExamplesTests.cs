@@ -32,6 +32,8 @@ public class ContractExamplesTests
         ["cmd-snapshot"] = typeof(SnapshotCommand),
         ["cmd-ota"] = typeof(OtaCommand),
         ["event-ota"] = typeof(OtaEvent),
+        ["cmd-wifi"] = typeof(WifiCommand),
+        ["event-wifi"] = typeof(WifiEvent),
         ["ack"] = typeof(AckMessage),
         ["config"] = typeof(DeviceConfig),
         ["heartbeat"] = typeof(HeartbeatMessage),

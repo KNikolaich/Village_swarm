@@ -1,0 +1,1 @@
+{ "v": 1, "id": "01J9Z3K7Q8M4N5P6R7S8T9V203", "ts": 1759387200123, "seq": 6, "boot": 20, "severity": "warn", "phase": "rolled_back", "ssid": "village-iot", "error": "no connection within 60 s" }

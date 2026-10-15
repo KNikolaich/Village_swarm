@@ -11,7 +11,7 @@ public sealed record MonitorPage(long Last, IReadOnlyList<MonitorEntry> Entries)
 /// Read-only window on the hive's MQTT traffic for administrators: the last messages of vs/v1/# in memory, nothing
 /// stored and nothing sent. Payloads are cut to 1000 characters; the broker password is never needed to look.
 /// </summary>
-public sealed class MqttMonitor : IMqttMessageHandler
+public sealed partial class MqttMonitor : IMqttMessageHandler
 {
     public const int Capacity = 500;
     public const int MaxPayload = 1000;
@@ -20,6 +20,10 @@ public sealed class MqttMonitor : IMqttMessageHandler
     private readonly LinkedList<MonitorEntry> _entries = new();
     private long _seq;
 
+    /// <summary>The passphrase of a cmd/wifi message: the monitor shows the command, not the secret in it.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"""pass""\s*:\s*""(?:[^""\\]|\\.)*""")]
+    private static partial System.Text.RegularExpressions.Regex WifiPassword();
+
     public IReadOnlyList<string> TopicFilters { get; } = ["vs/v1/#"];
 
     public ValueTask HandleAsync(string topic, ReadOnlyMemory<byte> payload, bool retained, DateTimeOffset receivedAt)
@@ -27,6 +31,8 @@ public sealed class MqttMonitor : IMqttMessageHandler
         var text = IsText(payload.Span)
             ? Encoding.UTF8.GetString(payload.Span)
             : $"<binary {payload.Length} bytes>";
+        if (topic.EndsWith("/cmd/wifi", StringComparison.Ordinal))
+            text = WifiPassword().Replace(text, "\"pass\":\"***\"");
         if (text.Length > MaxPayload)
             text = text[..MaxPayload] + "…";
         lock (_lock)

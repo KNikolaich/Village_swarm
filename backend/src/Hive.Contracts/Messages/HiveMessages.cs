@@ -41,6 +41,13 @@ public sealed record OtaCommand : Command
     public required string Version { get; init; }
 }
 
+/// <summary>vs/v1/dev/{id}/cmd/wifi: try <see cref="Ssid"/>; if the hornet does not reach the hive over it, the old network comes back.</summary>
+public sealed record WifiCommand : Command
+{
+    public required string Ssid { get; init; }
+    public required string Pass { get; init; }
+}
+
 /// <summary>vs/v1/dev/{id}/cmd/snapshot</summary>
 public sealed record SnapshotCommand : Command
 {

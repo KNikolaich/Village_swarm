@@ -65,6 +65,8 @@ function WifiCard() {
   const [ssid, setSsid] = useState('')
   const [password, setPassword] = useState('')
   const [hiveUrl, setHiveUrl] = useState('')
+  const [rollout, setRollout] = useState<{ deviceId: string; name: string; result: string }[] | null>(null)
+  const [applying, setApplying] = useState(false)
   useEffect(() => {
     if (wifi.data) {
       setSsid(wifi.data.ssid ?? '')
@@ -84,6 +86,18 @@ function WifiCard() {
     }
   }
 
+  async function apply() {
+    if (!window.confirm(t('settings.wifiApplyConfirm').replace('{ssid}', wifi.data?.ssid ?? ''))) return
+    setApplying(true)
+    try {
+      setRollout(await call(api.POST('/api/settings/wifi/apply')))
+    } catch {
+      toast.error(t('errors.generic'))
+    } finally {
+      setApplying(false)
+    }
+  }
+
   return (
     <Card>
       <CardHeader><CardTitle>{t('settings.wifi')}</CardTitle></CardHeader>
@@ -95,6 +109,23 @@ function WifiCard() {
           <Input placeholder="http://192.168.10.4" value={hiveUrl} onChange={(e) => setHiveUrl(e.target.value)} />
           <Button type="submit" disabled={!ssid.trim() || !hiveUrl.trim()}>{t('settings.save')}</Button>
         </form>
+        {wifi.data?.ssid && wifi.data.passwordSet && (
+          <div className="mt-4 space-y-2 border-t border-neutral-800 pt-3">
+            <p className="text-xs text-neutral-500">{t('settings.wifiApplyHint')}</p>
+            <Button variant="outline" disabled={applying} onClick={() => void apply()}>{t('settings.wifiApply')}</Button>
+            {rollout && (
+              <ul className="space-y-1 text-sm">
+                {rollout.map((r) => (
+                  <li key={r.deviceId} className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate">{r.name}</span>
+                    <Badge tone={r.result === 'sent' ? 'ok' : r.result === 'failed' ? 'alarm' : 'neutral'}>{t(`settings.wifiResult.${r.result}`, r.result)}</Badge>
+                  </li>
+                ))}
+                {rollout.length === 0 && <li className="text-neutral-500">{t('settings.wifiApplyNone')}</li>}
+              </ul>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   )

@@ -21,6 +21,9 @@ struct Settings {
     uint32_t boot = 0;   // incremented on every start (envelope "boot")
     String otaPending;     // version just installed over the air, until the new image has reached the broker
     String otaRolledBack;  // version that did not come online and was rolled back, until reported
+    String wifiNextSsid;   // network being tried after cmd/wifi: the old ssid/pass stay until it reaches the broker
+    String wifiNextPass;
+    String wifiRolledBack; // network that did not work and was given up, until reported
 
     bool complete() const { return ssid.length() && mqttHost.length() && deviceId.length(); }
 
@@ -28,6 +31,7 @@ struct Settings {
     void save() const;
     void saveBoot() const;
     void saveOta() const;
+    void saveWifiChange() const;  // wifiNext* and wifiRolledBack only
     void clear();
 
     // Raw retained config JSON from the hive, so the hornet works after a reboot without the broker.

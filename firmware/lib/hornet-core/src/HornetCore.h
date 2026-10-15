@@ -139,6 +139,8 @@ private:
     AckResult queueOta(JsonObjectConst payload);
     void runOta();
     void checkOtaOutcome();
+    AckResult queueWifi(JsonObjectConst payload);
+    void checkWifiTrial();
     void applyWifiPowerSave();
 
     Role& role_;
@@ -160,6 +162,8 @@ private:
         String url, md5, version;
         uint32_t size = 0;
     } ota_;  // console "awake": no sleep until reboot, to change settings
+    bool wifiTrial_ = false;               // this boot is trying settings_.wifiNext*
+    unsigned long wifiRestartAtMs_ = 0;    // restart onto the new network once the ack has left
     String rxTopic_;
     String rxPayload_;
     String consoleLine_;

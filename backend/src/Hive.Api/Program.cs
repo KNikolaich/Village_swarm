@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Hive.Api;
 using Hive.Api.Live;
 using Microsoft.AspNetCore.DataProtection;
 using Hive.Infrastructure;
@@ -52,6 +53,7 @@ builder.Services.AddMediaModule(builder.Configuration);
 builder.Services.AddNotifyModule(builder.Configuration);
 builder.Services.AddWeatherModule(builder.Configuration);
 builder.Services.AddRulesModule();
+builder.Services.AddScoped<WifiRollout>();
 builder.Services.AddBackupModule(builder.Configuration);
 builder.Services.AddRetentionModule(builder.Configuration);
 
@@ -116,6 +118,7 @@ app.UseAuthorization();
 app.MapUsersEndpoints();
 app.MapSettingsEndpoints();
 app.MapWifiEndpoints();
+app.MapWifiRolloutEndpoints();
 app.MapTelemetryEndpoints();
 app.MapDevicesEndpoints();
 app.MapZoneEndpoints();

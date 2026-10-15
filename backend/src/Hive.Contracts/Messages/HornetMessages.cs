@@ -124,6 +124,21 @@ public enum OtaPhase
     [JsonStringEnumMemberName("rolled_back")] RolledBack,
 }
 
+/// <summary>vs/v1/dev/{id}/event/wifi</summary>
+public sealed record WifiEvent : EventMessage
+{
+    public required WifiPhase Phase { get; init; }
+    public required string Ssid { get; init; }
+    public string? Error { get; init; }
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<WifiPhase>))]
+public enum WifiPhase
+{
+    Applied,
+    [JsonStringEnumMemberName("rolled_back")] RolledBack,
+}
+
 /// <summary>vs/v1/dev/{id}/log</summary>
 public sealed record LogMessage : HornetMessage
 {
