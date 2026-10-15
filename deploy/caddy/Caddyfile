@@ -24,11 +24,12 @@
 	}
 }
 
-# Plain HTTP: only what hornets need inside the IoT segment (no TLS on ESP32-CAM, spec 4.1),
+# Plain HTTP: only what hornets need inside the IoT segment (no TLS on ESP32-CAM, spec 4.1): uploads,
+# enrollment and over-the-air images (token-checked by the api, MD5-checked by the hornet),
 # the CA certificate, and a redirect to HTTPS for everything else.
 :80 {
 	import security_headers
-	@hornet path /api/ingest/* /api/provision/enroll /healthz
+	@hornet path /api/ingest/* /api/provision/enroll /api/ota/* /healthz
 	handle @hornet {
 		reverse_proxy api:8080
 	}
