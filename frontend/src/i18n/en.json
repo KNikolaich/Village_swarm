@@ -525,7 +525,8 @@
     "logs": "Hornet log",
     "logLevel": "Level",
     "logAll": "all",
-    "noLogs": "No entries"
+    "noLogs": "No entries",
+    "diagnostics": "Diagnostics: signal and memory"
   },
   "swarm": {
     "title": "Swarm",

@@ -46,20 +46,23 @@ function HealthCharts({ device, hours }: { device: string; hours: number }) {
   const battery = line((r) => r.vbat)
   return (
     <>
-      <div className="space-y-1">
-        <p className="text-sm font-medium">{t('device.signal')}</p>
-        <Chart points={line((r) => r.rssi)} from={from} to={to} format={(v) => `${Math.round(v)} dBm`} axisFormat={(v, d) => formatFixed(v, d)} />
-      </div>
-      <div className="space-y-1">
-        <p className="text-sm font-medium">{t('device.memory')}</p>
-        <Chart points={line((r) => r.heapFree / 1024)} from={from} to={to} format={(v) => `${Math.round(v)} KB`} axisFormat={(v, d) => formatFixed(v, d)} />
-      </div>
       {battery.length > 0 && (
         <div className="space-y-1">
           <p className="text-sm font-medium">{t('device.battery')}</p>
           <Chart points={battery} from={from} to={to} format={(v) => `${v.toFixed(2)} V`} axisFormat={(v, d) => formatFixed(v, d)} />
         </div>
       )}
+      <details className="space-y-5">
+        <summary className="cursor-pointer text-sm text-neutral-400">{t('device.diagnostics')}</summary>
+        <div className="mt-3 space-y-1">
+          <p className="text-sm font-medium">{t('device.signal')}</p>
+          <Chart points={line((r) => r.rssi)} from={from} to={to} format={(v) => `${Math.round(v)} dBm`} axisFormat={(v, d) => formatFixed(v, d)} />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">{t('device.memory')}</p>
+          <Chart points={line((r) => r.heapFree / 1024)} from={from} to={to} format={(v) => `${Math.round(v)} KB`} axisFormat={(v, d) => formatFixed(v, d)} />
+        </div>
+      </details>
     </>
   )
 }
