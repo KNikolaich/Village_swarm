@@ -134,6 +134,7 @@ private:
     bool publish(const String& topic, const String& payload, bool retain, bool qos1, bool bufferIfOffline);
     void flushOutbox();
     void serialConsole();
+    void printHelp();
     bool enroll(const String& hiveUrl, const String& code);
     [[noreturn]] void sleepNow();
     AckResult queueOta(JsonObjectConst payload);

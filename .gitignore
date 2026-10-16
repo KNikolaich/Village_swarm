@@ -26,3 +26,6 @@ Thumbs.db
 !.vscode/extensions.json
 !.vscode/tasks.json
 !.vscode/launch.json
+
+# Python bytecode of the firmware build scripts
+__pycache__/

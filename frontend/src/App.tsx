@@ -9,6 +9,7 @@ import { HoneycombLogo } from '@/components/HoneycombLogo'
 import { useLive } from '@/lib/live'
 import { DevicePage } from '@/pages/DevicePage'
 import { ClimatePage } from '@/pages/ClimatePage'
+import { ConsolePage } from '@/pages/ConsolePage'
 import { EventsPage } from '@/pages/EventsPage'
 import { RuleEditorPage } from '@/pages/RuleEditorPage'
 import { RulesPage } from '@/pages/RulesPage'
@@ -39,6 +40,7 @@ const router = createBrowserRouter([
       { path: 'photos/:date', element: <PhotosPage /> },
       { path: 'swarm', element: <SwarmPage /> },
       { path: 'swarm/add', element: <AddHornetPage /> },
+      { path: 'console', element: <ConsolePage /> },
       { path: 'swarm/:deviceId', element: <DevicePage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'monitor', element: <MonitorPage /> },

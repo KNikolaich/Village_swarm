@@ -360,6 +360,16 @@
         "tags": [
           "settings"
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WifiApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK",
@@ -4761,6 +4771,20 @@
           },
           "timezone": {
             "type": "string"
+          }
+        }
+      },
+      "WifiApplyRequest": {
+        "required": [
+          "deviceIds"
+        ],
+        "type": "object",
+        "properties": {
+          "deviceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

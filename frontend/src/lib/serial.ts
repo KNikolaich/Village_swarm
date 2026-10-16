@@ -43,6 +43,13 @@ export class HornetSerial {
     }
   }
 
+  /** Resets the board through the adapter's RTS line (ESP32-CAM-MB and similar boards wire it to EN). */
+  async pulseReset() {
+    await this.port.setSignals({ dataTerminalReady: false, requestToSend: true })
+    await new Promise((resolve) => setTimeout(resolve, 150))
+    await this.port.setSignals({ dataTerminalReady: false, requestToSend: false })
+  }
+
   async close() {
     this.closed = true
     try {

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, Check, CircleHelp, Cpu, Moon, Pencil, Pin, Plus, Trash2, Wifi, WifiOff, X } from 'lucide-react'
+import { ArrowRightLeft, Check, CircleHelp, Cpu, Moon, Pencil, Pin, Plus, Terminal, Trash2, Wifi, WifiOff, X } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -313,9 +313,14 @@ export function SwarmPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">{t('swarm.title')}</h1>
         {isAdmin && (
-          <Link to="/swarm/add">
-            <Button tabIndex={-1}><Plus />{t('swarm.add')}</Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/console">
+              <Button variant="outline" tabIndex={-1}><Terminal />{t('swarm.console')}</Button>
+            </Link>
+            <Link to="/swarm/add">
+              <Button tabIndex={-1}><Plus />{t('swarm.add')}</Button>
+            </Link>
+          </div>
         )}
       </div>
 

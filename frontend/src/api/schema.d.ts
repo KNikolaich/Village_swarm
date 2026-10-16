@@ -548,7 +548,11 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["WifiApplyRequest"];
+                };
+            };
             responses: {
                 /** @description OK */
                 200: {
@@ -3500,6 +3504,9 @@ export interface components {
             /** Format: double */
             longitude: null | number;
             timezone: string;
+        };
+        WifiApplyRequest: {
+            deviceIds: string[];
         };
         WifiRolloutItem: {
             deviceId: string;

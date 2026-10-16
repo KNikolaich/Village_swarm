@@ -584,9 +584,22 @@ void Core::flushOutbox() {
     }
 }
 
+void Core::printHelp() {
+    Serial.println("commands:");
+    Serial.println("  show                          what is stored (id, network, hive address, boot count, wifi switch state)");
+    Serial.println("  set <key> <value>             key: ssid pass mqtt mqttuser mqttpass id upload token ntp (the value may contain spaces)");
+    Serial.println("  enroll <hive-url> <code>      join a hive with a one-time code from the web UI (set ssid and pass first)");
+    Serial.println("  awake                         do not sleep until reboot (battery hornets)");
+    Serial.println("  reboot                        restart");
+    Serial.println("  factory                       erase every setting");
+}
+
 void Core::serialConsole() {
     while (Serial.available()) {
         const char c = static_cast<char>(Serial.read());
+        // Somebody is at the console (the hive's USB console sends a newline twice a second): a battery hornet
+        // stays awake instead of going back to sleep in the middle of being set up.
+        stayAwake_ = true;
         if (c != '\n' && c != '\r') {
             if (consoleLine_.length() < 200) consoleLine_ += c;
             continue;
@@ -596,6 +609,7 @@ void Core::serialConsole() {
         line.trim();
         if (!line.length()) continue;
         if (line == "show") settings_.print(Serial);
+        else if (line == "help") printHelp();
         else if (line == "reboot") ESP.restart();
         else if (line == "awake") {
             stayAwake_ = true;
@@ -613,7 +627,7 @@ void Core::serialConsole() {
                 delay(200);
                 ESP.restart();
             }
-        } else if (!settings_.command(line, Serial)) Serial.println("commands: show | set <ssid|pass|mqtt|mqttuser|mqttpass|id|upload|token|ntp> <value> | enroll <hive-url> <code> | awake | reboot | factory");
+        } else if (!settings_.command(line, Serial)) printHelp();
     }
 }
 

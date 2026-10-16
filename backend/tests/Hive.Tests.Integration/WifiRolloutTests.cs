@@ -76,7 +76,7 @@ public sealed class WifiRolloutTests(HiveFixture hive) : IAsyncLifetime
         await client.ConnectAsync(new MqttClientOptionsBuilder().WithTcpServer(hive.MqttHost, hive.MqttPort).WithClientId("wifi-watch").Build());
         await client.SubscribeAsync("vs/v1/dev/meteo-wf-a/cmd/wifi");
 
-        using var response = await admin.PostAsync("/api/settings/wifi/apply", null);
+        using var response = await admin.PostAsJsonAsync("/api/settings/wifi/apply", new { deviceIds = new[] { "meteo-wf-a", "meteo-wf-b", "meteo-wf-c", "meteo-wf-d" } });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var results = (await response.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray()
             .Where(r => r.GetProperty("deviceId").GetString()!.StartsWith("meteo-wf-", StringComparison.Ordinal))
@@ -113,11 +113,29 @@ public sealed class WifiRolloutTests(HiveFixture hive) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Only_the_chosen_hornets_are_switched_and_choosing_none_is_refused()
+    {
+        var admin = await hive.LoginAsync();
+        using var saved = await admin.PutAsJsonAsync("/api/settings/wifi", new { ssid = "village-iot", password = Secret, hiveUrl = "http://hive.test" });
+        Assert.Equal(HttpStatusCode.NoContent, saved.StatusCode);
+        await RegisterAsync("meteo-wf-e");
+        await RegisterAsync("meteo-wf-f");
+
+        using var none = await admin.PostAsJsonAsync("/api/settings/wifi/apply", new { deviceIds = Array.Empty<string>() });
+        Assert.Equal(HttpStatusCode.BadRequest, none.StatusCode);
+
+        using var one = await admin.PostAsJsonAsync("/api/settings/wifi/apply", new { deviceIds = new[] { "meteo-wf-e" } });
+        var items = (await one.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray().Select(r => r.GetProperty("deviceId").GetString()).ToList();
+        Assert.Equal(["meteo-wf-e"], items);
+        Assert.False(await hive.QueryAsync(db => db.Commands.AnyAsync(c => c.DeviceId == "meteo-wf-f" && c.Name == "wifi")));
+    }
+
+    [Fact]
     public async Task Only_admins_can_switch_the_hornets()
     {
         await hive.CreateUserAsync("viewer-wifirollout", "viewer-wifi-password", Hive.Infrastructure.Identity.HiveRoles.Viewer);
         var viewer = await hive.LoginAsync("viewer-wifirollout", "viewer-wifi-password");
-        using var refused = await viewer.PostAsync("/api/settings/wifi/apply", null);
+        using var refused = await viewer.PostAsJsonAsync("/api/settings/wifi/apply", new { deviceIds = new[] { "meteo-wf-a" } });
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
     }
 }

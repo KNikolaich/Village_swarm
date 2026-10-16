@@ -131,6 +131,8 @@ void Settings::print(Print& out) const {
     out.printf("id=%s ssid=%s pass=%s mqtt=%s:%u mqttuser=%s upload=%s token=%s ntp=%s boot=%u\n",
                deviceId.c_str(), ssid.c_str(), pass.length() ? "***" : "", mqttHost.c_str(), mqttPort,
                mqttUser.c_str(), uploadUrl.c_str(), uploadToken.length() ? "***" : "", ntp.c_str(), boot);
+    // A Wi-Fi switch in progress or given up (cmd/wifi): which network is being tried, which did not work.
+    out.printf("wifi_trying=%s wifi_gave_up=%s\n", wifiNextSsid.length() ? wifiNextSsid.c_str() : "-", wifiRolledBack.length() ? wifiRolledBack.c_str() : "-");
 }
 
 }  // namespace hornet

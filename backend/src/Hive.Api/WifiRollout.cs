@@ -16,6 +16,9 @@ namespace Hive.Api;
 /// <summary>How one hornet took the order to switch Wi-Fi: sent, or why not.</summary>
 public sealed record WifiRolloutItem(string DeviceId, string Name, string Result);
 
+/// <summary>The hornets to switch, named one by one: there is deliberately no "all", the first switch is tried on one board.</summary>
+public sealed record WifiApplyRequest(IReadOnlyList<string> DeviceIds);
+
 /// <summary>
 /// Sends the Wi-Fi network saved in Settings to every hornet that can take it right now (spec: change the router or the
 /// password without climbing to every board). Hornets that sleep, are offline or run old firmware are listed as skipped:
@@ -34,13 +37,13 @@ public sealed class WifiRollout(HiveWifiService wifi, CommandService commands, H
         d.Info?.RootElement.TryGetProperty("commands", out var list) == true && list.ValueKind == JsonValueKind.Array
         && list.EnumerateArray().Any(c => c.GetString() == "wifi");
 
-    public async Task<IReadOnlyList<WifiRolloutItem>?> ApplyAsync(string by, CancellationToken ct)
+    public async Task<IReadOnlyList<WifiRolloutItem>?> ApplyAsync(IReadOnlyCollection<string> deviceIds, string by, CancellationToken ct)
     {
         var secrets = await wifi.RevealAsync(ct);
         if (secrets is null)
             return null;
         var now = time.GetUtcNow();
-        var hornets = await db.Devices.AsNoTracking().Where(d => d.Status != DeviceStatus.Disabled && d.Status != DeviceStatus.Pending && d.TypeCode != "hive")
+        var hornets = await db.Devices.AsNoTracking().Where(d => d.Status != DeviceStatus.Disabled && d.Status != DeviceStatus.Pending && d.TypeCode != "hive" && deviceIds.Contains(d.DeviceId))
             .OrderBy(d => d.DeviceId).ToListAsync(ct);
 
         var items = new List<WifiRolloutItem>();
@@ -72,10 +75,15 @@ public static class WifiRolloutEndpoints
 {
     public static IEndpointRouteBuilder MapWifiRolloutEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/api/settings/wifi/apply", async Task<Results<Ok<IReadOnlyList<WifiRolloutItem>>, ValidationProblem>> (ClaimsPrincipal user, WifiRollout rollout, CancellationToken ct) =>
-                await rollout.ApplyAsync($"user:{user.Identity?.Name}", ct) is { } items
+        app.MapPost("/api/settings/wifi/apply", async Task<Results<Ok<IReadOnlyList<WifiRolloutItem>>, ValidationProblem>> (
+                WifiApplyRequest request, ClaimsPrincipal user, WifiRollout rollout, CancellationToken ct) =>
+            {
+                if (request.DeviceIds is not { Count: > 0 })
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["deviceIds"] = ["Choose the hornets to switch"] });
+                return await rollout.ApplyAsync(request.DeviceIds.ToHashSet(), $"user:{user.Identity?.Name}", ct) is { } items
                     ? TypedResults.Ok(items)
-                    : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["wifi"] = ["Save the Wi-Fi network and password first"] }))
+                    : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["wifi"] = ["Save the Wi-Fi network and password first"] });
+            })
             .WithTags("settings")
             .RequireAuthorization(HiveRoles.AdminOnly);
         return app;

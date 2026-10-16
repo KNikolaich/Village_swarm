@@ -427,7 +427,7 @@
     "monitorOpen": "Open the monitor",
     "version": "Hive version {version}",
     "wifiApply": "Apply to the hornets that are running",
-    "wifiApplyHint": "Sends the saved network to every hornet that is online now. Each tries the new network and, if it cannot reach the hive over it, goes back to the old one by itself. The outcome appears in Events.",
+    "wifiApplyHint": "Sends the saved network to the chosen hornets. Each tries the new network and, if it cannot reach the hive over it, goes back to the old one by itself. The outcome appears in Events. Start with ONE hornet, make sure it came up on the new network, and only then choose the others.",
     "wifiApplyConfirm": "Switch the running hornets to the network \"{ssid}\"? If the new network does not work, each goes back to its old one by itself.",
     "wifiApplyNone": "No hornets to switch",
     "wifiResult": {
@@ -436,7 +436,13 @@
       "sleeping": "asleep: repeat when it wakes up",
       "old_firmware": "old firmware: update over the air or by USB",
       "failed": "could not be sent"
-    }
+    },
+    "wifiApplyWarning": "Changing the PASSWORD of the same network cannot be done this way: the board has to move while the router still accepts the old password. Create a second network on the router with a new name and password, move the boards to it, and only then change the old one. Keep the old network on until every hornet has reported in Events.",
+    "wifiApplyChoose": "Who to switch",
+    "wifiApplyNobody": "No hornets are online",
+    "wifiApplyNeed": "Choose hornets",
+    "wifiApplyGo": "Apply to the chosen",
+    "wifiUsbRescue": "USB console (if a board has gone silent)"
   },
   "password": {
     "show": "Show password",
@@ -556,7 +562,8 @@
     "fwNoNewer": "Nothing newer on the hive. To get a fresh one: build the firmware (pio run in firmware) and deploy the hive.",
     "fwOffline": "The hornet is offline: it can be updated once it is back.",
     "replaceConfirm": "Replace the board of \"{id}\"? The hive gives a code: flash a new board and enter it in the wizard. The hornet moves to the new board with its name, history and settings, and the old board loses access. Updating the firmware is the other button, the chip.",
-    "updateUnsigned": "The image is not signed (built without the signing key): a hornet that only takes signed firmware will refuse it. See docs/ota.md."
+    "updateUnsigned": "The image is not signed (built without the signing key): a hornet that only takes signed firmware will refuse it. See docs/ota.md.",
+    "console": "USB console"
   },
   "add": {
     "step1": "Hornet and code",
@@ -712,5 +719,49 @@
     "keepPinned": "Photos marked keep-forever are kept for good.",
     "keepRaw": "Sensor readings: {n} days in detail, then hourly for good (year charts keep working).",
     "keepLogs": "Hornet health {health} days, logs {logs} days."
+  },
+  "console": {
+    "title": "Hornet console over USB",
+    "hint": "Connect the board to this computer by USB (Chrome or Edge), press Connect and pick the port. This is what the Arduino IDE serial monitor shows, plus ready-made commands. Speed 115200.",
+    "unsupported": "The USB console works only in Chrome and Edge (Firefox has no Web Serial) and on a secure page: open the hive over https://.",
+    "connect": "Connect",
+    "disconnect": "Disconnect",
+    "statusOn": "connected",
+    "statusOff": "not connected",
+    "connected": "Connected. If the board sleeps, restart it (the RESET button or Reset below).",
+    "disconnected": "Disconnected",
+    "openFailed": "Could not open the port (is another program using it?)",
+    "sendFailed": "Could not send",
+    "output": "Board output",
+    "clear": "Clear",
+    "reset": "Reset",
+    "resetHint": "Restart the board through the RTS line (not every adapter has it wired)",
+    "resetSent": "Reset signal sent",
+    "empty": "What the board writes to its console appears here. Empty? Check the cable and restart the board.",
+    "placeholder": "A command, for example: show",
+    "send": "Send",
+    "rescue": "Rescue: bring the board back to the hive network",
+    "rescueHint": "Writes the Wi-Fi saved in the hive Settings (network name and password) into the board and restarts it. If the board has also forgotten the hive address, write that too.",
+    "rescueWifi": "Write the hive Wi-Fi",
+    "rescueAll": "Wi-Fi and hive address",
+    "rebootNow": "Restart the board",
+    "rescueConfirm": "Write the network \"{ssid}\" from the hive Settings into the board?",
+    "rescueDone": "Written. Press Restart the board and watch the output.",
+    "noHiveWifi": "No Wi-Fi network and password are saved in the hive Settings",
+    "manual": "By hand",
+    "ssid": "Network name",
+    "pass": "Password",
+    "id": "Hornet name (set id)",
+    "commands": "Board commands",
+    "run": "Run",
+    "setKeys": "Settings: set ssid, set pass, set mqtt, set mqttuser, set mqttpass, set id, set upload, set token, set ntp (the value after a space). For a new hornet: enroll <hive address> <code>.",
+    "factoryConfirm": "Erase ALL settings of the board (network, name, keys)? It will have to be set up again.",
+    "cmd": {
+      "show": "What the board has stored: name, network, hive address, boot count and the state of a Wi-Fi switch",
+      "help": "The list of board commands",
+      "awake": "Do not sleep until reboot (for battery boards, to have time to set them up)",
+      "reboot": "Restart the board",
+      "factory": "Erase all settings of the board"
+    }
   }
 }
