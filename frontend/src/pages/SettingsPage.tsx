@@ -5,12 +5,13 @@ import { Link } from 'react-router'
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
-import { keys, useDevices, useMe, useTelegram } from '@/api/queries'
+import { keys, useMe, useTelegram } from '@/api/queries'
 import { BackupCard } from '@/components/BackupCard'
 import { CertificateCard } from '@/components/CertificateCard'
 import { PasswordInput } from '@/components/PasswordInput'
 import { RetentionCard } from '@/components/RetentionCard'
 import { WeatherSettingsCard } from '@/components/WeatherSettingsCard'
+import { WifiRolloutPanel } from '@/components/WifiRolloutPanel'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { getLanguage, t, type Language } from '@/i18n'
@@ -65,11 +66,6 @@ function WifiCard() {
   const [ssid, setSsid] = useState('')
   const [password, setPassword] = useState('')
   const [hiveUrl, setHiveUrl] = useState('')
-  const [rollout, setRollout] = useState<{ deviceId: string; name: string; result: string }[] | null>(null)
-  const [applying, setApplying] = useState(false)
-  const devices = useDevices()
-  const [chosen, setChosen] = useState<string[]>([])
-  const online = (devices.data ?? []).filter((d) => d.status === 'online' && d.type !== 'hive')
   useEffect(() => {
     if (wifi.data) {
       setSsid(wifi.data.ssid ?? '')
@@ -89,18 +85,6 @@ function WifiCard() {
     }
   }
 
-  async function apply() {
-    if (chosen.length === 0 || !window.confirm(t('settings.wifiApplyConfirm').replace('{ssid}', wifi.data?.ssid ?? ''))) return
-    setApplying(true)
-    try {
-      setRollout(await call(api.POST('/api/settings/wifi/apply', { body: { deviceIds: chosen } })))
-    } catch {
-      toast.error(t('errors.generic'))
-    } finally {
-      setApplying(false)
-    }
-  }
-
   return (
     <Card>
       <CardHeader><CardTitle>{t('settings.wifi')}</CardTitle></CardHeader>
@@ -112,40 +96,7 @@ function WifiCard() {
           <Input placeholder="http://192.168.10.4" value={hiveUrl} onChange={(e) => setHiveUrl(e.target.value)} />
           <Button type="submit" disabled={!ssid.trim() || !hiveUrl.trim()}>{t('settings.save')}</Button>
         </form>
-        {wifi.data?.ssid && wifi.data.passwordSet && (
-          <div className="mt-4 space-y-2 border-t border-neutral-800 pt-3">
-            <p className="text-xs text-neutral-500">{t('settings.wifiApplyHint')}</p>
-            <p className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-2 text-xs text-amber-300">{t('settings.wifiApplyWarning')}</p>
-            <p className="text-xs text-neutral-400">{t('settings.wifiApplyChoose')}</p>
-            {online.length === 0 && <p className="text-xs text-neutral-500">{t('settings.wifiApplyNobody')}</p>}
-            <ul className="space-y-1">
-              {online.map((d) => (
-                <li key={d.deviceId}>
-                  <label className="flex cursor-pointer items-center gap-2 text-sm">
-                    <input type="checkbox" className="size-4 accent-amber-400" checked={chosen.includes(d.deviceId)}
-                      onChange={(e) => setChosen(e.target.checked ? [...chosen, d.deviceId] : chosen.filter((x) => x !== d.deviceId))} />
-                    {d.name}
-                  </label>
-                </li>
-              ))}
-            </ul>
-            <div className="flex flex-wrap items-center gap-3">
-              <Button variant="outline" disabled={applying || chosen.length === 0} onClick={() => void apply()}>{chosen.length ? t('settings.wifiApplyGo') : t('settings.wifiApplyNeed')}</Button>
-              <Link to="/console" className="text-xs text-amber-400">{t('settings.wifiUsbRescue')}</Link>
-            </div>
-            {rollout && (
-              <ul className="space-y-1 text-sm">
-                {rollout.map((r) => (
-                  <li key={r.deviceId} className="flex items-center justify-between gap-3">
-                    <span className="min-w-0 truncate">{r.name}</span>
-                    <Badge tone={r.result === 'sent' ? 'ok' : r.result === 'failed' ? 'alarm' : 'neutral'}>{t(`settings.wifiResult.${r.result}`, r.result)}</Badge>
-                  </li>
-                ))}
-                {rollout.length === 0 && <li className="text-neutral-500">{t('settings.wifiApplyNone')}</li>}
-              </ul>
-            )}
-          </div>
-        )}
+        {wifi.data?.ssid && wifi.data.passwordSet && <WifiRolloutPanel ssid={wifi.data.ssid} />}
       </CardContent>
     </Card>
   )

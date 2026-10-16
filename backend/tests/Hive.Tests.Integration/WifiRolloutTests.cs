@@ -91,6 +91,7 @@ public sealed class WifiRolloutTests(HiveFixture hive) : IAsyncLifetime
         using var cmd = JsonDocument.Parse(delivered ?? throw new TimeoutException("the command did not arrive"));
         Assert.Equal(("village-iot", Secret), (cmd.RootElement.GetProperty("ssid").GetString(), cmd.RootElement.GetProperty("pass").GetString()));
         Assert.Equal(120, cmd.RootElement.GetProperty("ttl_s").GetInt32());
+        Assert.Equal("switch", cmd.RootElement.GetProperty("mode").GetString());
 
         // The journal keeps the command but not the secret.
         var stored = await hive.QueryAsync(db => db.Commands.SingleAsync(c => c.DeviceId == "meteo-wf-a" && c.Name == "wifi"));
@@ -110,6 +111,43 @@ public sealed class WifiRolloutTests(HiveFixture hive) : IAsyncLifetime
         }
         Assert.Contains("/cmd/wifi", monitor, StringComparison.Ordinal);
         Assert.DoesNotContain(Secret, monitor, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_spare_network_is_only_offered_to_firmware_that_knows_how_to_keep_one()
+    {
+        var admin = await hive.LoginAsync();
+        using var saved = await admin.PutAsJsonAsync("/api/settings/wifi", new { ssid = "village-iot", password = Secret, hiveUrl = "http://hive.test" });
+        Assert.Equal(HttpStatusCode.NoContent, saved.StatusCode);
+        await RegisterAsync("meteo-wf-g");
+        await RegisterAsync("meteo-wf-h");
+        // h runs firmware from before spare networks: it knows the wifi command (a hard switch) but not wifi.stage.
+        await ChangeAsync("meteo-wf-h", d => d.Info = JsonDocument.Parse("""{"commands":["reboot","wifi"],"caps":[]}"""));
+
+        using var client = new MqttClientFactory().CreateMqttClient();
+        string? delivered = null;
+        client.ApplicationMessageReceivedAsync += m =>
+        {
+            delivered = m.ApplicationMessage.ConvertPayloadToString();
+            return Task.CompletedTask;
+        };
+        await client.ConnectAsync(new MqttClientOptionsBuilder().WithTcpServer(hive.MqttHost, hive.MqttPort).WithClientId("wifi-stage-watch").Build());
+        await client.SubscribeAsync("vs/v1/dev/meteo-wf-g/cmd/wifi");
+
+        using var response = await admin.PostAsJsonAsync("/api/settings/wifi/apply", new { deviceIds = new[] { "meteo-wf-g", "meteo-wf-h" }, mode = "stage" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var results = (await response.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray()
+            .ToDictionary(r => r.GetProperty("deviceId").GetString()!, r => r.GetProperty("result").GetString());
+        Assert.Equal("sent", results["meteo-wf-g"]);
+        Assert.Equal("old_firmware", results["meteo-wf-h"]);
+
+        for (var i = 0; i < 50 && delivered is null; i++)
+            await Task.Delay(100);
+        using var cmd = JsonDocument.Parse(delivered ?? throw new TimeoutException("the command did not arrive"));
+        Assert.Equal("stage", cmd.RootElement.GetProperty("mode").GetString());
+
+        using var bad = await admin.PostAsJsonAsync("/api/settings/wifi/apply", new { deviceIds = new[] { "meteo-wf-g" }, mode = "yolo" });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
     }
 
     [Fact]

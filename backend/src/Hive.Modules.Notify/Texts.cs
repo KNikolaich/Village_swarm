@@ -80,6 +80,7 @@ public static class Texts
     /// <summary>"\nсеть «name»: подключился" / "осталась прежняя сеть" for the outcome of a Wi-Fi switch.</summary>
     private static string WifiDetail(string? ssid, string? phase) => phase switch
     {
+        "staged" => $"\nзапасная сеть «{H(ssid)}» сохранена",
         "applied" => $"\nтеперь в сети «{H(ssid)}»",
         "rolled_back" => $"\nсеть «{H(ssid)}» не подошла, осталась прежняя",
         _ => "",

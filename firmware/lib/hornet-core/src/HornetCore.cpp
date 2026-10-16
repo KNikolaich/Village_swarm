@@ -53,6 +53,10 @@ void Core::begin() {
     Serial.begin(115200);
     settings_.load();
     settings_.boot++;
+    // Counted as a failed boot until the broker is reached (onMqttConnected clears it): the main and the spare Wi-Fi
+    // network take turns while boots keep failing (cmd/wifi mode stage).
+    const uint32_t failedBootsBefore = settings_.wifiFails;
+    settings_.wifiFails++;
     settings_.saveBoot();
     Serial.printf("\n[hornet] %s fw=%s boot=%u reset=%s\n", role_.type(), HORNET_FW_VERSION, settings_.boot, platform::resetReason());
 
@@ -79,10 +83,14 @@ void Core::begin() {
     WiFi.setHostname(settings_.deviceId.c_str());
     // After cmd/wifi this boot tries the new network; the old one is still in settings_ and comes back if it fails.
     wifiTrial_ = settings_.wifiNextSsid.length() > 0;
+    usingSpare_ = !wifiTrial_ && wifichange::useSpareAtBoot(settings_.wifi2Ssid.length() > 0, failedBootsBefore);
     platform::WifiHint hint;
     if (wifiTrial_) {
         Serial.printf("[hornet] trying the new Wi-Fi \"%s\"\n", settings_.wifiNextSsid.c_str());
         WiFi.begin(settings_.wifiNextSsid.c_str(), settings_.wifiNextPass.c_str());  // the hint belongs to the old access point
+    } else if (usingSpare_) {
+        Serial.printf("[hornet] the main network failed last time, trying the spare \"%s\"\n", settings_.wifi2Ssid.c_str());
+        WiFi.begin(settings_.wifi2Ssid.c_str(), settings_.wifi2Pass.c_str());
     } else if (sleepy() && platform::loadWifiHint(hint)) {
         WiFi.begin(settings_.ssid.c_str(), settings_.pass.c_str(), hint.channel, hint.bssid);  // no scan
     } else {
@@ -118,6 +126,7 @@ void Core::loop() {
         if (ota_.queued && online()) runOta();
         checkOtaOutcome();
         checkWifiTrial();  // before the sleep logic: a deep sleeper must decide before its awake limit
+        checkWifiSpare();
         if (wifiRestartAtMs_ && millis() >= wifiRestartAtMs_) {
             Serial.println("[wifi] restarting onto the new network");
             mqtt.disconnect();
@@ -234,6 +243,18 @@ AckResult Core::queueWifi(JsonObjectConst payload) {
     if (wifichange::sameAsCurrent(ssid, pass, settings_.ssid.c_str(), settings_.pass.c_str()))
         return AckResult(AckStatus::Rejected, "already on this network");
     if (wifiRestartAtMs_ || wifiTrial_) return AckResult::error("a wifi change is already running");
+    const String mode = payload["mode"] | "switch";
+    if (mode == "stage") {
+        // Only kept: nothing changes now. The spare takes over when the main network is gone.
+        settings_.wifi2Ssid = ssid.c_str();
+        settings_.wifi2Pass = pass.c_str();
+        settings_.saveWifiSpare();
+        JsonDocument staged;
+        staged["phase"] = "staged";
+        staged["ssid"] = settings_.wifi2Ssid;
+        publishEvent("wifi", staged);
+        return AckResult::ok();
+    }
     settings_.wifiNextSsid = ssid.c_str();
     settings_.wifiNextPass = pass.c_str();
     settings_.wifiRolledBack = "";
@@ -248,6 +269,9 @@ void Core::checkWifiTrial() {
     switch (wifichange::decide(wifiTrial_, online(), millis(), sleepy())) {
         case wifichange::Trial::Commit: {
             const String ssid = settings_.wifiNextSsid;
+            settings_.wifi2Ssid = settings_.ssid;  // the network it leaves stays as the spare
+            settings_.wifi2Pass = settings_.pass;
+            settings_.saveWifiSpare();
             settings_.ssid = ssid;
             settings_.pass = settings_.wifiNextPass;
             settings_.wifiNextSsid = "";
@@ -266,6 +290,8 @@ void Core::checkWifiTrial() {
         case wifichange::Trial::RollBack:
             Serial.printf("[wifi] \"%s\" did not work, going back to the old network\n", settings_.wifiNextSsid.c_str());
             settings_.wifiRolledBack = settings_.wifiNextSsid;
+            settings_.wifiFails = 0;  // this restart is not a failed boot of the main network
+            settings_.saveBoot();
             settings_.wifiNextSsid = "";
             settings_.wifiNextPass = "";
             settings_.saveWifiChange();
@@ -274,6 +300,48 @@ void Core::checkWifiTrial() {
             break;
         default:
             break;
+    }
+}
+
+// The spare network (cmd/wifi mode stage): when it is the one that reached the broker it becomes the main network (and
+// the old one the spare); an awake hornet whose Wi-Fi stays down swaps networks itself, a sleeper does so boot by boot.
+void Core::checkWifiSpare() {
+    if (wifichange::promoteSpare(usingSpare_, online())) {
+        const String oldSsid = settings_.ssid;
+        const String oldPass = settings_.pass;
+        settings_.ssid = settings_.wifi2Ssid;
+        settings_.pass = settings_.wifi2Pass;
+        settings_.wifi2Ssid = oldSsid;
+        settings_.wifi2Pass = oldPass;
+        settings_.save();
+        settings_.saveWifiSpare();
+        usingSpare_ = false;
+        platform::clearWifiHint();  // channel and access point of the old network are of no use now
+        Serial.printf("[wifi] the spare network works, it is the main one now: \"%s\"\n", settings_.ssid.c_str());
+        JsonDocument applied;
+        applied["phase"] = "applied";
+        applied["ssid"] = settings_.ssid;
+        publishEvent("wifi", applied);
+        return;
+    }
+
+    // An awake hornet whose Wi-Fi stays down tries the other network (a sleeper does it boot by boot, see begin()).
+    if (sleepy() || wifiTrial_ || WiFi.status() == WL_CONNECTED) {
+        wifiDownSince_ = 0;
+        return;
+    }
+    if (!wifiDownSince_) {
+        wifiDownSince_ = millis();
+        return;
+    }
+    if (wifichange::swapNetworks(settings_.wifi2Ssid.length() > 0, wifiTrial_, false, millis() - wifiDownSince_)) {
+        usingSpare_ = !usingSpare_;
+        const String& ssid = usingSpare_ ? settings_.wifi2Ssid : settings_.ssid;
+        const String& pass = usingSpare_ ? settings_.wifi2Pass : settings_.pass;
+        Serial.printf("[wifi] no connection, trying %s network \"%s\"\n", usingSpare_ ? "the spare" : "the main", ssid.c_str());
+        WiFi.disconnect();
+        WiFi.begin(ssid.c_str(), pass.c_str());
+        wifiDownSince_ = millis();
     }
 }
 
@@ -346,6 +414,10 @@ void Core::connectMqtt() {
 
 void Core::onMqttConnected() {
     mqttAttempts_ = 0;
+    if (settings_.wifiFails) {  // this boot got through: the next one starts with the main network again
+        settings_.wifiFails = 0;
+        settings_.saveBoot();
+    }
     const std::string dev = settings_.deviceId.c_str();
     Serial.printf("[hornet] online as %s, ip %s\n", dev.c_str(), WiFi.localIP().toString().c_str());
     mqtt.subscribe(topics::cmdWildcard(dev).c_str(), 1);
@@ -499,7 +571,8 @@ void Core::publishInfo() {
     info["ip"] = WiFi.localIP().toString();
     JsonArray caps = info["caps"].to<JsonArray>();
     for (auto c : role_.caps()) caps.add(c);
-    if (ota::signatureRequired()) caps.add("ota.signed");  // the hive can tell which hornets only take signed images
+    if (ota::signatureRequired()) caps.add("ota.signed");
+    caps.add("wifi.stage");  // can keep a spare Wi-Fi network (cmd/wifi mode stage)  // the hive can tell which hornets only take signed images
     JsonArray metrics = info["metrics"].to<JsonArray>();
     for (auto m : role_.metrics()) metrics.add(m);
     JsonArray commands = info["commands"].to<JsonArray>();
@@ -589,6 +662,7 @@ void Core::printHelp() {
     Serial.println("  show                          what is stored (id, network, hive address, boot count, wifi switch state)");
     Serial.println("  set <key> <value>             key: ssid pass mqtt mqttuser mqttpass id upload token ntp (the value may contain spaces)");
     Serial.println("  enroll <hive-url> <code>      join a hive with a one-time code from the web UI (set ssid and pass first)");
+    Serial.println("  nospare                       forget the spare Wi-Fi network");
     Serial.println("  awake                         do not sleep until reboot (battery hornets)");
     Serial.println("  reboot                        restart");
     Serial.println("  factory                       erase every setting");
@@ -610,6 +684,12 @@ void Core::serialConsole() {
         if (!line.length()) continue;
         if (line == "show") settings_.print(Serial);
         else if (line == "help") printHelp();
+        else if (line == "nospare") {
+            settings_.wifi2Ssid = "";
+            settings_.wifi2Pass = "";
+            settings_.saveWifiSpare();
+            Serial.println("spare network removed");
+        }
         else if (line == "reboot") ESP.restart();
         else if (line == "awake") {
             stayAwake_ = true;

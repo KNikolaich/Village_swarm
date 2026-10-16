@@ -17,7 +17,7 @@ namespace Hive.Api;
 public sealed record WifiRolloutItem(string DeviceId, string Name, string Result);
 
 /// <summary>The hornets to switch, named one by one: there is deliberately no "all", the first switch is tried on one board.</summary>
-public sealed record WifiApplyRequest(IReadOnlyList<string> DeviceIds);
+public sealed record WifiApplyRequest(IReadOnlyList<string> DeviceIds, string Mode = "switch");
 
 /// <summary>
 /// Sends the Wi-Fi network saved in Settings to every hornet that can take it right now (spec: change the router or the
@@ -33,11 +33,14 @@ public sealed class WifiRollout(HiveWifiService wifi, CommandService commands, H
         DeviceConfigService.SleepS(d) is { } sleep && DeviceConfigService.SleepMode(d) == "deep"
         && d.LastSeenAt is { } seen && now - seen > TimeSpan.FromSeconds(90) && sleep > 0;
 
-    private static bool Knows(Device d) =>
-        d.Info?.RootElement.TryGetProperty("commands", out var list) == true && list.ValueKind == JsonValueKind.Array
-        && list.EnumerateArray().Any(c => c.GetString() == "wifi");
+    private static bool Lists(Device d, string section, string name) =>
+        d.Info?.RootElement.TryGetProperty(section, out var list) == true && list.ValueKind == JsonValueKind.Array
+        && list.EnumerateArray().Any(c => c.GetString() == name);
 
-    public async Task<IReadOnlyList<WifiRolloutItem>?> ApplyAsync(IReadOnlyCollection<string> deviceIds, string by, CancellationToken ct)
+    /// <summary>Can this hornet take the order in this mode? A spare network (stage) needs firmware that advertises wifi.stage.</summary>
+    private static bool Knows(Device d, bool stage) => Lists(d, "commands", "wifi") && (!stage || Lists(d, "caps", "wifi.stage"));
+
+    public async Task<IReadOnlyList<WifiRolloutItem>?> ApplyAsync(IReadOnlyCollection<string> deviceIds, bool stage, string by, CancellationToken ct)
     {
         var secrets = await wifi.RevealAsync(ct);
         if (secrets is null)
@@ -54,18 +57,18 @@ public sealed class WifiRollout(HiveWifiService wifi, CommandService commands, H
                 result = "offline";
             else if (Asleep(d, now))
                 result = "sleeping";
-            else if (!Knows(d))
+            else if (!Knows(d, stage))
                 result = "old_firmware";
             else
             {
-                var (status, _) = await commands.SendAsync(d.DeviceId, "wifi", new JsonObject { ["ssid"] = secrets.Ssid, ["pass"] = secrets.Password }, by, TtlS, ct);
+                var (status, _) = await commands.SendAsync(d.DeviceId, "wifi", new JsonObject { ["ssid"] = secrets.Ssid, ["pass"] = secrets.Password, ["mode"] = stage ? "stage" : "switch" }, by, TtlS, ct);
                 result = status == SendStatus.Sent ? "sent" : "failed";
             }
             items.Add(new WifiRolloutItem(d.DeviceId, d.Name, result));
         }
 
         // The network name and the counts are journalled; the password never is.
-        Audit.Record(db, now, by, "wifi_apply", null, new { ssid = secrets.Ssid, sent = items.Count(i => i.Result == "sent"), skipped = items.Count(i => i.Result is not "sent") });
+        Audit.Record(db, now, by, "wifi_apply", null, new { ssid = secrets.Ssid, mode = stage ? "stage" : "switch", sent = items.Count(i => i.Result == "sent"), skipped = items.Count(i => i.Result is not "sent") });
         await db.SaveChangesAsync(ct);
         return items;
     }
@@ -80,7 +83,9 @@ public static class WifiRolloutEndpoints
             {
                 if (request.DeviceIds is not { Count: > 0 })
                     return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["deviceIds"] = ["Choose the hornets to switch"] });
-                return await rollout.ApplyAsync(request.DeviceIds.ToHashSet(), $"user:{user.Identity?.Name}", ct) is { } items
+                if (request.Mode is not ("stage" or "switch"))
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["mode"] = ["stage or switch"] });
+                return await rollout.ApplyAsync(request.DeviceIds.ToHashSet(), request.Mode == "stage", $"user:{user.Identity?.Name}", ct) is { } items
                     ? TypedResults.Ok(items)
                     : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["wifi"] = ["Save the Wi-Fi network and password first"] });
             })

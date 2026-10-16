@@ -4785,6 +4785,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "mode": {
+            "type": "string",
+            "default": "switch"
           }
         }
       },

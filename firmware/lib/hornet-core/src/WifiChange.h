@@ -38,5 +38,23 @@ inline bool sameAsCurrent(const std::string& ssid, const std::string& pass, cons
     return ssid == currentSsid && pass == currentPass;
 }
 
+// ---- A spare network (cmd/wifi mode "stage") ------------------------------------------------------------------------
+// The hornet keeps a second network and uses it only when its own is gone: after a failed boot (one that never reached
+// the broker) the other network is tried, and while awake it swaps every kSwapAfterMs without a connection. The network
+// that reaches the broker becomes the main one (the old one is kept as the spare).
+
+constexpr uint32_t kSwapAfterMs = 45000;
+
+// Boots alternate networks while they keep failing: 0 failed boots before this one -> main, 1 -> spare, 2 -> main ...
+inline bool useSpareAtBoot(bool spareStaged, uint32_t failedBootsBefore) { return spareStaged && (failedBootsBefore % 2 == 1); }
+
+// An awake hornet without Wi-Fi for kSwapAfterMs tries the other network (never during a switch trial).
+inline bool swapNetworks(bool spareStaged, bool trialRunning, bool wifiConnected, uint32_t downForMs) {
+    return spareStaged && !trialRunning && !wifiConnected && downForMs >= kSwapAfterMs;
+}
+
+// The spare reached the broker: it becomes the main network.
+inline bool promoteSpare(bool usingSpare, bool brokerReached) { return usingSpare && brokerReached; }
+
 }  // namespace wifichange
 }  // namespace hornet

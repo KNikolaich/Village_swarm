@@ -135,6 +135,7 @@ public sealed record WifiEvent : EventMessage
 [JsonConverter(typeof(JsonStringEnumConverter<WifiPhase>))]
 public enum WifiPhase
 {
+    Staged,
     Applied,
     [JsonStringEnumMemberName("rolled_back")] RolledBack,
 }

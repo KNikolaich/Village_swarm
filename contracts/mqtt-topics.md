@@ -50,11 +50,17 @@ Rules:
 
 ## Switching Wi-Fi (`cmd/wifi`, `event/wifi`)
 
-The hive can move a running hornet to another network (a new router or password) without a cable. The hornet acks the
-command, stores the new credentials **next to** the old ones, restarts and tries the new network. Once it has reached
-the broker over it, the new network becomes its own (`event/wifi` phase `applied`). If it has not within about a minute
-(sooner for deep sleepers), it forgets the new network, restarts on the old one and reports `rolled_back`. The password
-travels only in the command, and neither the hive's command journal nor its MQTT monitor shows it.
+The hive can move running hornets to another network (a new router, a new password) without a cable. Two modes:
+
+- **`stage`** (hornets that advertise `wifi.stage` in `info.caps`): the hornet keeps the network as a **spare** and changes
+  nothing now (`event/wifi` phase `staged`). When it cannot join its own network (the router was changed), it tries the
+  spare; once it has reached the broker over it, the spare becomes its own and the old network becomes the spare
+  (`applied`). Changing the password of the same network works this way.
+- **`switch`** (the default): the hornet acks, stores the new credentials next to the old ones, restarts and tries them.
+  Reached the broker: the new network is its own (`applied`). Not within about a minute (sooner for deep sleepers): it
+  forgets them, restarts on the old network and reports `rolled_back`.
+
+The password travels only in the command; neither the hive's command journal nor its MQTT monitor shows it.
 
 ## Examples
 

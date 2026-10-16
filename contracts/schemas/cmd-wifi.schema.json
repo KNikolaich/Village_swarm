@@ -1,16 +1,42 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://village-swarm.local/contracts/v1/cmd-wifi.schema.json",
-  "title": "vs/v1/dev/{id}/cmd/wifi: switch to another Wi-Fi network, with a way back",
+  "title": "vs/v1/dev/{id}/cmd/wifi: keep a spare Wi-Fi network, or switch to another one now, with a way back",
   "type": "object",
-  "allOf": [{ "$ref": "cmd.schema.json" }],
-  "required": ["ssid", "pass"],
+  "allOf": [
+    {
+      "$ref": "cmd.schema.json"
+    }
+  ],
+  "required": [
+    "ssid",
+    "pass"
+  ],
   "properties": {
-    "ssid": { "type": "string", "minLength": 1, "maxLength": 32 },
+    "ssid": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
     "pass": {
       "type": "string",
-      "anyOf": [{ "maxLength": 0 }, { "minLength": 8, "maxLength": 63 }],
+      "anyOf": [
+        {
+          "maxLength": 0
+        },
+        {
+          "minLength": 8,
+          "maxLength": 63
+        }
+      ],
       "description": "Empty for an open network, otherwise a WPA passphrase of 8..63 characters. It is never stored by the hive (the command journal keeps *** instead)"
+    },
+    "mode": {
+      "enum": [
+        "stage",
+        "switch"
+      ],
+      "description": "stage: keep the network as a SPARE and change nothing now; when the hornet cannot join its own network it tries the spare, and once it has reached the broker over it the spare becomes its own (a hornet that advertises the capability wifi.stage). switch (the default, what hornets without that capability do): restart now and try the network; if the broker is not reached within about a minute the old network comes back"
     }
   },
   "unevaluatedProperties": false

@@ -335,6 +335,11 @@
       "hintNoConnection": "The hornet could not reach the hive: check the hive address in Settings → Wi-Fi for hornets (http, port 80 reachable by boards)",
       "hintToken": "The hive did not accept the hornet's token: re-enroll it",
       "hintNoBuild": "The hive has no such build: deploy the hive again"
+    },
+    "wifi": {
+      "staged": "spare network \"{ssid}\" saved",
+      "applied": "now on \"{ssid}\"",
+      "rolled_back": "network \"{ssid}\" did not work, the old one stayed"
     }
   },
   "photos": {
@@ -426,23 +431,47 @@
     "monitorHint": "See how the hornets and the hive talk, read-only.",
     "monitorOpen": "Open the monitor",
     "version": "Hive version {version}",
-    "wifiApply": "Apply to the hornets that are running",
-    "wifiApplyHint": "Sends the saved network to the chosen hornets. Each tries the new network and, if it cannot reach the hive over it, goes back to the old one by itself. The outcome appears in Events. Start with ONE hornet, make sure it came up on the new network, and only then choose the others.",
-    "wifiApplyConfirm": "Switch the running hornets to the network \"{ssid}\"? If the new network does not work, each goes back to its old one by itself.",
     "wifiApplyNone": "No hornets to switch",
     "wifiResult": {
       "sent": "sent",
       "offline": "offline",
       "sleeping": "asleep: repeat when it wakes up",
-      "old_firmware": "old firmware: update over the air or by USB",
+      "old_firmware": "old firmware: prepare it over USB or update it",
       "failed": "could not be sent"
     },
-    "wifiApplyWarning": "Changing the PASSWORD of the same network cannot be done this way: the board has to move while the router still accepts the old password. Create a second network on the router with a new name and password, move the boards to it, and only then change the old one. Keep the old network on until every hornet has reported in Events.",
-    "wifiApplyChoose": "Who to switch",
     "wifiApplyNobody": "No hornets are online",
-    "wifiApplyNeed": "Choose hornets",
-    "wifiApplyGo": "Apply to the chosen",
-    "wifiUsbRescue": "USB console (if a board has gone silent)"
+    "wifiUsbRescue": "USB console (if a board has gone silent)",
+    "wifiPanel": {
+      "title": "Hand the network \"{ssid}\" to the hornets",
+      "intro": "The network and password come from the fields above (save them first). Choose how to hand them over, and to which hornets.",
+      "recommended": "recommended",
+      "stage": {
+        "title": "Prepare a spare network",
+        "what": "Nothing is switched or restarted: the hornet stays on its current network and only remembers this one as a spare. It moves to it by itself when it can no longer join its current one, that is, after you change the name or password on the router.",
+        "steps": "Choose the hornets below and press \"Prepare a spare network\"|Wait in Events for \"spare network saved\" from each|Change the network name or password on the router|In a minute or two the hornets move by themselves, Events show \"now on ...\"",
+        "when": "Works for changing the password of the same network too. Safe: while you have not touched the router, nothing changes."
+      },
+      "switch": {
+        "title": "Switch now (a trial)",
+        "what": "The hornet restarts at once and tries this network. If it reaches the hive, the network becomes its main one and the old one stays as the spare. If not within a minute, it goes back to the old one by itself.",
+        "steps": "The new network must already work next to the old one (for example a second name on the router)|Choose ONE hornet and press \"Switch\"|Wait in Events: \"now on ...\" or \"network did not work, the old one stayed\"|If all is well, switch the others",
+        "when": "Not for changing the password of the same network: while the router knows only one password, the board cannot test the new one."
+      },
+      "choose": "Which hornets (only those online and awake)",
+      "asleep": "asleep, the command would not reach it",
+      "oldFirmware": "old firmware: prepare it over USB or update it",
+      "summaryNone": "Choose at least one hornet.",
+      "summaryStage": "What will happen: {names} will remember the network \"{ssid}\" as a spare. Nothing is switched or restarted.",
+      "summarySwitch": "What will happen: {names} will restart now and try the network \"{ssid}\". If they do not reach the hive within a minute they go back to the old one.",
+      "switchWarning": "If you have already changed the network or password on the router, the old network does not work and the board has nowhere to go back to: it will have to be fixed over USB.",
+      "goStage": "Prepare a spare network",
+      "goSwitch": "Switch the chosen now",
+      "confirmStage": "Remember the network \"{ssid}\" as a spare on: {names}? Nothing is switched.",
+      "confirmSwitch": "Restart {names} and try the network \"{ssid}\"? If they do not reach the hive within a minute, they go back to the old one.",
+      "afterStage": "Next: wait for \"spare network saved\" from every hornet, then change the router.",
+      "afterSwitch": "Next: in a minute look at \"Wi-Fi switch\" of each hornet: \"now on\" or \"the old one stayed\".",
+      "openEvents": "Open Events"
+    }
   },
   "password": {
     "show": "Show password",

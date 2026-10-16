@@ -3507,6 +3507,8 @@ export interface components {
         };
         WifiApplyRequest: {
             deviceIds: string[];
+            /** @default switch */
+            mode: string;
         };
         WifiRolloutItem: {
             deviceId: string;

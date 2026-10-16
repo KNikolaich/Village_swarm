@@ -24,6 +24,9 @@ struct Settings {
     String wifiNextSsid;   // network being tried after cmd/wifi: the old ssid/pass stay until it reaches the broker
     String wifiNextPass;
     String wifiRolledBack; // network that did not work and was given up, until reported
+    String wifi2Ssid;      // spare network (cmd/wifi mode stage): used only when the main one is gone
+    String wifi2Pass;
+    uint32_t wifiFails = 0; // boots in a row that never reached the broker; alternates main and spare
 
     bool complete() const { return ssid.length() && mqttHost.length() && deviceId.length(); }
 
@@ -32,6 +35,7 @@ struct Settings {
     void saveBoot() const;
     void saveOta() const;
     void saveWifiChange() const;  // wifiNext* and wifiRolledBack only
+    void saveWifiSpare() const;   // wifi2* only
     void clear();
 
     // Raw retained config JSON from the hive, so the hornet works after a reboot without the broker.

@@ -253,7 +253,7 @@ public sealed class VirtualHornet
         if (name == "reboot" && result.Status == AckStatus.Ok)
             RebootRequested = true;
         if (name == "wifi" && result.Status == AckStatus.Ok)
-            ReportWifiSwitch(root.GetProperty("ssid").GetString()!, now);
+            ReportWifi(root.GetProperty("ssid").GetString()!, root.TryGetProperty("mode", out var mode) && mode.GetString() == "stage", now);
     }
 
     /// <summary>The Wi-Fi switch as the firmware does it, validation included (contracts cmd-wifi).</summary>
@@ -266,12 +266,18 @@ public sealed class VirtualHornet
     }
 
     /// <summary>
-    /// The outcome the real hornet reports after its trial boot: the new network is its own, unless the name ends in
+    /// The outcome the real hornet reports: "staged" for a spare network, or after its trial boot: the new network is its own, unless the name ends in
     /// "-unreachable" (a network that cannot reach the hive), when the old one comes back.
     /// </summary>
-    private void ReportWifiSwitch(string ssid, DateTimeOffset now)
+    private void ReportWifi(string ssid, bool stage, DateTimeOffset now)
     {
         var e = NextEnvelope(now);
+        if (stage)
+        {
+            // A spare network is only kept; nothing changes until the main network is gone.
+            EmitEvent("wifi", new WifiEvent { Id = e.Id, Ts = e.Ts, Seq = e.Seq, Boot = e.Boot, Phase = WifiPhase.Staged, Ssid = ssid });
+            return;
+        }
         var rolledBack = ssid.EndsWith("-unreachable", StringComparison.Ordinal);
         EmitEvent("wifi", new WifiEvent
         {
@@ -331,7 +337,7 @@ public sealed class VirtualHornet
             Fw = Spec.Fw,
             Mac = FakeMac(Id),
             Ip = $"192.168.20.{100 + (IdHash(Id)[6] % 100)}",
-            Caps = Role.Caps,
+            Caps = [.. Role.Caps, "wifi.stage"],
             Metrics = Role.Metrics,
             Commands = ["reboot", "config_reload", "wifi", .. Role.Commands],
         };

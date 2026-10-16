@@ -19,6 +19,13 @@ function otaLine(payload: unknown): string | null {
   return `${p.version ?? '?'}: ${what}${p.error ? ` (${p.error})` : ''}${hint ? `. ${hint}` : ''}`
 }
 
+/** What a Wi-Fi change did (contracts event-wifi: phase, ssid). */
+function wifiLine(payload: unknown): string | null {
+  const p = payload as { phase?: string; ssid?: string } | null
+  if (!p?.phase) return null
+  return t(`events.wifi.${p.phase}`, p.phase).replace('{ssid}', p.ssid ?? '?')
+}
+
 const severityTone: Record<string, BadgeTone> = { info: 'neutral', warn: 'warn', alarm: 'alarm', critical: 'critical' }
 
 export type PhotoRef = { id: string; url: string; thumbUrl: string }
@@ -35,6 +42,7 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
   // A rule's own message: what the rule said, and which rule it was.
   const said = event.type === 'rule' ? (event.payload as { rule?: string; text?: string } | null) : null
   const ota = event.type === 'ota' ? otaLine(event.payload) : null
+  const wifi = event.type === 'wifi' ? wifiLine(event.payload) : null
 
   return (
     <article className={cn('rounded-xl border bg-neutral-900/70 p-3', alarm && !event.acknowledgedAt ? 'border-red-900/70' : 'border-neutral-800')}>
@@ -50,6 +58,7 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
           </p>
           {said?.text && <p className="mt-1 text-sm text-neutral-200">{said.text}</p>}
           {ota && <p className="mt-1 text-sm text-neutral-200">{ota}</p>}
+          {wifi && <p className="mt-1 text-sm text-neutral-200">{wifi}</p>}
         </div>
         {alarm && !compact && (
           event.acknowledgedAt ? (

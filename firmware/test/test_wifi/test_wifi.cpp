@@ -46,6 +46,31 @@ static void test_the_same_network_is_not_a_change() {
     TEST_ASSERT_FALSE(sameAsCurrent("b", "pass1234", "a", "pass1234"));
 }
 
+static void test_without_a_spare_the_main_network_is_always_used() {
+    for (uint32_t fails = 0; fails < 6; ++fails) TEST_ASSERT_FALSE(useSpareAtBoot(false, fails));
+    TEST_ASSERT_FALSE(swapNetworks(false, false, false, kSwapAfterMs * 10));
+}
+
+static void test_failing_boots_alternate_the_main_and_the_spare_network() {
+    TEST_ASSERT_FALSE(useSpareAtBoot(true, 0));  // a normal boot
+    TEST_ASSERT_TRUE(useSpareAtBoot(true, 1));   // the last boot never reached the broker
+    TEST_ASSERT_FALSE(useSpareAtBoot(true, 2));  // and the one before failed too: back to the main network
+    TEST_ASSERT_TRUE(useSpareAtBoot(true, 3));
+}
+
+static void test_an_awake_hornet_swaps_networks_only_after_a_long_silence_and_not_during_a_trial() {
+    TEST_ASSERT_FALSE(swapNetworks(true, false, false, kSwapAfterMs - 1));
+    TEST_ASSERT_TRUE(swapNetworks(true, false, false, kSwapAfterMs));
+    TEST_ASSERT_FALSE(swapNetworks(true, false, true, kSwapAfterMs * 2));   // connected: nothing to swap
+    TEST_ASSERT_FALSE(swapNetworks(true, true, false, kSwapAfterMs * 2));   // a switch trial runs its own clock
+}
+
+static void test_only_a_spare_that_reached_the_broker_becomes_the_main_network() {
+    TEST_ASSERT_TRUE(promoteSpare(true, true));
+    TEST_ASSERT_FALSE(promoteSpare(true, false));   // Wi-Fi up but no broker: not proven
+    TEST_ASSERT_FALSE(promoteSpare(false, true));   // the main network works: leave it
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_credentials_follow_the_contract);
@@ -54,5 +79,9 @@ int main() {
     RUN_TEST(test_waiting_until_the_time_is_up_then_rolling_back);
     RUN_TEST(test_a_deep_sleeper_gives_up_before_its_awake_limit);
     RUN_TEST(test_the_same_network_is_not_a_change);
+    RUN_TEST(test_without_a_spare_the_main_network_is_always_used);
+    RUN_TEST(test_failing_boots_alternate_the_main_and_the_spare_network);
+    RUN_TEST(test_an_awake_hornet_swaps_networks_only_after_a_long_silence_and_not_during_a_trial);
+    RUN_TEST(test_only_a_spare_that_reached_the_broker_becomes_the_main_network);
     return UNITY_END();
 }

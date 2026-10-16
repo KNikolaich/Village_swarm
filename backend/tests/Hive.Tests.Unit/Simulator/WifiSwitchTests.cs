@@ -20,7 +20,7 @@ public class WifiSwitchTests
         return hornet;
     }
 
-    private static List<Outgoing> Switch(string ssid, string pass)
+    private static List<Outgoing> Switch(string ssid, string pass, string? mode = null)
     {
         var hornet = Heat();
         var now = T0.AddSeconds(5);
@@ -29,6 +29,8 @@ public class WifiSwitchTests
             ["v"] = 1, ["cid"] = Ulid.New(now), ["ts"] = now.ToUnixTimeMilliseconds(), ["ttl_s"] = 120, ["by"] = "user:test",
             ["ssid"] = ssid, ["pass"] = pass,
         };
+        if (mode is not null)
+            command["mode"] = mode;
         hornet.Receive(Topics.Cmd("heat-living1", "wifi"), command.ToJsonString());
         hornet.Step(now);
         return hornet.TakePending(connected: true).ToList();
@@ -69,6 +71,20 @@ public class WifiSwitchTests
         Assert.Equal("rolled_back", done.GetProperty("phase").GetString());
         Assert.Equal("warn", done.GetProperty("severity").GetString());
         AssertMatchesContract(messages);
+    }
+
+    [Fact]
+    public void A_spare_network_is_reported_as_staged_and_the_hornet_advertises_the_capability()
+    {
+        var messages = Switch("village-iot", "correct horse battery", mode: "stage");
+
+        Assert.Equal("ok", Json(messages, "/cmd/wifi/ack").GetProperty("status").GetString());
+        Assert.Equal("staged", Json(messages, "/event/wifi").GetProperty("phase").GetString());
+        AssertMatchesContract(messages);
+
+        var hornet = Heat();
+        var info = hornet.OnConnected(T0).Single(m => m.Topic.EndsWith("/info", StringComparison.Ordinal));
+        Assert.Contains("wifi.stage", JsonDocument.Parse(info.Payload).RootElement.GetProperty("caps").EnumerateArray().Select(c => c.GetString()));
     }
 
     [Fact]

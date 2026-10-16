@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Hive.Contracts.Messages;
 
 // Messages the hive publishes (hive -> dev). Schemas: contracts/schemas/*.schema.json.
@@ -49,6 +51,16 @@ public sealed record WifiCommand : Command
 {
     public required string Ssid { get; init; }
     public required string Pass { get; init; }
+
+    /// <summary>stage: keep as a spare network; switch (the default): restart onto it now, with a way back.</summary>
+    public WifiMode? Mode { get; init; }
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<WifiMode>))]
+public enum WifiMode
+{
+    Stage,
+    Switch,
 }
 
 /// <summary>vs/v1/dev/{id}/cmd/snapshot</summary>

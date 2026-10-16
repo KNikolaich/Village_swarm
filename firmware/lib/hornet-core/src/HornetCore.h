@@ -142,6 +142,7 @@ private:
     void checkOtaOutcome();
     AckResult queueWifi(JsonObjectConst payload);
     void checkWifiTrial();
+    void checkWifiSpare();
     void applyWifiPowerSave();
 
     Role& role_;
@@ -165,6 +166,8 @@ private:
     } ota_;  // console "awake": no sleep until reboot, to change settings
     bool wifiTrial_ = false;               // this boot is trying settings_.wifiNext*
     unsigned long wifiRestartAtMs_ = 0;    // restart onto the new network once the ack has left
+    bool usingSpare_ = false;              // this boot (or the last swap) uses the spare network
+    unsigned long wifiDownSince_ = 0;      // when an awake hornet lost Wi-Fi, 0 while connected
     String rxTopic_;
     String rxPayload_;
     String consoleLine_;
