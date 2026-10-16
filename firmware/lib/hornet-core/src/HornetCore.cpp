@@ -425,10 +425,14 @@ void Core::onMqttConnected() {
     mqtt.publish(willTopic.c_str(), 1, true, "online");
     if (settings_.otaPending.length() || settings_.otaRolledBack.length()) {
         JsonDocument outcome;
-        const bool rolledBack = settings_.otaRolledBack.length() > 0;
+        // "applied" only when the image that is running is the one that was ordered: an old image booting after an
+        // update (the new one was not taken) must not be reported as success.
+        const bool wrongImage = !settings_.otaRolledBack.length() && settings_.otaPending != HORNET_FW_VERSION;
+        const bool rolledBack = settings_.otaRolledBack.length() > 0 || wrongImage;
         outcome["phase"] = rolledBack ? "rolled_back" : "applied";
         if (rolledBack) outcome["severity"] = "warn";
-        outcome["version"] = rolledBack ? settings_.otaRolledBack : settings_.otaPending;
+        if (wrongImage) outcome["error"] = String("running ") + HORNET_FW_VERSION;
+        outcome["version"] = settings_.otaRolledBack.length() ? settings_.otaRolledBack : settings_.otaPending;
         publishEvent("ota", outcome);
         settings_.otaPending = "";
         settings_.otaRolledBack = "";
