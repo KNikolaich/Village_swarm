@@ -1279,6 +1279,45 @@
         }
       }
     },
+    "/api/provision/tasmota": {
+      "post": {
+        "tags": [
+          "provision"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTasmotaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasmotaSetup"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/provision/batches": {
       "post": {
         "tags": [
@@ -2725,6 +2764,39 @@
           }
         }
       },
+      "CreateTasmotaRequest": {
+        "required": [
+          "deviceId",
+          "type",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "zoneId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "maxOnMinutes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "DeviceDto": {
         "required": [
           "deviceId",
@@ -2745,7 +2817,8 @@
           "configRev",
           "configAppliedRev",
           "sleepS",
-          "sleepMode"
+          "sleepMode",
+          "driver"
         ],
         "type": "object",
         "properties": {
@@ -2858,6 +2931,9 @@
             "format": "int32"
           },
           "sleepMode": {
+            "type": "string"
+          },
+          "driver": {
             "type": "string"
           }
         }
@@ -4349,6 +4425,28 @@
         "properties": {
           "build": {
             "type": "string"
+          }
+        }
+      },
+      "TasmotaSetup": {
+        "required": [
+          "deviceId",
+          "mqtt",
+          "lines"
+        ],
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "mqtt": {
+            "$ref": "#/components/schemas/EnrollMqtt"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

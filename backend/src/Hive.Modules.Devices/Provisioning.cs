@@ -45,6 +45,12 @@ public sealed record EnrollMqtt(string Host, int Port, string? User, string? Pas
 
 public sealed record EnrollResponse(string DeviceId, EnrollMqtt Mqtt, string UploadUrl, string UploadToken, JsonElement Config);
 
+/// <summary>A Tasmota or OpenBeken device. MaxOnMinutes is the longest a heater may stay switched on without a new order.</summary>
+public sealed record CreateTasmotaRequest(string DeviceId, string Type, string Name, int? ZoneId = null, int? MaxOnMinutes = null);
+
+/// <summary>Console lines to paste into the device's Tasmota web console, in this order. The password is shown once and kept nowhere.</summary>
+public sealed record TasmotaSetup(string DeviceId, EnrollMqtt Mqtt, IReadOnlyList<string> Lines);
+
 public enum EnrollStatus { Ok, BadCode, BadRequest }
 
 /// <summary>Adding a hornet (spec 5.3): one-time code in the UI, the board trades it for its credentials.</summary>
@@ -173,6 +179,65 @@ public sealed class ProvisioningService(
             uploadUrl,
             uploadToken,
             JsonSerializer.SerializeToElement(config)));
+    }
+
+    /// <summary>
+    /// Adds a device that runs Tasmota or OpenBeken (contracts/tasmota.md): it gets its own broker login limited to its
+    /// topics, and the Tasmota console lines that point it at the hive. Asking again for the same id gives new credentials
+    /// (the board was replaced, or the old login is lost).
+    /// </summary>
+    public async Task<(TasmotaSetup? Setup, string? Error)> CreateTasmotaAsync(CreateTasmotaRequest r, string by, Uri requestBase, CancellationToken ct)
+    {
+        if (!Topics.IsValidDeviceId(r.DeviceId))
+            return (null, "device_id: латиница в нижнем регистре, цифры и дефисы, например heat-bedroom1");
+        if (!await db.DeviceTypes.AnyAsync(t => t.Code == r.Type, ct))
+            return (null, $"unknown type {r.Type}");
+        if (string.IsNullOrWhiteSpace(r.Name))
+            return (null, "name is required");
+
+        var now = time.GetUtcNow();
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == r.DeviceId, ct);
+        if (device is not null && device.Driver != Drivers.Tasmota && device.Status != DeviceStatus.Disabled)
+            return (null, $"{r.DeviceId} уже занят шершнем на нашей прошивке; выберите другой id");
+        if (device is null)
+        {
+            device = new Device { DeviceId = r.DeviceId, TypeCode = r.Type, Name = r.Name.Trim(), CreatedAt = now };
+            db.Devices.Add(device);
+        }
+        device.TypeCode = r.Type;
+        device.Name = r.Name.Trim();
+        device.ZoneId = r.ZoneId ?? device.ZoneId;
+        device.Driver = Drivers.Tasmota;
+        device.Hw = "tasmota";
+        device.Status = DeviceStatus.Pending;
+        device.MqttUser = DynamicSecurity.ClientName(device.DeviceId);
+        device.UploadTokenHash = null;
+        var switches = r.Type is "relay" or "heat";
+        device.Info = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            caps = switches ? new[] { "relay" } : Array.Empty<string>(),
+            metrics = Array.Empty<string>(),
+            commands = switches ? new[] { "relay", "reboot" } : ["reboot"],
+        }));
+        Audit.Record(db, now, by, "device_add_tasmota", r.DeviceId);
+
+        var password = Secret();
+        await dynsec.ProvisionTasmotaAsync(device.DeviceId, password, ct);
+        await db.SaveChangesAsync(ct);
+
+        var host = string.IsNullOrEmpty(options.Value.MqttHost) ? requestBase.Host : options.Value.MqttHost;
+        var port = options.Value.MqttPort;
+        var lines = new List<string> { $"Backlog Topic {r.DeviceId}; DeviceName {r.DeviceId}; FriendlyName1 {r.DeviceId}" };
+        // A relay comes up switched off after a power cut, and reports every minute so the hive sees it is alive.
+        lines.Add("Backlog TelePeriod 60; SetOption19 0" + (switches ? "; PowerOnState 0; PowerRetain 0" : ""));
+        if (r.Type == "heat")
+        {
+            // The relay switches itself off after this long, even when the hive is gone (PulseTime: seconds plus 100).
+            var seconds = Math.Clamp(r.MaxOnMinutes ?? 360, 1, 1080) * 60;
+            lines.Add($"PulseTime1 {seconds + 100}");
+        }
+        lines.Add($"Backlog MqttHost {host}; MqttPort {port}; MqttUser {device.MqttUser}; MqttPassword {password}; MqttClient {r.DeviceId}");
+        return (new TasmotaSetup(device.DeviceId, new EnrollMqtt(host, port, device.MqttUser, dynsec.Enabled ? password : null), lines), null);
     }
 
     /// <summary>DELETE /api/devices/{id}: revokes the broker login and upload token, keeps the history.</summary>

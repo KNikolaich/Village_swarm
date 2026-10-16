@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, CheckCircle2, Copy, Cpu, Download, Usb } from 'lucide-react'
 import { createElement, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
+import { TasmotaPanel } from '@/components/TasmotaPanel'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { PasswordInput } from '@/components/PasswordInput'
@@ -44,7 +45,14 @@ function defaultHiveUrl() {
  * → wait until the hornet is online. Every step also shows the manual way.
  */
 export function AddHornetPage() {
-  const [mode, setMode] = useState<'one' | 'batch'>('one')
+  const [params] = useSearchParams()
+  const presetTasmota = params.get('tasmota')
+  const [mode, setMode] = useState<'one' | 'batch' | 'tasmota'>(presetTasmota ? 'tasmota' : 'one')
+  const preset = useQuery({
+    queryKey: ['device', presetTasmota],
+    queryFn: async () => (await api.GET('/api/devices/{deviceId}', { params: { path: { deviceId: presetTasmota! } } })).data ?? null,
+    enabled: !!presetTasmota,
+  })
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -54,8 +62,13 @@ export function AddHornetPage() {
       <div className="flex gap-2">
         <Button variant={mode === 'one' ? 'default' : 'secondary'} onClick={() => setMode('one')}>{t('add.modeOne')}</Button>
         <Button variant={mode === 'batch' ? 'default' : 'secondary'} onClick={() => setMode('batch')}>{t('add.modeBatch')}</Button>
+        <Button variant={mode === 'tasmota' ? 'default' : 'secondary'} onClick={() => setMode('tasmota')}>{t('add.modeTasmota')}</Button>
       </div>
-      {mode === 'one' ? <OneHornet /> : <BatchPanel />}
+      {mode === 'one' && <OneHornet />}
+      {mode === 'batch' && <BatchPanel />}
+      {mode === 'tasmota' && (presetTasmota && !preset.data
+        ? null
+        : <TasmotaPanel presetId={preset.data?.deviceId} presetName={preset.data?.name} presetType={preset.data?.type} />)}
     </div>
   )
 }

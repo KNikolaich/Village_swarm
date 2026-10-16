@@ -597,7 +597,8 @@
     "deceasedHint": "Removed hornets are hidden, but their records and history are kept. Turn it on to bring one back to life on a new board.",
     "revive": "Revive",
     "reviveTitle": "Bring this hornet back to life on a new board: same name and history",
-    "reviveConfirm": "Revive '{id}' on a new board? The wizard opens: the code is issued, just flash the board and enter the code. Name, history and settings are kept."
+    "reviveConfirm": "Revive '{id}' on a new board? The wizard opens: the code is issued, just flash the board and enter the code. Name, history and settings are kept.",
+    "replaceTasmotaConfirm": "Replace the board of '{id}'? A new login and console lines are issued. The previous login stops working."
   },
   "add": {
     "step1": "Hornet and code",
@@ -642,7 +643,8 @@
     "next": "Next",
     "boardLine": "Board: {board}",
     "replaceBanner": "Replacing the board of '{id}': the code is issued, just flash the new board and enter the code. No new hornet is created.",
-    "replaceFailed": "Could not prepare the replacement. Go back to the swarm and try again."
+    "replaceFailed": "Could not prepare the replacement. Go back to the swarm and try again.",
+    "modeTasmota": "Tasmota relay"
   },
   "time": {
     "justNow": "just now",
@@ -812,5 +814,16 @@
     "joinConfirm": "Write the Wi-Fi '{ssid}' to the board and join the hive {url}? The board will replace the chosen hornet.",
     "joinSent": "Commands sent, see the board's answer above: 'enrolled ...'",
     "brownout": "The board restarted because the supply sagged (brownout). Typical for an ESP32-CAM on a weak USB adapter: the current jumps when Wi-Fi starts. Feed 5 V from a proper supply (1 A or more) to the 5V pin and add a 470 uF capacitor between 5V and GND."
+  },
+  "tasmota": {
+    "step1": "The device",
+    "step2": "Setup in the Tasmota console",
+    "intro": "For a board that already runs Tasmota or OpenBeken (relay, socket, thermostat). The hive gives it a login of its own, limited to its topics, and the lines for its console. How to flash the board itself: docs/tasmota.md.",
+    "maxOn": "Never on longer than, minutes (heater)",
+    "maxOnHint": "The relay switches itself off after this time even if the hive is gone. A timed switch-on from the rules is shorter than this.",
+    "create": "Issue the login and lines",
+    "steps": "Connect to the board (a Tasmota board shows as tasmota-XXXX, no password) and give it your home network|Open the board's web page, the Console section|Paste the lines one by one, top to bottom, waiting for the answer after each|The board restarts and shows up in the hive as a hornet",
+    "passwordOnce": "The password is shown once and kept nowhere. Lost it: issue the login again, the previous one stops working.",
+    "waiting": "Waiting for the board to reach the hive."
   }
 }

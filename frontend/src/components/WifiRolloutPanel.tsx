@@ -31,7 +31,7 @@ export function WifiRolloutPanel({ ssid }: { ssid: string }) {
   const [busy, setBusy] = useState(false)
   const [results, setResults] = useState<{ deviceId: string; name: string; result: string; mode: Mode }[] | null>(null)
 
-  const hornets = (devices.data ?? []).filter((d) => d.status === 'online' && d.type !== 'hive')
+  const hornets = (devices.data ?? []).filter((d) => d.status === 'online' && d.type !== 'hive' && d.driver !== 'tasmota')
   // Why a hornet cannot be picked in the current mode (empty: it can).
   const blocker = (d: DeviceDto): string => {
     if (asleep(d)) return t('settings.wifiPanel.asleep')

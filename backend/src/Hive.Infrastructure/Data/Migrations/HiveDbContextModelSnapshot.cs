@@ -148,6 +148,14 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("device_id");
 
+                    b.Property<string>("Driver")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("hornet")
+                        .HasColumnName("driver");
+
                     b.Property<string>("FwVersion")
                         .HasColumnType("text")
                         .HasColumnName("fw_version");

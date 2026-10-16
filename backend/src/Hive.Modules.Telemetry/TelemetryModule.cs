@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Hive.Modules.Telemetry;
 
@@ -16,6 +17,8 @@ public static class TelemetryModule
     {
         services.AddSingleton<IngestQueue>();
         services.AddSingleton<IMqttMessageHandler, NativeHornetAdapter>();
+        services.TryAddSingleton<TasmotaPending>();
+        services.AddSingleton<IMqttMessageHandler, TasmotaAdapter>();
         services.AddScoped<IngestWriter>();
         services.AddSingleton<IngestPipeline>();
         services.AddHostedService(sp => sp.GetRequiredService<IngestPipeline>());

@@ -272,7 +272,7 @@ export function ConsolePage() {
               onChange={(e) => setJoin({ ...join, deviceId: e.target.value })}
             >
               <option value="">{t('console.joinPick')}</option>
-              {(devices.data ?? []).filter((d) => d.type !== 'hive').map((d) => <option key={d.deviceId} value={d.deviceId}>{d.name} ({d.deviceId})</option>)}
+              {(devices.data ?? []).filter((d) => d.type !== 'hive' && d.driver !== 'tasmota').map((d) => <option key={d.deviceId} value={d.deviceId}>{d.name} ({d.deviceId})</option>)}
             </select>
             <Input placeholder={t('console.joinUrl')} value={join.url} onChange={(e) => setJoin({ ...join, url: e.target.value })} />
             <Input placeholder={t('console.joinCode')} className="font-mono" value={join.code} onChange={(e) => setJoin({ ...join, code: e.target.value })} />

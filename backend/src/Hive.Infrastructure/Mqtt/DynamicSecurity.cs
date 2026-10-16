@@ -48,6 +48,10 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
             },
             Acl("addRoleACL", options.Value.AdminRole, "publishClientSend", $"{prefix}/#", 0),
             Acl("addRoleACL", options.Value.AdminRole, "subscribePattern", $"{prefix}/#", 0),
+            // Tasmota and OpenBeken devices: the api reads what they report and writes their commands.
+            Acl("addRoleACL", options.Value.AdminRole, "subscribePattern", "tele/#", 0),
+            Acl("addRoleACL", options.Value.AdminRole, "subscribePattern", "stat/#", 0),
+            Acl("addRoleACL", options.Value.AdminRole, "publishClientSend", "cmnd/#", 0),
         ], ct, ignoreErrors: true);
     }
 
@@ -80,6 +84,33 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
             },
         ], ct);
         return password;
+    }
+
+    /// <summary>
+    /// Login and role of a Tasmota or OpenBeken device: it reports under tele/ and stat/ with its id, and listens to
+    /// cmnd/ with its id, nothing else.
+    /// </summary>
+    public async Task ProvisionTasmotaAsync(string deviceId, string password, CancellationToken ct)
+    {
+        if (!Enabled)
+            return;
+        var role = RoleName(deviceId);
+        await SendAsync([new JsonObject { ["command"] = "deleteClient", ["username"] = ClientName(deviceId) },
+                         new JsonObject { ["command"] = "deleteRole", ["rolename"] = role }], ct, ignoreErrors: true);
+        await SendAsync(
+        [
+            new JsonObject { ["command"] = "createRole", ["rolename"] = role },
+            Acl("addRoleACL", role, "publishClientSend", $"tele/{deviceId}/#", 0),
+            Acl("addRoleACL", role, "publishClientSend", $"stat/{deviceId}/#", 0),
+            Acl("addRoleACL", role, "subscribePattern", $"cmnd/{deviceId}/#", 0),
+            new JsonObject
+            {
+                ["command"] = "createClient",
+                ["username"] = ClientName(deviceId),
+                ["password"] = password,
+                ["roles"] = new JsonArray { new JsonObject { ["rolename"] = role } },
+            },
+        ], ct);
     }
 
     /// <summary>Removes the hornet's login, e.g. when it is deleted or factory reset (spec 5.3).</summary>

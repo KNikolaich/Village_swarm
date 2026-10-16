@@ -38,6 +38,13 @@ public class DeviceType
     public int OfflineAfterS { get; set; } = 180;
 }
 
+/// <summary>How a device talks MQTT. Hornets use the vs/v1 contract; Tasmota and OpenBeken use cmnd/stat/tele (contracts/tasmota.md).</summary>
+public static class Drivers
+{
+    public const string Hornet = "hornet";
+    public const string Tasmota = "tasmota";
+}
+
 /// <summary>A hornet. <see cref="DeviceId"/> is the MQTT id (guard-gate1), <see cref="Id"/> the surrogate key.</summary>
 public class Device
 {
@@ -69,6 +76,9 @@ public class Device
     public int ConfigRev { get; set; }
     public int? ConfigAppliedRev { get; set; }
     public string? MqttUser { get; set; }
+
+    /// <summary>Who speaks for the device on the broker: our own firmware or a Tasmota/OpenBeken one (see <see cref="Drivers"/>).</summary>
+    public string Driver { get; set; } = Drivers.Hornet;
 
     /// <summary>SHA-256 (hex) of the bearer token the hornet uses for photo uploads; issued at provisioning.</summary>
     public string? UploadTokenHash { get; set; }

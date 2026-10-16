@@ -296,6 +296,10 @@ export function SwarmPage() {
 
   /** The wizard opens on the flashing step: the hornet's type and name are known, and the code is issued there. */
   function replace(deviceId: string, revive = false) {
+    if ((devices.data ?? []).find((d) => d.deviceId === deviceId)?.driver === 'tasmota') {
+      if (window.confirm(t('swarm.replaceTasmotaConfirm').replace('{id}', deviceId))) navigate(`/swarm/add?tasmota=${encodeURIComponent(deviceId)}`)
+      return
+    }
     if (!window.confirm(t(revive ? 'swarm.reviveConfirm' : 'swarm.replaceConfirm').replace('{id}', deviceId))) return
     navigate(`/swarm/add?replace=${encodeURIComponent(deviceId)}`)
   }
@@ -350,7 +354,7 @@ export function SwarmPage() {
               <div className="min-w-0">
                 <DeviceName device={d} editable={isAdmin && d.status !== 'disabled'} />
                 <p className="truncate text-xs text-neutral-500">
-                  {d.deviceId} · {d.type} · {d.fw ?? '—'} · {formatAgo(d.lastSeenAt)}
+                  {d.deviceId} · {d.type} · {d.driver === 'tasmota' ? 'Tasmota' : (d.fw ?? '—')} · {formatAgo(d.lastSeenAt)}
                 </p>
                 {canControl && d.type === 'meteo' && d.status !== 'disabled' && (
                   <label className="mt-1 flex items-center gap-2 text-xs text-neutral-400" title={t('swarm.sleepHint')}>
@@ -391,11 +395,11 @@ export function SwarmPage() {
                     {statusLabel(d.status)}
                   </Badge>
                 )}
-                {isAdmin && d.status !== 'disabled' && (
+                {isAdmin && d.status !== 'disabled' && d.driver !== 'tasmota' && (
                   <Button variant="ghost" size="icon" title={newerBuild(d) ? t('swarm.updateAvailable') : t('swarm.update')}
                     className={newerBuild(d) ? 'text-amber-400' : undefined} onClick={() => setFwOpen(fwOpen === d.deviceId ? null : d.deviceId)}><Cpu /></Button>
                 )}
-                {d.status !== 'disabled' && (
+                {d.status !== 'disabled' && d.driver !== 'tasmota' && (
                   <Button variant="ghost" size="icon" title={t('swarm.pins')} onClick={() => setPinsOpen(pinsOpen === d.deviceId ? null : d.deviceId)}><Pin /></Button>
                 )}
                 {isAdmin && d.status === 'disabled' && (

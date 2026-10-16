@@ -33,6 +33,17 @@ public static class ProvisioningEndpoints
             })
             .RequireAuthorization(HiveRoles.AdminOnly);
 
+        provision.MapPost("/tasmota", async Task<Results<Ok<TasmotaSetup>, ValidationProblem>> (
+                CreateTasmotaRequest request, HttpContext http, ClaimsPrincipal user, ProvisioningService service, CancellationToken ct) =>
+            {
+                var requestBase = new Uri($"{http.Request.Scheme}://{http.Request.Host}");
+                var (setup, error) = await service.CreateTasmotaAsync(request, $"user:{user.Identity?.Name}", requestBase, ct);
+                return setup is not null
+                    ? TypedResults.Ok(setup)
+                    : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["request"] = [error!] });
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
         provision.MapPost("/batches", async Task<Results<Ok<BatchDto>, ValidationProblem>> (
                 CreateBatchRequest request, ClaimsPrincipal user, ProvisioningService service, CancellationToken ct) =>
             {

@@ -39,7 +39,7 @@ public enum SendStatus
 }
 
 /// <summary>Sends commands over MQTT (spec 4.4 cmd, 6.3 CommandDispatcher): stored first, ack updates it later.</summary>
-public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TimeProvider time)
+public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TasmotaPending tasmota, TimeProvider time)
 {
     public const int DefaultTtlS = 60;
 
@@ -48,8 +48,14 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TimeProvi
     {
         if (!Topics.IsValidSegment(name))
             return (SendStatus.BadRequest, null);
-        if (!await db.Devices.AnyAsync(d => d.DeviceId == deviceId && d.Status != DeviceStatus.Disabled, ct))
+        var driver = await db.Devices.Where(d => d.DeviceId == deviceId && d.Status != DeviceStatus.Disabled)
+            .Select(d => d.Driver).FirstOrDefaultAsync(ct);
+        if (driver is null)
             return (SendStatus.UnknownDevice, null);
+        // A Tasmota device speaks its own commands: only the ones that map to them (relay, reboot) are accepted.
+        var plan = driver == Drivers.Tasmota ? TasmotaCommands.Plan(name, payload) : null;
+        if (driver == Drivers.Tasmota && plan is null)
+            return (SendStatus.BadRequest, null);
         if (!mqtt.IsConnected)
             return (SendStatus.BrokerDown, null);
 
@@ -81,7 +87,14 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TimeProvi
         };
         db.Commands.Add(command);
         await db.SaveChangesAsync(ct);
-        await mqtt.PublishAsync(Topics.Cmd(deviceId, name), message.ToJsonString(), retain: false, ct);
+        if (plan is null)
+        {
+            await mqtt.PublishAsync(Topics.Cmd(deviceId, name), message.ToJsonString(), retain: false, ct);
+            return (SendStatus.Sent, command);
+        }
+        tasmota.Expect(deviceId, plan.Confirms, cid);
+        foreach (var call in plan.Calls)
+            await mqtt.PublishAsync(TasmotaTopics.Cmnd(deviceId, call.Command), call.Payload, retain: false, ct);
         return (SendStatus.Sent, command);
     }
 

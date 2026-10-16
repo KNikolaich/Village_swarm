@@ -8,14 +8,16 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Hive.Infrastructure.Mqtt;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Hive.Modules.Devices;
 
 public sealed record DeviceDto(
     string DeviceId, string Name, string Type, string Status, int? ZoneId, string? Zone,
     string? Hw, string? Fw, string? Mac, string? Ip, int? Rssi, int? Boot, DateTimeOffset? LastSeenAt,
-    JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev, int? SleepS, string SleepMode);
+    JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev, int? SleepS, string SleepMode, string Driver);
 
 /// <summary>Device registry reads (spec 6.5). Editing, commands and provisioning come in later steps.</summary>
 /// <summary>Pins of a hornet: what each function uses, from the board default or the config, and conflicts. VbatRatio is the battery divider ratio set in the config (null: 1.0).</summary>
@@ -43,7 +45,7 @@ public sealed class DeviceQueries(HiveDbContext db)
     private static DeviceDto ToDto(Device d) => new(
         d.DeviceId, d.Name, d.TypeCode, d.Status.ToString().ToLowerInvariant(), d.ZoneId, d.Zone?.Name,
         d.Hw, d.FwVersion, d.Mac, d.Ip, d.Rssi, d.Boot, d.LastSeenAt,
-        d.Info?.RootElement.Clone(), d.State?.RootElement.Clone(), d.ConfigRev, d.ConfigAppliedRev, DeviceConfigService.SleepS(d), DeviceConfigService.SleepMode(d));
+        d.Info?.RootElement.Clone(), d.State?.RootElement.Clone(), d.ConfigRev, d.ConfigAppliedRev, DeviceConfigService.SleepS(d), DeviceConfigService.SleepMode(d), d.Driver);
 }
 
 public static class DevicesModule
@@ -54,6 +56,7 @@ public static class DevicesModule
     {
         services.Configure<ProvisioningOptions>(configuration.GetSection(ProvisioningOptions.Section));
         services.AddScoped<DeviceQueries>();
+        services.TryAddSingleton<TasmotaPending>();
         services.AddScoped<CommandService>();
         services.AddScoped<ArmService>();
         services.AddScoped<ZoneService>();

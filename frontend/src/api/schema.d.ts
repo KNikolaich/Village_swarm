@@ -1533,6 +1533,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/provision/tasmota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateTasmotaRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TasmotaSetup"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/provision/batches": {
         parameters: {
             query?: never;
@@ -2961,6 +3009,15 @@ export interface components {
             /** Format: int32 */
             zoneId?: null | number;
         };
+        CreateTasmotaRequest: {
+            deviceId: string;
+            type: string;
+            name: string;
+            /** Format: int32 */
+            zoneId?: null | number;
+            /** Format: int32 */
+            maxOnMinutes?: null | number;
+        };
         DeviceDto: {
             deviceId: string;
             name: string;
@@ -2988,6 +3045,7 @@ export interface components {
             /** Format: int32 */
             sleepS: null | number;
             sleepMode: string;
+            driver: string;
         };
         DeviceLogDto: {
             /** Format: int64 */
@@ -3389,6 +3447,11 @@ export interface components {
         SleepMode: "deep" | "light" | null;
         StartOtaRequest: {
             build: string;
+        };
+        TasmotaSetup: {
+            deviceId: string;
+            mqtt: components["schemas"]["EnrollMqtt"];
+            lines: string[];
         };
         TelegramLinkDto: {
             /** Format: int32 */
