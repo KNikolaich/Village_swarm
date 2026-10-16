@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # Caddy with the built frontend inside (spec 13.2: the UI does not depend on the api image).
 #   docker buildx build --platform linux/arm64 -f deploy/docker/web.Dockerfile -t village-swarm-web .
 

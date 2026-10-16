@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # Hive api (spec 13.3). Build from the repo root:
 #   docker buildx build --platform linux/arm64 -f deploy/docker/api.Dockerfile -t village-swarm-api .
 # The SDK stage runs natively and cross-publishes for the target, so no emulation is needed for dotnet.
