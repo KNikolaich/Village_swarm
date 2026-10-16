@@ -790,7 +790,19 @@
       "help": "The list of board commands",
       "awake": "Do not sleep until reboot (for battery boards, to have time to set them up)",
       "reboot": "Restart the board",
-      "factory": "Erase all settings of the board"
-    }
+      "factory": "Erase all settings of the board",
+      "enroll": "join the hive with a one-time code (Wi-Fi must be set); easier with the Enroll button above"
+    },
+    "join": "Enroll the board in the hive",
+    "joinHint": "For a new or replaced board whose id and hive address are empty. Choose the hornet it replaces (the code is issued for you); the hive address comes from Settings. The board gets the Wi-Fi from Settings and the enroll command: it fetches its id, broker address, MQTT login and photo token from the hive itself. The hornet record is kept, so history stays.",
+    "joinPick": "The hornet this board replaces",
+    "joinUrl": "Hive address (from Settings if empty)",
+    "joinCode": "Code (if you already have one)",
+    "joinGo": "Issue a code and enroll",
+    "joinNoUrl": "The hive address is not set: type it or set it in Settings",
+    "joinNeedChoice": "Choose a hornet or type a code",
+    "joinNoCode": "Could not issue a code",
+    "joinConfirm": "Write the Wi-Fi '{ssid}' to the board and join the hive {url}? The board will replace the chosen hornet.",
+    "joinSent": "Commands sent, see the board's answer above: 'enrolled ...'"
   }
 }

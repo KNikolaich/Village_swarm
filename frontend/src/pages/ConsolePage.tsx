@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
+import { useDevices } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui/primitives'
 import { t } from '@/i18n'
@@ -33,6 +34,9 @@ export function ConsolePage() {
   const [connected, setConnected] = useState(false)
   const [input, setInput] = useState('')
   const [custom, setCustom] = useState({ ssid: '', pass: '', id: '' })
+  const devices = useDevices()
+  const [join, setJoin] = useState({ deviceId: '', url: '', code: '' })
+  const [joining, setJoining] = useState(false)
   const port = useRef<HornetSerial | null>(null)
   const nextId = useRef(1)
   const log = useRef<HTMLDivElement>(null)
@@ -115,6 +119,47 @@ export function ConsolePage() {
     }
     await run('show')
     toast.success(t('console.rescueDone'))
+  }
+
+  /**
+   * Enrolls the board in the hive: Wi-Fi from Settings, a one-time code (issued here for the chosen hornet unless one is
+   * typed), then `enroll <hive address> <code>`: the board fetches its id, broker address, MQTT login and photo token itself.
+   */
+  async function joinHive() {
+    setJoining(true)
+    try {
+      const secrets = await call(api.GET('/api/settings/wifi/reveal')).catch(() => null)
+      if (!secrets?.ssid) {
+        toast.error(t('console.noHiveWifi'))
+        return
+      }
+      const url = (join.url || secrets.hiveUrl || '').trim()
+      if (!url) {
+        toast.error(t('console.joinNoUrl'))
+        return
+      }
+      let code = join.code.trim()
+      if (!code) {
+        if (!join.deviceId) {
+          toast.error(t('console.joinNeedChoice'))
+          return
+        }
+        const issued = await call(api.POST('/api/devices/{deviceId}/replace', { params: { path: { deviceId: join.deviceId } } })).catch(() => null)
+        if (!issued) {
+          toast.error(t('console.joinNoCode'))
+          return
+        }
+        code = issued.code
+      }
+      if (!window.confirm(t('console.joinConfirm').replace('{url}', url).replace('{ssid}', secrets.ssid))) return
+      await run(`set ssid ${secrets.ssid}`)
+      await run(`set pass ${secrets.password}`)
+      await run(`enroll ${url} ${code}`)
+      setJoin({ ...join, code: '' })
+      toast.success(t('console.joinSent'))
+    } finally {
+      setJoining(false)
+    }
   }
 
   function submit() {
@@ -207,6 +252,26 @@ export function ConsolePage() {
       </Card>
 
       <Card>
+        <CardHeader><CardTitle>{t('console.join')}</CardTitle></CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-neutral-400">{t('console.joinHint')}</p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <select
+              className="h-9 rounded-md border border-neutral-700 bg-neutral-900 px-2 text-sm"
+              value={join.deviceId}
+              onChange={(e) => setJoin({ ...join, deviceId: e.target.value })}
+            >
+              <option value="">{t('console.joinPick')}</option>
+              {(devices.data ?? []).filter((d) => d.type !== 'hive').map((d) => <option key={d.deviceId} value={d.deviceId}>{d.name} ({d.deviceId})</option>)}
+            </select>
+            <Input placeholder={t('console.joinUrl')} value={join.url} onChange={(e) => setJoin({ ...join, url: e.target.value })} />
+            <Input placeholder={t('console.joinCode')} className="font-mono" value={join.code} onChange={(e) => setJoin({ ...join, code: e.target.value })} />
+          </div>
+          <Button disabled={!connected || joining || (!join.deviceId && !join.code.trim())} onClick={() => void joinHive()}>{t('console.joinGo')}</Button>
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader><CardTitle>{t('console.manual')}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-2 sm:grid-cols-3">
@@ -235,6 +300,10 @@ export function ConsolePage() {
                 <Button size="sm" variant="outline" disabled={!connected} onClick={() => { if (!c.confirm || window.confirm(c.confirm)) void run(c.cmd) }}>{t('console.run')}</Button>
               </li>
             ))}
+            <li className="py-2">
+              <p className="font-mono text-sm">enroll ADDRESS CODE</p>
+              <p className="text-xs text-neutral-500">{t('console.cmd.enroll')}</p>
+            </li>
             <li className="py-2 text-xs text-neutral-500">{t('console.setKeys')}</li>
           </ul>
         </CardContent>
