@@ -330,12 +330,14 @@ function OneHornet() {
 
 function FlashStep({ type, build }: { type: string; build?: Build }) {
   const [ready, setReady] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const available = build !== undefined
   useEffect(() => {
     if (!available || !serialSupported()) return
     translateEspWebTools()
-    // ESP Web Tools (a web component, ~100 KB) is only loaded for this step.
-    void import('esp-web-tools/dist/web/install-button.js').then(() => setReady(true))
+    // ESP Web Tools (a web component, ~100 KB) is only loaded for this step. A page that was opened before the hive
+    // was updated asks for a file that is gone: say so instead of leaving the button out silently.
+    import('esp-web-tools/dist/web/install-button.js').then(() => setReady(true), (e: unknown) => setLoadError(String(e)))
   }, [available])
 
   return (
@@ -346,6 +348,13 @@ function FlashStep({ type, build }: { type: string; build?: Build }) {
         <p className="text-neutral-400">{t('add.flashHint')}</p>
         {!serialSupported() && <p className="text-amber-300">{t('add.noSerial')}</p>}
         {!available && <p className="text-amber-300">{t('add.noFirmware').replace('{type}', type)}</p>}
+        {loadError && (
+          <p className="space-y-1 text-amber-300">
+            <span className="block">{t('add.flashLoadFailed')}</span>
+            <span className="block break-all text-xs text-neutral-500">{loadError}</span>
+            <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>{t('add.reloadPage')}</Button>
+          </p>
+        )}
         {build && (
           <div className="flex flex-wrap items-center gap-4">
             {ready &&

@@ -646,7 +646,9 @@
     "boardLine": "Board: {board}",
     "replaceBanner": "Replacing the board of '{id}': the code is issued, just flash the new board and enter the code. No new hornet is created.",
     "replaceFailed": "Could not prepare the replacement. Go back to the swarm and try again.",
-    "modeTasmota": "Tasmota relay"
+    "modeTasmota": "Tasmota relay",
+    "flashLoadFailed": "The Flash button did not load. Usually the page was opened before the hive was updated: reload it. You can still download the firmware file below.",
+    "reloadPage": "Reload the page"
   },
   "time": {
     "justNow": "just now",
