@@ -9,7 +9,7 @@ import { Badge, Card, CardContent, CardHeader, CardTitle, Input } from '@/compon
 import { t } from '@/i18n'
 import { HornetSerial, serialSupported } from '@/lib/serial'
 
-type Line = { id: number; kind: 'in' | 'out' | 'info'; text: string }
+type Line = { id: number; kind: 'in' | 'out' | 'info'; text: string; count: number }
 
 const MAX_LINES = 1000
 
@@ -45,7 +45,13 @@ export function ConsolePage() {
   const historyAt = useRef(-1)
 
   function push(kind: Line['kind'], text: string) {
-    setLines((old) => [...old.slice(-(MAX_LINES - 1)), { id: nextId.current++, kind, text }])
+    setLines((old) => {
+      // ESP-IDF log lines carry a changing time, "E (3239) cam_hal: ..."; the same message again is one line with a counter.
+      const same = (a: string) => a.replace(/^([EWIDV]) \(\d+\) /, '$1 ') === text.replace(/^([EWIDV]) \(\d+\) /, '$1 ')
+      const last = old[old.length - 1]
+      if (last && last.kind === kind && same(last.text)) return [...old.slice(0, -1), { ...last, text, count: last.count + 1 }]
+      return [...old.slice(-(MAX_LINES - 1)), { id: nextId.current++, kind, text, count: 1 }]
+    })
   }
 
   useEffect(() => {
@@ -219,7 +225,7 @@ export function ConsolePage() {
           <div ref={log} className="h-72 overflow-y-auto rounded-lg bg-black/60 p-3 font-mono text-xs leading-relaxed">
             {lines.length === 0 && <p className="text-neutral-600">{t('console.empty')}</p>}
             {lines.map((l) => (
-              <div key={l.id} className={l.kind === 'out' ? 'text-amber-300' : l.kind === 'info' ? 'text-sky-300' : 'text-neutral-300'}>{l.text}</div>
+              <div key={l.id} className={l.kind === 'out' ? 'text-amber-300' : l.kind === 'info' ? 'text-sky-300' : 'text-neutral-300'}>{l.text}{l.count > 1 && <span className="ml-2 rounded bg-neutral-800 px-1 text-neutral-400">×{l.count}</span>}</div>
             ))}
           </div>
           <form onSubmit={(e) => { e.preventDefault(); submit() }} className="flex gap-2">

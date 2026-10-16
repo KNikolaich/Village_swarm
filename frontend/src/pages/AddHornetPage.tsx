@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, CheckCircle2, Copy, Cpu, Download, Usb } from 'lucide-react'
 import { createElement, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router'
+import { Link, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { PasswordInput } from '@/components/PasswordInput'
@@ -227,7 +227,30 @@ function OneHornet() {
   const [error, setError] = useState<string | null>(null)
   const { builds, loading } = useBuilds()
   const [build, setBuild] = useState('')
-  const selectedBuild = pickBuild(builds, type, build)
+  const selectedBuild = pickBuild(builds, type, build.startsWith('board:') ? (builds.find((b) => b.role === type && b.board === build.slice(6))?.build ?? '') : build)
+
+  // "Replace the board" from the swarm: the hornet is known, so the code is issued here and step 1 is already done.
+  const replaceId = useSearchParams()[0].get('replace')
+  const replacing = useRef(false)
+  const [replaceFailed, setReplaceFailed] = useState(false)
+  useEffect(() => {
+    if (!replaceId || replacing.current) return
+    replacing.current = true
+    void (async () => {
+      try {
+        const device = await call(api.GET('/api/devices/{deviceId}', { params: { path: { deviceId: replaceId } } }))
+        const issued = await call(api.POST('/api/devices/{deviceId}/replace', { params: { path: { deviceId: replaceId } } }))
+        setType(device.type)
+        setDeviceId(device.deviceId)
+        setName(device.name)
+        if (device.hw) setBuild(`board:${device.hw}`)
+        setCode({ code: issued.code, expiresAt: issued.expiresAt, replaces: true, key: `${device.deviceId}\n${device.type}\n${device.name.trim()}` })
+        setEditing(false)
+      } catch {
+        setReplaceFailed(true)
+      }
+    })()
+  }, [replaceId])
 
   // What the code was issued for: the board can change freely, the id, type and name need a new code.
   const key = `${deviceId}\n${type}\n${name.trim()}`
@@ -254,6 +277,8 @@ function OneHornet() {
 
   return (
     <div className="space-y-4">
+      {replaceId && !replaceFailed && <p className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-2 text-sm text-amber-300">{t('add.replaceBanner').replace('{id}', replaceId)}</p>}
+      {replaceFailed && <p className="text-sm text-red-400">{t('add.replaceFailed')}</p>}
       <Card>
         <CardHeader><CardTitle>1. {t('add.step1')}</CardTitle>{code && !editing && <Badge tone="ok">{code.code}</Badge>}</CardHeader>
         <CardContent>

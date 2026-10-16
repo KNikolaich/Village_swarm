@@ -590,7 +590,7 @@
     "fwNone": "The hive has no {env} firmware. Build it (pio run in firmware) and deploy the hive: firmware reaches the hive with it.",
     "fwNoNewer": "Nothing newer on the hive. To get a fresh one: build the firmware (pio run in firmware) and deploy the hive.",
     "fwOffline": "The hornet is offline: it can be updated once it is back.",
-    "replaceConfirm": "Replace the board of \"{id}\"? The hive gives a code: flash a new board and enter it in the wizard. The hornet moves to the new board with its name, history and settings, and the old board loses access. Updating the firmware is the other button, the chip.",
+    "replaceConfirm": "Replace the board of '{id}'? The wizard opens: type and name are known and the code is issued. Flash the new board and enter the code. The hornet moves to the new board with the same name, history and settings; the old board loses access. Updating firmware is another button, the chip one.",
     "updateUnsigned": "The image is not signed (built without the signing key): a hornet that only takes signed firmware will refuse it. See docs/ota.md.",
     "console": "USB console"
   },
@@ -635,7 +635,9 @@
     "boardsForTypes": "Which boards fit which hornets",
     "back": "Back to step 1",
     "next": "Next",
-    "boardLine": "Board: {board}"
+    "boardLine": "Board: {board}",
+    "replaceBanner": "Replacing the board of '{id}': the code is issued, just flash the new board and enter the code. No new hornet is created.",
+    "replaceFailed": "Could not prepare the replacement. Go back to the swarm and try again."
   },
   "time": {
     "justNow": "just now",

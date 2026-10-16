@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRightLeft, Check, CircleHelp, Cpu, Moon, Pencil, Pin, Plus, Terminal, Trash2, Wifi, WifiOff, X } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto, type Schemas } from '@/api/client'
 import { keys, useDevices, useMe } from '@/api/queries'
@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { statusLabel, t } from '@/i18n'
 import { formatAgo } from '@/lib/format'
-import { CodeBox } from '@/pages/AddHornetPage'
 
 /** "Problems first": offline, then weak signal, then the rest (spec 8.2 screen 5). */
 function badness(d: DeviceDto): number {
@@ -278,16 +277,16 @@ export function SwarmPage() {
   const [pinsOpen, setPinsOpen] = useState<string | null>(null)
   const [fwOpen, setFwOpen] = useState<string | null>(null)
   const firmware = useQuery({ queryKey: ['firmware'], queryFn: () => call(api.GET('/api/firmware')), enabled: isAdmin })
-  const [replaceCode, setReplaceCode] = useState<{ deviceId: string; code: string; expiresAt: string } | null>(null)
+  const navigate = useNavigate()
   const list = useMemo(
     () => [...(devices.data ?? [])].sort((a, b) => badness(a) - badness(b) || a.deviceId.localeCompare(b.deviceId)),
     [devices.data],
   )
 
-  async function replace(deviceId: string) {
+  /** The wizard opens on the flashing step: the hornet's type and name are known, and the code is issued there. */
+  function replace(deviceId: string) {
     if (!window.confirm(t('swarm.replaceConfirm').replace('{id}', deviceId))) return
-    const code = await call(api.POST('/api/devices/{deviceId}/replace', { params: { path: { deviceId } } }))
-    setReplaceCode({ deviceId, code: code.code, expiresAt: code.expiresAt })
+    navigate(`/swarm/add?replace=${encodeURIComponent(deviceId)}`)
   }
 
   /** A build for this hornet's role and board that is not the version it runs now (null: nothing to offer). */
@@ -323,15 +322,6 @@ export function SwarmPage() {
           </div>
         )}
       </div>
-
-      {replaceCode && (
-        <Card className="border-amber-900/60">
-          <CardContent className="space-y-2">
-            <p className="text-sm">{t('swarm.replaceHint').replace('{id}', replaceCode.deviceId)}</p>
-            <CodeBox code={replaceCode.code} expiresAt={replaceCode.expiresAt} />
-          </CardContent>
-        </Card>
-      )}
 
       {devices.isLoading && <Skeleton className="h-40" />}
       {!devices.isLoading && list.length === 0 && <Empty>{t('overview.noDevices')}</Empty>}
@@ -392,7 +382,7 @@ export function SwarmPage() {
                 )}
                 {isAdmin && d.status !== 'disabled' && (
                   <>
-                    <Button variant="ghost" size="icon" title={t('swarm.replaceTitle')} onClick={() => void replace(d.deviceId)}><ArrowRightLeft /></Button>
+                    <Button variant="ghost" size="icon" title={t('swarm.replaceTitle')} onClick={() => replace(d.deviceId)}><ArrowRightLeft /></Button>
                     <Button variant="ghost" size="icon" title={t('swarm.remove')} onClick={() => void remove(d)}><Trash2 /></Button>
                   </>
                 )}
