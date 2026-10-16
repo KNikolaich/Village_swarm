@@ -73,6 +73,7 @@ in LittleFS through the same Preferences API as NVS on ESP32.
 | PIR OUT (HC-SR501 / AM312) | GPIO13 |
 | PIR VCC / GND | 5V / GND (AM312: 3V3) |
 | microSD | on-board slot, used in 1-bit mode (frees GPIO4/12/13) |
+| Light output (`cmd/relay`) | GPIO4 = on-board white flash LED; a relay module for a floodlight can go here too. Set `hw.relay_pin` / `hw.relay_active_low` to move it (GPIO12, GPIO33, GPIO1/3); camera, SD, PSRAM and PIR pins are refused |
 
 Power the board from a stable 5 V, 1 A or more: the camera and Wi-Fi together cause brownout resets
 on weak USB ports.
@@ -106,8 +107,11 @@ Other console commands: `factory` (wipe settings), `set mqttuser|mqttpass|token|
   takes `burst` frames (3, 700 ms apart) and uploads them to `/api/ingest/photo` in a background task.
 - Upload fails: the photo goes to `/outbox` on the SD card and is retried every 30 s.
 - Broker gone: events wait in a RAM buffer (50) and are sent with their original ids on reconnect.
-- Commands: `arm {armed}`, `snapshot {count}`, `reboot`, `config_reload`; expired (`ttl_s`) and repeated
+- Commands: `arm {armed}`, `snapshot {count}`, `relay {channel, set, for_s}`, `reboot`, `config_reload`; expired (`ttl_s`) and repeated
   (`cid`) commands are handled per the contract.
-- Retained `config` (guard, camera, upload sections) is applied, saved to NVS and confirmed with
+- Light output: off at every boot, works like the relay role (channel `relay` unless `relay.channel` says
+  otherwise, `for_s` and `relay.max_on_s` limits, retained `state`). The flash LED gets hot if left on for long:
+  set `relay.max_on_s` when nothing else switches it off.
+- Retained `config` (guard, camera, upload, hw, relay sections) is applied, saved to NVS and confirmed with
   `event/config_applied`.
 - Watchdog: the board restarts if the main loop hangs for 30 s; the reason shows in the next `health`.

@@ -1,14 +1,18 @@
 // Role guard-cam (spec 5.4) on ESP32-CAM AI-Thinker:
 //   PIR rising edge -> cooldown -> burst of N frames into PSRAM -> event/motion with photo ids
 //   -> each frame POSTed to {upload}/api/ingest/photo; on failure kept on SD /outbox and retried.
+//   cmd/relay {channel, set: on|off, for_s} switches one output (white flash LED, or a relay for a floodlight)
+//   on hw.relay_pin (default GPIO4), like the relay role: off at every boot, retained state/{channel}.
 // Uploads run in their own task so the main loop (MQTT, watchdog) never waits on HTTP.
 //
 // Pins: PIR on GPIO13 (spec). The SD card runs in 1-bit mode so GPIO4/12/13 stay free
-// (GPIO4 is also the white flash LED, which 1-bit mode leaves alone).
+// (GPIO4 is also the white flash LED, which 1-bit mode leaves alone). The output pin may be any free one;
+// camera, SD, PSRAM and PIR pins are refused, the output stays on the old pin then.
 
 #include <HTTPClient.h>
 #include <HornetCore.h>
 #include <Outbox.h>
+#include <RelayTimer.h>
 #include <SD_MMC.h>
 #include <WiFi.h>
 #include <esp_camera.h>
@@ -20,6 +24,17 @@ using namespace hornet;
 constexpr int kPirPin = 13;
 constexpr const char* kOutboxDir = "/outbox";
 constexpr uint32_t kSdRetryMs = 30000;
+
+// Pins the output must never take: camera, SD (1-bit), PSRAM, PIR, and the input-only 34..39.
+bool outputPinAllowed(int pin) {
+    switch (pin) {
+        case 0: case 2: case 5: case 13: case 14: case 15: case 16: case 17: case 18: case 19:
+        case 21: case 22: case 23: case 25: case 26: case 27: case 32:
+            return false;
+        default:
+            return pin >= 0 && pin < 34;
+    }
+}
 
 // AI-Thinker camera pins.
 camera_config_t cameraConfig() {
@@ -80,16 +95,18 @@ class GuardCam : public Role {
 public:
     const char* type() const override { return "guard-cam"; }
     const char* hw() const override { return HORNET_BOARD; }
-    std::vector<const char*> caps() const override { return {"camera", "motion.pir", "sd"}; }
+    std::vector<const char*> caps() const override { return {"camera", "motion.pir", "sd", "relay"}; }
 
     void setup(Core& core) override {
         core_ = &core;
         pinMode(kPirPin, INPUT_PULLDOWN);
+        configureOutput(core, HW_RELAY_PIN, HW_RELAY_ACTIVE_LOW != 0);
 
         cameraOk_ = esp_camera_init(&cameraConfigured()) == ESP_OK;
         if (!cameraOk_) Serial.println("[guard-cam] camera init failed");
         sdOk_ = SD_MMC.begin("/sdcard", true) && (SD_MMC.exists(kOutboxDir) || SD_MMC.mkdir(kOutboxDir));
         if (!sdOk_) Serial.println("[guard-cam] no SD card: photos that fail to upload are lost");
+        setOutput(false);  // again after the SD driver set its pins up: the output starts off whatever the pin
 
         queue_ = xQueueCreate(12, sizeof(Photo));
         xTaskCreatePinnedToCore(uploadTask, "upload", 8192, this, 1, nullptr, 0);
@@ -106,9 +123,17 @@ public:
             startBurst("snapshot", constrain(p["count"] | 1, 1, 10));
             return AckResult::ok();
         });
+        core.onCommand("relay", [this](JsonObjectConst p) { return relayCommand(p); });
     }
 
-    void applyConfig(Core&, JsonObjectConst config) override {
+    void applyConfig(Core& core, JsonObjectConst config) override {
+        JsonObjectConst hw = config["hw"];
+        configureOutput(core, hw["relay_pin"] | HW_RELAY_PIN, hw["relay_active_low"] | (HW_RELAY_ACTIVE_LOW != 0));
+        JsonObjectConst relay = config["relay"];
+        const char* ch = relay["channel"] | "relay";
+        if (topics::isValidSegment(ch)) channel_ = ch;
+        maxOnS_ = relay["max_on_s"] | 0U;
+        publishOutput(core);
         JsonObjectConst guard = config["guard"];
         if (!guard.isNull()) {
             if (guard["armed"].is<bool>()) armed_ = guard["armed"];
@@ -133,6 +158,12 @@ public:
         if (motion && !lastPir_ && cooldown_.tryFire(millis(), cooldownMs_)) onMotion(core);
         lastPir_ = motion;
         captureStep(core);
+        if (outputOn_ && outputTimer_.expired(millis())) {
+            setOutput(false);
+            publishOutput(core);
+            core.log(LogLevel::Info, "relay off: time limit");
+        }
+        if (!outputPublished_ && core.online()) publishOutput(core);
     }
 
     void fillHealth(JsonObject health) override {
@@ -140,6 +171,49 @@ public:
     }
 
 private:
+    // A new pin takes over the current on/off state; the old one is switched off and released.
+    void configureOutput(Core& core, int pin, bool activeLow) {
+        if (pin == outputPin_ && activeLow == activeLow_) return;
+        if (!outputPinAllowed(pin)) {
+            core.log(LogLevel::Warn, "relay_pin " + String(pin) + " is used by the camera, SD or PIR; kept GPIO" + String(outputPin_));
+            return;
+        }
+        if (outputPin_ >= 0 && pin != outputPin_) {
+            digitalWrite(outputPin_, activeLow_ ? HIGH : LOW);
+            pinMode(outputPin_, INPUT);
+        }
+        outputPin_ = pin;
+        activeLow_ = activeLow;
+        pinMode(outputPin_, OUTPUT);
+        setOutput(outputOn_);
+    }
+
+    void setOutput(bool on) {
+        outputOn_ = on;
+        if (!on) outputTimer_.stop();
+        if (outputPin_ >= 0) digitalWrite(outputPin_, on != activeLow_ ? HIGH : LOW);
+    }
+
+    AckResult relayCommand(JsonObjectConst p) {
+        const char* ch = p["channel"] | "";
+        if (channel_ != ch) return AckResult::error("unknown channel " + String(ch));
+        const String set = p["set"] | "";
+        if (set != "on" && set != "off") return AckResult::error("set must be on or off");
+        setOutput(set == "on");
+        if (outputOn_) outputTimer_.start(millis(), p["for_s"] | 0U, maxOnS_);
+        publishOutput(*core_);
+        AckResult r;
+        r.state[channel_] = outputOn_ ? "on" : "off";
+        return r;
+    }
+
+    void publishOutput(Core& core) {
+        JsonDocument state;
+        state[channel_] = outputOn_ ? "on" : "off";
+        core.publishState(state);
+        outputPublished_ = core.online();
+    }
+
     camera_config_t& cameraConfigured() {
         static camera_config_t c = cameraConfig();
         if (!psramFound()) {
@@ -319,6 +393,13 @@ private:
     int burstIndex_ = 0;
     unsigned long nextFrameMs_ = 0;
     volatile int sdPending_ = 0;
+    String channel_ = "relay";
+    int outputPin_ = -1;
+    bool activeLow_ = false;
+    bool outputOn_ = false;
+    bool outputPublished_ = false;
+    uint32_t maxOnS_ = 0;
+    RelayTimer outputTimer_;
 };
 
 GuardCam role;

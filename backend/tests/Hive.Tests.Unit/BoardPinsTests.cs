@@ -23,6 +23,32 @@ public class BoardPinsTests
         Assert.Contains(rows, r => r.Function == "vbat" && r.Pin == 17);
     }
 
+    [Fact]
+    public void Camera_relay_defaults_to_the_flash_led_pin()
+    {
+        var rows = BoardPins.Rows("esp32cam-aithinker", "guard-cam", null);
+        Assert.Contains(rows, r => r.Function == "relay" && r.Pin == 4 && r.Source == "default");
+        Assert.Empty(BoardPins.Conflicts("guard-cam", rows, "esp32cam-aithinker"));
+    }
+
+    [Fact]
+    public void Camera_relay_follows_the_config_pin()
+    {
+        var rows = BoardPins.Rows("esp32cam-aithinker", "guard-cam", Hw("""{ "relay_pin": 12 }"""));
+        Assert.Contains(rows, r => r.Function == "relay" && r.Pin == 12 && r.Source == "config");
+        Assert.Empty(BoardPins.Conflicts("guard-cam", rows, "esp32cam-aithinker"));
+    }
+
+    [Theory]
+    [InlineData(13)] // PIR
+    [InlineData(2)]  // SD data
+    [InlineData(26)] // camera SCCB
+    public void Camera_relay_on_a_board_pin_is_a_conflict(int pin)
+    {
+        var rows = BoardPins.Rows("esp32cam-aithinker", "guard-cam", Hw($$"""{ "relay_pin": {{pin}} }"""));
+        Assert.Contains(BoardPins.Conflicts("guard-cam", rows, "esp32cam-aithinker"), c => c.StartsWith($"GPIO{pin}: relay"));
+    }
+
     [Theory]
     [InlineData(5.7, true)]
     [InlineData(1.0, true)]

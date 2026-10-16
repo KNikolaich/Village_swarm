@@ -571,6 +571,7 @@
       "sclEsp8266": "NodeMCU and D1 mini default: D1 = GPIO5.",
       "relay": "Output to the relay module. GPIO number.",
       "relayEsp8266": "NodeMCU and D1 mini default: D6 = GPIO12. Numbering: D1=5, D2=4, D5=14, D6=12, D7=13.",
+      "relayEsp32cam": "ESP32-CAM default: GPIO4, the white flash LED; a floodlight relay can share it. GPIO12 (the board will not boot if it is high at power-up) and GPIO33 (red LED) are free too.",
       "button": "Local button that toggles the relay, shorts the pin to ground. GPIO number.",
       "buttonEsp8266": "NodeMCU default: D3 = GPIO0, the FLASH button on the board.",
       "vbat": "Battery or supply voltage through a divider. Works in the meteo and relay roles and arrives as the Battery voltage metric (V), usable in rules. Empty turns it off. Set the divider ratio too.",

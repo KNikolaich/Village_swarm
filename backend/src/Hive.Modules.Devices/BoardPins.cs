@@ -12,7 +12,7 @@ public static class BoardPins
 
     private static readonly Dictionary<string, Defaults> Boards = new()
     {
-        ["esp32cam-aithinker"] = new(null, null, null, null, null, null, false, "PIR on GPIO13 (guard-cam, fixed); microSD in 1-bit mode"),
+        ["esp32cam-aithinker"] = new(null, null, null, 4, null, null, false, "PIR on GPIO13 (guard-cam, fixed); microSD in 1-bit mode; GPIO4 is the white flash LED"),
         ["esp32c3-mini"] = new(3, 8, 9, 10, null, null, false, "SuperMini: 1-Wire GPIO3, I2C GPIO8/GPIO9, relay GPIO10"),
         ["esp32c3-oled-042"] = new(3, 5, 6, null, null, null, false, "0,42\" OLED on the same I2C bus (GPIO5/GPIO6)"),
         ["wemos-d1-mini"] = new(14, 4, 5, 12, 0, null, false, "D5/D2/D1 for 1-Wire/I2C, D6 relay, D3 button"),
@@ -26,6 +26,13 @@ public static class BoardPins
     {
         ["meteo"] = ["onewire", "sda", "scl", "vbat", "dht"],
         ["relay"] = ["relay", "button", "vbat"],
+        ["guard-cam"] = ["relay"],
+    };
+
+    /// <summary>Pins a board keeps for itself; the firmware refuses them for any function (guard_cam.cpp outputPinAllowed).</summary>
+    private static readonly Dictionary<string, (int[] Pins, string Owner)> Reserved = new()
+    {
+        ["esp32cam-aithinker"] = ([0, 2, 5, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 34, 35, 36, 37, 38, 39], "camera, SD, PSRAM or PIR"),
     };
 
     public static bool KnownBoard(string board) => Boards.ContainsKey(board);
@@ -55,15 +62,18 @@ public static class BoardPins
     private static string Source(System.Text.Json.JsonElement? hw, string key) =>
         hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty(key, out _) ? "config" : "default";
 
-    /// <summary>Pins used twice by the functions a role uses; empty when the wiring is clean.</summary>
-    public static IReadOnlyList<string> Conflicts(string type, IReadOnlyList<PinRow> rows)
+    /// <summary>Pins used twice by the functions a role uses, or taken by the board itself; empty when the wiring is clean.</summary>
+    public static IReadOnlyList<string> Conflicts(string type, IReadOnlyList<PinRow> rows, string? board = null)
     {
         var used = RoleFunctions.TryGetValue(type, out var fns) ? fns : Array.Empty<string>();
-        return rows.Where(r => used.Contains(r.Function) && r.Pin is not null)
-            .GroupBy(r => r.Pin!.Value)
+        var mine = rows.Where(r => used.Contains(r.Function) && r.Pin is not null).ToList();
+        var twice = mine.GroupBy(r => r.Pin!.Value)
             .Where(g => g.Count() > 1)
-            .Select(g => $"GPIO{g.Key}: {string.Join(", ", g.Select(r => r.Function))}")
-            .ToList();
+            .Select(g => $"GPIO{g.Key}: {string.Join(", ", g.Select(r => r.Function))}");
+        var taken = board is not null && Reserved.TryGetValue(board, out var res)
+            ? mine.Where(r => res.Pins.Contains(r.Pin!.Value)).Select(r => $"GPIO{r.Pin}: {r.Function} ({res.Owner})")
+            : [];
+        return twice.Concat(taken).ToList();
     }
 
     public static bool ValidPin(int pin) => pin is >= 0 and <= 39;

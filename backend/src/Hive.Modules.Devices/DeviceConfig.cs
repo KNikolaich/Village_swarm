@@ -150,7 +150,7 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         else hw.Remove("vbat_ratio");
         var hwElement = JsonDocument.Parse(hw.ToJsonString()).RootElement;
         var rows = BoardPins.Rows(device.Hw, device.TypeCode, hwElement);
-        var conflicts = BoardPins.Conflicts(device.TypeCode, rows);
+        var conflicts = BoardPins.Conflicts(device.TypeCode, rows, device.Hw);
         if (conflicts.Count > 0)
             return new PinsResult(ConfigUpdateStatus.BadRequest, "Пины конфликтуют: " + string.Join("; ", conflicts), rows, conflicts);
 
@@ -173,7 +173,7 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
             return new PinsResult(ConfigUpdateStatus.NotFound, null, [], []);
         JsonElement? hw = device.Config?.RootElement.TryGetProperty("hw", out var h) == true ? h : null;
         var rows = BoardPins.Rows(device.Hw, device.TypeCode, hw);
-        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, BoardPins.Conflicts(device.TypeCode, rows), BoardPins.VbatRatio(hw));
+        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, BoardPins.Conflicts(device.TypeCode, rows, device.Hw), BoardPins.VbatRatio(hw));
     }
 
     public static int? SleepS(Device d) =>

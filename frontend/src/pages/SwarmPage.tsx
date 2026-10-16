@@ -32,6 +32,7 @@ const pinFields = [['onewirePin', 'onewire'], ['sdaPin', 'sda'], ['sclPin', 'scl
 const roleFunctions: Record<string, readonly string[]> = {
   meteo: ['onewire', 'sda', 'scl', 'vbat'],
   relay: ['relay', 'button', 'vbat'],
+  'guard-cam': ['relay'],
 }
 
 /** ESP8266 boards: one ADC (A0 = GPIO17) and D-labels on the silkscreen. */
@@ -41,7 +42,9 @@ const esp8266Boards = ['nodemcu-v3', 'wemos-d1-mini', 'esp-01', 'esp-01-dht11']
 function pinHelp(fn: string, board: string | null | undefined): string {
   const base = t(`swarm.pinHelp.${fn}`)
   if (!board) return base
-  const extra = esp8266Boards.includes(board) ? t(`swarm.pinHelp.${fn}Esp8266`, '') : board.startsWith('esp32c3') ? t(`swarm.pinHelp.${fn}Esp32c3`, '') : ''
+  const extra = esp8266Boards.includes(board) ? t(`swarm.pinHelp.${fn}Esp8266`, '')
+    : board.startsWith('esp32c3') ? t(`swarm.pinHelp.${fn}Esp32c3`, '')
+    : board === 'esp32cam-aithinker' ? t(`swarm.pinHelp.${fn}Esp32cam`, '') : ''
   return extra ? `${base} ${extra}` : base
 }
 
