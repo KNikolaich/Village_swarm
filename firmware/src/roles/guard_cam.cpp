@@ -40,15 +40,17 @@ camera_config_t cameraConfig() {
     c.pin_vsync = 25;
     c.pin_href = 23;
     c.pin_pclk = 22;
-    c.xclk_freq_hz = 20000000;
+    // 10 MHz and one buffer: frames are grabbed on demand. With two buffers the driver streams non-stop and logs
+    // "cam_hal: DMA overflow" 25 times a second whenever Wi-Fi or PSRAM traffic holds the DMA up.
+    c.xclk_freq_hz = 10000000;
     c.ledc_timer = LEDC_TIMER_0;
     c.ledc_channel = LEDC_CHANNEL_0;
     c.pixel_format = PIXFORMAT_JPEG;
     c.frame_size = FRAMESIZE_SVGA;
     c.jpeg_quality = 12;
-    c.fb_count = 2;
+    c.fb_count = 1;
     c.fb_location = CAMERA_FB_IN_PSRAM;
-    c.grab_mode = CAMERA_GRAB_LATEST;
+    c.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
     return c;
 }
 
