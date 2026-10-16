@@ -592,7 +592,12 @@
     "fwOffline": "The hornet is offline: it can be updated once it is back.",
     "replaceConfirm": "Replace the board of '{id}'? The wizard opens: type and name are known and the code is issued. Flash the new board and enter the code. The hornet moves to the new board with the same name, history and settings; the old board loses access. Updating firmware is another button, the chip one.",
     "updateUnsigned": "The image is not signed (built without the signing key): a hornet that only takes signed firmware will refuse it. See docs/ota.md.",
-    "console": "USB console"
+    "console": "USB console",
+    "showDeceased": "Show the deceased ({n})",
+    "deceasedHint": "Removed hornets are hidden, but their records and history are kept. Turn it on to bring one back to life on a new board.",
+    "revive": "Revive",
+    "reviveTitle": "Bring this hornet back to life on a new board: same name and history",
+    "reviveConfirm": "Revive '{id}' on a new board? The wizard opens: the code is issued, just flash the board and enter the code. Name, history and settings are kept."
   },
   "add": {
     "step1": "Hornet and code",
@@ -805,6 +810,7 @@
     "joinNeedChoice": "Choose a hornet or type a code",
     "joinNoCode": "Could not issue a code",
     "joinConfirm": "Write the Wi-Fi '{ssid}' to the board and join the hive {url}? The board will replace the chosen hornet.",
-    "joinSent": "Commands sent, see the board's answer above: 'enrolled ...'"
+    "joinSent": "Commands sent, see the board's answer above: 'enrolled ...'",
+    "brownout": "The board restarted because the supply sagged (brownout). Typical for an ESP32-CAM on a weak USB adapter: the current jumps when Wi-Fi starts. Feed 5 V from a proper supply (1 A or more) to the 5V pin and add a 470 uF capacitor between 5V and GND."
   }
 }

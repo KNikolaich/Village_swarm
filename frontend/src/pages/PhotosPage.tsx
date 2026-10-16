@@ -23,7 +23,7 @@ export function PhotosPage() {
   })
   const [device, setDevice] = useState('')
   const [pinnedOnly, setPinnedOnly] = useState(false)
-  const devices = useDevices()
+  const devices = useDevices(true)
   // Only hornets that can have photos are offered: those with a camera role.
   const cameras = (devices.data ?? []).filter((d) => d.type === 'guard-cam')
 
@@ -100,7 +100,7 @@ function Calendar({ month, onMonth, selected, device, onSelect }: {
 
 function Day({ date, device, pinnedOnly }: { date: string; device?: string; pinnedOnly: boolean }) {
   const media = useMediaDay(date, device)
-  const devices = useDevices()
+  const devices = useDevices(true)
   // The viewer opens on a list of photos and may start playing it as a timelapse.
   const [open, setOpen] = useState<{ photos: MediaDto[]; index: number; play: boolean } | null>(null)
   const items = useMemo(() => (media.data ?? []).filter((m) => !pinnedOnly || m.pinned), [media.data, pinnedOnly])

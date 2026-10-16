@@ -18,7 +18,7 @@ export function EventsPage() {
     device: params.get('device') ?? undefined,
     severity: params.get('severity') ?? undefined,
   }
-  const devices = useDevices()
+  const devices = useDevices(true)
   const events = useEvents(filters)
   const [viewer, setViewer] = useState<{ photos: PhotoRef[]; index: number } | null>(null)
   const sentinel = useRef<HTMLDivElement>(null)

@@ -25,7 +25,7 @@ export function MonitorPage() {
   const [error, setError] = useState<string | null>(null)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const devices = useDevices()
+  const devices = useDevices(true)
   const byId = new Map((devices.data ?? []).map((d) => [d.deviceId, d]))
   const cursor = useRef(0)
 

@@ -34,7 +34,7 @@ export function ConsolePage() {
   const [connected, setConnected] = useState(false)
   const [input, setInput] = useState('')
   const [custom, setCustom] = useState({ ssid: '', pass: '', id: '' })
-  const devices = useDevices()
+  const devices = useDevices(true)
   const [join, setJoin] = useState({ deviceId: '', url: '', code: '' })
   const [joining, setJoining] = useState(false)
   const port = useRef<HornetSerial | null>(null)
@@ -65,7 +65,11 @@ export function ConsolePage() {
 
   async function connect() {
     try {
-      port.current = await HornetSerial.open((line) => push('in', line))
+      port.current = await HornetSerial.open((line) => {
+        push('in', line)
+        // The board says it restarted because the supply sagged (a Wi-Fi burst on a weak USB adapter): say what to do.
+        if (/reset=brownout|Brownout detector/i.test(line)) push('info', t('console.brownout'))
+      })
       setConnected(true)
       push('info', t('console.connected'))
       // A sleeping hornet stays awake while someone is typing: a newline twice a second for the first 25 seconds.

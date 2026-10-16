@@ -270,7 +270,7 @@ function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: 
 /** Screen 5 (spec 8.2): every hornet, sorted by trouble, with replace and remove. */
 export function SwarmPage() {
   const qc = useQueryClient()
-  const devices = useDevices()
+  const devices = useDevices(true)
   const me = useMe()
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
@@ -278,14 +278,25 @@ export function SwarmPage() {
   const [fwOpen, setFwOpen] = useState<string | null>(null)
   const firmware = useQuery({ queryKey: ['firmware'], queryFn: () => call(api.GET('/api/firmware')), enabled: isAdmin })
   const navigate = useNavigate()
+  // Removed hornets are hidden unless asked for; remembered between visits.
+  const [showDeceased, setShowDeceased] = useState(() => {
+    try { return localStorage.getItem('swarm.showDeceased') === '1' } catch { return false }
+  })
+  function toggleDeceased(on: boolean) {
+    setShowDeceased(on)
+    try { localStorage.setItem('swarm.showDeceased', on ? '1' : '0') } catch { /* private window: just not remembered */ }
+  }
+  const deceasedCount = (devices.data ?? []).filter((d) => d.status === 'disabled').length
   const list = useMemo(
-    () => [...(devices.data ?? [])].sort((a, b) => badness(a) - badness(b) || a.deviceId.localeCompare(b.deviceId)),
-    [devices.data],
+    () => [...(devices.data ?? [])]
+      .filter((d) => showDeceased || d.status !== 'disabled')
+      .sort((a, b) => badness(a) - badness(b) || a.deviceId.localeCompare(b.deviceId)),
+    [devices.data, showDeceased],
   )
 
   /** The wizard opens on the flashing step: the hornet's type and name are known, and the code is issued there. */
-  function replace(deviceId: string) {
-    if (!window.confirm(t('swarm.replaceConfirm').replace('{id}', deviceId))) return
+  function replace(deviceId: string, revive = false) {
+    if (!window.confirm(t(revive ? 'swarm.reviveConfirm' : 'swarm.replaceConfirm').replace('{id}', deviceId))) return
     navigate(`/swarm/add?replace=${encodeURIComponent(deviceId)}`)
   }
 
@@ -322,6 +333,13 @@ export function SwarmPage() {
           </div>
         )}
       </div>
+
+      {deceasedCount > 0 && (
+        <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400" title={t('swarm.deceasedHint')}>
+          <input type="checkbox" className="size-4 accent-amber-400" checked={showDeceased} onChange={(e) => toggleDeceased(e.target.checked)} />
+          {t('swarm.showDeceased').replace('{n}', String(deceasedCount))}
+        </label>
+      )}
 
       {devices.isLoading && <Skeleton className="h-40" />}
       {!devices.isLoading && list.length === 0 && <Empty>{t('overview.noDevices')}</Empty>}
@@ -379,6 +397,9 @@ export function SwarmPage() {
                 )}
                 {d.status !== 'disabled' && (
                   <Button variant="ghost" size="icon" title={t('swarm.pins')} onClick={() => setPinsOpen(pinsOpen === d.deviceId ? null : d.deviceId)}><Pin /></Button>
+                )}
+                {isAdmin && d.status === 'disabled' && (
+                  <Button variant="outline" size="sm" title={t('swarm.reviveTitle')} onClick={() => replace(d.deviceId, true)}><ArrowRightLeft />{t('swarm.revive')}</Button>
                 )}
                 {isAdmin && d.status !== 'disabled' && (
                   <>

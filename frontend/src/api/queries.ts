@@ -18,8 +18,17 @@ export type EventFilters = { type?: string; device?: string; severity?: string; 
 export const useMe = () =>
   useQuery({ queryKey: keys.me, queryFn: () => call(api.GET('/api/me')), retry: false, staleTime: 5 * 60_000 })
 
-export const useDevices = () =>
-  useQuery({ queryKey: keys.devices, queryFn: () => call(api.GET('/api/devices')), refetchInterval: 60_000 })
+/**
+ * The swarm. Removed hornets ("deceased", status disabled) stay in the registry with their history but are hidden
+ * unless asked for: pickers and dashboards want the living, the swarm page, history and the console want everyone.
+ */
+export const useDevices = (withDeceased = false) =>
+  useQuery({
+    queryKey: keys.devices,
+    queryFn: () => call(api.GET('/api/devices')),
+    refetchInterval: 60_000,
+    select: (all) => (withDeceased ? all : all.filter((d) => d.status !== 'disabled')),
+  })
 
 export const useLatestTelemetry = () =>
   useQuery({ queryKey: keys.latest, queryFn: () => call(api.GET('/api/telemetry/latest')), refetchInterval: 5 * 60_000 })

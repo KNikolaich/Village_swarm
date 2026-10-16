@@ -144,7 +144,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function DevicePage() {
   const { deviceId = '' } = useParams()
   const [hours, setHours] = useState(24)
-  const devices = useDevices()
+  const devices = useDevices(true)
   const zones = useZones()
   const latest = useLatestTelemetry()
   const me = useMe()
