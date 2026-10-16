@@ -59,3 +59,19 @@ Anything else (`snapshot`, `wifi`, `ota` …) is refused with 400. A command is 
 - `PowerOnState 0`: after a power cut the relay stays off.
 - `PulseTime1` set at setup for `heat`: a heater never stays on longer than `maxOnMinutes` (default 360) without a new order.
   A later `for_s` order changes it for that switch-on, so a plain `on` after a timed one is limited to that time too.
+
+## Infrared
+
+A Tasmota device with an IR LED and an IR receiver (`tasmota-ir` firmware, GPIOs `IRsend` and `IRrecv`) is added with `ir: true`
+in `POST /api/provision/tasmota`; its announced commands then include `ir`.
+
+| Hive | Device |
+|---|---|
+| command `ir` `{protocol, bits, data, repeat?}` | `cmnd/{id}/IRSend` `{"Protocol":"NEC","Bits":32,"Data":"0x02FD807F","Repeat":0}`; `protocol` is a name (not `UNKNOWN`), `bits` 1 to 64, `data` hex with `0x`, `repeat` 0 to 10 |
+| command `ir` `{button}` | the code saved under that name (see below) is sent; an unknown button is refused with 400 |
+| `stat/{id}/RESULT` `{"IRSend": …}` | closes the waiting `ir` command |
+| `tele/{id}/RESULT` `{"IrReceived": {"Protocol", "Bits", "Data"}}` | device state `ir_last` = `"NEC 32 0x02FD807F"`, so a remote's button can be learned without filling the event feed |
+
+Buttons: `GET` and `PUT /api/devices/{id}/ir-buttons` `{ "buttons": { "Питание": {"protocol": "NEC", "bits": 32, "data": "0x02FD807F"} } }`
+(at most 40, names up to 32 characters), kept in the device config under `ir.buttons`. Infrared is one-way: a command is `ok` when the
+device says it sent the code, not when the appliance took it.

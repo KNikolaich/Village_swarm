@@ -48,10 +48,14 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TasmotaPe
     {
         if (!Topics.IsValidSegment(name))
             return (SendStatus.BadRequest, null);
-        var driver = await db.Devices.Where(d => d.DeviceId == deviceId && d.Status != DeviceStatus.Disabled)
-            .Select(d => d.Driver).FirstOrDefaultAsync(ct);
-        if (driver is null)
+        var found = await db.Devices.AsNoTracking().Where(d => d.DeviceId == deviceId && d.Status != DeviceStatus.Disabled)
+            .Select(d => new { d.Driver, d.Config }).FirstOrDefaultAsync(ct);
+        if (found is null)
             return (SendStatus.UnknownDevice, null);
+        var driver = found.Driver;
+        // "ir" with a button name: the code comes from the buttons learned for this device
+        if (driver == Drivers.Tasmota && name == "ir" && payload?["button"]?.GetValue<string>() is { } button)
+            payload = IrButtonService.Resolve(found.Config, button);
         // A Tasmota device speaks its own commands: only the ones that map to them (relay, reboot) are accepted.
         var plan = driver == Drivers.Tasmota ? TasmotaCommands.Plan(name, payload) : null;
         if (driver == Drivers.Tasmota && plan is null)

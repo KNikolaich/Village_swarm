@@ -1267,6 +1267,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/devices/{deviceId}/ir-buttons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IrButtonsDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["IrButtonsDto"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["IrButtonsDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/devices/{deviceId}/config": {
         parameters: {
             query?: never;
@@ -3017,6 +3102,8 @@ export interface components {
             zoneId?: null | number;
             /** Format: int32 */
             maxOnMinutes?: null | number;
+            /** @default false */
+            ir: boolean;
         };
         DeviceDto: {
             deviceId: string;
@@ -3161,6 +3248,17 @@ export interface components {
             errors?: {
                 [key: string]: string[];
             };
+        };
+        IrButtonsDto: {
+            buttons: {
+                [key: string]: components["schemas"]["IrCode"];
+            };
+        };
+        IrCode: {
+            protocol: string;
+            /** Format: int32 */
+            bits: number;
+            data: string;
         };
         JsonElement: unknown;
         JsonObject: Record<string, never>;

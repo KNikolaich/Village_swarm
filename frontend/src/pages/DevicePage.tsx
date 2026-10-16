@@ -1,3 +1,4 @@
+import { IrPanel } from '@/components/IrPanel'
 import { ArrowLeft, Camera, Power, PowerOff, RotateCw, Wifi, WifiOff } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router'
@@ -127,7 +128,7 @@ function announcedCommands(d: DeviceDto): string[] {
 
 /** Relay channel names come from the hornet's retained state ({channel: on|off}); "relay" is the firmware default. */
 function relayChannels(d: DeviceDto): string[] {
-  const keys = Object.keys((d.state as Record<string, unknown> | null) ?? {})
+  const keys = Object.keys((d.state as Record<string, unknown> | null) ?? {}).filter((k) => k !== 'ir_last')
   return keys.length > 0 ? keys : ['relay']
 }
 
@@ -253,10 +254,12 @@ export function DevicePage() {
         </Card>
       )}
 
+      {canControl && commands.includes('ir') && <IrPanel deviceId={deviceId} state={device.state} online={online} canEdit={canControl} />}
+
       {canControl && <CommandHistory device={deviceId} />}
       <Logs device={deviceId} />
 
-      {device.status !== 'disabled' && (
+      {device.status !== 'disabled' && device.driver !== 'tasmota' && (
         <Card>
           <CardHeader><CardTitle>{t('swarm.pins')}</CardTitle></CardHeader>
           <CardContent><PinsPanel deviceId={device.deviceId} editable={isAdmin} board={device.hw} type={device.type} /></CardContent>

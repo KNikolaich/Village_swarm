@@ -1034,6 +1034,88 @@
         }
       }
     },
+    "/api/devices/{deviceId}/ir-buttons": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IrButtonsDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IrButtonsDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IrButtonsDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/devices/{deviceId}/config": {
       "patch": {
         "tags": [
@@ -2794,6 +2876,10 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "ir": {
+            "type": "boolean",
+            "default": false
           }
         }
       },
@@ -3385,6 +3471,40 @@
                 "type": "string"
               }
             }
+          }
+        }
+      },
+      "IrButtonsDto": {
+        "required": [
+          "buttons"
+        ],
+        "type": "object",
+        "properties": {
+          "buttons": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/IrCode"
+            }
+          }
+        }
+      },
+      "IrCode": {
+        "required": [
+          "protocol",
+          "bits",
+          "data"
+        ],
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string"
+          },
+          "bits": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "data": {
+            "type": "string"
           }
         }
       },

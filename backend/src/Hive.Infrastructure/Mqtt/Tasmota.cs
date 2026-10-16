@@ -40,11 +40,33 @@ public static partial class TasmotaCommands
     [GeneratedRegex(@"^relay(\d+)$")]
     private static partial Regex ChannelRegex();
 
+    [GeneratedRegex("^[A-Za-z0-9_]{1,24}$")]
+    private static partial Regex ProtocolRegex();
+
+    [GeneratedRegex("^0x[0-9A-Fa-f]{1,16}$")]
+    private static partial Regex DataRegex();
+
+    /// <summary>An infrared code Tasmota can send: a named protocol, 1 to 64 bits, the data as hex (<c>0x20DF10EF</c>).</summary>
+    public static bool IsValidIr(string? protocol, int bits, string? data) =>
+        protocol is not null && ProtocolRegex().IsMatch(protocol) && !protocol.Equals("UNKNOWN", StringComparison.OrdinalIgnoreCase)
+        && bits is >= 1 and <= 64 && data is not null && DataRegex().IsMatch(data);
+
     /// <summary>Null when the command is not one a Tasmota device can do (or its payload is wrong).</summary>
     public static TasmotaPlan? Plan(string name, JsonObject? payload)
     {
         if (name == "reboot")
             return new TasmotaPlan([new TasmotaCall("Restart", "1")], "restart");
+        if (name == "ir")
+        {
+            var protocol = payload?["protocol"]?.GetValue<string>();
+            var data = payload?["data"]?.GetValue<string>();
+            var bits = payload?["bits"] is { } b && b.GetValueKind() == System.Text.Json.JsonValueKind.Number ? b.GetValue<int>() : 0;
+            var repeat = payload?["repeat"] is { } r && r.GetValueKind() == System.Text.Json.JsonValueKind.Number ? Math.Clamp(r.GetValue<int>(), 0, 10) : 0;
+            if (!IsValidIr(protocol, bits, data))
+                return null;
+            var code = new JsonObject { ["Protocol"] = protocol, ["Bits"] = bits, ["Data"] = data, ["Repeat"] = repeat };
+            return new TasmotaPlan([new TasmotaCall("IRSend", code.ToJsonString())], "ir");
+        }
         if (name != "relay")
             return null;
 

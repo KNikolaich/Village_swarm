@@ -42,6 +42,7 @@ public sealed class TasmotaAdapter(IngestQueue queue, TasmotaPending pending, IL
                 "LWT" => Lwt(id, text, receivedAt),
                 "STATE" => State(id, JsonDocument.Parse(text), receivedAt),
                 "SENSOR" => Sensor(id, JsonDocument.Parse(text), receivedAt),
+                "RESULT" => IrReceived(id, JsonDocument.Parse(text), receivedAt),
                 _ => [],
             };
 
@@ -50,6 +51,8 @@ public sealed class TasmotaAdapter(IngestQueue queue, TasmotaPending pending, IL
             return Power(id, kind, text, receivedAt, pending);
         if (kind == "RESULT" && text.Contains("\"Restart\"", StringComparison.Ordinal))
             return Ack(id, "restart", receivedAt, pending);
+        if (kind == "RESULT" && text.Contains("\"IRSend\"", StringComparison.Ordinal))
+            return Ack(id, "ir", receivedAt, pending);
         return [];
     }
 
@@ -102,6 +105,23 @@ public sealed class TasmotaAdapter(IngestQueue queue, TasmotaPending pending, IL
             Add(values, block.Value, "Pressure", "pressure_hpa");
         }
         return values.Count == 0 ? [] : [new TelemetryReceived(id, NewId(receivedAt), receivedAt, receivedAt, values)];
+    }
+
+    /// <summary>
+    /// An infrared code the device saw (a remote pointed at it): kept as the state "ir_last" ("NEC 32 0x02FD807F") so that
+    /// a code can be learned by pressing the remote's button, without filling the event feed.
+    /// </summary>
+    private static IReadOnlyList<IngestItem> IrReceived(string id, JsonDocument doc, DateTimeOffset receivedAt)
+    {
+        if (!doc.RootElement.TryGetProperty("IrReceived", out var ir) || ir.ValueKind != JsonValueKind.Object)
+            return [];
+        var protocol = ir.TryGetProperty("Protocol", out var p) ? p.GetString() : null;
+        var bits = ir.TryGetProperty("Bits", out var b) && b.TryGetInt32(out var n) ? n : 0;
+        var data = ir.TryGetProperty("Data", out var d) ? d.ValueKind == JsonValueKind.String ? d.GetString() : d.GetRawText() : null;
+        if (protocol is null || data is null)
+            return [];
+        var state = new Dictionary<string, string> { ["ir_last"] = $"{protocol} {bits} {data}" };
+        return [new DeviceStateReceived(id, NewId(receivedAt), receivedAt, receivedAt, JsonSerializer.SerializeToDocument(state), Merge: true)];
     }
 
     private static IReadOnlyList<IngestItem> Power(string id, string kind, string text, DateTimeOffset receivedAt, TasmotaPending pending)

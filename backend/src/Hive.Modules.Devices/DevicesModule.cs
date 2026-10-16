@@ -60,6 +60,7 @@ public static class DevicesModule
         services.AddScoped<CommandService>();
         services.AddScoped<ArmService>();
         services.AddScoped<ZoneService>();
+        services.AddScoped<IrButtonService>();
         services.AddHostedService<ZoneBootstrap>();
         services.AddScoped<ProvisioningService>();
         services.AddHostedService<DynamicSecurityBootstrap>();
@@ -97,6 +98,20 @@ public static class DevicesModule
             .RequireAuthorization(HiveRoles.CanControl);
         devices.MapGet("/{deviceId}/commands/{cid}", async Task<Results<Ok<CommandDto>, NotFound>> (string deviceId, string cid, CommandService commands, CancellationToken ct) =>
             await commands.GetAsync(deviceId, cid, ct) is { } c ? TypedResults.Ok(CommandDto.From(c)) : TypedResults.NotFound());
+
+        // Learned buttons of a Tasmota IR device (docs/tasmota.md): read by everyone who can see it, edited by those who control.
+        devices.MapGet("/{deviceId}/ir-buttons", async Task<Results<Ok<IrButtonsDto>, NotFound>> (string deviceId, IrButtonService ir, CancellationToken ct) =>
+            await ir.GetAsync(deviceId, ct) is { } b ? TypedResults.Ok(b) : TypedResults.NotFound());
+        devices.MapPut("/{deviceId}/ir-buttons", async Task<Results<Ok<IrButtonsDto>, NotFound, ValidationProblem>> (
+                string deviceId, IrButtonsDto request, ClaimsPrincipal user, IrButtonService ir, CancellationToken ct) =>
+            {
+                if (IrButtonService.Validate(request.Buttons) is { } error)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["buttons"] = [error] });
+                return await ir.SetAsync(deviceId, request.Buttons, $"user:{user.Identity?.Name}", ct)
+                    ? TypedResults.Ok((await ir.GetAsync(deviceId, ct))!)
+                    : TypedResults.NotFound();
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
 
         devices.MapPatch("/{deviceId}/config", async Task<Results<Ok<DeviceDto>, NotFound, ValidationProblem>> (
                 string deviceId, UpdateDeviceConfigRequest request, ClaimsPrincipal user, DeviceConfigService configs, DeviceQueries q, CancellationToken ct) =>

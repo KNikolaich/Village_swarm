@@ -46,7 +46,7 @@ public sealed record EnrollMqtt(string Host, int Port, string? User, string? Pas
 public sealed record EnrollResponse(string DeviceId, EnrollMqtt Mqtt, string UploadUrl, string UploadToken, JsonElement Config);
 
 /// <summary>A Tasmota or OpenBeken device. MaxOnMinutes is the longest a heater may stay switched on without a new order.</summary>
-public sealed record CreateTasmotaRequest(string DeviceId, string Type, string Name, int? ZoneId = null, int? MaxOnMinutes = null);
+public sealed record CreateTasmotaRequest(string DeviceId, string Type, string Name, int? ZoneId = null, int? MaxOnMinutes = null, bool Ir = false);
 
 /// <summary>Console lines to paste into the device's Tasmota web console, in this order. The password is shown once and kept nowhere.</summary>
 public sealed record TasmotaSetup(string DeviceId, EnrollMqtt Mqtt, IReadOnlyList<string> Lines);
@@ -215,9 +215,9 @@ public sealed class ProvisioningService(
         var switches = r.Type is "relay" or "heat";
         device.Info = JsonDocument.Parse(JsonSerializer.Serialize(new
         {
-            caps = switches ? new[] { "relay" } : Array.Empty<string>(),
+            caps = (switches ? new[] { "relay" } : Array.Empty<string>()).Concat(r.Ir ? ["ir"] : []).ToArray(),
             metrics = Array.Empty<string>(),
-            commands = switches ? new[] { "relay", "reboot" } : ["reboot"],
+            commands = (switches ? new[] { "relay", "reboot" } : ["reboot"]).Concat(r.Ir ? ["ir"] : []).ToArray(),
         }));
         Audit.Record(db, now, by, "device_add_tasmota", r.DeviceId);
 

@@ -23,6 +23,7 @@ export function TasmotaPanel({ presetId, presetName, presetType }: { presetId?: 
   const [deviceId, setDeviceId] = useState(presetId ?? '')
   const [name, setName] = useState(presetName ?? '')
   const [maxOn, setMaxOn] = useState(360)
+  const [ir, setIr] = useState(false)
   const [setup, setSetup] = useState<Setup | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -38,7 +39,7 @@ export function TasmotaPanel({ presetId, presetName, presetType }: { presetId?: 
     e.preventDefault()
     setError(null)
     const { data, error: err, response } = await api.POST('/api/provision/tasmota', {
-      body: { deviceId, type, name, ...(type === 'heat' ? { maxOnMinutes: maxOn } : {}) },
+      body: { deviceId, type, name, ir, ...(type === 'heat' ? { maxOnMinutes: maxOn } : {}) },
     })
     if (!response.ok || !data) {
       setError((err as { errors?: Record<string, string[]> } | undefined)?.errors?.request?.[0] ?? t('errors.generic'))
@@ -73,6 +74,10 @@ export function TasmotaPanel({ presetId, presetName, presetType }: { presetId?: 
                   <span className="block text-xs text-neutral-500">{t('tasmota.maxOnHint')}</span>
                 </label>
               )}
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input type="checkbox" className="size-4 accent-amber-400" checked={ir} onChange={(e) => setIr(e.target.checked)} />
+                {t('tasmota.ir')}
+              </label>
               {error && <p className="text-sm text-red-400">{error}</p>}
               <Button type="submit" disabled={!idValid || !name.trim()}>{t('tasmota.create')}</Button>
             </form>

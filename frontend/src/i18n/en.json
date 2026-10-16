@@ -824,6 +824,21 @@
     "create": "Issue the login and lines",
     "steps": "Connect to the board (a Tasmota board shows as tasmota-XXXX, no password) and give it your home network|Open the board's web page, the Console section|Paste the lines one by one, top to bottom, waiting for the answer after each|The board restarts and shows up in the hive as a hornet",
     "passwordOnce": "The password is shown once and kept nowhere. Lost it: issue the login again, the previous one stops working.",
-    "waiting": "Waiting for the board to reach the hive."
+    "waiting": "Waiting for the board to reach the hive.",
+    "ir": "With infrared: a remote, a board with an IR LED and an IR receiver"
+  },
+  "ir": {
+    "title": "Remote (infrared)",
+    "hint": "Point the real remote at the board and press a button: its code appears below, give it a name. The hive sends the named buttons itself, for example from a rule. Infrared has no feedback: the hive cannot tell that the device took the command.",
+    "none": "No buttons yet.",
+    "send": "Send",
+    "remove": "Remove the button",
+    "removeConfirm": "Remove the button '{name}'?",
+    "learn": "Learn a button from the remote",
+    "waiting": "Waiting for a code: press a button on the remote, pointing it at the board.",
+    "unknownProtocol": "The protocol was not recognised: this code cannot be sent. Try closer to the board or another button.",
+    "alreadySaved": "This button is already saved as '{name}'.",
+    "namePlaceholder": "Button name (for example Power)",
+    "save": "Save the button"
   }
 }
