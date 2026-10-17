@@ -17,7 +17,11 @@ namespace Hive.Modules.Devices;
 public sealed record DeviceDto(
     string DeviceId, string Name, string Type, string Status, int? ZoneId, string? Zone,
     string? Hw, string? Fw, string? Mac, string? Ip, int? Rssi, int? Boot, DateTimeOffset? LastSeenAt,
-    JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev, int? SleepS, string SleepMode, string Driver);
+    JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev, int? SleepS, string SleepMode, string Driver,
+    IReadOnlyList<string>? Features = null, IReadOnlyList<string>? SupportedFeatures = null, HeaterLimitsDto? Heater = null);
+
+/// <summary>The limits a heater keeps by itself (config failsafe.heater, or the firmware defaults).</summary>
+public sealed record HeaterLimitsDto(double MinC, double MaxC, int MaxOnS);
 
 /// <summary>Device registry reads (spec 6.5). Editing, commands and provisioning come in later steps.</summary>
 /// <summary>Pins of a hornet: what each function uses, from the board default or the config, and conflicts. VbatRatio is the battery divider ratio set in the config (null: 1.0).</summary>
@@ -45,7 +49,20 @@ public sealed class DeviceQueries(HiveDbContext db)
     private static DeviceDto ToDto(Device d) => new(
         d.DeviceId, d.Name, d.TypeCode, d.Status.ToString().ToLowerInvariant(), d.ZoneId, d.Zone?.Name,
         d.Hw, d.FwVersion, d.Mac, d.Ip, d.Rssi, d.Boot, d.LastSeenAt,
-        d.Info?.RootElement.Clone(), d.State?.RootElement.Clone(), d.ConfigRev, d.ConfigAppliedRev, DeviceConfigService.SleepS(d), DeviceConfigService.SleepMode(d), d.Driver);
+        d.Info?.RootElement.Clone(), d.State?.RootElement.Clone(), d.ConfigRev, d.ConfigAppliedRev, DeviceConfigService.SleepS(d), DeviceConfigService.SleepMode(d), d.Driver,
+        Features(d), d.Driver == Drivers.Hornet ? DeviceFeatures.SupportedBy(d.TypeCode) : null, HeaterLimits(d));
+
+    /// <summary>Features of a native hornet (Tasmota devices keep their own settings).</summary>
+    private static IReadOnlyList<string>? Features(Device d) =>
+        d.Driver == Drivers.Hornet ? DeviceFeatures.Effective(d.TypeCode, d.Config?.RootElement) : null;
+
+    private static HeaterLimitsDto? HeaterLimits(Device d)
+    {
+        if (Features(d)?.Contains(DeviceFeatures.Heater) != true)
+            return null;
+        var (minC, maxC, maxOnS) = DeviceConfigService.Heater(d) ?? (DeviceFeatures.DefaultMinC, DeviceFeatures.DefaultMaxC, DeviceFeatures.DefaultMaxOnS);
+        return new HeaterLimitsDto(minC, maxC, maxOnS);
+    }
 }
 
 public static class DevicesModule
@@ -154,6 +171,19 @@ public static class DevicesModule
                 };
             })
             .RequireAuthorization(HiveRoles.CanControl);
+
+        devices.MapPut("/{deviceId}/features", async Task<Results<Ok<DeviceDto>, NotFound, ValidationProblem>> (
+                string deviceId, DeviceConfigService.FeaturesRequest request, ClaimsPrincipal user, DeviceConfigService configs, DeviceQueries q, CancellationToken ct) =>
+            {
+                var r = await configs.SetFeaturesAsync(deviceId, request, $"user:{user.Identity?.Name}", ct);
+                return r.Status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["features"] = [r.Error ?? "bad features"] }),
+                    _ => TypedResults.Ok((await q.GetAsync(deviceId, ct))!),
+                };
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly);
 
         app.MapProvisioningEndpoints();
         app.MapOtaEndpoints();

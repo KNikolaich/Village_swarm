@@ -1,0 +1,7 @@
+{
+  "v": 1, "rev": 7, "name": "Лампа в курятнике",
+  "health_interval_s": 60, "tele_interval_s": 60,
+  "features": ["thermometer", "relay", "heater"],
+  "failsafe": { "heater": { "min_c": 8.0, "max_c": 22.0, "max_on_s": 21600 } },
+  "hw": { "onewire_pin": 3 }
+}

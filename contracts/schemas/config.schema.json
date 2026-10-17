@@ -42,6 +42,12 @@
       "enum": ["deep", "light"],
       "description": "How a hornet with sleep_s > 0 saves power. deep (default): radio and CPU off between readings, disconnects; needs GPIO16 wired to RST on ESP8266. light: stays connected with Wi-Fi power saving and reads every sleep_s; works on any board, saves far less"
     },
+    "features": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["thermometer", "bme280", "relay", "heater"] },
+      "description": "What the hornet is used for (roles meteo, relay, heat). thermometer: DS18B20 on 1-Wire; bme280: BME280 on I2C; relay: a relay switched by commands; heater: that relay heats and the hornet itself keeps failsafe.heater (needs relay and a sensor). Pins of features not listed are left alone. Absent: the role's default (meteo: thermometer, bme280; relay: relay; heat: thermometer, relay, heater)"
+    },
     "failsafe": {
       "type": "object",
       "properties": {

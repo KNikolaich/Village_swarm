@@ -12,6 +12,7 @@ import { formatAgo, formatFixed, formatValue, metricUnit } from '@/lib/format'
 import { ranges, rangeLabel } from '@/lib/ranges'
 import { seriesColors } from '@/lib/seriesColors'
 import { cn } from '@/lib/utils'
+import { hasRelay } from '@/lib/features'
 
 const kinds = ['garden', 'house', 'perimeter', 'tech'] as const
 
@@ -109,7 +110,7 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl }: {
   const zones = useZones()
   const sensors = devices.filter((d) => latest.some((v) => v.deviceId === d.deviceId && v.metric === 'temperature'))
   const humiditySensors = devices.filter((d) => latest.some((v) => v.deviceId === d.deviceId && v.metric === 'humidity'))
-  const heaters = devices.filter((d) => d.type === 'heat' || d.type === 'relay')
+  const heaters = devices.filter((d) => (d.type === 'heat' || d.type === 'relay') && hasRelay(d.features))
   const temperature = useDeviceSeries(sensors.map((d) => d.deviceId), 'temperature', hours)
   const humidity = useDeviceSeries(humiditySensors.map((d) => d.deviceId), 'humidity', hours)
   const { from, to } = historyWindow(hours)
@@ -214,7 +215,7 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl }: {
 function HeaterRow({ device, canControl }: { device: DeviceDto; canControl: boolean }) {
   const send = useSendCommand(device.deviceId)
   const state = (device.state as Record<string, unknown> | null) ?? {}
-  const channel = Object.keys(state)[0] ?? (device.type === 'heat' ? 'heater' : 'relay')
+  const channel = Object.keys(state)[0] ?? (device.type === 'heat' && device.features?.includes('heater') !== false ? 'heater' : 'relay')
   const value = state[channel]
   const online = device.status === 'online'
   return (

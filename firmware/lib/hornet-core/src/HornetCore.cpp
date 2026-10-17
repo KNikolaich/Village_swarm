@@ -647,6 +647,10 @@ void Core::log(LogLevel level, const String& msg) {
 
 void Core::onCommand(const char* name, CommandHandler handler) { commands_.emplace_back(name, std::move(handler)); }
 
+void Core::refreshInfo() {
+    if (online()) publishInfo();
+}
+
 bool Core::publish(const String& topic, const String& payload, bool retain, bool qos1, bool bufferIfOffline) {
     if (mqtt.connected() && mqtt.publish(topic.c_str(), qos1 ? 1 : 0, retain, payload.c_str()) != 0) return true;
     if (bufferIfOffline && !outbox.push(topic.c_str(), payload.c_str())) Serial.println("[hornet] outbox full, oldest message dropped");

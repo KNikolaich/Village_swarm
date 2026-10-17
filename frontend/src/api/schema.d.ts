@@ -1551,6 +1551,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/devices/{deviceId}/features": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["FeaturesRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DeviceDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/provision/codes": {
         parameters: {
             query?: never;
@@ -3133,6 +3190,9 @@ export interface components {
             sleepS: null | number;
             sleepMode: string;
             driver: string;
+            features?: null | string[];
+            supportedFeatures?: null | string[];
+            heater?: null | components["schemas"]["HeaterLimitsDto"];
         };
         DeviceLogDto: {
             /** Format: int64 */
@@ -3218,6 +3278,15 @@ export interface components {
             url: string;
             thumbUrl: string;
         };
+        FeaturesRequest: {
+            features: string[];
+            /** Format: double */
+            minC?: null | number;
+            /** Format: double */
+            maxC?: null | number;
+            /** Format: int32 */
+            maxOnS?: null | number;
+        };
         FirmwareBuildDto: {
             build: string;
             role: string;
@@ -3237,6 +3306,14 @@ export interface components {
             heapFree: number;
             /** Format: double */
             vbat: null | number;
+        };
+        HeaterLimitsDto: {
+            /** Format: double */
+            minC: number;
+            /** Format: double */
+            maxC: number;
+            /** Format: int32 */
+            maxOnS: number;
         };
         HttpValidationProblemDetails: {
             type?: null | string;

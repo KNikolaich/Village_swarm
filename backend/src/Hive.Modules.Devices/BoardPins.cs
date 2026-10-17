@@ -26,8 +26,17 @@ public static class BoardPins
     {
         ["meteo"] = ["onewire", "sda", "scl", "vbat", "dht"],
         ["relay"] = ["relay", "button", "vbat"],
+        ["heat"] = ["onewire", "sda", "scl", "relay", "button", "vbat"],
         ["guard-cam"] = ["relay"],
     };
+
+    /// <summary>
+    /// Whether the hornet uses a pin function: its role has it and, where the role has features
+    /// (<see cref="DeviceFeatures"/>), one of the chosen features needs it. An unknown role uses everything.
+    /// </summary>
+    public static bool Uses(string type, IReadOnlyCollection<string>? features, string function) =>
+        (!RoleFunctions.TryGetValue(type, out var fns) || fns.Contains(function))
+        && (features is null || DeviceFeatures.Uses(features, function));
 
     /// <summary>Pins a board keeps for itself; the firmware refuses them for any function (guard_cam.cpp outputPinAllowed).</summary>
     private static readonly Dictionary<string, (int[] Pins, string Owner)> Reserved = new()
@@ -39,8 +48,8 @@ public static class BoardPins
 
     public static Defaults? For(string? board) => board is not null && Boards.TryGetValue(board, out var d) ? d : null;
 
-    /// <summary>Effective pins: the config "hw" override where given, else the board default.</summary>
-    public static IReadOnlyList<PinRow> Rows(string? board, string type, System.Text.Json.JsonElement? hw)
+    /// <summary>Effective pins of the functions the hornet uses: the config "hw" override where given, else the board default.</summary>
+    public static IReadOnlyList<PinRow> Rows(string? board, string type, System.Text.Json.JsonElement? hw, IReadOnlyCollection<string>? features = null)
     {
         var d = For(board) ?? new Defaults(null, null, null, null, null, null, false, "unknown board: pins are whatever the config says");
         int? Pick(string key, int? fallback) =>
@@ -56,17 +65,16 @@ public static class BoardPins
             new("vbat", "vbat_pin", Pick("vbat_pin", null), Source(hw, "vbat_pin"), "battery divider (ADC)"),
             new("dht", "dht_pin", d.Dht, "default", "DHT11/22 data"),
         };
-        return rows.Where(r => r.Pin is not null).ToList();
+        return rows.Where(r => r.Pin is not null && Uses(type, features, r.Function)).ToList();
     }
 
     private static string Source(System.Text.Json.JsonElement? hw, string key) =>
         hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty(key, out _) ? "config" : "default";
 
     /// <summary>Pins used twice by the functions a role uses, or taken by the board itself; empty when the wiring is clean.</summary>
-    public static IReadOnlyList<string> Conflicts(string type, IReadOnlyList<PinRow> rows, string? board = null)
+    public static IReadOnlyList<string> Conflicts(string type, IReadOnlyList<PinRow> rows, string? board = null, IReadOnlyCollection<string>? features = null)
     {
-        var used = RoleFunctions.TryGetValue(type, out var fns) ? fns : Array.Empty<string>();
-        var mine = rows.Where(r => used.Contains(r.Function) && r.Pin is not null).ToList();
+        var mine = rows.Where(r => RoleFunctions.ContainsKey(type) && Uses(type, features, r.Function) && r.Pin is not null).ToList();
         var twice = mine.GroupBy(r => r.Pin!.Value)
             .Where(g => g.Count() > 1)
             .Select(g => $"GPIO{g.Key}: {string.Join(", ", g.Select(r => r.Function))}");

@@ -109,6 +109,9 @@ public:
 
     void onCommand(const char* name, CommandHandler handler);
 
+    // Re-sends info (caps, metrics) when a config change altered what the role does; no-op while offline.
+    void refreshInfo();
+
     // Battery mode (config sleep_s > 0): the role sends its readings once per wake-up while online, then calls
     // readingDone(); the core lets the messages leave, disconnects cleanly and deep-sleeps for sleep_s.
     bool sleepy() const { return sleepS_ > 0 && !lightSleep_ && !stayAwake_; }

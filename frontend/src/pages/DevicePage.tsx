@@ -1,3 +1,4 @@
+import { FeaturesPanel } from '@/components/FeaturesPanel'
 import { IrPanel } from '@/components/IrPanel'
 import { ArrowLeft, Camera, Power, PowerOff, RotateCw, Wifi, WifiOff } from 'lucide-react'
 import { useState } from 'react'
@@ -8,6 +9,7 @@ import { Chart, TimeAxis, type ChartPoint } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
+import { hasRelay, showsMetric } from '@/lib/features'
 import { formatAgo, formatFixed, formatValue, formatWhen, metricUnit } from '@/lib/format'
 import { ranges, rangeLabel } from '@/lib/ranges'
 import { ZoneSelect } from '@/pages/ClimatePage'
@@ -129,10 +131,10 @@ function announcedCommands(d: DeviceDto): string[] {
   return Array.isArray(info?.commands) ? info.commands.filter((c): c is string => typeof c === 'string') : []
 }
 
-/** Relay channel names come from the hornet's retained state ({channel: on|off}); "relay" is the firmware default. */
+/** Relay channel names come from the hornet's retained state ({channel: on|off}); "relay" ("heater" for a heater) is the firmware default. */
 function relayChannels(d: DeviceDto): string[] {
   const keys = Object.keys((d.state as Record<string, unknown> | null) ?? {}).filter((k) => k !== 'ir_last')
-  return keys.length > 0 ? keys : ['relay']
+  return keys.length > 0 ? keys : [d.features?.includes('heater') ? 'heater' : 'relay']
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -155,7 +157,10 @@ export function DevicePage() {
   const canControl = (me.data?.roles.includes('admin') ?? false) || (me.data?.roles.includes('member') ?? false)
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const device = (devices.data ?? []).find((d) => d.deviceId === deviceId)
-  const readings = (latest.data ?? []).filter((v) => v.deviceId === deviceId).sort((a, b) => a.metric.localeCompare(b.metric))
+  // Only what the hornet is used for: a relay that once sent a temperature does not keep showing it.
+  const readings = (latest.data ?? [])
+    .filter((v) => v.deviceId === deviceId && showsMetric(device?.features, v.metric, device?.hw))
+    .sort((a, b) => a.metric.localeCompare(b.metric))
 
   const send = useSendCommand(deviceId)
 
@@ -168,7 +173,9 @@ export function DevicePage() {
   if (devices.isLoading) return <Skeleton className="h-60" />
   if (!device) return <div className="space-y-3">{back}<Empty>{t('device.notFound')}</Empty></div>
 
-  const commands = announcedCommands(device)
+  // A relay the hornet is not used as gets no buttons, even if its firmware could switch one.
+  const commands = announcedCommands(device).filter((c) => c !== 'relay' || hasRelay(device.features))
+  const sensing = device.features == null || device.features.some((f) => f === 'thermometer' || f === 'bme280') || readings.length > 0
   const online = device.status === 'online'
   const configPending = device.configRev !== device.configAppliedRev
 
@@ -205,7 +212,7 @@ export function DevicePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      {sensing && <Card>
         <CardHeader><CardTitle>{t('device.readings')}</CardTitle></CardHeader>
         <CardContent>
           {latest.isLoading && <Skeleton className="h-16" />}
@@ -220,7 +227,7 @@ export function DevicePage() {
             ))}
           </div>
         </CardContent>
-      </Card>
+      </Card>}
 
       <Card>
         <CardHeader>
@@ -264,8 +271,11 @@ export function DevicePage() {
 
       {device.status !== 'disabled' && device.driver !== 'tasmota' && (
         <Card>
-          <CardHeader><CardTitle>{t('swarm.pins')}</CardTitle></CardHeader>
-          <CardContent><PinsPanel deviceId={device.deviceId} editable={isAdmin} board={device.hw} type={device.type} /></CardContent>
+          <CardHeader><CardTitle>{device.supportedFeatures && device.supportedFeatures.length > 1 ? `${t('features.title')} · ${t('swarm.pins')}` : t('swarm.pins')}</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <FeaturesPanel device={device} editable={isAdmin} />
+            <PinsPanel deviceId={device.deviceId} editable={isAdmin} board={device.hw} type={device.type} features={device.features} />
+          </CardContent>
         </Card>
       )}
     </div>

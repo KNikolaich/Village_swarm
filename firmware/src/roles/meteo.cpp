@@ -6,6 +6,9 @@
 // temperature_3... with the BME280 first and the DS18B20s after it in bus order. With hw.vbat_pin set, a
 // battery behind a voltage divider is measured as battery_voltage (V).
 //
+// Config "features" (thermometer, bme280) limits which sensors are looked for: on the ESP-01 1-Wire and I2C share
+// GPIO2, so a hornet with only a DS18B20 leaves I2C alone. Absent: both.
+//
 // Builds with HW_DHT_PIN (meteo-esp01dht: the "ESP-01S DHT11" module) read a DHT11/DHT22 there instead and
 // publish temperature and humidity; that pin is shared with 1-Wire and I2C on the ESP-01, so those are skipped.
 //
@@ -15,11 +18,16 @@
 #include <Adafruit_BME280.h>
 #include <Battery.h>
 #include <DallasTemperature.h>
+#include <Features.h>
 #include <HornetCore.h>
 #include <OneWire.h>
 #include <Wire.h>
 
 #include <map>
+
+#ifndef HORNET_DISPLAY
+#define HORNET_DISPLAY 0
+#endif
 
 #if HORNET_DISPLAY
 #include <U8g2lib.h>
@@ -81,7 +89,13 @@ public:
         battery_.configure(hw);
         lines_.clear();
         for (JsonVariantConst line : config["display"]["lines"].as<JsonArrayConst>()) lines_.push_back(line.as<String>());
-        if (onewire != onewirePin_ || sda != sdaPin_ || scl != sclPin_) {
+        Features features{kThermometer | kBme280};
+        if (config["features"].is<JsonArrayConst>()) {
+            features.bits = 0;
+            for (JsonVariantConst f : config["features"].as<JsonArrayConst>()) features.bits |= Features::parseOne(f.as<const char*>());
+        }
+        if (onewire != onewirePin_ || sda != sdaPin_ || scl != sclPin_ || features.bits != features_.bits) {
+            features_ = features;
             onewirePin_ = onewire;
             sdaPin_ = sda;
             sclPin_ = scl;
@@ -126,15 +140,19 @@ private:
             sdaPin_ = HW_SDA_PIN;
             sclPin_ = HW_SCL_PIN;
         }
-        // On boards where 1-Wire and I2C share pins (ESP-01), only one kind can be wired; try both anyway.
-        oneWire_.begin(onewirePin_);
-        dallas_.setOneWire(&oneWire_);
-        dallas_.begin();
-        dallas_.setWaitForConversion(false);
-        dsCount_ = dallas_.getDeviceCount();
+        // On boards where 1-Wire and I2C share pins (ESP-01), only one kind can be wired; config features says which.
+        dsCount_ = 0;
+        if (features_.has(kThermometer)) {
+            oneWire_.begin(onewirePin_);
+            dallas_.setOneWire(&oneWire_);
+            dallas_.begin();
+            dallas_.setWaitForConversion(false);
+            dsCount_ = dallas_.getDeviceCount();
+        }
 
-        Wire.begin(sdaPin_, sclPin_);
-        bmeOk_ = bme_.begin(0x76, &Wire) || bme_.begin(0x77, &Wire);
+        bmeOk_ = false;
+        if (features_.has(kBme280) || HORNET_DISPLAY) Wire.begin(sdaPin_, sclPin_);  // the OLED shares the I2C bus
+        if (features_.has(kBme280)) bmeOk_ = bme_.begin(0x76, &Wire) || bme_.begin(0x77, &Wire);
 #if HORNET_DISPLAY
         displayOk_ = oled_.begin();
         if (displayOk_) {
@@ -243,6 +261,7 @@ private:
 #endif
     }
 
+    Features features_{kThermometer | kBme280};
     OneWire oneWire_;
     DallasTemperature dallas_;
     Adafruit_BME280 bme_;

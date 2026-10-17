@@ -88,6 +88,9 @@ public sealed record DeviceConfig
     /// <summary>deep (default) or light: see contracts/schemas/config.schema.json sleep_mode.</summary>
     public SleepMode? SleepMode { get; init; }
 
+    /// <summary>What the hornet is used for: thermometer, bme280, relay, heater. Null: the role's default.</summary>
+    public IReadOnlyList<string>? Features { get; init; }
+
     public FailsafeConfig? Failsafe { get; init; }
     public GuardConfig? Guard { get; init; }
     public CameraConfig? Camera { get; init; }

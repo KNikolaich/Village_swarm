@@ -64,4 +64,31 @@ public class BoardPinsTests
         Assert.Null(BoardPins.VbatRatio(Hw("""{ "vbat_pin": 17 }""")));
         Assert.Null(BoardPins.VbatRatio(null));
     }
+
+    [Fact]
+    public void A_meteo_hornet_shows_no_relay_pin()
+    {
+        var rows = BoardPins.Rows("esp-01", "meteo", null);
+        Assert.DoesNotContain(rows, r => r.Function == "relay");
+        Assert.Contains(rows, r => r.Function == "onewire");
+    }
+
+    [Fact]
+    public void Heat_pins_follow_the_features()
+    {
+        var thermometer = BoardPins.Rows("esp-01", "heat", Hw("""{ "onewire_pin": 3 }"""), [DeviceFeatures.Thermometer]);
+        Assert.Equal(["onewire"], thermometer.Select(r => r.Function));
+
+        var lamp = BoardPins.Rows("esp-01", "heat", Hw("""{ "onewire_pin": 3 }"""), DeviceFeatures.Normalize([DeviceFeatures.Thermometer, DeviceFeatures.Heater]));
+        Assert.Equal(["onewire", "relay"], lamp.Select(r => r.Function));
+        Assert.Empty(BoardPins.Conflicts("heat", lamp, "esp-01", DeviceFeatures.Normalize([DeviceFeatures.Thermometer, DeviceFeatures.Heater])));
+    }
+
+    [Fact]
+    public void Esp01_relay_and_bme280_share_gpio0()
+    {
+        string[] features = [DeviceFeatures.Bme280, DeviceFeatures.Relay];
+        var rows = BoardPins.Rows("esp-01", "heat", null, features);
+        Assert.Contains(BoardPins.Conflicts("heat", rows, "esp-01", features), c => c.StartsWith("GPIO0:"));
+    }
 }

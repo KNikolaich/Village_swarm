@@ -9,6 +9,8 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { statusLabel, t } from '@/i18n'
 import { formatAgo } from '@/lib/format'
+import { usesPin } from '@/lib/features'
+import { FeaturesPanel } from '@/components/FeaturesPanel'
 
 /** "Problems first": offline, then weak signal, then the rest (spec 8.2 screen 5). */
 function badness(d: DeviceDto): number {
@@ -27,11 +29,12 @@ function asleep(d: DeviceDto): boolean {
   return Date.now() - new Date(d.lastSeenAt).getTime() > 90_000
 }
 
-/** Pin fields per role; an unknown type shows them all. The firmware uses only these (BoardPins.RoleFunctions). */
+/** Pin fields per role, narrowed by the hornet's features; an unknown type shows them all (BoardPins.RoleFunctions). */
 const pinFields = [['onewirePin', 'onewire'], ['sdaPin', 'sda'], ['sclPin', 'scl'], ['relayPin', 'relay'], ['buttonPin', 'button'], ['vbatPin', 'vbat']] as const
 const roleFunctions: Record<string, readonly string[]> = {
   meteo: ['onewire', 'sda', 'scl', 'vbat'],
   relay: ['relay', 'button', 'vbat'],
+  heat: ['onewire', 'sda', 'scl', 'relay', 'button', 'vbat'],
   'guard-cam': ['relay'],
 }
 
@@ -59,13 +62,13 @@ function HelpTip({ text, open, onToggle }: { text: string; open: boolean; onTogg
 }
 
 /** Pins of one hornet: what each function uses (board default or set by hand), conflicts shown, and editing. */
-export function PinsPanel({ deviceId, editable, board, type }: { deviceId: string; editable: boolean; board?: string | null; type?: string }) {
+export function PinsPanel({ deviceId, editable, board, type, features }: { deviceId: string; editable: boolean; board?: string | null; type?: string; features?: readonly string[] | null }) {
   const qc = useQueryClient()
   const pins = useQuery({ queryKey: ['devices', deviceId, 'pins'], queryFn: () => call(api.GET('/api/devices/{deviceId}/pins', { params: { path: { deviceId } } })) })
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [help, setHelp] = useState<string | null>(null)
   const used = type ? roleFunctions[type] : undefined
-  const keys = used ? pinFields.filter(([, fn]) => used.includes(fn)) : pinFields
+  const keys = pinFields.filter(([, fn]) => (!used || used.includes(fn)) && usesPin(features, fn))
   const showRatio = keys.some(([, fn]) => fn === 'vbat')
 
   async function save() {
@@ -221,15 +224,20 @@ function DeviceName({ device, editable }: { device: DeviceDto; editable: boolean
   )
 }
 
+/** A meteo or relay hornet may move to the heat firmware of its board, which does all they do (OtaService.CanBecome). */
+const canBecome = (type: string, role: string) => role === 'heat' && (type === 'meteo' || type === 'relay')
+
 /** Over-the-air update of one hornet: the builds the hive has for its role and board, the running one marked. */
 function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: Schemas['FirmwareBuildDto'][]; onDone: () => void }) {
   const [busy, setBusy] = useState(false)
   const env = `${device.type}-${device.hw ?? '?'}`
-  const suitable = builds.filter((b) => b.role === device.type && b.board === device.hw)
+  const suitable = builds.filter((b) => b.board === device.hw && (b.role === device.type || canBecome(device.type, b.role)))
 
   async function update(build: Schemas['FirmwareBuildDto']) {
     const risky = (device.hw ?? '').startsWith('esp-01')
-    const text = t('swarm.updateConfirm').replace('{name}', device.name).replace('{from}', device.fw ?? '?').replace('{to}', build.version ?? '?')
+    const text = build.role !== device.type
+      ? t('swarm.becomeConfirm').replace('{name}', device.name).replace('{type}', t(`deviceTypes.${build.role}`, build.role))
+      : t('swarm.updateConfirm').replace('{name}', device.name).replace('{from}', device.fw ?? '?').replace('{to}', build.version ?? '?')
     const notes = [risky ? t('swarm.updateRisk') : '', build.signed ? '' : t('swarm.updateUnsigned')].filter(Boolean)
     if (!window.confirm(notes.length ? `${text}\n\n${notes.join('\n\n')}` : text)) return
     setBusy(true)
@@ -247,13 +255,14 @@ function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: 
   return (
     <div className="space-y-2 text-xs">
       <p className="text-neutral-400">{t('swarm.fwRunning').replace('{version}', device.fw ?? '?')}</p>
-      {suitable.length === 0 && <p className="text-neutral-500">{t('swarm.fwNone').replace('{env}', env)}</p>}
+      {!suitable.some((b) => b.role === device.type) && <p className="text-neutral-500">{t('swarm.fwNone').replace('{env}', env)}</p>}
       {suitable.map((b) => {
         const current = b.version === device.fw
         return (
           <div key={b.build} className="flex items-center justify-between gap-2 border-t border-neutral-800 pt-2">
             <div>
               <p className="font-medium">{b.build} · {b.version ?? '?'}</p>
+              {b.role !== device.type && <p className="text-amber-400">{t('swarm.fwBecome').replace('{type}', t(`deviceTypes.${b.role}`, b.role))}</p>}
               <p className="text-neutral-500">{t('swarm.fwBuilt').replace('{when}', formatAgo(b.built))}</p>
             </div>
             {current ? (
@@ -264,7 +273,7 @@ function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: 
           </div>
         )
       })}
-      {suitable.length > 0 && suitable.every((b) => b.version === device.fw) && <p className="text-neutral-500">{t('swarm.fwNoNewer')}</p>}
+      {suitable.some((b) => b.role === device.type) && suitable.every((b) => b.role !== device.type || b.version === device.fw) && <p className="text-neutral-500">{t('swarm.fwNoNewer')}</p>}
       {device.status !== 'online' && <p className="text-amber-400">{t('swarm.fwOffline')}</p>}
     </div>
   )
@@ -422,8 +431,9 @@ export function SwarmPage() {
               </CardContent>
             )}
             {pinsOpen === d.deviceId && (
-              <CardContent className="border-t border-neutral-800 pt-3">
-                <PinsPanel deviceId={d.deviceId} editable={isAdmin} board={d.hw} type={d.type} />
+              <CardContent className="space-y-4 border-t border-neutral-800 pt-3">
+                <FeaturesPanel device={d} editable={isAdmin} />
+                <PinsPanel deviceId={d.deviceId} editable={isAdmin} board={d.hw} type={d.type} features={d.features} />
               </CardContent>
             )}
           </Card>

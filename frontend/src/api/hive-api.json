@@ -1302,6 +1302,58 @@
         }
       }
     },
+    "/api/devices/{deviceId}/features": {
+      "put": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeaturesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/provision/codes": {
       "post": {
         "tags": [
@@ -3021,6 +3073,34 @@
           },
           "driver": {
             "type": "string"
+          },
+          "features": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "supportedFeatures": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "heater": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HeaterLimitsDto"
+              }
+            ]
           }
         }
       },
@@ -3360,6 +3440,41 @@
           }
         }
       },
+      "FeaturesRequest": {
+        "required": [
+          "features"
+        ],
+        "type": "object",
+        "properties": {
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "minC": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "maxC": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "maxOnS": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "FirmwareBuildDto": {
         "required": [
           "build",
@@ -3426,6 +3541,28 @@
               "number"
             ],
             "format": "double"
+          }
+        }
+      },
+      "HeaterLimitsDto": {
+        "required": [
+          "minC",
+          "maxC",
+          "maxOnS"
+        ],
+        "type": "object",
+        "properties": {
+          "minC": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxC": {
+            "type": "number",
+            "format": "double"
+          },
+          "maxOnS": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -3508,7 +3645,7 @@
           }
         }
       },
-      "JsonElement": { },
+      "JsonElement": {},
       "JsonObject": {
         "type": "object"
       },

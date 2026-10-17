@@ -149,8 +149,9 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         if (r.VbatRatio is { } vr) hw["vbat_ratio"] = vr;
         else hw.Remove("vbat_ratio");
         var hwElement = JsonDocument.Parse(hw.ToJsonString()).RootElement;
-        var rows = BoardPins.Rows(device.Hw, device.TypeCode, hwElement);
-        var conflicts = BoardPins.Conflicts(device.TypeCode, rows, device.Hw);
+        var features = DeviceFeatures.Effective(device.TypeCode, device.Config?.RootElement);
+        var rows = BoardPins.Rows(device.Hw, device.TypeCode, hwElement, features);
+        var conflicts = BoardPins.Conflicts(device.TypeCode, rows, device.Hw, features);
         if (conflicts.Count > 0)
             return new PinsResult(ConfigUpdateStatus.BadRequest, "Пины конфликтуют: " + string.Join("; ", conflicts), rows, conflicts);
 
@@ -172,9 +173,71 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         if (device is null)
             return new PinsResult(ConfigUpdateStatus.NotFound, null, [], []);
         JsonElement? hw = device.Config?.RootElement.TryGetProperty("hw", out var h) == true ? h : null;
-        var rows = BoardPins.Rows(device.Hw, device.TypeCode, hw);
-        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, BoardPins.Conflicts(device.TypeCode, rows, device.Hw), BoardPins.VbatRatio(hw));
+        var features = DeviceFeatures.Effective(device.TypeCode, device.Config?.RootElement);
+        var rows = BoardPins.Rows(device.Hw, device.TypeCode, hw, features);
+        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, BoardPins.Conflicts(device.TypeCode, rows, device.Hw, features), BoardPins.VbatRatio(hw));
     }
+
+    /// <summary>
+    /// PUT /api/devices/{id}/features: what the hornet is used for, and for a heater the limits it keeps by itself
+    /// (null keeps what the config has, else the firmware defaults). Max on time is in seconds, as in the contract.
+    /// </summary>
+    public sealed record FeaturesRequest(IReadOnlyList<string> Features, double? MinC = null, double? MaxC = null, int? MaxOnS = null);
+
+    public sealed record FeaturesResult(ConfigUpdateStatus Status, string? Error = null);
+
+    /// <summary>
+    /// Sets config "features" (and failsafe.heater for a heater) and publishes the config. Refused when the role's
+    /// firmware cannot do a feature, a heater has no sensor, the limits make no sense, or the chosen features would
+    /// put two functions on one pin (ESP-01: relay and I2C both on GPIO0).
+    /// </summary>
+    public async Task<FeaturesResult> SetFeaturesAsync(string deviceId, FeaturesRequest r, string by, CancellationToken ct)
+    {
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null)
+            return new FeaturesResult(ConfigUpdateStatus.NotFound);
+        var features = DeviceFeatures.Normalize(r.Features ?? []);
+        if (DeviceFeatures.Validate(device.TypeCode, features) is { } error)
+            return new FeaturesResult(ConfigUpdateStatus.BadRequest, error);
+
+        var config = device.Config is { } current
+            ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
+            : new JsonObject { ["v"] = 1, ["name"] = device.Name, ["health_interval_s"] = 60 };
+        JsonElement? hw = device.Config?.RootElement.TryGetProperty("hw", out var h) == true ? h : null;
+        var conflicts = BoardPins.Conflicts(device.TypeCode, BoardPins.Rows(device.Hw, device.TypeCode, hw, features), device.Hw, features);
+        if (conflicts.Count > 0)
+            return new FeaturesResult(ConfigUpdateStatus.BadRequest, "Пины конфликтуют: " + string.Join("; ", conflicts));
+
+        config["features"] = new JsonArray(features.Select(f => (JsonNode)f).ToArray());
+        if (features.Contains(DeviceFeatures.Heater))
+        {
+            var (minC, maxC, maxOnS) = Heater(device) ?? (DeviceFeatures.DefaultMinC, DeviceFeatures.DefaultMaxC, DeviceFeatures.DefaultMaxOnS);
+            minC = r.MinC ?? minC;
+            maxC = r.MaxC ?? maxC;
+            maxOnS = r.MaxOnS ?? maxOnS;
+            if (DeviceFeatures.ValidateHeater(minC, maxC, maxOnS) is { } limits)
+                return new FeaturesResult(ConfigUpdateStatus.BadRequest, limits);
+            var failsafe = config["failsafe"] as JsonObject ?? new JsonObject();
+            failsafe["heater"] = new JsonObject { ["min_c"] = minC, ["max_c"] = maxC, ["max_on_s"] = maxOnS };
+            config["failsafe"] = failsafe;
+        }
+        device.ConfigRev++;
+        config["rev"] = device.ConfigRev;
+        device.Config = JsonDocument.Parse(config.ToJsonString());
+        Audit.Record(db, time.GetUtcNow(), by, "device_features", deviceId, new { features, r.MinC, r.MaxC, r.MaxOnS });
+        await db.SaveChangesAsync(ct);
+        if (mqtt.IsConnected && device.Status != DeviceStatus.Disabled)
+            await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
+        return new FeaturesResult(ConfigUpdateStatus.Updated);
+    }
+
+    /// <summary>The heater limits in the config (failsafe.heater), or null when it has none.</summary>
+    public static (double MinC, double MaxC, int MaxOnS)? Heater(Device d) =>
+        d.Config?.RootElement.TryGetProperty("failsafe", out var f) == true && f.ValueKind == JsonValueKind.Object
+        && f.TryGetProperty("heater", out var h) && h.ValueKind == JsonValueKind.Object
+        && h.TryGetProperty("min_c", out var min) && h.TryGetProperty("max_c", out var max) && h.TryGetProperty("max_on_s", out var on)
+            ? (min.GetDouble(), max.GetDouble(), on.GetInt32())
+            : null;
 
     public static int? SleepS(Device d) =>
         d.Config?.RootElement.TryGetProperty("sleep_s", out var s) == true && s.TryGetInt32(out var v) && v > 0 ? v : null;

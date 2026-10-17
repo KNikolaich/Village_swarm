@@ -22,6 +22,7 @@ In VS Code the PlatformIO toolbar does the same (✓ build, → upload, plug ico
 | `meteo-d1mini`, `relay-d1mini` | Wemos D1 mini | ESP8266 |
 | `meteo-nodemcu`, `relay-nodemcu` | NodeMCU v3 | ESP8266 |
 | `meteo-esp01`, `relay-esp01` | ESP-01 / ESP-01S (1 MB), incl. "ESP-01 Relay v1.0" and DS18B20 modules | ESP8266 |
+| `heat-d1mini`, `heat-nodemcu`, `heat-esp01` | the universal ESP8266 hornet: thermometer, BME280, relay and heater, chosen per hornet (see **heat** below) | ESP8266 |
 | `meteo-esp01dht` | "ESP-01S DHT11 v1.0" module: DHT11 on GPIO2, powered 3.7–12 V through its own regulator | ESP8266 |
 
 Every build lands in `firmware/dist/<env>/` with a `build.json` (chip, flash offsets); the web flasher in
@@ -60,8 +61,17 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
   battery_voltage. A dot in the corner means the hornet is online.
 - **relay**: `cmd/relay {channel, set: on|off, for_s}`, channel `relay` unless config `relay.channel` says
   otherwise (e.g. `light`). Off at every boot; switches off by itself after `for_s` or `relay.max_on_s`,
-  whichever is shorter. The optional button toggles it locally. Heaters with a temperature failsafe will be a
-  separate role (spec 5.6).
+  whichever is shorter. The optional button toggles it locally.
+- **heat** (ESP8266 only): one image for a thermometer, a relay or a heater; the hornet's config `features`
+  (set in the UI under Pins, "Назначение") says which of `thermometer` (DS18B20), `bme280`, `relay`, `heater`
+  are wired, and only their pins are touched, so on the ESP-01 a relay on GPIO0 and a DS18B20 on GPIO2 or GPIO3
+  (RX) live together. Without `features`: thermometer + relay + heater. With `heater` the relay channel is
+  `heater` and the hornet keeps `failsafe.heater` by itself (lib/hornet-core/HeaterFailsafe.h, the same rules as
+  the simulator): below `min_c` it heats whatever the commands, above `max_c` it switches off and rejects "on",
+  no switch-on lasts longer than `max_on_s`, and with no reading for 3 minutes it runs 10 min on / 20 min off.
+  Each switch it makes by itself goes out as `event/failsafe {rule, heater, temperature}`. A meteo or relay
+  hornet on the same board can be moved to it over the air (the swarm screen offers the heat build).
+- **meteo** also honours `features` (`thermometer`, `bme280`) and then skips the bus that is not wired.
 
 ESP8266 notes: 80 KB of RAM, so roles stay small; the watchdog is the chip's fixed one (~8 s). Settings live
 in LittleFS through the same Preferences API as NVS on ESP32.

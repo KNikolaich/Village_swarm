@@ -40,6 +40,13 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
         (await db.Modes.AsNoTracking().Where(m => m.Key == "hive.url").Select(m => m.Value).FirstOrDefaultAsync(ct))
         ?? options.Value.UploadUrl;
 
+    /// <summary>
+    /// A meteo or relay hornet may move to the heat firmware of its board: heat does all they do (thermometer, BME280,
+    /// relay) and keeps the same pins, so a board with both a sensor and a relay needs no unsoldering to get both.
+    /// The hornet reports its new type in info after the restart.
+    /// </summary>
+    public static bool CanBecome(string type, string role) => role == "heat" && type is ("meteo" or "relay");
+
     public async Task<OtaResult> StartAsync(string deviceId, string build, string by, CancellationToken ct)
     {
         var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Status != DeviceStatus.Disabled, ct);
@@ -47,7 +54,7 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
             return new OtaResult(OtaStatus.UnknownDevice);
         if (ProvisioningEndpoints.ReadBuild(build, options.Value, env) is not { } b)
             return new OtaResult(OtaStatus.UnknownBuild);
-        if (b.Role != device.TypeCode)
+        if (b.Role != device.TypeCode && !CanBecome(device.TypeCode, b.Role))
             return new OtaResult(OtaStatus.Refused, $"build {build} is for {b.Role}, not {device.TypeCode}");
         if (!string.Equals(b.Board, device.Hw, StringComparison.Ordinal))
             return new OtaResult(OtaStatus.Refused, $"build {build} is for board {b.Board}, this hornet reports {device.Hw}");
