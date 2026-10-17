@@ -1,24 +1,17 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, Check, CircleHelp, Cpu, Moon, Pencil, Pin, Plus, Terminal, Trash2, Wifi, WifiOff, X } from 'lucide-react'
+import { ArrowRightLeft, BatteryMedium, Camera, Check, CircleHelp, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Pencil, Plus, Terminal, Thermometer, Wifi, WifiOff, X, type LucideIcon } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
-import { api, call, type DeviceDto, type Schemas } from '@/api/client'
-import { keys, useDevices, useMe } from '@/api/queries'
+import { api, call, type DeviceDto, type LatestValueDto, type Schemas } from '@/api/client'
+import { keys, useDevices, useLatestTelemetry, useMe, useSendCommand, useZones } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
-import { statusLabel, t } from '@/i18n'
-import { formatAgo } from '@/lib/format'
+import { metricLabel, statusLabel, t } from '@/i18n'
+import { formatAgo, formatValue } from '@/lib/format'
 import { usesPin } from '@/lib/features'
-import { FeaturesPanel } from '@/components/FeaturesPanel'
-
-/** "Problems first": offline, then weak signal, then the rest (spec 8.2 screen 5). */
-function badness(d: DeviceDto): number {
-  if (d.status === 'disabled') return 4
-  if (d.status !== 'online') return 0
-  if ((d.rssi ?? 0) < -80) return 1
-  return 2
-}
+import { groupDevices, groupings, mainReadings, quickControls, type Grouping } from '@/lib/swarm'
+import { cn } from '@/lib/utils'
 
 /** Battery intervals offered in the UI; the contract allows 60..86400 s. 0 = always awake. */
 const sleepChoices = [0, 300, 600, 900, 1800, 3600]
@@ -279,14 +272,84 @@ function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: 
   )
 }
 
-/** Screen 5 (spec 8.2): every hornet, sorted by trouble, with replace and remove. */
+const readingIcons: Record<string, LucideIcon> = {
+  temperature: Thermometer,
+  temperature_2: Thermometer,
+  humidity: Droplets,
+  pressure: Gauge,
+  battery_voltage: BatteryMedium,
+  cpu_temperature: Cpu,
+  disk_used_pct: HardDrive,
+}
+
+/** A reading older than this is shown dimmed: the hornet has not confirmed it lately. */
+const staleAfterMs = 3 * 3600_000
+
+/** The hornet's main readings as large numbers; the label and age are in the tooltip. */
+function Readings({ device, latest }: { device: DeviceDto; latest: LatestValueDto[] }) {
+  const readings = mainReadings(device, latest)
+  if (readings.length === 0) return null
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      {readings.map((v) => {
+        const Icon = readingIcons[v.metric]
+        const stale = device.status !== 'online' || Date.now() - new Date(v.ts).getTime() > staleAfterMs
+        return (
+          <span key={v.metric} title={`${metricLabel(v.metric)} · ${formatAgo(v.ts)}`}
+            className={cn('flex items-center gap-1', stale && 'opacity-50')}>
+            {Icon && <Icon className="size-4 text-neutral-500" />}
+            <span className={cn('text-xl font-semibold tabular-nums', v.metric.startsWith('temperature') && v.value < 0 && 'text-sky-300')}>
+              {formatValue(v.metric, v.value)}
+            </span>
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+/** One-press controls of what the hornet drives: a relay toggles (the bulb is lit while it is on), a camera takes a photo. */
+function QuickControls({ device }: { device: DeviceDto }) {
+  const qc = useQueryClient()
+  const send = useSendCommand(device.deviceId)
+  const { relays, snapshot } = quickControls(device)
+  if (relays.length === 0 && !snapshot) return null
+
+  async function toggle(channel: string, on: boolean | null) {
+    await send('relay', { channel, set: on ? 'off' : 'on' })
+    // The new state comes back as the hornet's retained state; read it once it had time to arrive.
+    for (const ms of [1500, 5000]) setTimeout(() => void qc.invalidateQueries({ queryKey: keys.devices }), ms)
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      {relays.map(({ channel, on }) => {
+        const Icon = channel === 'heater' ? Flame : Lightbulb
+        const title = t(on ? 'swarm.relayOnTitle' : on === false ? 'swarm.relayOffTitle' : 'swarm.relayUnknownTitle').replace('{channel}', channel)
+        return (
+          <Button key={channel} variant="outline" size="icon" title={title} aria-label={title} aria-pressed={on ?? undefined}
+            className={on ? 'border-amber-400/60 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25' : 'text-neutral-400'}
+            onClick={() => void toggle(channel, on)}>
+            <Icon className={on ? 'fill-amber-300/40' : undefined} />
+          </Button>
+        )
+      })}
+      {snapshot && (
+        <Button variant="outline" size="icon" title={t('swarm.snapshot')} aria-label={t('swarm.snapshot')} onClick={() => void send('snapshot', { count: 1 })}>
+          <Camera />
+        </Button>
+      )}
+    </div>
+  )
+}
+
+/** Screen 5 (spec 8.2): every hornet, grouped by zone or kind (hives first), with its readings and controls at hand. */
 export function SwarmPage() {
   const qc = useQueryClient()
   const devices = useDevices(true)
   const me = useMe()
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
-  const [pinsOpen, setPinsOpen] = useState<string | null>(null)
   const [fwOpen, setFwOpen] = useState<string | null>(null)
   const firmware = useQuery({ queryKey: ['firmware'], queryFn: () => call(api.GET('/api/firmware')), enabled: isAdmin })
   const navigate = useNavigate()
@@ -298,12 +361,28 @@ export function SwarmPage() {
     setShowDeceased(on)
     try { localStorage.setItem('swarm.showDeceased', on ? '1' : '0') } catch { /* private window: just not remembered */ }
   }
+  // How the list is grouped is remembered between visits too.
+  const [grouping, setGrouping] = useState<Grouping>(() => {
+    try {
+      const saved = localStorage.getItem('swarm.grouping')
+      return groupings.find((g) => g === saved) ?? 'zone'
+    } catch { return 'zone' }
+  })
+  function changeGrouping(g: Grouping) {
+    setGrouping(g)
+    try { localStorage.setItem('swarm.grouping', g) } catch { /* private window: just not remembered */ }
+  }
+  const zones = useZones()
+  const latest = useLatestTelemetry()
   const deceasedCount = (devices.data ?? []).filter((d) => d.status === 'disabled').length
-  const list = useMemo(
-    () => [...(devices.data ?? [])]
-      .filter((d) => showDeceased || d.status !== 'disabled')
-      .sort((a, b) => badness(a) - badness(b) || a.deviceId.localeCompare(b.deviceId)),
-    [devices.data, showDeceased],
+  const list = useMemo(() => (devices.data ?? []).filter((d) => showDeceased || d.status !== 'disabled'), [devices.data, showDeceased])
+  const groups = useMemo(
+    () => groupDevices(list, zones.data ?? [], grouping, {
+      hives: t('swarm.groupHives'),
+      noZone: t('swarm.noZone'),
+      type: (type) => t(`deviceTypes.${type}`, type),
+    }),
+    [list, zones.data, grouping],
   )
 
   /** The wizard opens on the flashing step: the hornet's type and name are known, and the code is issued there. */
@@ -327,13 +406,6 @@ export function SwarmPage() {
     await qc.invalidateQueries({ queryKey: keys.devices })
   }
 
-  async function remove(d: DeviceDto) {
-    if (!window.confirm(t('swarm.removeConfirm').replace('{name}', d.name))) return
-    await call(api.DELETE('/api/devices/{deviceId}', { params: { path: { deviceId: d.deviceId } } }))
-    toast.success(t('swarm.removed'))
-    await qc.invalidateQueries({ queryKey: keys.devices })
-  }
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -350,28 +422,40 @@ export function SwarmPage() {
         )}
       </div>
 
-      {deceasedCount > 0 && (
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400" title={t('swarm.deceasedHint')}>
-          <input type="checkbox" className="size-4 accent-amber-400" checked={showDeceased} onChange={(e) => toggleDeceased(e.target.checked)} />
-          {t('swarm.showDeceased').replace('{n}', String(deceasedCount))}
-        </label>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex items-center gap-1 rounded-lg bg-neutral-900 p-1 text-xs" role="radiogroup" aria-label={t('swarm.groupBy')}>
+          {groupings.map((g) => (
+            <button key={g} type="button" role="radio" aria-checked={grouping === g} onClick={() => changeGrouping(g)}
+              className={cn('rounded-md px-3 py-1.5', grouping === g ? 'bg-neutral-700 text-neutral-100' : 'text-neutral-400 hover:text-neutral-200')}>
+              {t(`swarm.group.${g}`)}
+            </button>
+          ))}
+        </div>
+        {deceasedCount > 0 && (
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400" title={t('swarm.deceasedHint')}>
+            <input type="checkbox" className="size-4 accent-amber-400" checked={showDeceased} onChange={(e) => toggleDeceased(e.target.checked)} />
+            {t('swarm.showDeceased').replace('{n}', String(deceasedCount))}
+          </label>
+        )}
+      </div>
 
       {devices.isLoading && <Skeleton className="h-40" />}
       {!devices.isLoading && list.length === 0 && <Empty>{t('overview.noDevices')}</Empty>}
-      <div className="space-y-2">
-        {list.map((d) => (
+      <div className="space-y-4">
+        {groups.map((group) => (
+          <section key={group.key} className="space-y-2">
+            {group.title && <h2 className="px-1 text-xs font-medium uppercase tracking-wide text-neutral-500">{group.title}</h2>}
+            {group.devices.map((d) => (
           <Card key={d.deviceId} className={d.status === 'disabled' ? 'opacity-50' : undefined}>
-            <CardContent className="flex items-center justify-between gap-3 py-3">
-              <div className="min-w-0">
+            <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
+              <div className="min-w-0 flex-1 basis-48">
                 <DeviceName device={d} editable={isAdmin && d.status !== 'disabled'} />
                 <p className="truncate text-xs text-neutral-500">
                   {d.deviceId} · {d.type} · {d.driver === 'tasmota' ? 'Tasmota' : (d.fw ?? '—')} · {formatAgo(d.lastSeenAt)}
                 </p>
                 {canControl && d.type === 'meteo' && d.status !== 'disabled' && (
-                  <label className="mt-1 flex items-center gap-2 text-xs text-neutral-400" title={t('swarm.sleepHint')}>
-                    <Moon className="size-3" />
-                    {t('swarm.sleep')}
+                  <label className="mt-1 flex flex-wrap items-center gap-2 text-xs text-neutral-400" title={t('swarm.sleepHint')}>
+                    <span className="flex items-center gap-2 whitespace-nowrap"><Moon className="size-3" />{t('swarm.sleep')}</span>
                     <Select
                       value={d.sleepS ?? 0}
                       onChange={(e) => void setSleep(d, { sleepS: Number(e.target.value) })}
@@ -395,9 +479,11 @@ export function SwarmPage() {
                   </label>
                 )}
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {d.rssi != null && d.status === 'online' && (
-                  <span className={`text-xs tabular-nums ${d.rssi < -80 ? 'text-amber-400' : 'text-neutral-500'}`}>{d.rssi} dBm</span>
+              {d.status !== 'disabled' && <Readings device={d} latest={latest.data ?? []} />}
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                {canControl && d.status === 'online' && !asleep(d) && <QuickControls device={d} />}
+                {d.rssi != null && d.status === 'online' && d.rssi < -80 && (
+                  <span className="text-xs tabular-nums text-amber-400" title={t('swarm.weakSignal')}>{d.rssi} dBm</span>
                 )}
                 {asleep(d) ? (
                   <Badge tone="neutral"><Moon className="size-3" />{t('swarm.sleeping')}</Badge>
@@ -407,21 +493,15 @@ export function SwarmPage() {
                     {statusLabel(d.status)}
                   </Badge>
                 )}
-                {isAdmin && d.status !== 'disabled' && d.driver !== 'tasmota' && (
+                {isAdmin && d.status !== 'disabled' && d.driver !== 'tasmota' && d.type !== 'hive' && (
                   <Button variant="ghost" size="icon" title={newerBuild(d) ? t('swarm.updateAvailable') : t('swarm.update')}
                     className={newerBuild(d) ? 'text-amber-400' : undefined} onClick={() => setFwOpen(fwOpen === d.deviceId ? null : d.deviceId)}><Cpu /></Button>
-                )}
-                {d.status !== 'disabled' && d.driver !== 'tasmota' && (
-                  <Button variant="ghost" size="icon" title={t('swarm.pins')} onClick={() => setPinsOpen(pinsOpen === d.deviceId ? null : d.deviceId)}><Pin /></Button>
                 )}
                 {isAdmin && d.status === 'disabled' && (
                   <Button variant="outline" size="sm" title={t('swarm.reviveTitle')} onClick={() => replace(d.deviceId, true)}><ArrowRightLeft />{t('swarm.revive')}</Button>
                 )}
-                {isAdmin && d.status !== 'disabled' && (
-                  <>
-                    <Button variant="ghost" size="icon" title={t('swarm.replaceTitle')} onClick={() => replace(d.deviceId)}><ArrowRightLeft /></Button>
-                    <Button variant="ghost" size="icon" title={t('swarm.remove')} onClick={() => void remove(d)}><Trash2 /></Button>
-                  </>
+                {isAdmin && d.status !== 'disabled' && d.type !== 'hive' && (
+                  <Button variant="ghost" size="icon" title={t('swarm.replaceTitle')} onClick={() => replace(d.deviceId)}><ArrowRightLeft /></Button>
                 )}
               </div>
             </CardContent>
@@ -430,13 +510,9 @@ export function SwarmPage() {
                 <FirmwarePanel device={d} builds={firmware.data ?? []} onDone={() => setFwOpen(null)} />
               </CardContent>
             )}
-            {pinsOpen === d.deviceId && (
-              <CardContent className="space-y-4 border-t border-neutral-800 pt-3">
-                <FeaturesPanel device={d} editable={isAdmin} />
-                <PinsPanel deviceId={d.deviceId} editable={isAdmin} board={d.hw} type={d.type} features={d.features} />
-              </CardContent>
-            )}
           </Card>
+            ))}
+          </section>
         ))}
       </div>
     </div>

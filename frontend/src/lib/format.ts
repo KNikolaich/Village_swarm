@@ -48,10 +48,11 @@ export function parseIsoDate(s: string): Date {
 }
 
 export const metricUnit = (metric: string) =>
-  metric === 'temperature' || metric === 'cpu_temperature' ? '°'
+  metric.startsWith('temperature') || metric === 'cpu_temperature' ? '°'
     : metric === 'humidity' || metric === 'disk_used_pct' ? '%'
       : metric === 'battery_voltage' ? ' ' + t('units.volt')
-        : ''
+        : metric === 'pressure' ? ' ' + t('units.hpa')
+          : ''
 
 export function formatValue(metric: string, value: number): string {
   // Battery voltage needs hundredths: a 12 V battery's whole charge range is about 1.5 V.

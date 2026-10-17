@@ -806,6 +806,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/devices/{deviceId}/sort": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SetDeviceSortRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ingest/photo": {
         parameters: {
             query?: never;
@@ -3193,6 +3248,11 @@ export interface components {
             features?: null | string[];
             supportedFeatures?: null | string[];
             heater?: null | components["schemas"]["HeaterLimitsDto"];
+            /**
+             * Format: int32
+             * @default 0
+             */
+            sort: number;
         };
         DeviceLogDto: {
             /** Format: int64 */
@@ -3593,6 +3653,8 @@ export interface components {
         SaveZoneRequest: {
             name: string;
             kind: components["schemas"]["ZoneKind"];
+            /** Format: int32 */
+            sort?: null | number;
         };
         SendCommandRequest: {
             name: string;
@@ -3613,6 +3675,10 @@ export interface components {
         SetArmedRequest: {
             armed: boolean;
             mode?: null | string;
+        };
+        SetDeviceSortRequest: {
+            /** Format: int32 */
+            sort: number;
         };
         SetDeviceZoneRequest: {
             /** Format: int32 */
@@ -3775,6 +3841,8 @@ export interface components {
             kind: components["schemas"]["ZoneKind"];
             /** Format: int32 */
             deviceCount: number;
+            /** Format: int32 */
+            sort: number;
         };
         /** @enum {unknown} */
         ZoneKind: "perimeter" | "house" | "garden" | "tech";

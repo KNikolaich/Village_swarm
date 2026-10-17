@@ -143,7 +143,8 @@
     "deleteConfirm": "Delete the zone \"{name}\"? Hornets stay, without a zone.",
     "saved": "Saved",
     "exists": "A zone with this name already exists",
-    "failed": "Could not save the zone"
+    "failed": "Could not save the zone",
+    "sort": "Zone place"
   },
   "rules": {
     "title": "Rules",
@@ -394,7 +395,9 @@
     "humidity": "Humidity",
     "cpu_temperature": "CPU",
     "disk_used_pct": "Disk used",
-    "battery_voltage": "Battery voltage"
+    "battery_voltage": "Battery voltage",
+    "pressure": "Pressure",
+    "temperature_2": "Temperature 2"
   },
   "settings": {
     "title": "Settings",
@@ -526,7 +529,8 @@
     "logLevel": "Level",
     "logAll": "all",
     "noLogs": "No entries",
-    "diagnostics": "Diagnostics: signal and memory"
+    "diagnostics": "Diagnostics: signal and memory",
+    "sort": "Place in the swarm"
   },
   "swarm": {
     "title": "Swarm",
@@ -602,7 +606,24 @@
     "revive": "Revive",
     "reviveTitle": "Bring this hornet back to life on a new board: same name and history",
     "reviveConfirm": "Revive '{id}' on a new board? The wizard opens: the code is issued, just flash the board and enter the code. Name, history and settings are kept.",
-    "replaceTasmotaConfirm": "Replace the board of '{id}'? A new login and console lines are issued. The previous login stops working."
+    "replaceTasmotaConfirm": "Replace the board of '{id}'? A new login and console lines are issued. The previous login stops working.",
+    "groupBy": "Grouping",
+    "group": {
+      "zone": "By zone",
+      "type": "By kind",
+      "all": "All"
+    },
+    "groupHives": "Hives",
+    "noZone": "No zone",
+    "relayOnTitle": "{channel}: on, press to turn off",
+    "relayOffTitle": "{channel}: off, press to turn on",
+    "relayUnknownTitle": "{channel}: state unknown, press to turn on",
+    "snapshot": "Take a photo",
+    "weakSignal": "Weak signal",
+    "removeHornet": "Remove hornet",
+    "sortHint": "Place in the list: lower comes first, 0…9999",
+    "sortInvalid": "The place is a whole number from 0 to 9999",
+    "sortFailed": "Could not save the place"
   },
   "add": {
     "step1": "Hornet and code",
@@ -744,7 +765,8 @@
     "once": "Once per device: the hive certificate is valid for 10 years. It is needed again only if the hive is reinstalled from scratch."
   },
   "units": {
-    "volt": "V"
+    "volt": "V",
+    "hpa": "hPa"
   },
   "backups": {
     "title": "Backups",

@@ -581,6 +581,51 @@
         }
       }
     },
+    "/api/devices/{deviceId}/sort": {
+      "put": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDeviceSortRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ingest/photo": {
       "post": {
         "tags": [
@@ -3101,6 +3146,11 @@
                 "$ref": "#/components/schemas/HeaterLimitsDto"
               }
             ]
+          },
+          "sort": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
           }
         }
       },
@@ -4577,6 +4627,13 @@
           },
           "kind": {
             "$ref": "#/components/schemas/ZoneKind"
+          },
+          "sort": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -4649,6 +4706,18 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "SetDeviceSortRequest": {
+        "required": [
+          "sort"
+        ],
+        "type": "object",
+        "properties": {
+          "sort": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -5240,7 +5309,8 @@
           "id",
           "name",
           "kind",
-          "deviceCount"
+          "deviceCount",
+          "sort"
         ],
         "type": "object",
         "properties": {
@@ -5255,6 +5325,10 @@
             "$ref": "#/components/schemas/ZoneKind"
           },
           "deviceCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sort": {
             "type": "integer",
             "format": "int32"
           }

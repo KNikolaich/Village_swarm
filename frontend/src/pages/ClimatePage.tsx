@@ -13,6 +13,7 @@ import { ranges, rangeLabel } from '@/lib/ranges'
 import { seriesColors } from '@/lib/seriesColors'
 import { cn } from '@/lib/utils'
 import { hasRelay } from '@/lib/features'
+import { SortInput } from '@/components/SortInput'
 
 const kinds = ['garden', 'house', 'perimeter', 'tech'] as const
 
@@ -138,6 +139,11 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl }: {
     await qc.invalidateQueries({ queryKey: ['zones'] })
   }
 
+  async function saveSort(sort: number) {
+    await call(api.PUT('/api/zones/{id}', { params: { path: { id: zone.id } }, body: { name: zone.name, kind: zone.kind, sort } }))
+    await qc.invalidateQueries({ queryKey: ['zones'] })
+  }
+
   async function remove() {
     if (!window.confirm(t('climate.deleteConfirm').replace('{name}', zone.name))) return
     await call(api.DELETE('/api/zones/{id}', { params: { path: { id: zone.id } } }))
@@ -149,7 +155,8 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl }: {
       <CardHeader>
         <CardTitle>{zone.name} <span className="ml-1 text-xs font-normal text-neutral-500">{t(`climate.kinds.${zone.kind}`)}</span></CardTitle>
         {isAdmin && (
-          <div className="flex items-center">
+          <div className="flex items-center gap-1">
+            <SortInput value={zone.sort} onSave={saveSort} label={t('climate.sort')} className="w-16" />
             <Button variant="ghost" size="icon" title={t('climate.rename')} onClick={() => void rename()}><Pencil /></Button>
             <Button variant="ghost" size="icon" title={t('climate.delete')} onClick={() => void remove()}><Trash2 /></Button>
           </div>

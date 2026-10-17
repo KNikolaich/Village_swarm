@@ -24,6 +24,9 @@ public class Zone
     public int Id { get; set; }
     public required string Name { get; set; }
     public ZoneKind Kind { get; set; }
+
+    /// <summary>Place in lists (swarm groups, climate cards): lower first, equal ones by id.</summary>
+    public int Sort { get; set; }
 }
 
 /// <summary>Kind of hornet: guard-cam, meteo, heat... Seeded; provisioning picks one (spec 6.4).</summary>
@@ -85,4 +88,7 @@ public class Device
 
     public DateTimeOffset CreatedAt { get; set; }
     public string? Notes { get; set; }
+
+    /// <summary>Place in the swarm list inside its group: lower first, equal ones in the usual order (trouble first, then id).</summary>
+    public int Sort { get; set; }
 }

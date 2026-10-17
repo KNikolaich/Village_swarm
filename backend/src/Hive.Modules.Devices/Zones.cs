@@ -13,9 +13,12 @@ using Microsoft.Extensions.Hosting;
 
 namespace Hive.Modules.Devices;
 
-public sealed record ZoneDto(int Id, string Name, ZoneKind Kind, int DeviceCount);
+public sealed record ZoneDto(int Id, string Name, ZoneKind Kind, int DeviceCount, int Sort);
 
-public sealed record SaveZoneRequest(string Name, ZoneKind Kind);
+/// <summary>Sort null keeps the zone's place (a new zone goes after the others).</summary>
+public sealed record SaveZoneRequest(string Name, ZoneKind Kind, int? Sort = null);
+
+public sealed record SetDeviceSortRequest(int Sort);
 
 public sealed record SetDeviceZoneRequest(int? ZoneId);
 
@@ -24,29 +27,35 @@ public enum ZoneChange { Ok, NotFound, BadRequest, Duplicate }
 /// <summary>Zones of the property ("Улица", "Гостиная"): created in the UI, hornets are assigned to them (spec 6.4 zones).</summary>
 public sealed class ZoneService(HiveDbContext db, TimeProvider time)
 {
+    public const int MaxSort = 9999;
+
+    private static bool SortOk(int? sort) => sort is null or >= 0 and <= MaxSort;
+
     public async Task<IReadOnlyList<ZoneDto>> ListAsync(CancellationToken ct) =>
-        await db.Zones.AsNoTracking().OrderBy(z => z.Id)
-            .Select(z => new ZoneDto(z.Id, z.Name, z.Kind, db.Devices.Count(d => d.ZoneId == z.Id)))
+        await db.Zones.AsNoTracking().OrderBy(z => z.Sort).ThenBy(z => z.Id)
+            .Select(z => new ZoneDto(z.Id, z.Name, z.Kind, db.Devices.Count(d => d.ZoneId == z.Id), z.Sort))
             .ToListAsync(ct);
 
     public async Task<(ZoneChange Result, ZoneDto? Zone)> CreateAsync(SaveZoneRequest request, string by, CancellationToken ct)
     {
         var name = request.Name?.Trim() ?? "";
-        if (name.Length is 0 or > 64 || !Enum.IsDefined(request.Kind))
+        if (name.Length is 0 or > 64 || !Enum.IsDefined(request.Kind) || !SortOk(request.Sort))
             return (ZoneChange.BadRequest, null);
         if (await db.Zones.AnyAsync(z => z.Name == name, ct))
             return (ZoneChange.Duplicate, null);
-        var zone = new Zone { Name = name, Kind = request.Kind };
+        // Without a place of its own a new zone goes last, so adding one does not reorder the screen.
+        var sort = request.Sort ?? (await db.Zones.MaxAsync(z => (int?)z.Sort, ct) ?? 0);
+        var zone = new Zone { Name = name, Kind = request.Kind, Sort = sort };
         db.Zones.Add(zone);
         Audit.Record(db, time.GetUtcNow(), by, "zone_create", name);
         await db.SaveChangesAsync(ct);
-        return (ZoneChange.Ok, new ZoneDto(zone.Id, zone.Name, zone.Kind, 0));
+        return (ZoneChange.Ok, new ZoneDto(zone.Id, zone.Name, zone.Kind, 0, zone.Sort));
     }
 
     public async Task<ZoneChange> UpdateAsync(int id, SaveZoneRequest request, string by, CancellationToken ct)
     {
         var name = request.Name?.Trim() ?? "";
-        if (name.Length is 0 or > 64 || !Enum.IsDefined(request.Kind))
+        if (name.Length is 0 or > 64 || !Enum.IsDefined(request.Kind) || !SortOk(request.Sort))
             return ZoneChange.BadRequest;
         var zone = await db.Zones.FirstOrDefaultAsync(z => z.Id == id, ct);
         if (zone is null)
@@ -55,6 +64,8 @@ public sealed class ZoneService(HiveDbContext db, TimeProvider time)
             return ZoneChange.Duplicate;
         zone.Name = name;
         zone.Kind = request.Kind;
+        if (request.Sort is { } place)
+            zone.Sort = place;
         Audit.Record(db, time.GetUtcNow(), by, "zone_update", name);
         await db.SaveChangesAsync(ct);
         return ZoneChange.Ok;
@@ -81,6 +92,22 @@ public sealed class ZoneService(HiveDbContext db, TimeProvider time)
             return ZoneChange.BadRequest;
         device.ZoneId = zoneId;
         Audit.Record(db, time.GetUtcNow(), by, "device_zone", deviceId, new { zoneId });
+        await db.SaveChangesAsync(ct);
+        return ZoneChange.Ok;
+    }
+
+    /// <summary>A hornet's place in the swarm list; only the screen uses it, the hornet is not told.</summary>
+    public async Task<ZoneChange> SortDeviceAsync(string deviceId, int sort, string by, CancellationToken ct)
+    {
+        if (!SortOk(sort))
+            return ZoneChange.BadRequest;
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null)
+            return ZoneChange.NotFound;
+        if (device.Sort == sort)
+            return ZoneChange.Ok;
+        device.Sort = sort;
+        Audit.Record(db, time.GetUtcNow(), by, "device_sort", deviceId, new { sort });
         await db.SaveChangesAsync(ct);
         return ZoneChange.Ok;
     }
@@ -125,7 +152,7 @@ public static class ZoneEndpoints
                 {
                     ZoneChange.Ok => TypedResults.Created($"/api/zones/{zone!.Id}", zone),
                     ZoneChange.Duplicate => TypedResults.Conflict(),
-                    _ => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["A name of 1..64 characters and a kind"] }),
+                    _ => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["A name of 1..64 characters, a kind and a sort of 0..9999"] }),
                 };
             })
             .RequireAuthorization(HiveRoles.AdminOnly);
@@ -137,7 +164,7 @@ public static class ZoneEndpoints
                     ZoneChange.Ok => TypedResults.NoContent(),
                     ZoneChange.NotFound => TypedResults.NotFound(),
                     ZoneChange.Duplicate => TypedResults.Conflict(),
-                    _ => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["A name of 1..64 characters and a kind"] }),
+                    _ => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["A name of 1..64 characters, a kind and a sort of 0..9999"] }),
                 })
             .RequireAuthorization(HiveRoles.AdminOnly);
 
@@ -152,6 +179,17 @@ public static class ZoneEndpoints
                     ZoneChange.Ok => TypedResults.NoContent(),
                     ZoneChange.NotFound => TypedResults.NotFound(),
                     _ => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["zoneId"] = ["No such zone"] }),
+                })
+            .WithTags("devices")
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
+        app.MapPut("/api/devices/{deviceId}/sort", async Task<Results<NoContent, NotFound, ValidationProblem>> (
+                string deviceId, SetDeviceSortRequest request, ClaimsPrincipal user, ZoneService z, CancellationToken ct) =>
+                await z.SortDeviceAsync(deviceId, request.Sort, $"user:{user.Identity?.Name}", ct) switch
+                {
+                    ZoneChange.Ok => TypedResults.NoContent(),
+                    ZoneChange.NotFound => TypedResults.NotFound(),
+                    _ => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["sort"] = [$"0..{ZoneService.MaxSort}"] }),
                 })
             .WithTags("devices")
             .RequireAuthorization(HiveRoles.AdminOnly);

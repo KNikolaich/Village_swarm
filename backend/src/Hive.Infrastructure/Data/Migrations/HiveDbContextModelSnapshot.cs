@@ -203,6 +203,10 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("rssi");
 
+                    b.Property<int>("Sort")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort");
+
                     b.Property<JsonDocument>("State")
                         .HasColumnType("jsonb")
                         .HasColumnName("state");
@@ -1111,6 +1115,10 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("name");
+
+                    b.Property<int>("Sort")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort");
 
                     b.HasKey("Id")
                         .HasName("pk_zones");

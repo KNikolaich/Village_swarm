@@ -1,10 +1,12 @@
 import { FeaturesPanel } from '@/components/FeaturesPanel'
 import { IrPanel } from '@/components/IrPanel'
-import { ArrowLeft, Camera, Power, PowerOff, RotateCw, Wifi, WifiOff } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Camera, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router'
-import type { DeviceDto } from '@/api/client'
-import { historyWindow, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useSendCommand, useSeries } from '@/api/queries'
+import { Link, useNavigate, useParams } from 'react-router'
+import { toast } from 'sonner'
+import { api, call } from '@/api/client'
+import { historyWindow, keys, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useSendCommand, useSeries } from '@/api/queries'
 import { Chart, TimeAxis, type ChartPoint } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
@@ -14,6 +16,8 @@ import { formatAgo, formatFixed, formatValue, formatWhen, metricUnit } from '@/l
 import { ranges, rangeLabel } from '@/lib/ranges'
 import { ZoneSelect } from '@/pages/ClimatePage'
 import { PinsPanel } from '@/pages/SwarmPage'
+import { SortInput } from '@/components/SortInput'
+import { announcedCommands, relayChannels } from '@/lib/swarm'
 
 function MetricChart({ device, metric, hours }: { device: string; metric: string; hours: number }) {
   const series = useSeries(device, metric, hours)
@@ -125,18 +129,6 @@ function Logs({ device }: { device: string }) {
   )
 }
 
-/** Command names the hornet announced in its info message (contracts/schemas/info.schema.json "commands"). */
-function announcedCommands(d: DeviceDto): string[] {
-  const info = d.info as { commands?: unknown } | null
-  return Array.isArray(info?.commands) ? info.commands.filter((c): c is string => typeof c === 'string') : []
-}
-
-/** Relay channel names come from the hornet's retained state ({channel: on|off}); "relay" ("heater" for a heater) is the firmware default. */
-function relayChannels(d: DeviceDto): string[] {
-  const keys = Object.keys((d.state as Record<string, unknown> | null) ?? {}).filter((k) => k !== 'ir_last')
-  return keys.length > 0 ? keys : [d.features?.includes('heater') ? 'heater' : 'relay']
-}
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
@@ -163,6 +155,21 @@ export function DevicePage() {
     .sort((a, b) => a.metric.localeCompare(b.metric))
 
   const send = useSendCommand(deviceId)
+  const qc = useQueryClient()
+  const navigate = useNavigate()
+
+  async function saveSort(sort: number) {
+    await call(api.PUT('/api/devices/{deviceId}/sort', { params: { path: { deviceId } }, body: { sort } }))
+    await qc.invalidateQueries({ queryKey: keys.devices })
+  }
+
+  async function remove() {
+    if (!device || !window.confirm(t('swarm.removeConfirm').replace('{name}', device.name))) return
+    await call(api.DELETE('/api/devices/{deviceId}', { params: { path: { deviceId } } }))
+    toast.success(t('swarm.removed'))
+    await qc.invalidateQueries({ queryKey: keys.devices })
+    navigate('/swarm')
+  }
 
   const back = (
     <Link to="/swarm" className="flex items-center gap-1 text-sm text-amber-400">
@@ -198,6 +205,7 @@ export function DevicePage() {
         <CardContent>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Field label={t('device.zone')}>{isAdmin ? <ZoneSelect device={device} zones={zones.data ?? []} /> : device.zone}</Field>
+            <Field label={t('device.sort')}>{isAdmin ? <SortInput value={device.sort ?? 0} onSave={saveSort} label={t('device.sort')} /> : device.sort ?? 0}</Field>
             <Field label={t('device.board')}>{device.hw}</Field>
             <Field label={t('device.firmware')}>{device.fw}</Field>
             <Field label="MAC">{device.mac}</Field>
@@ -277,6 +285,12 @@ export function DevicePage() {
             <PinsPanel deviceId={device.deviceId} editable={isAdmin} board={device.hw} type={device.type} features={device.features} />
           </CardContent>
         </Card>
+      )}
+
+      {isAdmin && device.status !== 'disabled' && device.type !== 'hive' && (
+        <div className="flex justify-end">
+          <Button variant="outline" className="border-red-900 text-red-400 hover:bg-red-950" onClick={() => void remove()}><Trash2 />{t('swarm.removeHornet')}</Button>
+        </div>
       )}
     </div>
   )

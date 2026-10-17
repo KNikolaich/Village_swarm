@@ -18,7 +18,7 @@ public sealed record DeviceDto(
     string DeviceId, string Name, string Type, string Status, int? ZoneId, string? Zone,
     string? Hw, string? Fw, string? Mac, string? Ip, int? Rssi, int? Boot, DateTimeOffset? LastSeenAt,
     JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev, int? SleepS, string SleepMode, string Driver,
-    IReadOnlyList<string>? Features = null, IReadOnlyList<string>? SupportedFeatures = null, HeaterLimitsDto? Heater = null);
+    IReadOnlyList<string>? Features = null, IReadOnlyList<string>? SupportedFeatures = null, HeaterLimitsDto? Heater = null, int Sort = 0);
 
 /// <summary>The limits a heater keeps by itself (config failsafe.heater, or the firmware defaults).</summary>
 public sealed record HeaterLimitsDto(double MinC, double MaxC, int MaxOnS);
@@ -50,7 +50,7 @@ public sealed class DeviceQueries(HiveDbContext db)
         d.DeviceId, d.Name, d.TypeCode, d.Status.ToString().ToLowerInvariant(), d.ZoneId, d.Zone?.Name,
         d.Hw, d.FwVersion, d.Mac, d.Ip, d.Rssi, d.Boot, d.LastSeenAt,
         d.Info?.RootElement.Clone(), d.State?.RootElement.Clone(), d.ConfigRev, d.ConfigAppliedRev, DeviceConfigService.SleepS(d), DeviceConfigService.SleepMode(d), d.Driver,
-        Features(d), d.Driver == Drivers.Hornet ? DeviceFeatures.SupportedBy(d.TypeCode) : null, HeaterLimits(d));
+        Features(d), d.Driver == Drivers.Hornet ? DeviceFeatures.SupportedBy(d.TypeCode) : null, HeaterLimits(d), d.Sort);
 
     /// <summary>Features of a native hornet (Tasmota devices keep their own settings).</summary>
     private static IReadOnlyList<string>? Features(Device d) =>
