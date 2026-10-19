@@ -16,6 +16,7 @@
 #include <SD_MMC.h>
 #include <WiFi.h>
 #include <esp_camera.h>
+#include <esp_timer.h>
 
 namespace {
 
@@ -24,6 +25,8 @@ using namespace hornet;
 constexpr int kPirPin = 13;
 constexpr const char* kOutboxDir = "/outbox";
 constexpr uint32_t kSdRetryMs = 30000;
+// Grabs per photo while the driver keeps handing out a frame started before the request.
+constexpr int kFreshFrameTries = 3;
 
 // Pins the output must never take: camera, SD (1-bit), PSRAM, PIR, and the input-only 34..39.
 bool outputPinAllowed(int pin) {
@@ -258,21 +261,44 @@ private:
         nextFrameMs_ = millis();
     }
 
+    static int64_t frameStartUs(const camera_fb_t* fb) {
+        return static_cast<int64_t>(fb->timestamp.tv_sec) * 1000000 + fb->timestamp.tv_usec;
+    }
+
+    // With one buffer and CAMERA_GRAB_WHEN_EMPTY the driver fills the buffer as soon as the previous frame is
+    // returned and then holds it: the first frame after a quiet spell was taken back then, possibly hours ago.
+    // A frame started before the request is handed back and grabbed again, which waits for a new one.
+    camera_fb_t* freshFrame(int64_t requestUs) {
+        camera_fb_t* fb = nullptr;
+        for (int i = 0; i < kFreshFrameTries; ++i) {
+            if (fb) esp_camera_fb_return(fb);
+            fb = esp_camera_fb_get();
+            if (!fb || frameStartUs(fb) >= requestUs) break;
+        }
+        return fb;
+    }
+
     // One frame per burst interval, without blocking the loop.
     void captureStep(Core& core) {
         if (burstLeft_ <= 0 || millis() < nextFrameMs_) return;
         nextFrameMs_ = millis() + burstIntervalMs_;
         --burstLeft_;
-        camera_fb_t* fb = esp_camera_fb_get();
+        const int64_t requestUs = esp_timer_get_time();
+        camera_fb_t* fb = freshFrame(requestUs);
         if (!fb) {
             core.log(LogLevel::Warn, "camera frame failed");
             return;
         }
+        // The photo carries the time the frame was taken, so one that could not be refreshed shows its real age.
+        const int64_t ageMs = (esp_timer_get_time() - frameStartUs(fb)) / 1000;
+        if (frameStartUs(fb) < requestUs)
+            core.log(LogLevel::Warn, "camera gave no fresh frame, sent one taken " + String(static_cast<long>(ageMs / 1000)) + " s ago");
         Photo p = {};
         snprintf(p.photoId, sizeof p.photoId, "%s-%d", burstEvent_.c_str(), burstIndex_++);
         strlcpy(p.eventId, burstEvent_.c_str(), sizeof p.eventId);
         strlcpy(p.eventType, burstType_.c_str(), sizeof p.eventType);
-        p.ts = core.nowMs();
+        const uint64_t now = core.nowMs();  // 0 while the clock is not synced: the hive stamps the photo itself then
+        p.ts = now != 0 && ageMs > 0 && static_cast<uint64_t>(ageMs) < now ? now - ageMs : now;
         p.len = fb->len;
         p.jpeg = static_cast<uint8_t*>(ps_malloc(fb->len));
         if (p.jpeg) memcpy(p.jpeg, fb->buf, fb->len);
