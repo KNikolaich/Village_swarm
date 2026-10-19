@@ -30,4 +30,10 @@ public class MediaItem
 
     /// <summary>home | city | sd (replayed from the hornet SD outbox).</summary>
     public string UploadedVia { get; set; } = "home";
+
+    /// <summary>How much earlier than the request a frame may be taken and still pass as fresh.</summary>
+    public static readonly TimeSpan FreshSlack = TimeSpan.FromMinutes(1);
+
+    /// <summary>The camera sent a frame taken well before it was asked for one (it could not take a fresh one).</summary>
+    public bool TakenBefore(DateTimeOffset askedAt) => Ts < askedAt - FreshSlack;
 }

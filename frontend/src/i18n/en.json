@@ -327,6 +327,7 @@
     "allSeverities": "Any severity",
     "photosPending": "Photos are uploading…",
     "photosMissing": "Photos did not reach the hive",
+    "photoOld": "Old frame: taken {when}, the camera could not take a fresh one",
     "new": "New event",
     "ota": {
       "started": "update started, the hornet is downloading",

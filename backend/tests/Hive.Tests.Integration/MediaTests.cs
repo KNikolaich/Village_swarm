@@ -105,6 +105,24 @@ public sealed class MediaTests(HiveFixture hive) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_frame_taken_before_the_event_keeps_its_own_time()
+    {
+        var (hornet, role, link) = await CameraAsync("guard-old1");
+        var eventId = await MotionAsync(hornet, role, link, DateTimeOffset.UtcNow);
+        var uploads = role.TakeUploads().ToList();
+        // The camera had no fresh frame for the first photo: it sends the one it took hours ago, with that time.
+        var takenAt = DateTimeOffset.UtcNow.AddHours(-4);
+        uploads[0] = uploads[0] with { Ts = takenAt.ToUnixTimeMilliseconds() };
+        foreach (var upload in uploads)
+            Assert.Equal(UploadOutcome.Uploaded, (await PhotoUploader.UploadAsync(_http, hornet.Id, upload, null, CancellationToken.None)).Outcome);
+
+        await hive.WaitForAsync(db => db.Events.AnyAsync(e => e.Id == eventId), "motion event ingested");
+        var evt = Assert.Single((await _http.GetFromJsonAsync<Page<EventDto>>("/api/events?device=guard-old1"))!.Items);
+        Assert.Equal(takenAt.ToUnixTimeMilliseconds(), evt.Photos[0].Ts.ToUnixTimeMilliseconds());
+        Assert.All(evt.Photos.Skip(1), p => Assert.True(p.Ts >= evt.Ts - TimeSpan.FromMinutes(1)));
+    }
+
+    [Fact]
     public async Task Range_requests_are_supported()
     {
         var photoId = $"{Ulid.New()}-0";

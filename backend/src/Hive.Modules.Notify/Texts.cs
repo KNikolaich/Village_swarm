@@ -43,6 +43,10 @@ public static class Texts
 
     public static string H(string? s) => WebUtility.HtmlEncode(s ?? "");
 
+    /// <summary>Caption of a snapshot the camera took before it was asked: "⚠️ Снимок не свежий: снят 3 октября в 19:52".</summary>
+    public static string OldSnapshot(DateTimeOffset localTs) =>
+        $"⚠️ <b>Снимок не свежий</b>: снят {localTs.ToString("d MMMM 'в' HH:mm", Ru)}. Свежий камера не дала.";
+
     /// <summary>"🚨 <b>Движение</b>: Ворота · 23:14:25", the place being the zone or the device name.</summary>
     public static string Event(DeviceEvent e, string place, DateTimeOffset localTs, int repeat = 1)
     {

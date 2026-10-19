@@ -3475,7 +3475,8 @@
         "required": [
           "id",
           "url",
-          "thumbUrl"
+          "thumbUrl",
+          "ts"
         ],
         "type": "object",
         "properties": {
@@ -3487,6 +3488,10 @@
           },
           "thumbUrl": {
             "type": "string"
+          },
+          "ts": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },

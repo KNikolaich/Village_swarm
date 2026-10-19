@@ -3337,6 +3337,8 @@ export interface components {
             id: string;
             url: string;
             thumbUrl: string;
+            /** Format: date-time */
+            ts: string;
         };
         FeaturesRequest: {
             features: string[];

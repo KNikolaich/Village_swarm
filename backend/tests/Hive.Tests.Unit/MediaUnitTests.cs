@@ -1,3 +1,4 @@
+using Hive.Domain;
 using Hive.Infrastructure;
 using Hive.Modules.Media;
 
@@ -15,6 +16,19 @@ public class MediaUnitTests
             MediaStore.PhotoPath("guard-gate1", local, "motion", "01J9Z3K7Q8M4N5P6R7S8T9V130-0"));
         Assert.Equal("thumbs/guard-gate1/2026/10/02/01J9Z3K7Q8M4N5P6R7S8T9V130-0.webp",
             MediaStore.ThumbPath("guard-gate1", local, "01J9Z3K7Q8M4N5P6R7S8T9V130-0"));
+    }
+
+    [Fact]
+    public void A_frame_from_before_the_request_is_told_apart_and_captioned_with_its_time()
+    {
+        var asked = new DateTimeOffset(2026, 10, 19, 0, 0, 3, TimeSpan.Zero);
+        MediaItem Taken(DateTimeOffset ts) => new() { Id = "x-0", DeviceId = "guard-cam1", Path = "p", Sha256 = "", Ts = ts };
+        Assert.False(Taken(asked.AddSeconds(2)).TakenBefore(asked));
+        Assert.False(Taken(asked.AddSeconds(-30)).TakenBefore(asked)); // clock jitter between hornet and hive
+        Assert.True(Taken(asked.AddHours(-4)).TakenBefore(asked));
+
+        Assert.Equal("⚠️ <b>Снимок не свежий</b>: снят 18 октября в 20:00. Свежий камера не дала.",
+            Hive.Modules.Notify.Texts.OldSnapshot(new DateTimeOffset(2026, 10, 18, 20, 0, 0, TimeSpan.FromHours(3))));
     }
 
     [Fact]

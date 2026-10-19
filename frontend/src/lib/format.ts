@@ -24,6 +24,11 @@ export function formatWhen(iso: string, now = new Date()): string {
   return full().format(d)
 }
 
+/** A camera that could not take a fresh frame sends an older one with its own time; a minute of slack (as the hive). */
+export function takenBefore(photoTs: string, askedTs: string): boolean {
+  return new Date(photoTs).getTime() < new Date(askedTs).getTime() - 60_000
+}
+
 /** "только что" / "just now", "5 мин назад" / "5 min ago", "2 ч назад" / "2 h ago", then the date. */
 export function formatAgo(iso: string | null | undefined, now = new Date()): string {
   if (!iso) return '—'

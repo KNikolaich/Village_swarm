@@ -13,7 +13,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Hive.Modules.Events;
 
-public sealed record EventPhotoDto(string Id, string Url, string ThumbUrl);
+/// <summary>Ts is when the frame was taken; a camera that could not take a fresh one sends an older frame with its own time.</summary>
+public sealed record EventPhotoDto(string Id, string Url, string ThumbUrl, DateTimeOffset Ts);
 
 public sealed record EventDto(
     string Id, string DeviceId, string? DeviceName, string? Zone, string Type, string Severity,
@@ -90,11 +91,11 @@ public sealed class EventQueries(HiveDbContext db, TimeProvider time)
         var deviceIds = events.Select(e => e.DeviceId).Distinct().ToList();
         var photos = (await db.Media.AsNoTracking()
                 .Where(m => m.EventId != null && ids.Contains(m.EventId))
-                .Select(m => new { m.EventId, m.Id })
+                .Select(m => new { m.EventId, m.Id, m.Ts })
                 .ToListAsync(ct))
             .GroupBy(m => m.EventId!)
             .ToDictionary(g => g.Key, g => g.OrderBy(m => m.Id, StringComparer.Ordinal)
-                .Select(m => new EventPhotoDto(m.Id, $"/api/media/{m.Id}", $"/api/media/{m.Id}/thumb")).ToList());
+                .Select(m => new EventPhotoDto(m.Id, $"/api/media/{m.Id}", $"/api/media/{m.Id}/thumb", m.Ts)).ToList());
         var devices = await db.Devices.AsNoTracking()
             .Where(d => deviceIds.Contains(d.DeviceId))
             .Select(d => new { d.DeviceId, d.Name, Zone = d.Zone == null ? null : d.Zone.Name })

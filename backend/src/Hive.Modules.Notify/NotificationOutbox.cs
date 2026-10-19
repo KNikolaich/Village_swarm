@@ -25,6 +25,7 @@ public sealed class NotificationOutbox(
     IServiceScopeFactory scopes,
     TelegramGateway telegram,
     IOptions<TelegramOptions> options,
+    IOptions<HiveOptions> hive,
     TimeProvider time,
     ILogger<NotificationOutbox> logger) : BackgroundService
 {
@@ -192,11 +193,14 @@ public sealed class NotificationOutbox(
             MarkSent(n, message.MessageId, now);
             return;
         }
-        var sent = await SendAlbumAsync(store, chat, latest, (int?)n.ReplyToMessageId, silent: false, ct);
+        // A frame taken before the request says when it was taken, so it is not read as the view right now.
+        var sent = await SendAlbumAsync(store, chat, latest, (int?)n.ReplyToMessageId, silent: false, ct,
+            caption: m => m.TakenBefore(n.CreatedAt) ? Texts.OldSnapshot(hive.Value.ToLocal(m.Ts)) : null);
         MarkSent(n, sent[0].MessageId, now);
     }
 
-    private async Task<Message[]> SendAlbumAsync(MediaStore store, long chat, List<MediaItem> photos, int? replyTo, bool silent, CancellationToken ct)
+    private async Task<Message[]> SendAlbumAsync(MediaStore store, long chat, List<MediaItem> photos, int? replyTo, bool silent, CancellationToken ct,
+        Func<MediaItem, string?>? caption = null)
     {
         // Streams are reopened per attempt: a failed endpoint may have consumed them.
         return await telegram.CallAsync(async bot =>
@@ -204,7 +208,11 @@ public sealed class NotificationOutbox(
             var streams = photos.Select(m => File.OpenRead(store.FullPath(m.Path))).ToList();
             try
             {
-                var album = photos.Select((m, i) => new InputMediaPhoto(InputFile.FromStream(streams[i], $"{m.Id}.jpg"))).ToList();
+                var album = photos.Select((m, i) => new InputMediaPhoto(InputFile.FromStream(streams[i], $"{m.Id}.jpg"))
+                {
+                    Caption = caption?.Invoke(m),
+                    ParseMode = ParseMode.Html,
+                }).ToList();
                 return await bot.SendMediaGroup(chat, album,
                     replyParameters: replyTo is { } r ? new ReplyParameters { MessageId = r, AllowSendingWithoutReply = true } : null,
                     disableNotification: silent, cancellationToken: ct);

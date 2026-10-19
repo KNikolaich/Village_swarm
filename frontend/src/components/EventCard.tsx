@@ -1,10 +1,10 @@
-import { Check, ImageOff } from 'lucide-react'
-import type { EventDto } from '@/api/client'
+import { Check, History, ImageOff } from 'lucide-react'
+import type { EventDto, EventPhotoDto } from '@/api/client'
 import { useAckEvent } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge, type BadgeTone } from '@/components/ui/primitives'
 import { eventTypeLabel, severityLabel, t } from '@/i18n'
-import { formatWhen } from '@/lib/format'
+import { formatWhen, takenBefore } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 /** What an over-the-air update did (contracts event-ota: phase, version, error), with a hint for the usual failures. */
@@ -28,7 +28,8 @@ function wifiLine(payload: unknown): string | null {
 
 const severityTone: Record<string, BadgeTone> = { info: 'neutral', warn: 'warn', alarm: 'alarm', critical: 'critical' }
 
-export type PhotoRef = { id: string; url: string; thumbUrl: string }
+/** caption is set on a frame taken before the event. */
+export type PhotoRef = EventPhotoDto & { caption?: string }
 
 /** One row of the event feed: what, where, when, photo strip, acknowledge. */
 export function EventCard({ event, onOpenPhoto, compact = false }: {
@@ -43,6 +44,11 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
   const said = event.type === 'rule' ? (event.payload as { rule?: string; text?: string } | null) : null
   const ota = event.type === 'ota' ? otaLine(event.payload) : null
   const wifi = event.type === 'wifi' ? wifiLine(event.payload) : null
+  // Photos the camera took before this event (it had no fresh frame) carry their own time, never the event's.
+  const photos: PhotoRef[] = event.photos.map((p) => takenBefore(p.ts, event.ts)
+    ? { ...p, caption: t('events.photoOld').replace('{when}', formatWhen(p.ts)) }
+    : p)
+  const oldPhotos = photos.filter((p) => p.caption)
 
   return (
     <article className={cn('rounded-xl border bg-neutral-900/70 p-3', alarm && !event.acknowledgedAt ? 'border-red-900/70' : 'border-neutral-800')}>
@@ -73,19 +79,41 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
         )}
       </div>
 
-      {event.photos.length > 0 ? (
-        <div className="mt-3 flex gap-2 overflow-x-auto">
-          {event.photos.map((p, i) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => onOpenPhoto?.(event.photos, i)}
-              className="shrink-0 overflow-hidden rounded-lg border border-neutral-800 focus-visible:ring-2 focus-visible:ring-amber-400"
-            >
-              <img src={p.thumbUrl} alt="" loading="lazy" className={cn('object-cover', compact ? 'h-16 w-24' : 'h-24 w-32 sm:h-28 sm:w-40')} />
-            </button>
-          ))}
-        </div>
+      {photos.length > 0 ? (
+        <>
+          {oldPhotos.length > 0 && (
+            <p className="mt-2 flex items-center gap-1 text-xs text-amber-400">
+              <History className="size-3.5 shrink-0" />
+              {oldPhotos[0].caption}
+            </p>
+          )}
+          <div className="mt-3 flex gap-2 overflow-x-auto">
+            {photos.map((p, i) => (
+              <button
+                key={p.id}
+                type="button"
+                title={p.caption}
+                onClick={() => onOpenPhoto?.(photos, i)}
+                className={cn(
+                  'relative shrink-0 overflow-hidden rounded-lg border focus-visible:ring-2 focus-visible:ring-amber-400',
+                  p.caption ? 'border-amber-500' : 'border-neutral-800',
+                )}
+              >
+                <img
+                  src={p.thumbUrl}
+                  alt=""
+                  loading="lazy"
+                  className={cn('object-cover', compact ? 'h-16 w-24' : 'h-24 w-32 sm:h-28 sm:w-40', p.caption && 'opacity-60 grayscale')}
+                />
+                {p.caption && (
+                  <span className="absolute inset-x-0 bottom-0 bg-black/70 px-1 py-0.5 text-[10px] font-medium text-amber-300">
+                    {formatWhen(p.ts)}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
       ) : (
         expectedPhotos > 0 && (
           <p className="mt-2 flex items-center gap-1 text-xs text-neutral-500">
