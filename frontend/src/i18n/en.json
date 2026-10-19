@@ -866,7 +866,8 @@
     "joinNoCode": "Could not issue a code",
     "joinConfirm": "Write the Wi-Fi '{ssid}' to the board and join the hive {url}? The board will replace the chosen hornet.",
     "joinSent": "Commands sent, see the board's answer above: 'enrolled ...'",
-    "brownout": "The board restarted because the supply sagged (brownout). Typical for an ESP32-CAM on a weak USB adapter: the current jumps when Wi-Fi starts. Feed 5 V from a proper supply (1 A or more) to the 5V pin and add a 470 uF capacitor between 5V and GND."
+    "brownout": "The board restarted because the supply sagged (brownout). Typical for an ESP32-CAM on a weak USB adapter: the current jumps when Wi-Fi starts. Feed 5 V from a proper supply (1 A or more) to the 5V pin and add a 470 uF capacitor between 5V and GND.",
+    "notConfigured": "The board is not linked to the hive: it has no id and no MQTT login (this happens after the flash was erased, or when only the Wi-Fi and the address were written). Use the Enroll card below: choose the hornet this board replaces and press Issue a code and enroll."
   },
   "tasmota": {
     "step1": "The device",

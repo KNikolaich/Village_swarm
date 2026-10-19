@@ -69,6 +69,8 @@ export function ConsolePage() {
         push('in', line)
         // The board says it restarted because the supply sagged (a Wi-Fi burst on a weak USB adapter): say what to do.
         if (/reset=brownout|Brownout detector/i.test(line)) push('info', t('console.brownout'))
+        // The board has Wi-Fi but no identity in the hive (a wiped flash, or only the network written): say what is missing.
+        if (line.includes('[hornet] not configured')) push('info', t('console.notConfigured'))
       })
       setConnected(true)
       push('info', t('console.connected'))
