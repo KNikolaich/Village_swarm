@@ -34,18 +34,33 @@
       "type": "integer",
       "description": "Battery hornets: deep sleep this long between readings (wake, send, sleep). 0 or absent: always awake. While asleep the hornet keeps its last status; the hive treats it as lost after several missed wake-ups",
       "anyOf": [
-        { "const": 0 },
-        { "minimum": 60, "maximum": 86400 }
+        {
+          "const": 0
+        },
+        {
+          "minimum": 60,
+          "maximum": 86400
+        }
       ]
     },
     "sleep_mode": {
-      "enum": ["deep", "light"],
+      "enum": [
+        "deep",
+        "light"
+      ],
       "description": "How a hornet with sleep_s > 0 saves power. deep (default): radio and CPU off between readings, disconnects; needs GPIO16 wired to RST on ESP8266. light: stays connected with Wi-Fi power saving and reads every sleep_s; works on any board, saves far less"
     },
     "features": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["thermometer", "bme280", "relay", "heater"] },
+      "items": {
+        "enum": [
+          "thermometer",
+          "bme280",
+          "relay",
+          "heater"
+        ]
+      },
       "description": "What the hornet is used for (roles meteo, relay, heat). thermometer: DS18B20 on 1-Wire; bme280: BME280 on I2C; relay: a relay switched by commands; heater: that relay heats and the hornet itself keeps failsafe.heater (needs relay and a sensor). Pins of features not listed are left alone. Absent: the role's default (meteo: thermometer, bme280; relay: relay; heat: thermometer, relay, heater)"
     },
     "failsafe": {
@@ -229,6 +244,22 @@
           "items": {
             "$ref": "common.schema.json#/$defs/segment"
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ble": {
+      "description": "Role ble: the Bluetooth LE thermometer the hornet is a bridge for (Inkbird IHT-2PB)",
+      "type": "object",
+      "properties": {
+        "mac": {
+          "type": "string",
+          "pattern": "^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$",
+          "description": "Bluetooth address of the thermometer; without it the hornet scans and lists what it hears in its log"
+        },
+        "dump": {
+          "type": "boolean",
+          "description": "Put the raw notification frames in the hornet's log (to check the decoding against the thermometer's own app)"
         }
       },
       "additionalProperties": false

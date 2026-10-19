@@ -130,6 +130,20 @@ public static class DevicesModule
             })
             .RequireAuthorization(HiveRoles.CanControl);
 
+        // The thermometer a Bluetooth bridge is paired with (docs/ble-thermometer.md).
+        devices.MapGet("/{deviceId}/ble", async Task<Results<Ok<DeviceConfigService.BleRequest>, NotFound>> (string deviceId, DeviceConfigService configs, CancellationToken ct) =>
+            await configs.GetBleAsync(deviceId, ct) is { } b ? TypedResults.Ok(b) : TypedResults.NotFound());
+        devices.MapPut("/{deviceId}/ble", async Task<Results<Ok<DeviceConfigService.BleRequest>, NotFound, ValidationProblem>> (
+                string deviceId, DeviceConfigService.BleRequest request, ClaimsPrincipal user, DeviceConfigService configs, CancellationToken ct) =>
+            {
+                if (DeviceConfigService.ValidateBle(request) is { } error)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["mac"] = [error] });
+                return await configs.SetBleAsync(deviceId, request, $"user:{user.Identity?.Name}", ct) == ConfigUpdateStatus.NotFound
+                    ? TypedResults.NotFound()
+                    : TypedResults.Ok((await configs.GetBleAsync(deviceId, ct))!);
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
+
         devices.MapPatch("/{deviceId}/config", async Task<Results<Ok<DeviceDto>, NotFound, ValidationProblem>> (
                 string deviceId, UpdateDeviceConfigRequest request, ClaimsPrincipal user, DeviceConfigService configs, DeviceQueries q, CancellationToken ct) =>
             {

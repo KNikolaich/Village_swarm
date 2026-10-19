@@ -75,6 +75,52 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
 
     public const int MaxNameLength = 128;
 
+    /// <summary>The thermometer a Bluetooth bridge (type ble) talks to: its address, and whether raw frames go to the log.</summary>
+    public sealed record BleRequest(string? Mac = null, bool Dump = false);
+
+    private static readonly System.Text.RegularExpressions.Regex MacRegex = new("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$");
+
+    public static string? ValidateBle(BleRequest r) =>
+        string.IsNullOrEmpty(r.Mac) || MacRegex.IsMatch(r.Mac) ? null : "mac: адрес вида AA:BB:CC:DD:EE:FF";
+
+    /// <summary>Sets config "ble" of a bridge and publishes the config. An empty address makes the bridge scan again.</summary>
+    public async Task<ConfigUpdateStatus> SetBleAsync(string deviceId, BleRequest r, string by, CancellationToken ct)
+    {
+        if (ValidateBle(r) is not null)
+            return ConfigUpdateStatus.BadRequest;
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.TypeCode == "ble", ct);
+        if (device is null)
+            return ConfigUpdateStatus.NotFound;
+        var config = device.Config is { } current
+            ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
+            : new JsonObject { ["v"] = 1, ["name"] = device.Name, ["health_interval_s"] = 60 };
+        var ble = new JsonObject();
+        if (!string.IsNullOrEmpty(r.Mac))
+            ble["mac"] = r.Mac.ToUpperInvariant();
+        if (r.Dump)
+            ble["dump"] = true;
+        if (ble.Count == 0) config.Remove("ble"); else config["ble"] = ble;
+        device.ConfigRev++;
+        config["rev"] = device.ConfigRev;
+        device.Config = JsonDocument.Parse(config.ToJsonString());
+        Audit.Record(db, time.GetUtcNow(), by, "device_ble", deviceId, new { mac = r.Mac, r.Dump });
+        await db.SaveChangesAsync(ct);
+        if (mqtt.IsConnected)
+            await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
+        return ConfigUpdateStatus.Updated;
+    }
+
+    /// <summary>The bridge's current "ble" settings.</summary>
+    public async Task<BleRequest?> GetBleAsync(string deviceId, CancellationToken ct)
+    {
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.TypeCode == "ble", ct);
+        if (device is null)
+            return null;
+        if (device.Config is null || !device.Config.RootElement.TryGetProperty("ble", out var ble))
+            return new BleRequest();
+        return new BleRequest(ble.TryGetProperty("mac", out var m) ? m.GetString() : null, ble.TryGetProperty("dump", out var d) && d.ValueKind == JsonValueKind.True);
+    }
+
     /// <summary>
     /// Renames a hornet. The name also lives in its retained config (contracts: config.name), so a hornet that
     /// already has a config gets a new rev with the new name.

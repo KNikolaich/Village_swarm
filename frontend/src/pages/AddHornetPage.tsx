@@ -12,7 +12,7 @@ import { getLanguage, t } from '@/i18n'
 import { translateEspWebTools } from '@/lib/espWebToolsRu'
 import { HornetSerial, serialSupported } from '@/lib/serial'
 
-const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant']
+const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant', 'ble']
 const types = typeCodes.map((code) => ({ code, get title() { return t(`deviceTypes.${code}`) } }))
 
 const idPattern = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/

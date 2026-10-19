@@ -1,4 +1,5 @@
 import { FeaturesPanel } from '@/components/FeaturesPanel'
+import { BlePanel } from '@/components/BlePanel'
 import { IrPanel } from '@/components/IrPanel'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Camera, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
@@ -272,12 +273,19 @@ export function DevicePage() {
         </Card>
       )}
 
+      {device.type === 'ble' && (
+        <Card>
+          <CardHeader><CardTitle>{t('ble.title')}</CardTitle></CardHeader>
+          <CardContent><BlePanel deviceId={deviceId} editable={isAdmin} /></CardContent>
+        </Card>
+      )}
+
       {canControl && commands.includes('ir') && <IrPanel deviceId={deviceId} state={device.state} online={online} canEdit={canControl} />}
 
       {canControl && <CommandHistory device={deviceId} />}
       <Logs device={deviceId} />
 
-      {device.status !== 'disabled' && device.driver !== 'tasmota' && (
+      {device.status !== 'disabled' && device.driver !== 'tasmota' && device.type !== 'ble' && (
         <Card>
           <CardHeader><CardTitle>{device.supportedFeatures && device.supportedFeatures.length > 1 ? `${t('features.title')} · ${t('swarm.pins')}` : t('swarm.pins')}</CardTitle></CardHeader>
           <CardContent className="space-y-4">

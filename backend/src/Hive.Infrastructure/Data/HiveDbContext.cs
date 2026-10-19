@@ -68,7 +68,8 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
                 new DeviceType { Code = "heat", Title = "Обогрев", OfflineAfterS = 180 },
                 new DeviceType { Code = "leak", Title = "Датчик протечки с краном", OfflineAfterS = 180 },
                 new DeviceType { Code = "relay", Title = "Реле (свет, розетка)", OfflineAfterS = 180 },
-                new DeviceType { Code = "plant", Title = "Растения", OfflineAfterS = 600 });
+                new DeviceType { Code = "plant", Title = "Растения", OfflineAfterS = 600 },
+                new DeviceType { Code = "ble", Title = "Мост Bluetooth (кухонный термометр)", OfflineAfterS = 180 });
         });
 
         b.Entity<Device>(e =>

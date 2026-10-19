@@ -98,6 +98,7 @@ public sealed record DeviceConfig
     public HwConfig? Hw { get; init; }
     public RelayConfig? Relay { get; init; }
     public DisplayConfig? Display { get; init; }
+    public BleConfig? Ble { get; init; }
 }
 
 /// <summary>Board wiring; omitted pins keep the firmware defaults for the board.</summary>
@@ -122,6 +123,16 @@ public sealed record HwConfig
 public sealed record DisplayConfig
 {
     public IReadOnlyList<string>? Lines { get; init; }
+}
+
+/// <summary>Role ble: the Bluetooth LE thermometer the hornet is a bridge for.</summary>
+public sealed record BleConfig
+{
+    /// <summary>Bluetooth address, AA:BB:CC:DD:EE:FF. Absent: the hornet scans and lists what it hears in its log.</summary>
+    public string? Mac { get; init; }
+
+    /// <summary>Raw notification frames go to the hornet's log.</summary>
+    public bool? Dump { get; init; }
 }
 
 public sealed record RelayConfig

@@ -73,7 +73,7 @@ public sealed class ZonesTests(HiveFixture hive)
         await RegisterAsync("meteo-sort-a");
         var admin = await hive.LoginAsync();
 
-        using var first = await admin.PostAsJsonAsync("/api/zones", new { name = "Сортировка-1", kind = "house" });
+        using var first = await admin.PostAsJsonAsync("/api/zones", new { name = "Сортировка-1", kind = "house", sort = 5 });
         var firstId = (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
         using var second = await admin.PostAsJsonAsync("/api/zones", new { name = "Сортировка-2", kind = "house", sort = 0 });
         var secondId = (await second.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();

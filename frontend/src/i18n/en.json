@@ -707,7 +707,8 @@
     "relay": "Relay (light, socket)",
     "heat": "Heater",
     "leak": "Leak sensor",
-    "plant": "Plants"
+    "plant": "Plants",
+    "ble": "Bluetooth bridge (kitchen thermometer)"
   },
   "boards": {
     "esp32cam-aithinker": "ESP32-CAM AI-Thinker",
@@ -890,5 +891,15 @@
     "alreadySaved": "This button is already saved as '{name}'.",
     "namePlaceholder": "Button name (for example Power)",
     "save": "Save the button"
+  },
+  "ble": {
+    "title": "Bluetooth thermometer",
+    "hint": "The bridge connects to the kitchen thermometer over Bluetooth and passes its probes on as ordinary temperature. Give the thermometer address. Without one the bridge scans for Bluetooth devices around it and lists them in its log (below on this page).",
+    "mac": "Thermometer address",
+    "macBad": "An address like AA:BB:CC:DD:EE:FF",
+    "macEmpty": "No address: the bridge scans for devices around it and lists them in the hornet log, below on this page.",
+    "dump": "Write the thermometer's raw data to the log (to compare the numbers with the Inkbird app)",
+    "save": "Save",
+    "saved": "Saved, the hornet applies it the next time it connects"
   }
 }

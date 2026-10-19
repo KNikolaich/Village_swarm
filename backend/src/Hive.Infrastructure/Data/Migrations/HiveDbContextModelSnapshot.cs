@@ -543,6 +543,12 @@ namespace Hive.Infrastructure.Data.Migrations
                             Code = "plant",
                             OfflineAfterS = 600,
                             Title = "Растения"
+                        },
+                        new
+                        {
+                            Code = "ble",
+                            OfflineAfterS = 180,
+                            Title = "Мост Bluetooth (кухонный термометр)"
                         });
                 });
 
