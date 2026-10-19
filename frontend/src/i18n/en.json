@@ -624,7 +624,9 @@
     "removeHornet": "Remove hornet",
     "sortHint": "Place in the list: lower comes first, 0…9999",
     "sortInvalid": "The place is a whole number from 0 to 9999",
-    "sortFailed": "Could not save the place"
+    "sortFailed": "Could not save the place",
+    "fwUsb": "Flash over USB",
+    "fwUsbHint": "Connect the board to this computer with a USB cable, press Flash and choose the port. The board's settings (Wi-Fi, hive address, name) are kept: do not tick 'Erase device' in the flashing window. The hornet stays the same, no board replacement needed. When the board is offline this is the only way."
   },
   "add": {
     "step1": "Hornet and code",

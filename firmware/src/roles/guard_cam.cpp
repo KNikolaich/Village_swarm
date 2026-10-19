@@ -105,8 +105,9 @@ public:
         pinMode(kPirPin, INPUT_PULLDOWN);
         configureOutput(core, HW_RELAY_PIN, HW_RELAY_ACTIVE_LOW != 0);
 
-        cameraOk_ = esp_camera_init(&cameraConfigured()) == ESP_OK;
-        if (!cameraOk_) Serial.println("[guard-cam] camera init failed");
+        cameraErr_ = esp_camera_init(&cameraConfigured());
+        cameraOk_ = cameraErr_ == ESP_OK;
+        if (!cameraOk_) Serial.printf("[guard-cam] camera init failed: 0x%x\n", static_cast<unsigned>(cameraErr_));
         sdOk_ = SD_MMC.begin("/sdcard", true) && (SD_MMC.exists(kOutboxDir) || SD_MMC.mkdir(kOutboxDir));
         if (!sdOk_) Serial.println("[guard-cam] no SD card: photos that fail to upload are lost");
         setOutput(false);  // again after the SD driver set its pins up: the output starts off whatever the pin
@@ -122,7 +123,7 @@ public:
             return r;
         });
         core.onCommand("snapshot", [this](JsonObjectConst p) {
-            if (!cameraOk_) return AckResult::error("camera not available");
+            if (!cameraOk_) return AckResult::error(String("camera not available (init error 0x") + String(static_cast<unsigned>(cameraErr_), HEX) + ")");
             startBurst("snapshot", constrain(p["count"] | 1, 1, 10));
             return AckResult::ok();
         });
@@ -157,6 +158,11 @@ public:
     }
 
     void loop(Core& core) override {
+        // Said once, as soon as the hive can hear it: a camera that did not start explains every failed snapshot.
+        if (!cameraOk_ && !cameraErrLogged_ && core.online()) {
+            cameraErrLogged_ = true;
+            core.log(LogLevel::Error, String("camera init failed: 0x") + String(static_cast<unsigned>(cameraErr_), HEX) + " (power, ribbon cable or camera settings)");
+        }
         const bool motion = digitalRead(kPirPin) == HIGH;
         if (motion && !lastPir_ && cooldown_.tryFire(millis(), cooldownMs_)) onMotion(core);
         lastPir_ = motion;
@@ -404,6 +410,8 @@ private:
     Core* core_ = nullptr;
     QueueHandle_t queue_ = nullptr;
     bool cameraOk_ = false;
+    esp_err_t cameraErr_ = ESP_OK;
+    bool cameraErrLogged_ = false;
     bool sdOk_ = false;
     bool armed_ = true;
     bool recordWhenDisarmed_ = false;

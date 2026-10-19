@@ -74,6 +74,12 @@ function HealthCharts({ device, hours }: { device: string; hours: number }) {
   )
 }
 
+/** What the hornet said when it refused or failed a command (the "msg" of its ack). */
+function ackMessage(ack: unknown): string | null {
+  const msg = (ack as { msg?: unknown } | null)?.msg
+  return typeof msg === 'string' && msg ? msg : null
+}
+
 function CommandHistory({ device }: { device: string }) {
   const history = useCommandHistory(device, true)
   const rows = history.data ?? []
@@ -89,6 +95,7 @@ function CommandHistory({ device }: { device: string }) {
               <div className="min-w-0">
                 <p className="truncate font-medium">{c.name}</p>
                 <p className="truncate text-xs text-neutral-500">{c.issuedBy} · {formatWhen(c.issuedAt)}</p>
+                {c.status !== 'ok' && c.status !== 'sent' && ackMessage(c.ack) && <p className="break-words text-xs text-red-300">{ackMessage(c.ack)}</p>}
               </div>
               <Badge tone={c.status === 'ok' ? 'ok' : c.status === 'sent' ? 'neutral' : 'alarm'}>{t(`device.commandStatus.${c.status}`, c.status)}</Badge>
             </li>

@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, CheckCircle2, Copy, Cpu, Download, Usb } from 'lucide-react'
-import { createElement, useEffect, useRef, useState, type FormEvent } from 'react'
+import { ArrowLeft, CheckCircle2, Copy, Download, Usb } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
+import { FlashButton } from '@/components/FlashButton'
 import { TasmotaPanel } from '@/components/TasmotaPanel'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
@@ -9,7 +10,6 @@ import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui/primitives'
 import { getLanguage, t } from '@/i18n'
-import { translateEspWebTools } from '@/lib/espWebToolsRu'
 import { HornetSerial, serialSupported } from '@/lib/serial'
 
 const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant', 'ble']
@@ -329,16 +329,7 @@ function OneHornet() {
 }
 
 function FlashStep({ type, build }: { type: string; build?: Build }) {
-  const [ready, setReady] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
   const available = build !== undefined
-  useEffect(() => {
-    if (!available || !serialSupported()) return
-    translateEspWebTools()
-    // ESP Web Tools (a web component, ~100 KB) is only loaded for this step. A page that was opened before the hive
-    // was updated asks for a file that is gone: say so instead of leaving the button out silently.
-    import('esp-web-tools/dist/web/install-button.js').then(() => setReady(true), (e: unknown) => setLoadError(String(e)))
-  }, [available])
 
   return (
     <Card>
@@ -346,20 +337,10 @@ function FlashStep({ type, build }: { type: string; build?: Build }) {
       <CardContent className="space-y-2 text-sm">
         {build && <p>{t('add.boardLine').replace('{board}', buildTitle(build))}{build.version && <span className="text-neutral-500"> · {build.version}</span>}</p>}
         <p className="text-neutral-400">{t('add.flashHint')}</p>
-        {!serialSupported() && <p className="text-amber-300">{t('add.noSerial')}</p>}
         {!available && <p className="text-amber-300">{t('add.noFirmware').replace('{type}', type)}</p>}
-        {loadError && (
-          <p className="space-y-1 text-amber-300">
-            <span className="block">{t('add.flashLoadFailed')}</span>
-            <span className="block break-all text-xs text-neutral-500">{loadError}</span>
-            <Button variant="secondary" size="sm" onClick={() => window.location.reload()}>{t('add.reloadPage')}</Button>
-          </p>
-        )}
         {build && (
           <div className="flex flex-wrap items-center gap-4">
-            {ready &&
-              createElement('esp-web-install-button', { key: build.build, manifest: `/api/firmware/${build.build}/manifest.json` },
-                createElement(Button, { slot: 'activate' } as never, createElement(Cpu), t('add.flash')))}
+            <FlashButton build={build.build} />
             <a
               href={`/api/firmware/${build.build}/firmware.bin?download=1`}
               className="inline-flex items-center gap-2 text-amber-400 hover:underline"

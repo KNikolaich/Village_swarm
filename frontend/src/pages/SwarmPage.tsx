@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, BatteryMedium, Camera, Check, CircleHelp, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Pencil, Plus, Terminal, Thermometer, Wifi, WifiOff, X, type LucideIcon } from 'lucide-react'
+import { ArrowRightLeft, BatteryMedium, Camera, Check, CircleHelp, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Pencil, Plus, Terminal, Thermometer, Usb, Wifi, WifiOff, X, type LucideIcon } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
+import { FlashButton } from '@/components/FlashButton'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto, type LatestValueDto, type Schemas } from '@/api/client'
 import { keys, useDevices, useLatestTelemetry, useMe, useSendCommand, useZones } from '@/api/queries'
@@ -223,6 +224,7 @@ const canBecome = (type: string, role: string) => role === 'heat' && (type === '
 /** Over-the-air update of one hornet: the builds the hive has for its role and board, the running one marked. */
 function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: Schemas['FirmwareBuildDto'][]; onDone: () => void }) {
   const [busy, setBusy] = useState(false)
+  const [usbOpen, setUsbOpen] = useState<string | null>(null)
   const env = `${device.type}-${device.hw ?? '?'}`
   const suitable = builds.filter((b) => b.board === device.hw && (b.role === device.type || canBecome(device.type, b.role)))
 
@@ -258,14 +260,23 @@ function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: 
               {b.role !== device.type && <p className="text-amber-400">{t('swarm.fwBecome').replace('{type}', t(`deviceTypes.${b.role}`, b.role))}</p>}
               <p className="text-neutral-500">{t('swarm.fwBuilt').replace('{when}', formatAgo(b.built))}</p>
             </div>
-            {current ? (
-              <span className="text-neutral-500">{t('swarm.fwCurrent')}</span>
-            ) : (
-              <Button size="sm" disabled={busy || device.status !== 'online'} onClick={() => void update(b)}>{t('swarm.fwInstall')}</Button>
-            )}
+            <div className="flex shrink-0 items-center gap-2">
+              {current ? (
+                <span className="text-neutral-500">{t('swarm.fwCurrent')}</span>
+              ) : (
+                <Button size="sm" disabled={busy || device.status !== 'online'} onClick={() => void update(b)}>{t('swarm.fwInstall')}</Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => setUsbOpen(usbOpen === b.build ? null : b.build)}><Usb />{t('swarm.fwUsb')}</Button>
+            </div>
           </div>
         )
       })}
+      {usbOpen && (
+        <div className="space-y-2 rounded-lg border border-neutral-800 p-3">
+          <p className="text-neutral-300">{t('swarm.fwUsbHint')}</p>
+          <FlashButton build={usbOpen} />
+        </div>
+      )}
       {suitable.some((b) => b.role === device.type) && suitable.every((b) => b.role !== device.type || b.version === device.fw) && <p className="text-neutral-500">{t('swarm.fwNoNewer')}</p>}
       {device.status !== 'online' && <p className="text-amber-400">{t('swarm.fwOffline')}</p>}
     </div>
