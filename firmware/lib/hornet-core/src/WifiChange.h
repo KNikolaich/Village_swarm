@@ -40,17 +40,26 @@ inline bool sameAsCurrent(const std::string& ssid, const std::string& pass, cons
 
 // ---- A spare network (cmd/wifi mode "stage") ------------------------------------------------------------------------
 // The hornet keeps a second network and uses it only when its own is gone: after a failed boot (one that never reached
-// the broker) the other network is tried, and while awake it swaps every kSwapAfterMs without a connection. The network
-// that reaches the broker becomes the main one (the old one is kept as the spare).
+// the broker) the other network is tried, and while awake it swaps every kSwapAfterMs without Wi-Fi. Wi-Fi alone is not
+// enough: a network that joins but does not lead to the broker (an old guest network after the router restarted) is
+// left after kNoBrokerOnSpareMs, and the main one after kNoBrokerOnMainMs (longer: there the hive itself may be down).
+// The network that reaches the broker becomes the main one (the old one is kept as the spare). cmd/wifi mode "forget"
+// drops the spare.
 
 constexpr uint32_t kSwapAfterMs = 45000;
+constexpr uint32_t kNoBrokerOnSpareMs = 120000;
+constexpr uint32_t kNoBrokerOnMainMs = 300000;
 
 // Boots alternate networks while they keep failing: 0 failed boots before this one -> main, 1 -> spare, 2 -> main ...
 inline bool useSpareAtBoot(bool spareStaged, uint32_t failedBootsBefore) { return spareStaged && (failedBootsBefore % 2 == 1); }
 
-// An awake hornet without Wi-Fi for kSwapAfterMs tries the other network (never during a switch trial).
-inline bool swapNetworks(bool spareStaged, bool trialRunning, bool wifiConnected, uint32_t downForMs) {
-    return spareStaged && !trialRunning && !wifiConnected && downForMs >= kSwapAfterMs;
+// An awake hornet tries the other network after kSwapAfterMs without Wi-Fi, or with Wi-Fi but without the broker for
+// kNoBrokerOnSpareMs on the spare / kNoBrokerOnMainMs on the main network (never during a switch trial).
+inline bool swapNetworks(bool spareStaged, bool trialRunning, bool wifiConnected, uint32_t wifiDownForMs,
+                         uint32_t brokerDownForMs, bool usingSpare) {
+    if (!spareStaged || trialRunning) return false;
+    if (!wifiConnected) return wifiDownForMs >= kSwapAfterMs;
+    return brokerDownForMs >= (usingSpare ? kNoBrokerOnSpareMs : kNoBrokerOnMainMs);
 }
 
 // The spare reached the broker: it becomes the main network.

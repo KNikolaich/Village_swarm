@@ -237,13 +237,23 @@ void Core::checkOtaOutcome() {
 // The command only stores the new network next to the old one and is acknowledged at once; loop() restarts onto it
 // once the ack has left. Nothing about the working network changes until the new one has proven itself.
 AckResult Core::queueWifi(JsonObjectConst payload) {
+    const String mode = payload["mode"] | "switch";
+    if (mode == "forget") {
+        // Drops the spare network (an old one that no longer leads to the hive). The network in use stays.
+        if (usingSpare_) return AckResult(AckStatus::Rejected, "running on the spare network now");
+        const String forgotten = settings_.wifi2Ssid;
+        settings_.wifi2Ssid = "";
+        settings_.wifi2Pass = "";
+        settings_.saveWifiSpare();
+        Serial.printf("[wifi] spare network \"%s\" forgotten\n", forgotten.c_str());
+        return AckResult::ok();
+    }
     const std::string ssid = (payload["ssid"] | "");
     const std::string pass = (payload["pass"] | "");
     if (!wifichange::validCredentials(ssid, pass)) return AckResult::error("bad wifi command");
     if (wifichange::sameAsCurrent(ssid, pass, settings_.ssid.c_str(), settings_.pass.c_str()))
         return AckResult(AckStatus::Rejected, "already on this network");
     if (wifiRestartAtMs_ || wifiTrial_) return AckResult::error("a wifi change is already running");
-    const String mode = payload["mode"] | "switch";
     if (mode == "stage") {
         // Only kept: nothing changes now. The spare takes over when the main network is gone.
         settings_.wifi2Ssid = ssid.c_str();
@@ -325,23 +335,28 @@ void Core::checkWifiSpare() {
         return;
     }
 
-    // An awake hornet whose Wi-Fi stays down tries the other network (a sleeper does it boot by boot, see begin()).
-    if (sleepy() || wifiTrial_ || WiFi.status() == WL_CONNECTED) {
+    // An awake hornet that stays without Wi-Fi, or with Wi-Fi but without the broker, tries the other network (a
+    // sleeper does it boot by boot, see begin()).
+    if (sleepy() || wifiTrial_ || online()) {
         wifiDownSince_ = 0;
+        brokerDownSince_ = 0;
         return;
     }
-    if (!wifiDownSince_) {
-        wifiDownSince_ = millis();
-        return;
-    }
-    if (wifichange::swapNetworks(settings_.wifi2Ssid.length() > 0, wifiTrial_, false, millis() - wifiDownSince_)) {
+    const unsigned long now = millis();
+    const bool wifiUp = WiFi.status() == WL_CONNECTED;
+    if (!brokerDownSince_) brokerDownSince_ = now;
+    if (wifiUp) wifiDownSince_ = 0;
+    else if (!wifiDownSince_) wifiDownSince_ = now;
+    if (wifichange::swapNetworks(settings_.wifi2Ssid.length() > 0, wifiTrial_, wifiUp, wifiDownSince_ ? now - wifiDownSince_ : 0,
+                                 now - brokerDownSince_, usingSpare_)) {
         usingSpare_ = !usingSpare_;
         const String& ssid = usingSpare_ ? settings_.wifi2Ssid : settings_.ssid;
         const String& pass = usingSpare_ ? settings_.wifi2Pass : settings_.pass;
-        Serial.printf("[wifi] no connection, trying %s network \"%s\"\n", usingSpare_ ? "the spare" : "the main", ssid.c_str());
+        Serial.printf("[wifi] %s, trying %s network \"%s\"\n", wifiUp ? "no broker" : "no connection", usingSpare_ ? "the spare" : "the main", ssid.c_str());
         WiFi.disconnect();
         WiFi.begin(ssid.c_str(), pass.c_str());
-        wifiDownSince_ = millis();
+        wifiDownSince_ = now;
+        brokerDownSince_ = now;
     }
 }
 
@@ -576,7 +591,8 @@ void Core::publishInfo() {
     JsonArray caps = info["caps"].to<JsonArray>();
     for (auto c : role_.caps()) caps.add(c);
     if (ota::signatureRequired()) caps.add("ota.signed");
-    caps.add("wifi.stage");  // can keep a spare Wi-Fi network (cmd/wifi mode stage)  // the hive can tell which hornets only take signed images
+    caps.add("wifi.stage");  // can keep a spare Wi-Fi network (cmd/wifi mode stage)
+    caps.add("wifi.forget");  // and drop it again (cmd/wifi mode forget)  // the hive can tell which hornets only take signed images
     JsonArray metrics = info["metrics"].to<JsonArray>();
     for (auto m : role_.metrics()) metrics.add(m);
     JsonArray commands = info["commands"].to<JsonArray>();

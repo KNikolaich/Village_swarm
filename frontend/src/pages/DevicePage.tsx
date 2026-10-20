@@ -21,7 +21,7 @@ import { PinsPanel } from '@/pages/SwarmPage'
 import { SortInput } from '@/components/SortInput'
 import { MonitoringPanel } from '@/components/MonitoringPanel'
 import { canMonitor } from '@/lib/monitoring'
-import { announcedCommands, relayChannels } from '@/lib/swarm'
+import { announcedCommands, hasCap, relayChannels } from '@/lib/swarm'
 
 function MetricChart({ device, metric, hours }: { device: string; metric: string; hours: number }) {
   const series = useSeries(device, metric, hours)
@@ -198,6 +198,8 @@ export function DevicePage() {
   const online = device.status === 'online'
   const configPending = device.configRev !== device.configAppliedRev
   const monitored = (monitoring.data ?? []).some((m) => m.deviceId === deviceId)
+  // The spare Wi-Fi network (Settings → Wi-Fi for hornets) is the administrator's: so is dropping it.
+  const forgetSpare = isAdmin && hasCap(device, 'wifi.forget')
 
   return (
     <div className="space-y-4">
@@ -278,7 +280,7 @@ export function DevicePage() {
         </CardContent>
       </Card>
 
-      {canControl && online && (commands.includes('snapshot') || commands.includes('relay') || commands.includes('reboot')) && (
+      {canControl && online && (commands.includes('snapshot') || commands.includes('relay') || commands.includes('reboot') || forgetSpare) && (
         <Card>
           <CardHeader><CardTitle>{t('device.commands')}</CardTitle></CardHeader>
           <CardContent className="flex flex-wrap gap-2">
@@ -294,6 +296,15 @@ export function DevicePage() {
             ))}
             {commands.includes('reboot') && (
               <Button variant="outline" onClick={() => void send('reboot')}><RotateCw />{t('device.reboot')}</Button>
+            )}
+            {forgetSpare && (
+              <Button
+                variant="outline"
+                title={t('device.forgetSpareHint')}
+                onClick={() => window.confirm(t('device.forgetSpareConfirm')) && void send('wifi', { mode: 'forget' })}
+              >
+                <WifiOff />{t('device.forgetSpare')}
+              </Button>
             )}
           </CardContent>
         </Card>

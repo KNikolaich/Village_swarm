@@ -104,3 +104,9 @@ export function quickControls(d: DeviceDto): { relays: { channel: string; on: bo
     : []
   return { relays, snapshot: commands.includes('snapshot') }
 }
+
+/** Capabilities a hornet announced in its info message (contracts/schemas/info.schema.json "caps"). */
+export const hasCap = (d: DeviceDto, cap: string) => {
+  const caps = (d.info as { caps?: unknown } | null)?.caps
+  return Array.isArray(caps) && caps.includes(cap)
+}

@@ -1,17 +1,45 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://village-swarm.local/contracts/v1/cmd-wifi.schema.json",
-  "title": "vs/v1/dev/{id}/cmd/wifi: keep a spare Wi-Fi network, or switch to another one now, with a way back",
+  "title": "vs/v1/dev/{id}/cmd/wifi: keep a spare Wi-Fi network, forget it, or switch to another one now, with a way back",
   "type": "object",
   "allOf": [
     {
       "$ref": "cmd.schema.json"
     }
   ],
-  "required": [
-    "ssid",
-    "pass"
-  ],
+  "if": {
+    "properties": {
+      "mode": {
+        "const": "forget"
+      }
+    },
+    "required": [
+      "mode"
+    ]
+  },
+  "then": {
+    "not": {
+      "anyOf": [
+        {
+          "required": [
+            "ssid"
+          ]
+        },
+        {
+          "required": [
+            "pass"
+          ]
+        }
+      ]
+    }
+  },
+  "else": {
+    "required": [
+      "ssid",
+      "pass"
+    ]
+  },
   "properties": {
     "ssid": {
       "type": "string",
@@ -34,9 +62,10 @@
     "mode": {
       "enum": [
         "stage",
-        "switch"
+        "switch",
+        "forget"
       ],
-      "description": "stage: keep the network as a SPARE and change nothing now; when the hornet cannot join its own network it tries the spare, and once it has reached the broker over it the spare becomes its own (a hornet that advertises the capability wifi.stage). switch (the default, what hornets without that capability do): restart now and try the network; if the broker is not reached within about a minute the old network comes back"
+      "description": "forget: drop the spare network, without ssid and pass (hornets that advertise wifi.forget; refused while the hornet runs on the spare). stage: keep the network as a SPARE and change nothing now; when the hornet cannot join its own network it tries the spare, and once it has reached the broker over it the spare becomes its own (a hornet that advertises the capability wifi.stage). switch (the default, what hornets without that capability do): restart now and try the network; if the broker is not reached within about a minute the old network comes back"
     }
   },
   "unevaluatedProperties": false

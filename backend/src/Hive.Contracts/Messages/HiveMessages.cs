@@ -49,10 +49,11 @@ public sealed record OtaCommand : Command
 /// <summary>vs/v1/dev/{id}/cmd/wifi: try <see cref="Ssid"/>; if the hornet does not reach the hive over it, the old network comes back.</summary>
 public sealed record WifiCommand : Command
 {
-    public required string Ssid { get; init; }
-    public required string Pass { get; init; }
+    /// <summary>Required except for <see cref="WifiMode.Forget"/>, which has neither.</summary>
+    public string? Ssid { get; init; }
+    public string? Pass { get; init; }
 
-    /// <summary>stage: keep as a spare network; switch (the default): restart onto it now, with a way back.</summary>
+    /// <summary>stage: keep as a spare network; switch (the default): restart onto it now, with a way back; forget: drop the spare.</summary>
     public WifiMode? Mode { get; init; }
 }
 
@@ -61,6 +62,7 @@ public enum WifiMode
 {
     Stage,
     Switch,
+    Forget,
 }
 
 /// <summary>vs/v1/dev/{id}/cmd/snapshot</summary>

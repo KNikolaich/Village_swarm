@@ -171,6 +171,7 @@ private:
     unsigned long wifiRestartAtMs_ = 0;    // restart onto the new network once the ack has left
     bool usingSpare_ = false;              // this boot (or the last swap) uses the spare network
     unsigned long wifiDownSince_ = 0;      // when an awake hornet lost Wi-Fi, 0 while connected
+    unsigned long brokerDownSince_ = 0;    // when an awake hornet lost the broker, 0 while online
     String rxTopic_;
     String rxPayload_;
     String consoleLine_;

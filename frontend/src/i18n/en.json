@@ -536,7 +536,10 @@
     "logAll": "all",
     "noLogs": "No entries",
     "diagnostics": "Diagnostics: signal and memory",
-    "sort": "Place in the swarm"
+    "sort": "Place in the swarm",
+    "forgetSpare": "Forget the spare network",
+    "forgetSpareHint": "Erases the hornet's spare Wi-Fi network, e.g. an old temporary one. The network it is on now stays",
+    "forgetSpareConfirm": "Erase the hornet's spare Wi-Fi network? The network it is on now stays."
   },
   "monitoring": {
     "title": "Monitoring",

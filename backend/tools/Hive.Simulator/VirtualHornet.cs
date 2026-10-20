@@ -252,13 +252,18 @@ public sealed class VirtualHornet
 
         if (name == "reboot" && result.Status == AckStatus.Ok)
             RebootRequested = true;
-        if (name == "wifi" && result.Status == AckStatus.Ok)
-            ReportWifi(root.GetProperty("ssid").GetString()!, root.TryGetProperty("mode", out var mode) && mode.GetString() == "stage", now);
+        if (name == "wifi" && result.Status == AckStatus.Ok && root.TryGetProperty("ssid", out var ssid))
+            ReportWifi(ssid.GetString()!, root.TryGetProperty("mode", out var mode) && mode.GetString() == "stage", now);
     }
 
     /// <summary>The Wi-Fi switch as the firmware does it, validation included (contracts cmd-wifi).</summary>
     private static CommandResult WifiCommandResult(JsonElement root)
     {
+        // forget drops the spare network: no event, only the ack.
+        if (root.TryGetProperty("mode", out var mode) && mode.GetString() == "forget")
+            return root.TryGetProperty("ssid", out _) || root.TryGetProperty("pass", out _)
+                ? new CommandResult(AckStatus.Error, "bad wifi command")
+                : CommandResult.Ok();
         var ssid = root.TryGetProperty("ssid", out var s) ? s.GetString() ?? "" : "";
         var pass = root.TryGetProperty("pass", out var p) ? p.GetString() ?? "" : "";
         var valid = ssid.Length is >= 1 and <= 32 && (pass.Length == 0 || pass.Length is >= 8 and <= 63);
@@ -337,7 +342,7 @@ public sealed class VirtualHornet
             Fw = Spec.Fw,
             Mac = FakeMac(Id),
             Ip = $"192.168.20.{100 + (IdHash(Id)[6] % 100)}",
-            Caps = [.. Role.Caps, "wifi.stage"],
+            Caps = [.. Role.Caps, "wifi.stage", "wifi.forget"],
             Metrics = Role.Metrics,
             Commands = ["reboot", "config_reload", "wifi", .. Role.Commands],
         };
