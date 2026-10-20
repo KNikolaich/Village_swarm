@@ -11,7 +11,8 @@
     "logout": "Выйти",
     "climate": "Климат",
     "rules": "Правила",
-    "swarm": "Рой"
+    "swarm": "Рой",
+    "notes": "Заметки"
   },
   "live": {
     "connected": "На связи",
@@ -937,5 +938,162 @@
     "value": "Значение (необязательно)",
     "send": "Отправить",
     "secret": "Значения команд с password, key, token и secret в журнале команд не сохраняются."
+  },
+  "notes": {
+    "title": "Заметки",
+    "new": "Новая заметка",
+    "newRoot": "Новая заметка в корне",
+    "newChild": "Вложенная заметка",
+    "untitled": "Без названия",
+    "search": "Поиск по заметкам",
+    "noResults": "Ничего не нашлось",
+    "empty": "Заметок пока нет. Создайте первую.",
+    "pick": "Выберите заметку слева или создайте новую.",
+    "dropRoot": "Отпустите здесь, чтобы сделать корнем",
+    "moveTo": "Переместить в…",
+    "moveRoot": "В корень",
+    "moveTitle": "Куда переместить «{title}»?",
+    "moved": "Перемещено",
+    "delete": "Удалить",
+    "deleteConfirm": "Удалить «{title}» вместе с вложенными заметками? Её можно будет вернуть из корзины в течение 30 дней.",
+    "deleted": "Заметка в корзине",
+    "undo": "Вернуть",
+    "trash": "Корзина",
+    "trashEmpty": "Корзина пуста",
+    "restore": "Вернуть",
+    "restored": "Заметка возвращена",
+    "trashCount": "{n} заметок",
+    "purgeAt": "удалится {date}",
+    "saving": "Сохраняю…",
+    "saved": "Сохранено",
+    "saveFailed": "Не удалось сохранить",
+    "icon": "Значок",
+    "iconCustom": "Свой эмодзи",
+    "noIcon": "Без значка",
+    "color": "Цвет закладки",
+    "noColor": "Без цвета",
+    "attach": "Прикрепить файл",
+    "attachments": "Вложения",
+    "uploading": "Загружаю…",
+    "uploadFailed": "Не удалось загрузить файл",
+    "tooLarge": "Файл больше 10 МБ",
+    "removeAttachment": "Удалить вложение",
+    "back": "К списку",
+    "readOnly": "Только просмотр",
+    "placeholder": "Пишите здесь. Картинку можно вставить из буфера или перетащить.",
+    "updated": "Изменено {date}",
+    "cancel": "Отмена",
+    "close": "Закрыть",
+    "expand": "Развернуть",
+    "collapse": "Свернуть",
+    "menu": "Действия",
+    "colors": {
+      "red": "Красный",
+      "orange": "Оранжевый",
+      "yellow": "Жёлтый",
+      "green": "Зелёный",
+      "teal": "Бирюзовый",
+      "blue": "Синий",
+      "purple": "Фиолетовый",
+      "gray": "Серый"
+    },
+    "mdx": {
+      "toolbar": {
+        "blockTypeSelect": {
+          "placeholder": "Тип блока",
+          "selectBlockTypeTooltip": "Тип блока"
+        },
+        "blockTypes": {
+          "heading": "Заголовок {{level}}",
+          "paragraph": "Абзац",
+          "quote": "Цитата"
+        },
+        "bold": "Жирный",
+        "removeBold": "Убрать жирный",
+        "italic": "Курсив",
+        "removeItalic": "Убрать курсив",
+        "underline": "Подчёркнутый",
+        "removeUnderline": "Убрать подчёркивание",
+        "strikethrough": "Зачёркнутый",
+        "removeStrikethrough": "Убрать зачёркивание",
+        "inlineCode": "Код",
+        "removeInlineCode": "Убрать код",
+        "bulletedList": "Маркированный список",
+        "numberedList": "Нумерованный список",
+        "checkList": "Список задач",
+        "link": "Ссылка",
+        "image": "Вставить картинку",
+        "table": "Вставить таблицу",
+        "thematicBreak": "Разделитель",
+        "codeBlock": "Блок кода",
+        "undo": "Отменить {{shortcut}}",
+        "redo": "Повторить {{shortcut}}",
+        "toggleGroup": "группа"
+      },
+      "createLink": {
+        "url": "Адрес",
+        "urlPlaceholder": "Вставьте адрес",
+        "text": "Текст",
+        "textTooltip": "Текст ссылки",
+        "title": "Подсказка",
+        "titleTooltip": "Показывается при наведении",
+        "saveTooltip": "Сохранить",
+        "cancelTooltip": "Отмена"
+      },
+      "linkPreview": {
+        "copied": "Скопировано",
+        "copyToClipboard": "Скопировать",
+        "edit": "Изменить ссылку",
+        "remove": "Убрать ссылку"
+      },
+      "dialog": {
+        "close": "Закрыть"
+      },
+      "dialogControls": {
+        "cancel": "Отмена",
+        "save": "Сохранить"
+      },
+      "imageEditor": {
+        "deleteImage": "Удалить картинку",
+        "editImage": "Изменить картинку"
+      },
+      "uploadImage": {
+        "dialogTitle": "Картинка",
+        "dialogDescription": "Загрузите файл с устройства или укажите адрес.",
+        "uploadInstructions": "С устройства:",
+        "addViaUrlInstructions": "Или по адресу:",
+        "autoCompletePlaceholder": "Адрес картинки",
+        "alt": "Описание:",
+        "title": "Подпись:",
+        "width": "Ширина:",
+        "height": "Высота:"
+      },
+      "table": {
+        "deleteTable": "Удалить таблицу",
+        "insertRowAbove": "Строка выше",
+        "insertRowBelow": "Строка ниже",
+        "deleteRow": "Удалить строку",
+        "insertColumnLeft": "Столбец слева",
+        "insertColumnRight": "Столбец справа",
+        "deleteColumn": "Удалить столбец",
+        "rowMenu": "Строка",
+        "columnMenu": "Столбец",
+        "textAlignment": "Выравнивание",
+        "alignLeft": "По левому краю",
+        "alignCenter": "По центру",
+        "alignRight": "По правому краю"
+      },
+      "codeBlock": {
+        "language": "Язык",
+        "selectLanguage": "Язык блока кода",
+        "inlineLanguage": "Язык"
+      },
+      "codeblock": {
+        "delete": "Удалить блок кода"
+      },
+      "contentArea": {
+        "editableMarkdown": "текст заметки"
+      }
+    }
   }
 }

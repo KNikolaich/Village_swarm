@@ -23,6 +23,11 @@ export type BackupRunDto = Schemas['BackupRunDto']
 export type RetentionStatusDto = Schemas['RetentionStatusDto']
 export type MeDto = Schemas['MeDto']
 export type LoginResult = Schemas['LoginResult']
+export type NoteNodeDto = Schemas['NoteNodeDto']
+export type NoteDto = Schemas['NoteDto']
+export type NoteAttachmentDto = Schemas['NoteAttachmentDto']
+export type NoteSearchHitDto = Schemas['NoteSearchHitDto']
+export type TrashedNoteDto = Schemas['TrashedNoteDto']
 
 /** Fired when any call returns 401: the session expired, the app shows the login screen. */
 export const UNAUTHORIZED_EVENT = 'hive:unauthorized'

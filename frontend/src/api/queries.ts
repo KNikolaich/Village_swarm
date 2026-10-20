@@ -1,7 +1,8 @@
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { t } from '@/i18n'
-import { api, call, type EventDto } from './client'
+import { moveInTree } from '@/lib/notes'
+import { api, call, type EventDto, type NoteNodeDto } from './client'
 
 export const keys = {
   me: ['me'] as const,
@@ -203,3 +204,120 @@ export const useBackups = (enabled: boolean) =>
 
 export const useRetention = (enabled: boolean) =>
   useQuery({ queryKey: ['retention'] as const, queryFn: () => call(api.GET('/api/retention')), enabled, refetchInterval: 5 * 60_000 })
+
+export const noteKeys = {
+  tree: ['notes', 'tree'] as const,
+  note: (id: number) => ['notes', 'note', id] as const,
+  search: (q: string) => ['notes', 'search', q] as const,
+  trash: ['notes', 'trash'] as const,
+}
+
+export const useNotesTree = () => useQuery({ queryKey: noteKeys.tree, queryFn: () => call(api.GET('/api/notes')) })
+
+export const useNote = (id: number | undefined) =>
+  useQuery({
+    queryKey: noteKeys.note(id ?? 0),
+    queryFn: () => call(api.GET('/api/notes/{id}', { params: { path: { id: id! } } })),
+    enabled: id != null,
+  })
+
+export const useNoteSearch = (q: string) =>
+  useQuery({
+    queryKey: noteKeys.search(q),
+    queryFn: () => call(api.GET('/api/notes/search', { params: { query: { q } } })),
+    enabled: q.trim().length > 0,
+    placeholderData: (previous) => previous,
+  })
+
+export const useNotesTrash = (enabled: boolean) =>
+  useQuery({ queryKey: noteKeys.trash, queryFn: () => call(api.GET('/api/notes/trash')), enabled })
+
+export function useCreateNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (body: { title: string; parentId?: number | null; index?: number | null }) => call(api.POST('/api/notes', { body })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: noteKeys.tree }),
+  })
+}
+
+/** Saves header fields or the text. The tree is patched in place, so typing a title does not refetch the whole tree. */
+export function useUpdateNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...body }: { id: number; title?: string; icon?: string; color?: string; body?: string }) =>
+      call(api.PATCH('/api/notes/{id}', { params: { path: { id } }, body })),
+    onSuccess: (_, { id, title, icon, color }) => {
+      qc.setQueryData<NoteNodeDto[]>(noteKeys.tree, (tree) =>
+        tree?.map((n) =>
+          n.id === id
+            ? {
+                ...n,
+                title: title ?? n.title,
+                icon: icon === undefined ? n.icon : icon || null,
+                color: color === undefined ? n.color : color || null,
+                updatedAt: new Date().toISOString(),
+              }
+            : n,
+        ),
+      )
+    },
+  })
+}
+
+/** Moves a branch; the tree is reordered locally first so the drop does not jump back while the server answers. */
+export function useMoveNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, parentId, index }: { id: number; parentId: number | null; index: number }) =>
+      call(api.POST('/api/notes/{id}/move', { params: { path: { id } }, body: { parentId, index } })),
+    onMutate: ({ id, parentId, index }) => {
+      const before = qc.getQueryData<NoteNodeDto[]>(noteKeys.tree)
+      if (before) qc.setQueryData(noteKeys.tree, moveInTree(before, id, parentId, index))
+      return { before }
+    },
+    onError: (_, __, context) => {
+      if (context?.before) qc.setQueryData(noteKeys.tree, context.before)
+    },
+    onSettled: (_, __, { id }) => {
+      void qc.invalidateQueries({ queryKey: noteKeys.tree })
+      void qc.invalidateQueries({ queryKey: noteKeys.note(id) })
+    },
+  })
+}
+
+export function useDeleteNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => call(api.DELETE('/api/notes/{id}', { params: { path: { id } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notes'] }),
+  })
+}
+
+export function useRestoreNote() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: number) => call(api.POST('/api/notes/{id}/restore', { params: { path: { id } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notes'] }),
+  })
+}
+
+/** Uploads a pasted or picked file as the raw request body. */
+export async function uploadNoteAttachment(noteId: number, file: File | Blob, name?: string) {
+  const fileName = name ?? (file instanceof File ? file.name : 'image.png')
+  return call(
+    api.POST('/api/notes/{id}/attachments', {
+      params: { path: { id: noteId }, query: { name: fileName } },
+      body: file as unknown as string,
+      bodySerializer: (body) => body as unknown as Blob,
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    }),
+  )
+}
+
+export function useDeleteNoteAttachment(noteId: number) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => call(api.DELETE('/api/notes/attachments/{id}', { params: { path: { id } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: noteKeys.note(noteId) }),
+  })
+}

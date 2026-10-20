@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Bell, Images, LayoutDashboard, LogOut, Network, Settings, Thermometer, Workflow } from 'lucide-react'
+import { Bell, Images, LayoutDashboard, LogOut, Network, NotebookPen, Settings, Thermometer, Workflow } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router'
 import { api } from '@/api/client'
 import { keys } from '@/api/queries'
@@ -18,6 +18,7 @@ const nav = () => [
   { to: '/rules', label: t('nav.rules'), icon: Workflow, end: false },
   { to: '/events', label: t('nav.events'), icon: Bell, end: false },
   { to: '/photos', label: t('nav.photos'), icon: Images, end: false },
+  { to: '/notes', label: t('nav.notes'), icon: NotebookPen, end: false },
   { to: '/swarm', label: t('nav.swarm'), icon: Network, end: false },
   { to: '/settings', label: t('nav.settings'), icon: Settings, end: false },
 ]
@@ -88,16 +89,16 @@ export function AppShell({ live }: { live: LiveState }) {
         </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-7 border-t border-neutral-800 bg-neutral-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-8 border-t border-neutral-800 bg-neutral-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         {nav().map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
-            className={({ isActive }) => cn('flex flex-col items-center gap-1 py-2 text-xs', isActive ? 'text-amber-400' : 'text-neutral-500')}
+            className={({ isActive }) => cn('flex min-w-0 flex-col items-center gap-1 py-2 text-[10px] sm:text-xs', isActive ? 'text-amber-400' : 'text-neutral-500')}
           >
             <Icon className="size-5" />
-            {label}
+            <span className="max-w-full truncate px-0.5">{label}</span>
           </NavLink>
         ))}
       </nav>
