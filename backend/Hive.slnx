@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Hive.Api/Hive.Api.csproj" />
+    <Project Path="src/Hive.Modules.Assistant/Hive.Modules.Assistant.csproj" />
     <Project Path="src/Hive.Contracts/Hive.Contracts.csproj" />
     <Project Path="src/Hive.Domain/Hive.Domain.csproj" />
     <Project Path="src/Hive.Infrastructure/Hive.Infrastructure.csproj" />

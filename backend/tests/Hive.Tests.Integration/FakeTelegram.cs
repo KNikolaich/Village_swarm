@@ -151,6 +151,9 @@ public sealed class FakeTelegram : IAsyncDisposable
                     form.GetValueOrDefault("disable_notification") == "true", null));
                 await Reply(ctx, true, messages);
                 break;
+            case "sendchataction":
+                await Reply(ctx, true, true);
+                break;
             case "answercallbackquery":
                 Outbox.Enqueue(new Sent("answercallbackquery", 0, form.GetValueOrDefault("text"), 0, 0, null, false, null));
                 await Reply(ctx, true, true);

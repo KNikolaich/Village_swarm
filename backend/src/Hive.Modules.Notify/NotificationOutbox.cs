@@ -199,7 +199,7 @@ public sealed class NotificationOutbox(
         MarkSent(n, sent[0].MessageId, now);
     }
 
-    private async Task<Message[]> SendAlbumAsync(MediaStore store, long chat, List<MediaItem> photos, int? replyTo, bool silent, CancellationToken ct,
+    public async Task<Message[]> SendAlbumAsync(MediaStore store, long chat, List<MediaItem> photos, int? replyTo, bool silent, CancellationToken ct,
         Func<MediaItem, string?>? caption = null)
     {
         // Streams are reopened per attempt: a failed endpoint may have consumed them.

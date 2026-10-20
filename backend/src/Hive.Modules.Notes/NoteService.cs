@@ -31,6 +31,12 @@ public sealed record TrashedNoteDto(int Id, string Title, string? Icon, string? 
 
 public enum NoteChange { Ok, NotFound, BadRequest }
 
+/// <summary>How a path of titles ("Разработка", "Улучшения") lands in the tree: the notes that exist, and the titles still missing below them.</summary>
+public sealed record NotePathMatch(IReadOnlyList<NoteCrumbDto> Existing, IReadOnlyList<string> Missing)
+{
+    public int? ParentId => Existing.Count > 0 ? Existing[^1].Id : null;
+}
+
 /// <summary>The owner's tree of notes: Markdown text, an emoji and a bookmark color in the header, any depth, drag and drop between branches.</summary>
 public sealed class NoteService(HiveDbContext db, TimeProvider time)
 {
@@ -223,6 +229,78 @@ public sealed class NoteService(HiveDbContext db, TimeProvider time)
         var files = await db.NoteAttachments.Where(a => old.Contains(a.NoteId)).Select(a => a.Path).ToListAsync(ct);
         await db.Notes.Where(n => old.Contains(n.Id)).ExecuteDeleteAsync(ct);
         return files;
+    }
+
+    /// <summary>Every branch as "Разработка / Улучшения", in tree order, so a request in words can name an existing place.</summary>
+    public async Task<IReadOnlyList<string>> OutlineAsync(int max, CancellationToken ct)
+    {
+        var nodes = await TreeAsync(ct);
+        var children = nodes.ToLookup(n => n.ParentId);
+        var lines = new List<string>();
+        void Walk(int? parent, string prefix)
+        {
+            foreach (var n in children[parent])
+            {
+                if (lines.Count >= max)
+                    return;
+                var line = prefix.Length == 0 ? n.Title : $"{prefix} / {n.Title}";
+                lines.Add(line);
+                Walk(n.Id, line);
+            }
+        }
+        Walk(null, "");
+        return lines;
+    }
+
+    /// <summary>Follows the titles down from the root as far as they match existing notes (case, ё and word endings aside).</summary>
+    public async Task<NotePathMatch> MatchPathAsync(IReadOnlyList<string> path, CancellationToken ct)
+    {
+        var nodes = await TreeAsync(ct);
+        var existing = new List<NoteCrumbDto>();
+        int? parent = null;
+        var i = 0;
+        for (; i < path.Count; i++)
+        {
+            var title = path[i].Trim();
+            var siblings = nodes.Where(n => n.ParentId == parent).ToList();
+            var match = siblings.FirstOrDefault(n => Normalize(n.Title) == Normalize(title)) ?? siblings.FirstOrDefault(n => SameWord(n.Title, title));
+            if (match is null)
+                break;
+            existing.Add(new NoteCrumbDto(match.Id, match.Title, match.Icon));
+            parent = match.Id;
+        }
+        return new NotePathMatch(existing, path.Skip(i).Select(p => p.Trim()).Where(p => p.Length > 0).ToList());
+    }
+
+    /// <summary>The note at the end of the path, creating the missing branches; null for an empty path (the root).</summary>
+    public async Task<int?> EnsurePathAsync(IReadOnlyList<string> path, string by, CancellationToken ct)
+    {
+        var match = await MatchPathAsync(path, ct);
+        var parent = match.ParentId;
+        foreach (var title in match.Missing)
+        {
+            var (result, created) = await CreateAsync(new CreateNoteRequest(title.Length > MaxTitle ? title[..MaxTitle] : title, parent), by, ct);
+            if (result != NoteChange.Ok)
+                throw new InvalidOperationException($"Could not create note branch \"{title}\": {result}");
+            parent = created!.Id;
+        }
+        return parent;
+    }
+
+    public static string Normalize(string s) =>
+        new string(s.ToLowerInvariant().Replace('ё', 'е').Where(c => char.IsLetterOrDigit(c) || c == ' ').ToArray()).Trim();
+
+    /// <summary>"Улучшения" and "улучшение" are the same branch: one word each, differing only in the last couple of letters.</summary>
+    public static bool SameWord(string a, string b)
+    {
+        a = Normalize(a);
+        b = Normalize(b);
+        if (a.Contains(' ') || b.Contains(' ') || Math.Min(a.Length, b.Length) < 4)
+            return false;
+        var common = 0;
+        while (common < Math.Min(a.Length, b.Length) && a[common] == b[common])
+            common++;
+        return common >= Math.Max(4, Math.Max(a.Length, b.Length) - 2);
     }
 
     internal static string Snippet(string body, string q)

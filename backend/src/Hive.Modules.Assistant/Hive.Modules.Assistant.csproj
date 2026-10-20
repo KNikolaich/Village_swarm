@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Telegram.Bot" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Hive.Domain/Hive.Domain.csproj" />
+    <ProjectReference Include="../Hive.Infrastructure/Hive.Infrastructure.csproj" />
+    <ProjectReference Include="../Hive.Modules.Devices/Hive.Modules.Devices.csproj" />
+    <ProjectReference Include="../Hive.Modules.Events/Hive.Modules.Events.csproj" />
+    <ProjectReference Include="../Hive.Modules.Media/Hive.Modules.Media.csproj" />
+    <ProjectReference Include="../Hive.Modules.Notes/Hive.Modules.Notes.csproj" />
+    <ProjectReference Include="../Hive.Modules.Notify/Hive.Modules.Notify.csproj" />
+    <ProjectReference Include="../Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hive.Tests.Unit" />
+    <InternalsVisibleTo Include="Hive.Tests.Integration" />
+  </ItemGroup>
+</Project>

@@ -102,7 +102,11 @@ public sealed class TelegramBotHost(
         try
         {
             using var scope = scopes.CreateScope();
-            await scope.ServiceProvider.GetRequiredService<BotCommands>().HandleAsync(update, ct);
+            // Plain text and the assistant's own buttons go to the assistant when one is set up; commands stay here.
+            if (scope.ServiceProvider.GetService<ITelegramAssistant>() is { } assistant && assistant.Handles(update))
+                await assistant.HandleAsync(update, ct);
+            else
+                await scope.ServiceProvider.GetRequiredService<BotCommands>().HandleAsync(update, ct);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
