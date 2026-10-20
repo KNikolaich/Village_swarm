@@ -30,6 +30,8 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     public DbSet<TelemetryHourly> TelemetryHourly => Set<TelemetryHourly>();
     public DbSet<Rule> Rules => Set<Rule>();
     public DbSet<RuleRun> RuleRuns => Set<RuleRun>();
+    public DbSet<Note> Notes => Set<Note>();
+    public DbSet<NoteAttachment> NoteAttachments => Set<NoteAttachment>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -160,6 +162,32 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.Property(x => x.Name).HasMaxLength(128);
             e.Property(x => x.LastOutcome).HasMaxLength(16);
             e.Property(x => x.UpdatedBy).HasMaxLength(64);
+        });
+
+        b.Entity<Note>(e =>
+        {
+            e.ToTable("notes");
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Icon).HasMaxLength(16);
+            e.Property(x => x.Color).HasMaxLength(16);
+            e.Property(x => x.CreatedBy).HasMaxLength(64);
+            e.Property(x => x.UpdatedBy).HasMaxLength(64);
+            // Purging the trash removes a branch in one statement.
+            e.HasOne<Note>().WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.ParentId, x.Sort });
+            e.HasIndex(x => x.DeletedAt);
+        });
+
+        b.Entity<NoteAttachment>(e =>
+        {
+            e.ToTable("note_attachments");
+            e.Property(x => x.Id).HasMaxLength(26);
+            e.Property(x => x.FileName).HasMaxLength(255);
+            e.Property(x => x.Mime).HasMaxLength(128);
+            e.Property(x => x.Sha256).HasMaxLength(64);
+            e.Property(x => x.Path).HasMaxLength(256);
+            e.HasOne<Note>().WithMany().HasForeignKey(x => x.NoteId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.NoteId);
         });
 
         b.Entity<RuleRun>(e =>

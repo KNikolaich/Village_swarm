@@ -23,6 +23,7 @@
     <ProjectReference Include="../Hive.Modules.Backup/Hive.Modules.Backup.csproj" />
     <ProjectReference Include="../Hive.Modules.Cluster/Hive.Modules.Cluster.csproj" />
     <ProjectReference Include="../Hive.Modules.Users/Hive.Modules.Users.csproj" />
+    <ProjectReference Include="../Hive.Modules.Notes/Hive.Modules.Notes.csproj" />
     <ProjectReference Include="../Hive.Modules.Weather/Hive.Modules.Weather.csproj" />
   </ItemGroup>
 </Project>
