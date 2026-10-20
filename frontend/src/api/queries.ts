@@ -13,9 +13,19 @@ export const keys = {
   eventsAll: ['events'] as const,
   mediaDay: (date: string, device?: string) => ['media', 'day', date, device ?? ''] as const,
   mediaDays: (from: string, to: string, device?: string) => ['media', 'days', from, to, device ?? ''] as const,
+  otaRollout: ['firmware', 'rollout'] as const,
 }
 
 export type EventFilters = { type?: string; device?: string; severity?: string; limit?: number }
+
+/** The firmware rollout on the hive ("update all outdated"): polled while it runs, so the page follows it. */
+export const useOtaRollout = (enabled: boolean) =>
+  useQuery({
+    queryKey: keys.otaRollout,
+    queryFn: () => call(api.GET('/api/firmware/rollout')),
+    enabled,
+    refetchInterval: (q) => (['running', 'stopping'].includes(q.state.data?.rollout?.state ?? '') ? 3000 : false),
+  })
 
 export const useMe = () =>
   useQuery({ queryKey: keys.me, queryFn: () => call(api.GET('/api/me')), retry: false, staleTime: 5 * 60_000 })

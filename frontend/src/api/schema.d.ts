@@ -2301,6 +2301,124 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/firmware/rollout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OtaRolloutStatusDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["OtaRolloutRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OtaRolloutStatusDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": string;
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/firmware/rollout/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OtaRolloutStatusDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/modes/armed": {
         parameters: {
             query?: never;
@@ -4380,6 +4498,41 @@ export interface components {
             color: null | string;
             snippet: string;
             path: components["schemas"]["NoteCrumbDto"][];
+        };
+        OtaRolloutDto: {
+            state: components["schemas"]["OtaRolloutState"];
+            startedBy: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt: null | string;
+            items: components["schemas"]["OtaRolloutItemDto"][];
+        };
+        OtaRolloutItemDto: {
+            deviceId: string;
+            name: string;
+            build: string;
+            fromVersion: null | string;
+            toVersion: string;
+            noRollback: boolean;
+            state: components["schemas"]["OtaRolloutItemState"];
+            error: null | string;
+            /** Format: date-time */
+            startedAt: null | string;
+            /** Format: date-time */
+            finishedAt: null | string;
+        };
+        /** @enum {unknown} */
+        OtaRolloutItemState: "pending" | "updating" | "done" | "failed" | "skipped";
+        OtaRolloutRequest: {
+            deviceIds: string[];
+            /** @default false */
+            confirmNoRollback: boolean;
+        };
+        /** @enum {unknown} */
+        OtaRolloutState: "running" | "stopping" | "done" | "stopped" | "failed";
+        OtaRolloutStatusDto: {
+            rollout: null | components["schemas"]["OtaRolloutDto"];
         };
         PageOfEventDto: {
             items: components["schemas"]["EventDto"][];

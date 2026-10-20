@@ -6,5 +6,6 @@
     <ProjectReference Include="../Hive.Domain/Hive.Domain.csproj" />
     <ProjectReference Include="../Hive.Contracts/Hive.Contracts.csproj" />
     <ProjectReference Include="../Hive.Infrastructure/Hive.Infrastructure.csproj" />
+    <ProjectReference Include="../Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
   </ItemGroup>
 </Project>

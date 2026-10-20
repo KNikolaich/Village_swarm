@@ -343,6 +343,11 @@
       "staged": "spare network \"{ssid}\" saved",
       "applied": "now on \"{ssid}\"",
       "rolled_back": "network \"{ssid}\" did not work, the old one stayed"
+    },
+    "otaRollout": {
+      "count": "{done} of {total} updated",
+      "failed": "stopped at \"{device}\": {version}",
+      "stopped": "stopped by hand"
     }
   },
   "photos": {
@@ -373,6 +378,7 @@
     "tamper": "Camera covered or moved",
     "rule": "Rule",
     "ota": "Firmware update",
+    "ota_rollout": "Update of all hornets",
     "backup": "Backup problem",
     "backup_cleared": "Backups are well again",
     "disk_cleanup": "Disk full: old photos deleted",
@@ -638,6 +644,49 @@
     "fwOffline": "The hornet is offline: it can be updated once it is back.",
     "replaceConfirm": "Replace the board of '{id}'? The wizard opens: type and name are known and the code is issued. Flash the new board and enter the code. The hornet moves to the new board with the same name, history and settings; the old board loses access. Updating firmware is another button, the chip one.",
     "updateUnsigned": "The image is not signed (built without the signing key): a hornet that only takes signed firmware will refuse it. See docs/ota.md.",
+    "rollout": {
+      "open": "Update outdated ({n})",
+      "openRunning": "Hornet update",
+      "title": "Update all outdated over the air",
+      "intro": "Hornets are updated one at a time: the next starts only after the previous one came back with the new version. On the first failure the hive stops and reports to Events and Telegram, so a bad build does not reach every board. You may close the page: the update runs on the hive.",
+      "offline": "offline",
+      "asleep": "asleep: switch it to \"awake\" for the update",
+      "esp8266": "ESP8266, no rollback",
+      "confirmNoRollback": "Update the ESP8266 boards too (D1 mini, NodeMCU, ESP-01). They cannot roll back: if the new firmware does not start or power is lost while it is copied, the board has to be flashed over USB. They go last, after all the others.",
+      "summary": "To update: {n}. Up to a few minutes each.",
+      "summaryNone": "Tick the hornets to update.",
+      "start": "Start the update",
+      "confirm": "Update over the air, one at a time: {names}?",
+      "busy": "An update is already running",
+      "nothing": "The ticked hornets already run the new firmware",
+      "stop": "Stop",
+      "stopConfirm": "Stop the update? The hornet updating now finishes on its own, the hive leaves the rest alone.",
+      "close": "Close",
+      "again": "New update",
+      "state": {
+        "running": "updating",
+        "stopping": "stopping: waiting for the current hornet",
+        "done": "done",
+        "stopped": "stopped",
+        "failed": "stopped on a failure"
+      },
+      "item": {
+        "pending": "queued",
+        "updating": "updating",
+        "done": "updated",
+        "failed": "failed",
+        "skipped": "skipped"
+      },
+      "why": {
+        "offline": "offline",
+        "asleep": "was asleep",
+        "up_to_date": "already updated",
+        "needs_confirmation": "ESP8266 not confirmed",
+        "stopped": "update stopped",
+        "timeout": "did not come back with the new version in 10 minutes"
+      },
+      "failedHint": "Check the hornet and its update event in Events. Update the rest again once it is sorted out."
+    },
     "console": "USB console",
     "showDeceased": "Show the deceased ({n})",
     "deceasedHint": "Removed hornets are hidden, but their records and history are kept. Turn it on to bring one back to life on a new board.",

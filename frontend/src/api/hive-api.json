@@ -1901,6 +1901,94 @@
         }
       }
     },
+    "/api/firmware/rollout": {
+      "get": {
+        "tags": [
+          "firmware"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OtaRolloutStatusDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "firmware"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OtaRolloutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OtaRolloutStatusDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/firmware/rollout/stop": {
+      "post": {
+        "tags": [
+          "firmware"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OtaRolloutStatusDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/modes/armed": {
       "get": {
         "tags": [
@@ -5021,6 +5109,156 @@
             "items": {
               "$ref": "#/components/schemas/NoteCrumbDto"
             }
+          }
+        }
+      },
+      "OtaRolloutDto": {
+        "required": [
+          "state",
+          "startedBy",
+          "startedAt",
+          "finishedAt",
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/OtaRolloutState"
+          },
+          "startedBy": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OtaRolloutItemDto"
+            }
+          }
+        }
+      },
+      "OtaRolloutItemDto": {
+        "required": [
+          "deviceId",
+          "name",
+          "build",
+          "fromVersion",
+          "toVersion",
+          "noRollback",
+          "state",
+          "error",
+          "startedAt",
+          "finishedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "build": {
+            "type": "string"
+          },
+          "fromVersion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "toVersion": {
+            "type": "string"
+          },
+          "noRollback": {
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OtaRolloutItemState"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "startedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "OtaRolloutItemState": {
+        "enum": [
+          "pending",
+          "updating",
+          "done",
+          "failed",
+          "skipped"
+        ]
+      },
+      "OtaRolloutRequest": {
+        "required": [
+          "deviceIds"
+        ],
+        "type": "object",
+        "properties": {
+          "deviceIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confirmNoRollback": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "OtaRolloutState": {
+        "enum": [
+          "running",
+          "stopping",
+          "done",
+          "stopped",
+          "failed"
+        ]
+      },
+      "OtaRolloutStatusDto": {
+        "required": [
+          "rollout"
+        ],
+        "type": "object",
+        "properties": {
+          "rollout": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OtaRolloutDto"
+              }
+            ]
           }
         }
       },

@@ -29,10 +29,6 @@ public sealed class WifiRollout(HiveWifiService wifi, CommandService commands, H
     /// <summary>The command lives only this long: a hornet that wakes later must not switch on an old order.</summary>
     public const int TtlS = 120;
 
-    private static bool Asleep(Device d, DateTimeOffset now) =>
-        DeviceConfigService.SleepS(d) is { } sleep && DeviceConfigService.SleepMode(d) == "deep"
-        && d.LastSeenAt is { } seen && now - seen > TimeSpan.FromSeconds(90) && sleep > 0;
-
     private static bool Lists(Device d, string section, string name) =>
         d.Info?.RootElement.TryGetProperty(section, out var list) == true && list.ValueKind == JsonValueKind.Array
         && list.EnumerateArray().Any(c => c.GetString() == name);
@@ -55,7 +51,7 @@ public sealed class WifiRollout(HiveWifiService wifi, CommandService commands, H
             string result;
             if (d.Status != DeviceStatus.Online)
                 result = "offline";
-            else if (Asleep(d, now))
+            else if (DeviceConfigService.Asleep(d, now))
                 result = "sleeping";
             else if (!Knows(d, stage))
                 result = "old_firmware";
