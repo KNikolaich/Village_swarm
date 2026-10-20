@@ -48,7 +48,8 @@ static void test_the_same_network_is_not_a_change() {
 
 static void test_without_a_spare_the_main_network_is_always_used() {
     for (uint32_t fails = 0; fails < 6; ++fails) TEST_ASSERT_FALSE(useSpareAtBoot(false, fails));
-    TEST_ASSERT_FALSE(swapNetworks(false, false, false, kSwapAfterMs * 10));
+    TEST_ASSERT_FALSE(swapNetworks(false, false, false, kSwapAfterMs * 10, kNoBrokerOnMainMs * 10, false));
+    TEST_ASSERT_FALSE(swapNetworks(false, false, true, 0, kNoBrokerOnMainMs * 10, false));
 }
 
 static void test_failing_boots_alternate_the_main_and_the_spare_network() {
@@ -59,10 +60,19 @@ static void test_failing_boots_alternate_the_main_and_the_spare_network() {
 }
 
 static void test_an_awake_hornet_swaps_networks_only_after_a_long_silence_and_not_during_a_trial() {
-    TEST_ASSERT_FALSE(swapNetworks(true, false, false, kSwapAfterMs - 1));
-    TEST_ASSERT_TRUE(swapNetworks(true, false, false, kSwapAfterMs));
-    TEST_ASSERT_FALSE(swapNetworks(true, false, true, kSwapAfterMs * 2));   // connected: nothing to swap
-    TEST_ASSERT_FALSE(swapNetworks(true, true, false, kSwapAfterMs * 2));   // a switch trial runs its own clock
+    TEST_ASSERT_FALSE(swapNetworks(true, false, false, kSwapAfterMs - 1, kSwapAfterMs - 1, false));
+    TEST_ASSERT_TRUE(swapNetworks(true, false, false, kSwapAfterMs, kSwapAfterMs, false));
+    TEST_ASSERT_FALSE(swapNetworks(true, false, true, 0, kSwapAfterMs * 2, false));   // Wi-Fi and a short broker gap: wait
+    TEST_ASSERT_FALSE(swapNetworks(true, true, false, kSwapAfterMs * 2, kNoBrokerOnMainMs * 2, false));  // a trial runs its own clock
+}
+
+static void test_wifi_without_the_broker_is_left_sooner_on_the_spare_than_on_the_main_network() {
+    // The spare joins Wi-Fi but does not lead to the hive (an old guest network): back to the main one.
+    TEST_ASSERT_FALSE(swapNetworks(true, false, true, 0, kNoBrokerOnSpareMs - 1, true));
+    TEST_ASSERT_TRUE(swapNetworks(true, false, true, 0, kNoBrokerOnSpareMs, true));
+    // On the main network the hive itself may be restarting: the spare is tried only after a longer wait.
+    TEST_ASSERT_FALSE(swapNetworks(true, false, true, 0, kNoBrokerOnSpareMs, false));
+    TEST_ASSERT_TRUE(swapNetworks(true, false, true, 0, kNoBrokerOnMainMs, false));
 }
 
 static void test_only_a_spare_that_reached_the_broker_becomes_the_main_network() {
@@ -82,6 +92,7 @@ int main() {
     RUN_TEST(test_without_a_spare_the_main_network_is_always_used);
     RUN_TEST(test_failing_boots_alternate_the_main_and_the_spare_network);
     RUN_TEST(test_an_awake_hornet_swaps_networks_only_after_a_long_silence_and_not_during_a_trial);
+    RUN_TEST(test_wifi_without_the_broker_is_left_sooner_on_the_spare_than_on_the_main_network);
     RUN_TEST(test_only_a_spare_that_reached_the_broker_becomes_the_main_network);
     return UNITY_END();
 }

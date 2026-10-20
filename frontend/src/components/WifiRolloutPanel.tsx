@@ -6,15 +6,10 @@ import { useDevices } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/primitives'
 import { t } from '@/i18n'
+import { hasCap } from '@/lib/swarm'
 import { cn } from '@/lib/utils'
 
 type Mode = 'stage' | 'switch'
-
-/** Capabilities a hornet announced in its info message (contracts/schemas/info.schema.json "caps"). */
-const hasCap = (d: DeviceDto, cap: string) => {
-  const caps = (d.info as { caps?: unknown } | null)?.caps
-  return Array.isArray(caps) && caps.includes(cap)
-}
 
 /** A deep sleeper is awake only for seconds: an order sent now would not reach it. */
 const asleep = (d: DeviceDto) =>

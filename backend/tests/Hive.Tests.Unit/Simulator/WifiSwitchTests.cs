@@ -20,15 +20,18 @@ public class WifiSwitchTests
         return hornet;
     }
 
-    private static List<Outgoing> Switch(string ssid, string pass, string? mode = null)
+    private static List<Outgoing> Switch(string? ssid, string? pass, string? mode = null)
     {
         var hornet = Heat();
         var now = T0.AddSeconds(5);
         var command = new JsonObject
         {
             ["v"] = 1, ["cid"] = Ulid.New(now), ["ts"] = now.ToUnixTimeMilliseconds(), ["ttl_s"] = 120, ["by"] = "user:test",
-            ["ssid"] = ssid, ["pass"] = pass,
         };
+        if (ssid is not null)
+            command["ssid"] = ssid;
+        if (pass is not null)
+            command["pass"] = pass;
         if (mode is not null)
             command["mode"] = mode;
         hornet.Receive(Topics.Cmd("heat-living1", "wifi"), command.ToJsonString());
@@ -94,5 +97,19 @@ public class WifiSwitchTests
 
         Assert.Equal("error", Json(messages, "/cmd/wifi/ack").GetProperty("status").GetString());
         Assert.DoesNotContain(messages, m => m.Topic.EndsWith("/event/wifi", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Forgetting_the_spare_network_is_acked_without_an_event_and_advertised()
+    {
+        var messages = Switch(null, null, mode: "forget");
+
+        Assert.Equal("ok", Json(messages, "/cmd/wifi/ack").GetProperty("status").GetString());
+        Assert.DoesNotContain(messages, m => m.Topic.EndsWith("/event/wifi", StringComparison.Ordinal));
+        AssertMatchesContract(messages);
+        Assert.Equal("error", Json(Switch("village-iot", "correct horse battery", mode: "forget"), "/cmd/wifi/ack").GetProperty("status").GetString());
+
+        var info = Heat().OnConnected(T0).Single(m => m.Topic.EndsWith("/info", StringComparison.Ordinal));
+        Assert.Contains("wifi.forget", JsonDocument.Parse(info.Payload).RootElement.GetProperty("caps").EnumerateArray().Select(c => c.GetString()));
     }
 }
