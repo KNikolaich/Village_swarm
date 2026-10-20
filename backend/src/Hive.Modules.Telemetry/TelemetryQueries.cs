@@ -20,6 +20,9 @@ public sealed class TelemetryQueries(HiveDbContext db, TimeProvider time)
 {
     public const int MaxPoints = 500;
     public const int DefaultPoints = 120;
+
+    /// <summary>The finest bucket: the shortest monitoring interval.</summary>
+    public const int MinBucketS = 5;
     public static readonly TimeSpan MaxRange = TimeSpan.FromDays(366);
 
     /// <summary>Last value of every metric of every device seen in the past week (overview tiles).</summary>
@@ -50,8 +53,9 @@ public sealed class TelemetryQueries(HiveDbContext db, TimeProvider time)
         if (end - start > MaxRange)
             start = end - MaxRange;
         var count = Math.Clamp(points ?? DefaultPoints, 2, MaxPoints);
-        // Buckets are whole minutes at least: the hornets report no faster than that.
-        var bucket = Math.Max(60, Math.Ceiling((end - start).TotalSeconds / count / 60) * 60);
+        // Whole minutes for long windows; on short ones (monitoring mode reports every few seconds) steps of 5 s.
+        var raw = (end - start).TotalSeconds / count;
+        var bucket = raw > 60 ? Math.Ceiling(raw / 60) * 60 : Math.Max(MinBucketS, Math.Ceiling(raw / MinBucketS) * MinBucketS);
         return (start, end, bucket);
     }
 

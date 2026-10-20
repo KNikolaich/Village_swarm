@@ -30,6 +30,10 @@ public static class Texts
         "overheat_cleared" => "Температура улья в норме",
         "disk_full" => "Диск улья почти заполнен",
         "disk_full_cleared" => "На диске улья снова есть место",
+        "monitor_threshold" => "Вышло из режима",
+        "monitor_normal" => "Снова в режиме",
+        "monitor_stale" => "Термометр замолчал",
+        "monitor_resumed" => "Термометр снова передаёт",
         _ => type,
     };
 
@@ -67,6 +71,8 @@ public static class Texts
             text += $"\nправило: {H(rule.GetString())}";
         if (e.Type.StartsWith("overheat", StringComparison.Ordinal) || e.Type.StartsWith("disk_full", StringComparison.Ordinal))
             text += HiveReading(e.Payload.RootElement);
+        if (e.Type.StartsWith("monitor_", StringComparison.Ordinal))
+            text += MonitorDetail(e.Type, e.Payload.RootElement);
         if (repeat > 1)
             text += $"\n<b>×{repeat}</b> подряд";
         return text;
@@ -119,6 +125,27 @@ public static class Texts
             var other => (other ?? "", ""),
         };
         return $"\n{H(label)}: {v.GetDouble().ToString("0.#", Ru)}{unit} (порог {l.GetDouble().ToString("0.#", Ru)}{unit})";
+    }
+
+    /// <summary>
+    /// Monitoring mode (Hive.Modules.Telemetry.Monitoring): "\nсейчас 98,4° (нижняя граница 110°)" for a limit,
+    /// "\nнет данных 35 с (ждали каждые 10 с)" for silence.
+    /// </summary>
+    private static string MonitorDetail(string type, System.Text.Json.JsonElement p)
+    {
+        var unit = p.TryGetProperty("metric", out var m) && m.GetString()?.StartsWith("temperature", StringComparison.Ordinal) == true ? "°" : "";
+        if (type is "monitor_threshold" or "monitor_normal" && p.TryGetProperty("value", out var v) && p.TryGetProperty("limit", out var l))
+        {
+            var value = v.GetDouble();
+            var limit = l.GetDouble();
+            var side = type == "monitor_normal" ? "граница" : value < limit ? "нижняя граница" : "верхняя граница";
+            return $"\nсейчас {value.ToString("0.#", Ru)}{unit} ({side} {limit.ToString("0.#", Ru)}{unit})";
+        }
+        if (type == "monitor_stale" && p.TryGetProperty("silentS", out var s))
+            return $"\nнет данных {s.GetInt32()} с" + (p.TryGetProperty("intervalS", out var i) ? $" (ждали каждые {i.GetInt32()} с)" : "");
+        if (type == "monitor_resumed" && p.TryGetProperty("silentS", out var gap))
+            return $"\nмолчал {gap.GetInt32()} с";
+        return "";
     }
 
     /// <summary>One line on what an update did, e.g. "0.2.0+abc: установлена и работает" (contracts event-ota).</summary>

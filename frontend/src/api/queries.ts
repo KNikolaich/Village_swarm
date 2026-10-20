@@ -8,6 +8,7 @@ export const keys = {
   me: ['me'] as const,
   devices: ['devices'] as const,
   latest: ['telemetry', 'latest'] as const,
+  monitoring: ['telemetry', 'monitoring'] as const,
   events: (filters: EventFilters) => ['events', filters] as const,
   eventsAll: ['events'] as const,
   mediaDay: (date: string, device?: string) => ['media', 'day', date, device ?? ''] as const,
@@ -122,15 +123,28 @@ export function historyWindow(hours: number) {
   return { from: new Date(to.getTime() - hours * 3_600_000), to }
 }
 
+/** The window a chart draws: up to this very moment, so readings pushed live land at its right edge. */
+export function chartWindow(hours: number) {
+  const to = new Date()
+  return { from: new Date(to.getTime() - hours * 3_600_000), to }
+}
+
+/** Finer buckets on short windows (a few seconds in monitoring mode); the server's default on long ones. */
+export const seriesPoints = (hours: number) => (hours <= 12 ? 360 : undefined)
+
 export const useSeries = (device: string, metric: string, hours: number) =>
   useQuery({
     queryKey: ['telemetry', 'series', device, metric, hours],
     queryFn: () => {
       const { from, to } = historyWindow(hours)
-      return call(api.GET('/api/telemetry/series', { params: { query: { device, metric, from: from.toISOString(), to: to.toISOString() } } }))
+      return call(api.GET('/api/telemetry/series', { params: { query: { device, metric, from: from.toISOString(), to: to.toISOString(), points: seriesPoints(hours) } } }))
     },
     refetchInterval: 5 * 60_000,
   })
+
+/** Monitoring sessions in progress (frequent readings for a while, Hive.Modules.Telemetry.Monitoring). */
+export const useMonitoring = () =>
+  useQuery({ queryKey: keys.monitoring, queryFn: () => call(api.GET('/api/telemetry/monitoring')), refetchInterval: 30_000 })
 
 export const useHealthHistory = (device: string, hours: number) =>
   useQuery({
@@ -170,7 +184,7 @@ export const useDeviceSeries = (devices: string[], metric: string, hours: number
       queryKey: ['telemetry', 'series', device, metric, hours],
       queryFn: () => {
         const { from, to } = historyWindow(hours)
-        return call(api.GET('/api/telemetry/series', { params: { query: { device, metric, from: from.toISOString(), to: to.toISOString() } } }))
+        return call(api.GET('/api/telemetry/series', { params: { query: { device, metric, from: from.toISOString(), to: to.toISOString(), points: seriesPoints(hours) } } }))
       },
       refetchInterval: 5 * 60_000,
     })),

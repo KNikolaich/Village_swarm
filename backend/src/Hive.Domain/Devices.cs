@@ -79,6 +79,10 @@ public class Device
     public JsonDocument? Config { get; set; }
     public int ConfigRev { get; set; }
     public int? ConfigAppliedRev { get; set; }
+
+    /// <summary>A monitoring session in progress (Hive.Modules.Telemetry.Monitoring): frequent readings for a while; null when off.</summary>
+    public JsonDocument? Monitor { get; set; }
+
     public string? MqttUser { get; set; }
 
     /// <summary>Who speaks for the device on the broker: our own firmware or a Tasmota/OpenBeken one (see <see cref="Drivers"/>).</summary>

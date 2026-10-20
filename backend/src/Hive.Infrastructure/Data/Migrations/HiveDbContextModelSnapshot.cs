@@ -181,6 +181,10 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(17)")
                         .HasColumnName("mac");
 
+                    b.Property<JsonDocument>("Monitor")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("monitor");
+
                     b.Property<string>("MqttUser")
                         .HasColumnType("text")
                         .HasColumnName("mqtt_user");

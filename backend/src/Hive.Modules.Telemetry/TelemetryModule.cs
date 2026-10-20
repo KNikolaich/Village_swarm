@@ -1,7 +1,10 @@
+using System.Security.Claims;
+using Hive.Infrastructure.Identity;
 using Hive.Infrastructure.Mqtt;
 using Hive.Modules.Telemetry.Ingest;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -28,6 +31,10 @@ public static class TelemetryModule
         services.AddHostedService<HiveSensors>();
         services.AddOptions<OfflineWatchOptions>().BindConfiguration(OfflineWatchOptions.Section);
         services.AddHostedService<OfflineWatch>();
+        services.AddScoped<MonitoringService>();
+        services.AddSingleton<IIngestListener, MonitoringLimits>();
+        services.AddSingleton<MonitoringWatch>();
+        services.AddHostedService(sp => sp.GetRequiredService<MonitoringWatch>());
         return services;
     }
 
@@ -41,6 +48,24 @@ public static class TelemetryModule
             q.HealthAsync(device, from, to, points, ct));
         telemetry.MapGet("/logs", (string device, string? level, int? limit, TelemetryQueries q, CancellationToken ct) =>
             q.LogsAsync(device, level, limit, ct));
+
+        telemetry.MapGet("/monitoring", (MonitoringService m, CancellationToken ct) => m.ListAsync(ct));
+        telemetry.MapPut("/monitoring/{deviceId}", async Task<Results<Ok<MonitoringDto>, NotFound, ValidationProblem>> (
+                string deviceId, StartMonitoringRequest request, ClaimsPrincipal user, MonitoringService m, CancellationToken ct) =>
+            {
+                var (status, error, session) = await m.StartAsync(deviceId, request, $"user:{user.Identity?.Name}", ct);
+                return status switch
+                {
+                    MonitoringStatus.NotFound => TypedResults.NotFound(),
+                    MonitoringStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["monitoring"] = [error ?? "bad request"] }),
+                    _ => TypedResults.Ok(session!),
+                };
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
+        telemetry.MapDelete("/monitoring/{deviceId}", async Task<Results<NoContent, NotFound>> (
+                string deviceId, ClaimsPrincipal user, MonitoringService m, CancellationToken ct) =>
+                await m.StopAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? (Results<NoContent, NotFound>)TypedResults.NoContent() : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.CanControl);
         return app;
     }
 }

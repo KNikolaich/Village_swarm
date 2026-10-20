@@ -378,7 +378,11 @@
     "disk_cleanup": "Disk full: old photos deleted",
     "device_offline": "Hornet offline",
     "device_online": "Hornet back online",
-    "wifi": "Wi-Fi switch"
+    "wifi": "Wi-Fi switch",
+    "monitor_threshold": "Out of range",
+    "monitor_normal": "Back in range",
+    "monitor_stale": "Thermometer went silent",
+    "monitor_resumed": "Thermometer reporting again"
   },
   "severity": {
     "info": "Info",
@@ -533,6 +537,35 @@
     "noLogs": "No entries",
     "diagnostics": "Diagnostics: signal and memory",
     "sort": "Place in the swarm"
+  },
+  "monitoring": {
+    "title": "Monitoring",
+    "hint": "Frequent readings for a while, e.g. to watch a pressure cooker. Afterwards the hornet goes back to its usual interval by itself.",
+    "on": "monitoring",
+    "until": "until {time}",
+    "every": "every {n} s",
+    "leftHours": "{h} h {m} min left",
+    "leftMinutes": "{m} min left",
+    "minutes": "{n} min",
+    "seconds": "every {n} s",
+    "duration": "For",
+    "interval": "How often",
+    "sensor": "Sensor",
+    "alarmBelow": "Alarm below",
+    "alarmAbove": "Alarm above",
+    "alarmHint": "Limits are optional. A reading outside them sends an alarm to Telegram. A thermometer silent for three readings sends one too. The time counts from now.",
+    "noLimits": "no limits, alarm only if it goes silent",
+    "limitsBad": "Limits must be numbers, the lower one below the upper one",
+    "start": "Start monitoring",
+    "apply": "Save",
+    "change": "Change",
+    "stop": "Stop",
+    "started": "Monitoring started",
+    "changed": "Monitoring changed",
+    "stopped": "Monitoring stopped, the hornet goes back to its usual interval",
+    "breachBelow": "Out of range: below",
+    "breachAbove": "Out of range: above",
+    "stale": "No data since {time}"
   },
   "swarm": {
     "title": "Swarm",

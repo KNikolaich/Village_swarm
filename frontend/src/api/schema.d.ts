@@ -1158,6 +1158,124 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/telemetry/monitoring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MonitoringDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/telemetry/monitoring/{deviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["StartMonitoringRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MonitoringDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/zigbee": {
         parameters: {
             query?: never;
@@ -4660,6 +4778,34 @@ export interface components {
         };
         /** @enum {unknown} */
         ZoneKind: "perimeter" | "house" | "garden" | "tech";
+        MonitoringDto: {
+            deviceId: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            until: string;
+            /** Format: int32 */
+            intervalS: number;
+            metric: string;
+            /** Format: double */
+            below: null | number;
+            /** Format: double */
+            above: null | number;
+            breach: null | string;
+            /** Format: date-time */
+            staleSince: null | string;
+        };
+        StartMonitoringRequest: {
+            /** Format: double */
+            hours: number;
+            /** Format: int32 */
+            intervalS: number;
+            metric?: null | string;
+            /** Format: double */
+            below?: null | number;
+            /** Format: double */
+            above?: null | number;
+        };
     };
     responses: never;
     parameters: never;

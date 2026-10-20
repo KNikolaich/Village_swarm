@@ -8,7 +8,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
-import { historyWindow, keys, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useSendCommand, useSeries } from '@/api/queries'
+import { chartWindow, keys, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useMonitoring, useSendCommand, useSeries } from '@/api/queries'
 import { Chart, TimeAxis, type ChartPoint } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
@@ -19,11 +19,13 @@ import { ranges, rangeLabel } from '@/lib/ranges'
 import { ZoneSelect } from '@/pages/ClimatePage'
 import { PinsPanel } from '@/pages/SwarmPage'
 import { SortInput } from '@/components/SortInput'
+import { MonitoringPanel } from '@/components/MonitoringPanel'
+import { canMonitor } from '@/lib/monitoring'
 import { announcedCommands, relayChannels } from '@/lib/swarm'
 
 function MetricChart({ device, metric, hours }: { device: string; metric: string; hours: number }) {
   const series = useSeries(device, metric, hours)
-  const { from, to } = historyWindow(hours)
+  const { from, to } = chartWindow(hours)
   return (
     <div className="space-y-1">
       <p className="text-sm font-medium">{metricLabel(metric)}</p>
@@ -43,7 +45,7 @@ function MetricChart({ device, metric, hours }: { device: string; metric: string
 /** Signal, free memory and battery from the hornet's own health reports (a battery line only when it reports one). */
 function HealthCharts({ device, hours }: { device: string; hours: number }) {
   const health = useHealthHistory(device, hours)
-  const { from, to } = historyWindow(hours)
+  const { from, to } = chartWindow(hours)
   if (health.isLoading) return <Skeleton className="h-36" />
   const rows = health.data ?? []
   const line = (pick: (r: (typeof rows)[number]) => number | null | undefined): ChartPoint[] =>
@@ -154,6 +156,7 @@ export function DevicePage() {
   const devices = useDevices(true)
   const zones = useZones()
   const latest = useLatestTelemetry()
+  const monitoring = useMonitoring()
   const me = useMe()
   const canControl = (me.data?.roles.includes('admin') ?? false) || (me.data?.roles.includes('member') ?? false)
   const isAdmin = me.data?.roles.includes('admin') ?? false
@@ -194,6 +197,7 @@ export function DevicePage() {
   const sensing = device.features == null || device.features.some((f) => f === 'thermometer' || f === 'bme280') || readings.length > 0
   const online = device.status === 'online'
   const configPending = device.configRev !== device.configAppliedRev
+  const monitored = (monitoring.data ?? []).some((m) => m.deviceId === deviceId)
 
   return (
     <div className="space-y-4">
@@ -246,6 +250,20 @@ export function DevicePage() {
         </CardContent>
       </Card>}
 
+      {canMonitor(device) && readings.some((v) => v.metric.startsWith('temperature')) && (canControl || monitored) && (
+        <Card>
+          <CardHeader><CardTitle>{t('monitoring.title')}</CardTitle></CardHeader>
+          <CardContent>
+            <MonitoringPanel
+              device={device}
+              metrics={readings.map((v) => v.metric).filter((m) => m.startsWith('temperature'))}
+              canControl={canControl}
+              onStarted={() => setHours((h) => Math.min(h, 1))}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>{t('device.history')}</CardTitle>
@@ -256,7 +274,7 @@ export function DevicePage() {
         <CardContent className="space-y-5">
           {readings.map((v) => <MetricChart key={v.metric} device={deviceId} metric={v.metric} hours={hours} />)}
           <HealthCharts device={deviceId} hours={hours} />
-          <TimeAxis {...historyWindow(hours)} />
+          <TimeAxis {...chartWindow(hours)} />
         </CardContent>
       </Card>
 
