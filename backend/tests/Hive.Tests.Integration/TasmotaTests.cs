@@ -184,4 +184,39 @@ public sealed class TasmotaTests(DynSecFixture hive) : IClassFixture<DynSecFixtu
         var (ok, _) = await ConnectAsync(second);
         ok.Dispose();
     }
+
+    [Fact]
+    public async Task A_console_command_reaches_the_device_and_its_answer_lands_in_the_log()
+    {
+        var admin = await AdminClientAsync();
+        var setup = await AddAsync(admin, "rf-tas-console", "relay");
+        var (device, received) = await ConnectAsync(setup);
+        using var _ = device;
+        await device.PublishStringAsync("tele/rf-tas-console/LWT", "Online", retain: true);
+
+        using var sent = await admin.PostAsJsonAsync("/api/devices/rf-tas-console/commands",
+            new { name = "tasmota", payload = new { command = "RfSend", value = """{"Data":"A1B2C3"}""" } });
+        Assert.Equal(HttpStatusCode.Accepted, sent.StatusCode);
+        var cid = (await sent.Content.ReadFromJsonAsync<CommandDto>())!.Cid;
+        Assert.True(await SeenAsync(received, "cmnd/rf-tas-console/RfSend", """{"Data":"A1B2C3"}"""), "the command reached the device as typed");
+
+        await device.PublishStringAsync("stat/rf-tas-console/RESULT", """{"RfSend":"Done"}""");
+        await hive.WaitForAsync(async db =>
+            (await db.Commands.SingleAsync(x => x.Cid == cid)).Status == CommandStatus.Ok
+            && await db.DeviceLogs.AnyAsync(l => l.DeviceId == "rf-tas-console" && l.Msg.Contains("RfSend")),
+            "the answer closed the command and is in the device log");
+
+        // a secret is sent but not kept in the journal
+        using var secret = await admin.PostAsJsonAsync("/api/devices/rf-tas-console/commands",
+            new { name = "tasmota", payload = new { command = "WebPassword", value = "hunter2-secret" } });
+        Assert.Equal(HttpStatusCode.Accepted, secret.StatusCode);
+        Assert.True(await SeenAsync(received, "cmnd/rf-tas-console/WebPassword", "hunter2-secret"));
+        var commands = await hive.QueryAsync(db => db.Commands.Where(c => c.DeviceId == "rf-tas-console" && c.Name == "tasmota").ToListAsync());
+        var journal = commands.Select(c => c.Payload.RootElement.GetRawText()).ToList();
+        Assert.DoesNotContain(journal, j => j.Contains("hunter2-secret"));
+
+        // a command that is not a name is refused
+        using var bad = await admin.PostAsJsonAsync("/api/devices/rf-tas-console/commands", new { name = "tasmota", payload = new { command = "../x" } });
+        Assert.NotEqual(HttpStatusCode.Accepted, bad.StatusCode);
+    }
 }

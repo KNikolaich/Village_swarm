@@ -929,5 +929,13 @@
       "offline": "bridge offline",
       "unknown": "bridge not heard"
     }
+  },
+  "tasmotaConsole": {
+    "title": "Tasmota console",
+    "hint": "Administrators only: any Tasmota command goes to the device as typed, for example `RfSend {\"Data\":\"A1B2C3\"}` or `PulseTime1 3700`. What the device answers and what it heard by itself (an RF or infrared code) shows up in the hornet log below on this page.",
+    "command": "Command",
+    "value": "Value (optional)",
+    "send": "Send",
+    "secret": "Values of commands with password, key, token or secret in the name are not kept in the command journal."
   }
 }

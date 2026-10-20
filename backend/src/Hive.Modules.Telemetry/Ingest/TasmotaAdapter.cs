@@ -42,7 +42,7 @@ public sealed class TasmotaAdapter(IngestQueue queue, TasmotaPending pending, IL
                 "LWT" => Lwt(id, text, receivedAt),
                 "STATE" => State(id, JsonDocument.Parse(text), receivedAt),
                 "SENSOR" => Sensor(id, JsonDocument.Parse(text), receivedAt),
-                "RESULT" => IrReceived(id, JsonDocument.Parse(text), receivedAt),
+                "RESULT" => ResultOf(id, text, receivedAt, pending),
                 _ => [],
             };
 
@@ -53,6 +53,13 @@ public sealed class TasmotaAdapter(IngestQueue queue, TasmotaPending pending, IL
             return Ack(id, "restart", receivedAt, pending);
         if (kind == "RESULT" && text.Contains("\"IRSend\"", StringComparison.Ordinal))
             return Ack(id, "ir", receivedAt, pending);
+        if (kind == "RESULT")
+        {
+            // Whatever a console command answered: kept in the device log, and it closes the waiting console command.
+            var items = new List<IngestItem>(ResultLog(id, text, receivedAt, pending));
+            items.AddRange(Ack(id, "console", receivedAt, pending));
+            return items;
+        }
         return [];
     }
 
@@ -105,6 +112,25 @@ public sealed class TasmotaAdapter(IngestQueue queue, TasmotaPending pending, IL
             Add(values, block.Value, "Pressure", "pressure_hpa");
         }
         return values.Count == 0 ? [] : [new TelemetryReceived(id, NewId(receivedAt), receivedAt, receivedAt, values)];
+    }
+
+    /// <summary>tele RESULT: an infrared code the device saw, and everything else it reports (an RF code, a sensor event) in the log.</summary>
+    private static IReadOnlyList<IngestItem> ResultOf(string id, string text, DateTimeOffset receivedAt, TasmotaPending pending)
+    {
+        var items = new List<IngestItem>(IrReceived(id, JsonDocument.Parse(text), receivedAt));
+        items.AddRange(ResultLog(id, text, receivedAt, pending));
+        return items;
+    }
+
+    /// <summary>
+    /// A RESULT message as a log line ("level info"), so what a device sends (RfReceived, IrReceived, command answers) can be seen on the
+    /// device page. Plain relay answers are left out, and a chatty device (an RF bridge hearing the neighbours) is limited to two lines a second.
+    /// </summary>
+    private static IReadOnlyList<IngestItem> ResultLog(string id, string text, DateTimeOffset receivedAt, TasmotaPending pending)
+    {
+        if (text.Length > 400 || (text.StartsWith("{\"POWER", StringComparison.Ordinal) && text.Length < 24) || !pending.AllowLog(id, receivedAt))
+            return [];
+        return [new DeviceLogReceived(id, NewId(receivedAt), receivedAt, receivedAt, "info", text, null)];
     }
 
     /// <summary>

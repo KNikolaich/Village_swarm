@@ -43,6 +43,13 @@ public static partial class TasmotaCommands
     [GeneratedRegex("^[A-Za-z0-9_]{1,24}$")]
     private static partial Regex ProtocolRegex();
 
+    [GeneratedRegex("^[A-Za-z][A-Za-z0-9]{0,31}$")]
+    private static partial Regex ConsoleCommandRegex();
+
+    /// <summary>Console commands whose value is a secret (a password, a key): it is sent but never kept in the command journal.</summary>
+    public static bool IsSecretCommand(string? command) =>
+        command is not null && System.Text.RegularExpressions.Regex.IsMatch(command, "pass|key|token|secret", RegexOptions.IgnoreCase);
+
     [GeneratedRegex("^0x[0-9A-Fa-f]{1,16}$")]
     private static partial Regex DataRegex();
 
@@ -56,6 +63,15 @@ public static partial class TasmotaCommands
     {
         if (name == "reboot")
             return new TasmotaPlan([new TasmotaCall("Restart", "1")], "restart");
+        if (name == "tasmota")
+        {
+            // Any Tasmota command typed by an admin (the device page console): "RfSend {...}", "PulseTime1 3700", "Status 0".
+            var command = payload?["command"]?.GetValue<string>();
+            var value = payload?["value"]?.GetValue<string>() ?? "";
+            if (command is null || !ConsoleCommandRegex().IsMatch(command) || value.Length > 300 || value.Any(char.IsControl))
+                return null;
+            return new TasmotaPlan([new TasmotaCall(command, value)], "console");
+        }
         if (name == "ir")
         {
             var protocol = payload?["protocol"]?.GetValue<string>();
@@ -106,6 +122,17 @@ public sealed class TasmotaPending(TimeProvider time)
 {
     private static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(2);
     private readonly ConcurrentDictionary<(string DeviceId, string Kind), (string Cid, DateTimeOffset At)> _waiting = new();
+
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _lastLog = new();
+
+    /// <summary>False when this device's last log line was less than half a second ago: a chatty device must not flood the log.</summary>
+    public bool AllowLog(string deviceId, DateTimeOffset at)
+    {
+        if (_lastLog.TryGetValue(deviceId, out var last) && at - last < TimeSpan.FromMilliseconds(500))
+            return false;
+        _lastLog[deviceId] = at;
+        return true;
+    }
 
     public void Expect(string deviceId, string kind, string cid) => _waiting[(deviceId, kind)] = (cid, time.GetUtcNow());
 

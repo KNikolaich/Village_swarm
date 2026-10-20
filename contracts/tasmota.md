@@ -75,3 +75,13 @@ in `POST /api/provision/tasmota`; its announced commands then include `ir`.
 Buttons: `GET` and `PUT /api/devices/{id}/ir-buttons` `{ "buttons": { "Питание": {"protocol": "NEC", "bits": 32, "data": "0x02FD807F"} } }`
 (at most 40, names up to 32 characters), kept in the device config under `ir.buttons`. Infrared is one-way: a command is `ok` when the
 device says it sent the code, not when the appliance took it.
+
+## Console and log
+
+`command` `tasmota` `{command, value?}` (administrators only, 403 otherwise) sends `cmnd/{id}/{command}` with `value` as the payload, as typed:
+`command` is a Tasmota command name (letters and digits, up to 32), `value` up to 300 characters without control characters. It is `ok` when
+the device answers with any `stat/{id}/RESULT`. Values of commands whose name contains `pass`, `key`, `token` or `secret` are kept as `***` in the journal.
+
+Every `tele/{id}/RESULT` and `stat/{id}/RESULT` (a received RF or infrared code, an answer to a console command) is also stored as a device log line
+(level `info`, up to 400 characters), at most two a second per device. Plain relay answers (`{"POWER":"ON"}`) are left out.
+

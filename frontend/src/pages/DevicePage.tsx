@@ -1,6 +1,7 @@
 import { FeaturesPanel } from '@/components/FeaturesPanel'
 import { BlePanel } from '@/components/BlePanel'
 import { IrPanel } from '@/components/IrPanel'
+import { TasmotaConsole } from '@/components/TasmotaConsole'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Camera, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { useState } from 'react'
@@ -286,6 +287,8 @@ export function DevicePage() {
           <CardContent><BlePanel deviceId={deviceId} editable={isAdmin} /></CardContent>
         </Card>
       )}
+
+      {isAdmin && device.driver === 'tasmota' && <TasmotaConsole deviceId={deviceId} online={online} />}
 
       {canControl && commands.includes('ir') && <IrPanel deviceId={deviceId} state={device.state} online={online} canEdit={canControl} />}
 

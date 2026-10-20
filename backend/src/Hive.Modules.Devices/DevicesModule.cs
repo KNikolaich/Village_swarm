@@ -102,6 +102,9 @@ public static class DevicesModule
         devices.MapPost("/{deviceId}/commands", async Task<Results<Accepted<CommandDto>, NotFound, ValidationProblem, ProblemHttpResult>> (
                 string deviceId, SendCommandRequest request, ClaimsPrincipal user, CommandService commands, CancellationToken ct) =>
             {
+                // The Tasmota console can reconfigure a device: administrators only.
+                if (request.Name == "tasmota" && !user.IsInRole(HiveRoles.Admin))
+                    return TypedResults.Problem("Консоль Tasmota только для администратора", statusCode: StatusCodes.Status403Forbidden);
                 var (status, command) = await commands.SendAsync(deviceId, request.Name, request.Payload, $"user:{user.Identity?.Name}", request.TtlS, ct);
                 return status switch
                 {

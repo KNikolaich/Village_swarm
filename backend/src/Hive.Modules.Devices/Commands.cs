@@ -123,6 +123,12 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TasmotaPe
     /// </summary>
     internal static JsonObject Redacted(string name, JsonObject message)
     {
+        if (name == "tasmota" && message.ContainsKey("value") && TasmotaCommands.IsSecretCommand(message["command"]?.GetValue<string>()))
+        {
+            var hidden = (JsonObject)message.DeepClone();
+            hidden["value"] = "***";
+            return hidden;
+        }
         if (name != "wifi" || !message.ContainsKey("pass"))
             return message;
         var copy = (JsonObject)message.DeepClone();

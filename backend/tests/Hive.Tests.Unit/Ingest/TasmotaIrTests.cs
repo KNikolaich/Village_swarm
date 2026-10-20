@@ -51,7 +51,8 @@ public class TasmotaIrTests
     public void A_received_code_is_kept_for_learning()
     {
         var learned = Parse("tele/ir-hall1/RESULT", """{"IrReceived":{"Protocol":"NEC","Bits":32,"Data":"0x02FD807F","DataLSB":"0x40BF01FE","Repeat":0}}""");
-        var state = Assert.IsType<DeviceStateReceived>(Assert.Single(learned));
+        var state = Assert.IsType<DeviceStateReceived>(learned[0]);
+        Assert.IsType<DeviceLogReceived>(learned[1]);   // the raw message is also in the device log
         Assert.True(state.Merge);
         Assert.Equal("NEC 32 0x02FD807F", state.State.RootElement.GetProperty("ir_last").GetString());
         Assert.Empty(Parse("tele/ir-hall1/RESULT", """{"POWER":"ON"}"""));
