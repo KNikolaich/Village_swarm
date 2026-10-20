@@ -39,6 +39,8 @@ public sealed class TelegramAssistant(
     EventQueries events,
     TelemetryQueries telemetry,
     NoteService notes,
+    AssistantContext context,
+    CommandService commands,
     IOptions<AssistantOptions> options,
     IOptions<HiveOptions> hive,
     TimeProvider time,
@@ -121,16 +123,9 @@ public sealed class TelegramAssistant(
 
     private async Task<JsonArray> MessagesAsync(long chat, string text, CancellationToken ct)
     {
-        var mode = await arm.GetAsync(ct);
-        var zones = await db.Zones.AsNoTracking().OrderBy(z => z.Sort).ThenBy(z => z.Id).Select(z => z.Name).ToListAsync(ct);
-        var cameras = await db.Devices.AsNoTracking().Where(d => d.TypeCode == "guard-cam" && d.Status != DeviceStatus.Disabled)
-            .OrderBy(d => d.Name).Select(d => d.Name + (d.Zone != null ? $" (зона {d.Zone.Name})" : "")).ToListAsync(ct);
-        var outline = await notes.OutlineAsync(200, ct);
-        var guard = mode.Mode switch { ArmService.Arriving => "подготовка к приезду", ArmService.ArmedMode => "включена", _ => "снята" };
-
         var messages = new JsonArray
         {
-            new JsonObject { ["role"] = "system", ["content"] = AssistantTools.SystemPrompt(hive.Value.ToLocal(time.GetUtcNow()), guard, zones, cameras, outline) },
+            new JsonObject { ["role"] = "system", ["content"] = AssistantTools.SystemPrompt(await context.BuildAsync(chat, ct)) },
         };
         foreach (var (user, assistant) in state.History(chat))
         {
@@ -155,7 +150,7 @@ public sealed class TelegramAssistant(
             args = [];
         }
 
-        if (AssistantTools.Actions.Contains(call.Name) && !caller.CanControl)
+        if (AssistantTools.Actions.Contains(call.Name) && !AssistantTools.Personal.Contains(call.Name) && !caller.CanControl)
         {
             await SendAsync(chat, "⛔ Недостаточно прав: у вас роль только для просмотра.", ct, replyTo: replyTo);
             return "[отказано: нет прав]";
@@ -173,6 +168,9 @@ public sealed class TelegramAssistant(
                 var count = args["count"] is JsonValue v && v.TryGetValue<int>(out var n) ? Math.Clamp(n, 1, 20) : 5;
                 await SendAsync(chat, await bot.EventsAsync(count, ct), ct, replyTo: replyTo);
                 return "[показал последние события]";
+            case AssistantTools.DeviceProblems:
+                await SendAsync(chat, await bot.DevicesAsync(ct), ct, replyTo: replyTo);
+                return "[показал проблемы со связью]";
             case AssistantTools.ZoneStatus:
                 return await ZoneStatusAsync(chat, Str(args, "zone"), replyTo, ct);
             case AssistantTools.SetGuard:
@@ -181,6 +179,14 @@ public sealed class TelegramAssistant(
                 return await ProposePhotosAsync(chat, args, replyTo, ct);
             case AssistantTools.AddNote:
                 return await ProposeNoteAsync(chat, args, replyTo, ct);
+            case AssistantTools.Mute:
+                return await ProposeMuteAsync(chat, args, replyTo, ct);
+            case AssistantTools.MarkViewed:
+                return await ProposeViewedAsync(chat, Str(args, "device"), replyTo, ct);
+            case AssistantTools.SwitchRelay:
+                return await ProposeRelayAsync(chat, args, replyTo, ct);
+            case AssistantTools.PressIr:
+                return await ProposeIrAsync(chat, Str(args, "device"), Str(args, "button"), replyTo, ct);
             default:
                 return "[неизвестный инструмент]";
         }
@@ -275,11 +281,12 @@ public sealed class TelegramAssistant(
         var cameras = await db.Devices.AsNoTracking().Include(d => d.Zone)
             .Where(d => d.TypeCode == "guard-cam" && d.Status == DeviceStatus.Online).OrderBy(d => d.Name).ToListAsync(ct);
         var zone = Str(args, "zone");
-        var wanted = args["cameras"] is JsonArray list ? list.Select(x => x?.GetValue<string>()).OfType<string>().ToList() : [];
+        var place = Str(args, "place");
+        var wanted = args["cameras"] is JsonArray list ? list.Select(x => x is JsonValue v && v.TryGetValue<string>(out var n) ? n : null).OfType<string>().ToList() : [];
         var scope = "все камеры";
         if (wanted.Count > 0)
         {
-            cameras = wanted.Select(w => Pick(cameras, c => c.Name, w)).OfType<Device>().Distinct().ToList();
+            cameras = wanted.Select(w => PickDevice(cameras, w)).OfType<Device>().Distinct().ToList();
             scope = "выбранные камеры";
         }
         else if (!string.IsNullOrWhiteSpace(zone))
@@ -289,6 +296,12 @@ public sealed class TelegramAssistant(
             cameras = z is null ? [] : cameras.Where(c => c.ZoneId == z.Id).ToList();
             scope = z is null ? $"зона «{zone}»" : $"зона «{z.Name}»";
         }
+        else if (place is "indoor" or "outdoor")
+        {
+            var indoor = place == "indoor";
+            cameras = cameras.Where(c => c.Zone is { } z && AssistantContext.Indoor(z.Kind) == indoor).ToList();
+            scope = indoor ? "камеры в доме" : "камеры на улице";
+        }
         if (cameras.Count == 0)
         {
             await SendAsync(chat, $"📷 Нет камер на связи ({H(scope)}).", ct, replyTo: replyTo);
@@ -296,7 +309,96 @@ public sealed class TelegramAssistant(
         }
         var text = $"📷 Сделать снимки сейчас? {H(string.Join(", ", cameras.Select(c => c.Name)))}.";
         await ProposeAsync(chat, AssistantTools.TakePhotos, new JsonObject { ["devices"] = new JsonArray(cameras.Select(c => (JsonNode)c.DeviceId).ToArray()) }, text, replyTo, ct);
-        return "[предложил снимки, ждёт подтверждения]";
+        return $"[предложил снимки ({scope}), ждёт подтверждения]";
+    }
+
+    private async Task<string> ProposeMuteAsync(long chat, JsonObject args, int replyTo, CancellationToken ct)
+    {
+        var hours = args["hours"] is JsonValue v && v.TryGetValue<double>(out var h) ? Math.Clamp(h, 0, 72) : 1;
+        var text = hours > 0
+            ? $"🔕 Включить тишину на {hours.ToString("0.#", Ru)} ч? Предупреждения не придут, тревоги придут как обычно."
+            : "🔔 Выключить тишину?";
+        await ProposeAsync(chat, AssistantTools.Mute, new JsonObject { ["hours"] = hours }, text, replyTo, ct);
+        return $"[предложил тишину на {hours} ч, ждёт подтверждения]";
+    }
+
+    private async Task<string> ProposeViewedAsync(long chat, string? device, int replyTo, CancellationToken ct)
+    {
+        Device? target = null;
+        if (!string.IsNullOrWhiteSpace(device))
+        {
+            target = PickDevice(await db.Devices.AsNoTracking().ToListAsync(ct), device);
+            if (target is null)
+            {
+                await SendAsync(chat, $"🤖 Не нашёл устройство «{H(device)}».", ct, replyTo: replyTo);
+                return "[устройство не найдено]";
+            }
+        }
+        var count = await db.Events.AsNoTracking().CountAsync(e => e.AcknowledgedAt == null && (target == null || e.DeviceId == target.DeviceId), ct);
+        if (count == 0)
+        {
+            await SendAsync(chat, "👁 Непросмотренных событий нет.", ct, replyTo: replyTo);
+            return "[нечего отмечать]";
+        }
+        var text = $"👁 Отметить просмотренными {count} событ.{(target is null ? "" : $" ({H(target.Name)})")}?";
+        await ProposeAsync(chat, AssistantTools.MarkViewed, new JsonObject { ["device"] = target?.DeviceId }, text, replyTo, ct);
+        return "[предложил отметить события, ждёт подтверждения]";
+    }
+
+    private async Task<string> ProposeRelayAsync(long chat, JsonObject args, int replyTo, CancellationToken ct)
+    {
+        var devices = await db.Devices.AsNoTracking().Where(d => d.Status != DeviceStatus.Disabled).ToListAsync(ct);
+        var withRelays = devices.Where(d => AssistantContext.RelayChannels(d).Length > 0).ToList();
+        var device = PickDevice(withRelays, Str(args, "device"));
+        if (device is null)
+        {
+            await SendAsync(chat, $"🤖 Не нашёл устройство с реле «{H(Str(args, "device"))}».", ct, replyTo: replyTo);
+            return "[реле не найдено]";
+        }
+        var channels = AssistantContext.RelayChannels(device);
+        var wanted = Str(args, "channel");
+        var channel = string.IsNullOrWhiteSpace(wanted) ? (channels.Length == 1 ? channels[0].Channel : null)
+            : channels.Select(c => c.Channel).FirstOrDefault(c => NoteService.Normalize(c) == NoteService.Normalize(wanted));
+        if (channel is null)
+        {
+            await SendAsync(chat, $"🤖 У «{H(device.Name)}» несколько реле: {H(string.Join(", ", channels.Select(c => c.Channel)))}. Какое?", ct, replyTo: replyTo);
+            return "[канал не понят]";
+        }
+        if (device.Status != DeviceStatus.Online)
+        {
+            await SendAsync(chat, $"📴 «{H(device.Name)}» сейчас не на связи.", ct, replyTo: replyTo);
+            return "[устройство не на связи]";
+        }
+        var on = args["on"] is JsonValue v && v.TryGetValue<bool>(out var b) && b;
+        var minutes = args["minutes"] is JsonValue m && m.TryGetValue<int>(out var mm) ? Math.Clamp(mm, 1, 1440) : (int?)null;
+        var what = channels.Length > 1 ? $"{device.Name} ({channel})" : device.Name;
+        var text = on
+            ? $"💡 Включить «{H(what)}»{(minutes is { } x ? $" на {x} мин" : "")}?"
+            : $"⏻ Выключить «{H(what)}»?";
+        var payload = new JsonObject { ["device"] = device.DeviceId, ["channel"] = channel, ["on"] = on };
+        if (on && minutes is { } forMin)
+            payload["minutes"] = forMin;
+        await ProposeAsync(chat, AssistantTools.SwitchRelay, payload, text, replyTo, ct);
+        return $"[предложил {(on ? "включить" : "выключить")} {what}, ждёт подтверждения]";
+    }
+
+    private async Task<string> ProposeIrAsync(long chat, string? deviceQuery, string? buttonQuery, int replyTo, CancellationToken ct)
+    {
+        var devices = (await db.Devices.AsNoTracking().Where(d => d.Status != DeviceStatus.Disabled).ToListAsync(ct))
+            .Where(d => IrButtonService.Read(d.Config).Count > 0).ToList();
+        var device = PickDevice(devices, deviceQuery);
+        var buttons = device is null ? [] : IrButtonService.Read(device.Config).Keys.ToList();
+        var button = buttonQuery is null ? null : Pick(buttons, x => x, buttonQuery);
+        if (device is null || button is null)
+        {
+            await SendAsync(chat, device is null
+                ? $"🤖 Не нашёл пульт «{H(deviceQuery)}»."
+                : $"🤖 У «{H(device.Name)}» нет кнопки «{H(buttonQuery)}». Есть: {H(string.Join(", ", buttons))}.", ct, replyTo: replyTo);
+            return "[ИК-кнопка не найдена]";
+        }
+        var text = $"📡 Нажать «{H(button)}» на «{H(device.Name)}»?";
+        await ProposeAsync(chat, AssistantTools.PressIr, new JsonObject { ["device"] = device.DeviceId, ["button"] = button }, text, replyTo, ct);
+        return $"[предложил ИК {button}, ждёт подтверждения]";
     }
 
     private async Task<string> ProposeNoteAsync(long chat, JsonObject args, int replyTo, CancellationToken ct)
@@ -343,7 +445,7 @@ public sealed class TelegramAssistant(
         string answer;
         if (caller is null)
             answer = "Чат не привязан";
-        else if (!caller.CanControl)
+        else if (verb == "snapzone" && !caller.CanControl)
             answer = "⛔ Недостаточно прав";
         else if (verb == "snapzone" && int.TryParse(arg, out var zoneId))
         {
@@ -356,6 +458,11 @@ public sealed class TelegramAssistant(
         {
             answer = "Запрос устарел, напишите ещё раз";
             await EditAsync(callback, "⌛ Запрос устарел или уже выполнен.", ct);
+        }
+        else if (verb != "no" && !caller.CanControl && !AssistantTools.Personal.Contains(action.Tool))
+        {
+            answer = "⛔ Недостаточно прав";
+            await EditAsync(callback, $"{action.Text}\n\n⛔ Недостаточно прав.", ct);
         }
         else if (verb == "no")
         {
@@ -392,6 +499,18 @@ public sealed class TelegramAssistant(
                     return result == NoteChange.Ok
                         ? $"✅ Заметка сохранена{(path.Count > 0 ? $" в «{H(string.Join(" → ", path))}»" : "")}."
                         : "⚠️ Не удалось сохранить заметку.";
+                case AssistantTools.Mute:
+                    return "✅ " + await bot.MuteChatAsync(caller.ChatId, action.Args["hours"]!.GetValue<double>(), ct);
+                case AssistantTools.MarkViewed:
+                    var marked = await events.AcknowledgeManyAsync(new AckAllRequest(Str(action.Args, "device")), actor, ct);
+                    return $"✅ Отмечено просмотренными: {marked}.";
+                case AssistantTools.SwitchRelay:
+                    var relay = new JsonObject { ["channel"] = Str(action.Args, "channel"), ["set"] = action.Args["on"]!.GetValue<bool>() ? "on" : "off" };
+                    if (action.Args["minutes"] is JsonValue forMin)
+                        relay["for_s"] = forMin.GetValue<int>() * 60;
+                    return await SendCommandAsync(Str(action.Args, "device")!, "relay", relay, actor, ct);
+                case AssistantTools.PressIr:
+                    return await SendCommandAsync(Str(action.Args, "device")!, "ir", new JsonObject { ["button"] = Str(action.Args, "button") }, actor, ct);
                 default:
                     return "⚠️ Неизвестное действие.";
             }
@@ -401,6 +520,26 @@ public sealed class TelegramAssistant(
             logger.LogWarning(ex, "Assistant action {Tool} failed", action.Tool);
             return "⚠️ Не получилось выполнить.";
         }
+    }
+
+    private async Task<string> SendCommandAsync(string deviceId, string name, JsonObject payload, string actor, CancellationToken ct)
+    {
+        var (status, _) = await commands.SendAsync(deviceId, name, payload, actor, null, ct);
+        return status switch
+        {
+            SendStatus.Sent => "✅ Команда отправлена.",
+            SendStatus.UnknownDevice => "⚠️ Устройство не найдено.",
+            SendStatus.BadRequest => "⚠️ Устройство не принимает такую команду.",
+            _ => "⚠️ Нет связи с брокером MQTT, команда не ушла.",
+        };
+    }
+
+    /// <summary>A device by its name (as for zones) or by its id.</summary>
+    internal static Device? PickDevice(IEnumerable<Device> devices, string? query)
+    {
+        var list = devices.ToList();
+        return string.IsNullOrWhiteSpace(query) ? null
+            : list.FirstOrDefault(d => string.Equals(d.DeviceId, query.Trim(), StringComparison.OrdinalIgnoreCase)) ?? Pick(list, d => d.Name, query);
     }
 
     /// <summary>The first line of the text, cut to a title's length.</summary>

@@ -18,6 +18,7 @@ public static class AssistantModule
     {
         services.Configure<AssistantOptions>(configuration.GetSection(AssistantOptions.Section));
         services.AddSingleton<AssistantState>();
+        services.AddScoped<AssistantContext>();
         services.AddHttpClient<LlmClient>((sp, c) =>
                 c.Timeout = TimeSpan.FromSeconds(Math.Clamp(sp.GetRequiredService<IOptions<AssistantOptions>>().Value.TimeoutS, 5, 120)))
             .ConfigurePrimaryHttpMessageHandler(sp =>

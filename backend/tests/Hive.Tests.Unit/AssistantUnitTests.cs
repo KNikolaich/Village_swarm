@@ -1,4 +1,6 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
+using Hive.Domain;
 using Hive.Modules.Assistant;
 using Hive.Modules.Notes;
 
@@ -94,13 +96,35 @@ public class AssistantUnitTests
     }
 
     [Fact]
-    public void The_prompt_lists_the_house_and_the_note_branches()
+    public void The_prompt_carries_the_house_data_and_every_tool_is_a_function()
     {
-        var prompt = AssistantTools.SystemPrompt(new DateTimeOffset(2026, 10, 20, 12, 30, 0, TimeSpan.FromHours(3)), "снята",
-            ["Дом", "Плантация 1"], ["Въезд (зона Дом)"], ["Разработка", "Разработка / Улучшения"]);
-        Assert.Contains("20.10.2026 12:30", prompt);
-        Assert.Contains("Зоны: Дом; Плантация 1", prompt);
-        Assert.Contains("- Разработка / Улучшения", prompt);
-        Assert.All(AssistantTools.Definitions(), t => Assert.Equal("function", t!["type"]!.GetValue<string>()));
+        var prompt = AssistantTools.SystemPrompt("Зоны (вид):\n- Огород (сад, улица)\n");
+        Assert.Contains("какая температура на улице", prompt);
+        Assert.EndsWith("- Огород (сад, улица)\n", prompt);
+        var tools = AssistantTools.Definitions();
+        Assert.All(tools, t => Assert.Equal("function", t!["type"]!.GetValue<string>()));
+        Assert.Contains(tools, t => t!["function"]!["name"]!.GetValue<string>() == AssistantTools.Mute);
+        Assert.Subset(AssistantTools.Actions.ToHashSet(), AssistantTools.Personal.ToHashSet());
+    }
+
+    [Fact]
+    public void Relay_channels_come_from_the_state_or_from_the_announced_command()
+    {
+        var state = JsonDocument.Parse("""{"heater":"on","mode":"auto"}""");
+        Assert.Equal([("heater", (string?)"on")], AssistantContext.RelayChannelsOf("heat", null, state));
+        var info = JsonDocument.Parse("""{"commands":["relay","reboot"]}""");
+        Assert.Equal([("relay", (string?)null)], AssistantContext.RelayChannelsOf("relay", info, null));
+        Assert.Empty(AssistantContext.RelayChannelsOf("guard-cam", JsonDocument.Parse("""{"commands":["snapshot"]}"""), null));
+    }
+
+    [Fact]
+    public void Indoor_zones_and_weather_codes_read_as_people_say_them()
+    {
+        Assert.True(AssistantContext.Indoor(ZoneKind.House));
+        Assert.True(AssistantContext.Indoor(ZoneKind.Tech));
+        Assert.False(AssistantContext.Indoor(ZoneKind.Garden));
+        Assert.False(AssistantContext.Indoor(ZoneKind.Perimeter));
+        Assert.Equal("пасмурно", AssistantContext.WeatherText(3));
+        Assert.Equal("гроза", AssistantContext.WeatherText(95));
     }
 }

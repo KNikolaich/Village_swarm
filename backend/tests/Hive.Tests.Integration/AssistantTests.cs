@@ -40,8 +40,15 @@ public sealed class AssistantTests(HiveFixture hive) : IAsyncLifetime
 
     private async Task<(VirtualHornet Hornet, GuardCamRole Role)> CameraAsync(string id)
     {
-        var spec = new HornetSpec { Id = id, Type = "guard-cam", Motion = new MotionSpec { EverySeconds = 0, UploadUrl = "http://localhost" } };
-        var role = (GuardCamRole)HornetRole.Create(spec, Path.Combine(AppContext.BaseDirectory, "scenarios", "photos"));
+        var (hornet, role) = await HornetAsync(new HornetSpec { Id = id, Type = "guard-cam", Motion = new MotionSpec { EverySeconds = 0, UploadUrl = "http://localhost" } });
+        return (hornet, (GuardCamRole)role);
+    }
+
+    /// <summary>A hornet that really runs (HornetRunner): publishes over MQTT, answers commands, uploads photos to the api.</summary>
+    private async Task<(VirtualHornet Hornet, HornetRole Role)> HornetAsync(HornetSpec spec)
+    {
+        var id = spec.Id;
+        var role = HornetRole.Create(spec, Path.Combine(AppContext.BaseDirectory, "scenarios", "photos"));
         var hornet = new VirtualHornet(spec, role);
         var link = new MqttHornetLink(new BrokerOptions { Host = hive.MqttHost, Port = hive.MqttPort });
         _links.Add(link);
@@ -50,6 +57,16 @@ public sealed class AssistantTests(HiveFixture hive) : IAsyncLifetime
         await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == id && d.Status == DeviceStatus.Online), $"{id} online");
         return (hornet, role);
     }
+
+    private async Task<int> ZoneAsync(string name, string kind)
+    {
+        using var created = await (await hive.LoginAsync()).PostAsJsonAsync("/api/zones", new { name, kind });
+        created.EnsureSuccessStatusCode();
+        return (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
+    }
+
+    private async Task PlaceAsync(string deviceId, int zoneId) =>
+        (await (await hive.LoginAsync()).PutAsJsonAsync($"/api/devices/{deviceId}/zone", new { zoneId })).EnsureSuccessStatusCode();
 
     private static string Data(FakeTelegram.Sent card, string verb) =>
         JsonDocument.Parse(card.Buttons!).RootElement.GetProperty("inline_keyboard").EnumerateArray()
@@ -79,7 +96,10 @@ public sealed class AssistantTests(HiveFixture hive) : IAsyncLifetime
         // The model saw the tools, the house's zones and guard mode, and the user's words as the last message.
         var request = Llm.RequestFor("как там дома?")!;
         Assert.Contains("set_guard", request["tools"]!.ToJsonString());
-        Assert.Contains("Охрана:", request["messages"]![0]!["content"]!.GetValue<string>());
+        var prompt = request["messages"]![0]!["content"]!.GetValue<string>();
+        Assert.Contains("Охрана:", prompt);
+        Assert.Contains("Устройства (", prompt);
+        Assert.Contains("Прогноз погоды", prompt);
         Assert.True(await hive.QueryAsync(db => db.Audit.AnyAsync(a => a.Action == "assistant_request" && a.Actor == "tg:kirill")));
     }
 
@@ -226,5 +246,85 @@ public sealed class AssistantTests(HiveFixture hive) : IAsyncLifetime
         {
             Llm.Fail = false;
         }
+    }
+
+    [Fact]
+    public async Task Outdoor_temperature_question_gets_the_outdoor_sensors_and_the_forecast_in_its_context()
+    {
+        const long chat = 910_008;
+        await LinkAsync(chat);
+        var garden = await ZoneAsync("Огород-ИИ", "garden");
+        await HornetAsync(new HornetSpec { Id = "meteo-as1", Type = "meteo", TeleIntervalS = 1 });
+        await PlaceAsync("meteo-as1", garden);
+        await hive.WaitForAsync(db => db.Telemetry.AnyAsync(t => t.DeviceId == "meteo-as1"), "meteo readings");
+
+        Llm.Answer("какая температура на улице?", "На огороде 4,5 градуса, по прогнозу до 8.");
+        Tg.UserSays(chat, "какая температура на улице?");
+        await Tg.WaitForAsync(s => s.ChatId == chat && s.Text == "На огороде 4,5 градуса, по прогнозу до 8.", "the model's own answer");
+
+        var prompt = Llm.RequestFor("какая температура на улице?")!["messages"]![0]!["content"]!.GetValue<string>();
+        Assert.Contains("- Огород-ИИ (сад, улица)", prompt);
+        var line = prompt.Split('\n').Single(l => l.Contains("[meteo-as1]"));
+        Assert.Contains("зона Огород-ИИ (сад, улица)", line);
+        Assert.Contains("🌡", line);
+    }
+
+    [Fact]
+    public async Task Photos_of_the_house_cameras_leave_the_outdoor_ones_out()
+    {
+        const long chat = 910_009;
+        await LinkAsync(chat);
+        var room = await ZoneAsync("Холл-ИИ", "house");
+        var yard = await ZoneAsync("Двор-ИИ", "perimeter");
+        await CameraAsync("guard-as3");
+        await CameraAsync("guard-as4");
+        await PlaceAsync("guard-as3", room);
+        await PlaceAsync("guard-as4", yard);
+
+        Llm.OnText("фото с камер дома", (AssistantTools.TakePhotos, new { place = "indoor" }));
+        Tg.UserSays(chat, "фото с камер дома");
+        var card = await Tg.WaitForAsync(s => s.ChatId == chat && s.Text?.StartsWith("📷 Сделать снимки сейчас?") == true, "photos card");
+        Assert.Contains("guard-as3", card.Text);
+        Assert.DoesNotContain("guard-as4", card.Text);
+
+        Tg.UserPresses(chat, card.MessageId, Data(card, "ok"));
+        await hive.WaitForAsync(db => db.Commands.AnyAsync(c => c.DeviceId == "guard-as3" && c.Name == "snapshot" && c.Status == CommandStatus.Ok), "indoor snapshot");
+        Assert.False(await hive.QueryAsync(db => db.Commands.AnyAsync(c => c.DeviceId == "guard-as4" && c.Name == "snapshot")));
+    }
+
+    [Fact]
+    public async Task Quiet_hours_are_the_same_as_mute_and_a_viewer_may_set_them()
+    {
+        await hive.CreateUserAsync("as-quiet", "as-quiet-password", Hive.Infrastructure.Identity.HiveRoles.Viewer);
+        const long chat = 910_010;
+        await LinkAsync(chat, "as-quiet", "as-quiet-password");
+
+        Llm.OnText("режим тишины на 8 часов", (AssistantTools.Mute, new { hours = 8 }));
+        Tg.UserSays(chat, "режим тишины на 8 часов");
+        var card = await Tg.WaitForAsync(s => s.ChatId == chat && s.Text?.StartsWith("🔕 Включить тишину на 8 ч?") == true, "mute card");
+        Assert.Null(await hive.QueryAsync(db => db.TgLinks.Where(l => l.ChatId == chat).Select(l => l.MutedUntil).SingleAsync()));
+
+        Tg.UserPresses(chat, card.MessageId, Data(card, "ok"));
+        await Tg.WaitForAsync(s => s.ChatId == chat && s.Method == "editmessagetext" && s.MessageId == card.MessageId && s.Text?.Contains("не придут 8 ч") == true, "muted edit");
+        var until = await hive.QueryAsync(db => db.TgLinks.Where(l => l.ChatId == chat).Select(l => l.MutedUntil).SingleAsync());
+        Assert.InRange(until!.Value, DateTimeOffset.UtcNow.AddHours(7.9), DateTimeOffset.UtcNow.AddHours(8.1));
+    }
+
+    [Fact]
+    public async Task A_heater_is_switched_on_for_a_while_after_the_press()
+    {
+        const long chat = 910_011;
+        await LinkAsync(chat);
+        await HornetAsync(new HornetSpec { Id = "heat-as1", Type = "heat" });
+        await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == "heat-as1" && d.State != null), "heater state");
+
+        Llm.OnText("включи обогрев на полчаса", (AssistantTools.SwitchRelay, new { device = "heat-as1", on = true, minutes = 30 }));
+        Tg.UserSays(chat, "включи обогрев на полчаса");
+        var card = await Tg.WaitForAsync(s => s.ChatId == chat && s.Text?.StartsWith("💡 Включить «heat-as1» на 30 мин?") == true, "relay card");
+
+        Tg.UserPresses(chat, card.MessageId, Data(card, "ok"));
+        await hive.WaitForAsync(db => db.Commands.AnyAsync(c => c.DeviceId == "heat-as1" && c.Name == "relay" && c.Status == CommandStatus.Ok), "relay command done");
+        var command = await hive.QueryAsync(db => db.Commands.FirstAsync(c => c.DeviceId == "heat-as1" && c.Name == "relay"));
+        Assert.Equal(1800, command.Payload.RootElement.GetProperty("for_s").GetInt32());
     }
 }

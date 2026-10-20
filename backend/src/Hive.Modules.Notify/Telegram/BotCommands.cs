@@ -274,7 +274,7 @@ public sealed class BotCommands(
             $"{Icon(Enum.Parse<EventSeverity>(e.Severity, true))} {hive.Value.ToLocal(e.Ts).ToString("dd.MM HH:mm", Ru)} {H(EventType(e.Type))} · {H(e.Zone ?? e.DeviceName ?? e.DeviceId)}"));
     }
 
-    private async Task<string> DevicesAsync(CancellationToken ct)
+    public async Task<string> DevicesAsync(CancellationToken ct)
     {
         var offline = await db.Devices.AsNoTracking().Where(d => d.Status == DeviceStatus.Offline).OrderBy(d => d.DeviceId).ToListAsync(ct);
         var weak = await db.Devices.AsNoTracking().Where(d => d.Status == DeviceStatus.Online && d.Rssi < -80).ToListAsync(ct);
@@ -374,6 +374,21 @@ public sealed class BotCommands(
         link.MutedUntil = hours > 0 ? time.GetUtcNow().AddHours(hours) : null;
         await db.SaveChangesAsync(ct);
     }
+
+    /// <summary>The same as /mute for the chat: warnings stay quiet for the hours given (0 turns quiet off); alarms still come.</summary>
+    public async Task<string> MuteChatAsync(long chat, double hours, CancellationToken ct)
+    {
+        hours = Math.Clamp(hours, 0, 72);
+        var link = await db.TgLinks.FirstAsync(l => l.ChatId == chat, ct);
+        link.MutedUntil = hours > 0 ? time.GetUtcNow().AddHours(hours) : null;
+        await db.SaveChangesAsync(ct);
+        return hours > 0 ? $"🔕 Предупреждения не придут {hours.ToString("0.#", Ru)} ч. Тревоги придут как обычно." : "🔔 Тишина выключена.";
+    }
+
+    public async Task<DateTimeOffset?> MutedUntilAsync(long chat, CancellationToken ct) =>
+        await db.TgLinks.AsNoTracking().Where(l => l.ChatId == chat).Select(l => l.MutedUntil).FirstOrDefaultAsync(ct) is { } until && until > time.GetUtcNow()
+            ? until
+            : null;
 
     private async Task<Caller?> CallerAsync(long chat, CancellationToken ct)
     {

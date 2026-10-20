@@ -12,6 +12,7 @@
     <ProjectReference Include="../Hive.Modules.Notes/Hive.Modules.Notes.csproj" />
     <ProjectReference Include="../Hive.Modules.Notify/Hive.Modules.Notify.csproj" />
     <ProjectReference Include="../Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
+    <ProjectReference Include="../Hive.Modules.Weather/Hive.Modules.Weather.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Hive.Tests.Unit" />
