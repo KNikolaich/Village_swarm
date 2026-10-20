@@ -4686,6 +4686,67 @@
           }
         }
       },
+      "MonitoringDto": {
+        "required": [
+          "deviceId",
+          "startedAt",
+          "until",
+          "intervalS",
+          "metric",
+          "below",
+          "above",
+          "breach",
+          "staleSince"
+        ],
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "intervalS": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "metric": {
+            "type": "string"
+          },
+          "below": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "above": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "breach": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "staleSince": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "MonitorPage": {
         "required": [
           "last",
@@ -5755,6 +5816,43 @@
           null
         ]
       },
+      "StartMonitoringRequest": {
+        "required": [
+          "hours",
+          "intervalS"
+        ],
+        "type": "object",
+        "properties": {
+          "hours": {
+            "type": "number",
+            "format": "double"
+          },
+          "intervalS": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "metric": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "below": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "above": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          }
+        }
+      },
       "StartOtaRequest": {
         "required": [
           "build"
@@ -6512,104 +6610,6 @@
           "garden",
           "tech"
         ]
-      },
-      "MonitoringDto": {
-        "required": [
-          "deviceId",
-          "startedAt",
-          "until",
-          "intervalS",
-          "metric",
-          "below",
-          "above",
-          "breach",
-          "staleSince"
-        ],
-        "type": "object",
-        "properties": {
-          "deviceId": {
-            "type": "string"
-          },
-          "startedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "until": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "intervalS": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "metric": {
-            "type": "string"
-          },
-          "below": {
-            "type": [
-              "null",
-              "number"
-            ],
-            "format": "double"
-          },
-          "above": {
-            "type": [
-              "null",
-              "number"
-            ],
-            "format": "double"
-          },
-          "breach": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "staleSince": {
-            "type": [
-              "null",
-              "string"
-            ],
-            "format": "date-time"
-          }
-        }
-      },
-      "StartMonitoringRequest": {
-        "required": [
-          "hours",
-          "intervalS"
-        ],
-        "type": "object",
-        "properties": {
-          "hours": {
-            "type": "number",
-            "format": "double"
-          },
-          "intervalS": {
-            "type": "integer",
-            "format": "int32"
-          },
-          "metric": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "below": {
-            "type": [
-              "null",
-              "number"
-            ],
-            "format": "double"
-          },
-          "above": {
-            "type": [
-              "null",
-              "number"
-            ],
-            "format": "double"
-          }
-        }
       }
     }
   },

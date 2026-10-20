@@ -4293,6 +4293,23 @@ export interface components {
             retained: boolean;
             payload: string;
         };
+        MonitoringDto: {
+            deviceId: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            until: string;
+            /** Format: int32 */
+            intervalS: number;
+            metric: string;
+            /** Format: double */
+            below: null | number;
+            /** Format: double */
+            above: null | number;
+            breach: null | string;
+            /** Format: date-time */
+            staleSince: null | string;
+        };
         MonitorPage: {
             /** Format: int64 */
             last: number;
@@ -4581,6 +4598,17 @@ export interface components {
         };
         /** @enum {unknown} */
         SleepMode: "deep" | "light" | null;
+        StartMonitoringRequest: {
+            /** Format: double */
+            hours: number;
+            /** Format: int32 */
+            intervalS: number;
+            metric?: null | string;
+            /** Format: double */
+            below?: null | number;
+            /** Format: double */
+            above?: null | number;
+        };
         StartOtaRequest: {
             build: string;
         };
@@ -4778,34 +4806,6 @@ export interface components {
         };
         /** @enum {unknown} */
         ZoneKind: "perimeter" | "house" | "garden" | "tech";
-        MonitoringDto: {
-            deviceId: string;
-            /** Format: date-time */
-            startedAt: string;
-            /** Format: date-time */
-            until: string;
-            /** Format: int32 */
-            intervalS: number;
-            metric: string;
-            /** Format: double */
-            below: null | number;
-            /** Format: double */
-            above: null | number;
-            breach: null | string;
-            /** Format: date-time */
-            staleSince: null | string;
-        };
-        StartMonitoringRequest: {
-            /** Format: double */
-            hours: number;
-            /** Format: int32 */
-            intervalS: number;
-            metric?: null | string;
-            /** Format: double */
-            below?: null | number;
-            /** Format: double */
-            above?: null | number;
-        };
     };
     responses: never;
     parameters: never;
