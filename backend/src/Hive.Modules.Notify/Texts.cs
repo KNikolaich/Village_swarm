@@ -19,6 +19,7 @@ public static class Texts
         "tamper" => "Камера закрыта или сдвинута",
         "snapshot" => "Снимок",
         "ota" => "Обновление прошивки",
+        "ota_rollout" => "Обновление всех шершней",
         "wifi" => "Смена Wi-Fi",
         "device_offline" => "Шершень не на связи",
         "device_online" => "Шершень снова на связи",
@@ -57,6 +58,8 @@ public static class Texts
         var text = $"{Icon(e.Severity)} <b>{H(EventType(e.Type))}</b>: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}";
         if (e.Type == "ota")
             text += OtaDetail(e.Payload.RootElement);
+        if (e.Type == "ota_rollout")
+            text += RolloutDetail(e.Payload.RootElement);
         if (e.Type == "device_offline" && e.Payload.RootElement.TryGetProperty("minutes", out var gone))
             text += $"\nне отвечает уже {gone.GetInt32()} мин";
         if (e.Type == "wifi" && e.Payload.RootElement.TryGetProperty("ssid", out var network))
@@ -163,6 +166,25 @@ public static class Texts
             _ => phase ?? "",
         };
         return $"\n{H(version)}: {what}" + (string.IsNullOrEmpty(error) ? "" : $" ({H(error)})");
+    }
+
+    /// <summary>"обновлено 2 из 5; остановлено на «Баня»: 0.3.0: timeout" (the hive's ota_rollout event).</summary>
+    private static string RolloutDetail(System.Text.Json.JsonElement p)
+    {
+        var result = p.TryGetProperty("result", out var r) ? r.GetString() : null;
+        var done = p.TryGetProperty("done", out var d) ? d.GetInt32() : 0;
+        var total = p.TryGetProperty("total", out var t) ? t.GetInt32() : 0;
+        var text = $"\nобновлено {done} из {total}";
+        if (result == "failed")
+        {
+            var device = p.TryGetProperty("device", out var dv) ? dv.GetString() : null;
+            var version = p.TryGetProperty("version", out var v) ? v.GetString() : null;
+            var error = p.TryGetProperty("error", out var er) ? er.GetString() : null;
+            text += $"; остановлено на «{H(device)}»: {H(version)}" + (string.IsNullOrEmpty(error) ? "" : $" ({H(error)})");
+        }
+        else if (result == "stopped")
+            text += "; остановлено вручную";
+        return text;
     }
 
     public static string Temperature(double value) => $"{value.ToString("0.#", Ru)}°";

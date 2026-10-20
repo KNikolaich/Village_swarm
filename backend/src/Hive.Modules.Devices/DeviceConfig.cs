@@ -291,6 +291,10 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
     /// <summary>light or deep; deep when sleep_mode is absent (the contract default).</summary>
     public static string SleepMode(Device d) =>
         d.Config?.RootElement.TryGetProperty("sleep_mode", out var m) == true && m.GetString() == "light" ? "light" : "deep";
+
+    /// <summary>A deep sleeper between wake-ups: awake only for seconds, so a command sent now would not reach it.</summary>
+    public static bool Asleep(Device d, DateTimeOffset now) =>
+        SleepS(d) is not null && SleepMode(d) == "deep" && d.LastSeenAt is { } seen && now - seen > TimeSpan.FromSeconds(90);
 }
 
 /// <summary>

@@ -26,6 +26,18 @@ function wifiLine(payload: unknown): string | null {
   return t(`events.wifi.${p.phase}`, p.phase).replace('{ssid}', p.ssid ?? '?')
 }
 
+/** What "update all outdated" came to (the hive's ota_rollout event): how many, and where it stopped. */
+function rolloutLine(payload: unknown): string | null {
+  const p = payload as { result?: string; done?: number; total?: number; device?: string; version?: string; error?: string } | null
+  if (!p?.result) return null
+  const count = t('events.otaRollout.count').replace('{done}', String(p.done ?? 0)).replace('{total}', String(p.total ?? 0))
+  if (p.result === 'failed') {
+    const where = t('events.otaRollout.failed').replace('{device}', p.device ?? '?').replace('{version}', p.version ?? '?')
+    return `${count}; ${where}${p.error ? ` (${t(`swarm.rollout.why.${p.error}`, p.error)})` : ''}`
+  }
+  return p.result === 'stopped' ? `${count}; ${t('events.otaRollout.stopped')}` : count
+}
+
 const severityTone: Record<string, BadgeTone> = { info: 'neutral', warn: 'warn', alarm: 'alarm', critical: 'critical' }
 
 /** caption is set on a frame taken before the event. */
@@ -42,7 +54,7 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
   const expectedPhotos = (event.payload as { photos?: unknown[] } | null)?.photos?.length ?? 0
   // A rule's own message: what the rule said, and which rule it was.
   const said = event.type === 'rule' ? (event.payload as { rule?: string; text?: string } | null) : null
-  const ota = event.type === 'ota' ? otaLine(event.payload) : null
+  const ota = event.type === 'ota' ? otaLine(event.payload) : event.type === 'ota_rollout' ? rolloutLine(event.payload) : null
   const wifi = event.type === 'wifi' ? wifiLine(event.payload) : null
   // Photos the camera took before this event (it had no fresh frame) carry their own time, never the event's.
   const photos: PhotoRef[] = event.photos.map((p) => takenBefore(p.ts, event.ts)

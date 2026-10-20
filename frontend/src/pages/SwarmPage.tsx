@@ -1,16 +1,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, BatteryMedium, Camera, Check, CircleHelp, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Pencil, Plus, Terminal, Thermometer, Usb, Wifi, WifiOff, X, type LucideIcon } from 'lucide-react'
+import { ArrowRightLeft, BatteryMedium, CloudDownload, Camera, Check, CircleHelp, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Pencil, Plus, Terminal, Thermometer, Usb, Wifi, WifiOff, X, type LucideIcon } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { FlashButton } from '@/components/FlashButton'
+import { OtaRolloutPanel } from '@/components/OtaRolloutPanel'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto, type LatestValueDto, type Schemas } from '@/api/client'
-import { keys, useDevices, useLatestTelemetry, useMe, useSendCommand, useZones } from '@/api/queries'
+import { keys, useDevices, useLatestTelemetry, useMe, useOtaRollout, useSendCommand, useZones } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
 import { formatAgo, formatValue } from '@/lib/format'
 import { usesPin } from '@/lib/features'
+import { candidates, newerBuild as newerBuildFor } from '@/lib/otaRollout'
 import { groupDevices, groupings, mainReadings, quickControls, type Grouping } from '@/lib/swarm'
 import { cn } from '@/lib/utils'
 
@@ -363,6 +365,15 @@ export function SwarmPage() {
   const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
   const [fwOpen, setFwOpen] = useState<string | null>(null)
   const firmware = useQuery({ queryKey: ['firmware'], queryFn: () => call(api.GET('/api/firmware')), enabled: isAdmin })
+  const rollout = useOtaRollout(isAdmin)
+  const rolloutActive = ['running', 'stopping'].includes(rollout.data?.rollout?.state ?? '')
+  const [rolloutOpen, setRolloutOpen] = useState(false)
+  // A rollout seen running keeps the panel open after it ends, so its result stays on screen.
+  const [rolloutSeen, setRolloutSeen] = useState(false)
+  if (rolloutActive && !rolloutSeen) {
+    setRolloutSeen(true)
+    setRolloutOpen(true)
+  }
   const navigate = useNavigate()
   // Removed hornets are hidden unless asked for; remembered between visits.
   const [showDeceased, setShowDeceased] = useState(() => {
@@ -386,6 +397,7 @@ export function SwarmPage() {
   const zones = useZones()
   const latest = useLatestTelemetry()
   const deceasedCount = (devices.data ?? []).filter((d) => d.status === 'disabled').length
+  const outdated = useMemo(() => candidates(devices.data ?? [], firmware.data ?? []).length, [devices.data, firmware.data])
   const list = useMemo(() => (devices.data ?? []).filter((d) => showDeceased || d.status !== 'disabled'), [devices.data, showDeceased])
   const groups = useMemo(
     () => groupDevices(list, zones.data ?? [], grouping, {
@@ -408,7 +420,7 @@ export function SwarmPage() {
 
   /** A build for this hornet's role and board that is not the version it runs now (null: nothing to offer). */
   function newerBuild(d: DeviceDto) {
-    return (firmware.data ?? []).find((b) => b.role === d.type && b.board === d.hw && b.version && b.version !== d.fw) ?? null
+    return newerBuildFor(d, firmware.data ?? [])
   }
 
   async function setSleep(d: DeviceDto, body: { sleepS?: number; sleepMode?: 'deep' | 'light' }) {
@@ -422,7 +434,12 @@ export function SwarmPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">{t('swarm.title')}</h1>
         {isAdmin && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {(outdated > 0 || rolloutActive) && (
+              <Button variant="outline" className={rolloutActive ? 'text-amber-400' : undefined} onClick={() => setRolloutOpen(!rolloutOpen)}>
+                <CloudDownload />{rolloutActive ? t('swarm.rollout.openRunning') : t('swarm.rollout.open').replace('{n}', String(outdated))}
+              </Button>
+            )}
             <Link to="/console">
               <Button variant="outline" tabIndex={-1}><Terminal />{t('swarm.console')}</Button>
             </Link>
@@ -432,6 +449,10 @@ export function SwarmPage() {
           </div>
         )}
       </div>
+
+      {isAdmin && (rolloutOpen || rolloutActive) && (
+        <OtaRolloutPanel devices={devices.data ?? []} builds={firmware.data ?? []} rollout={rollout.data?.rollout ?? null} onClose={() => setRolloutOpen(false)} />
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex items-center gap-1 rounded-lg bg-neutral-900 p-1 text-xs" role="radiogroup" aria-label={t('swarm.groupBy')}>

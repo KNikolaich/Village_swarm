@@ -117,18 +117,23 @@ public static class ProvisioningEndpoints
                 ? TypedResults.PhysicalFile(Path.Combine(b.Dir, file), "application/octet-stream", download is "1" or "true" ? $"{build}-{file}" : null)
                 : TypedResults.NotFound());
         firmware.MapGet("", (IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
-        {
-            var root = Path.GetFullPath(Path.Combine(env.ContentRootPath, options.Value.FirmwareDir));
-            if (!Directory.Exists(root))
-                return Array.Empty<FirmwareBuildDto>();
-            return Directory.GetDirectories(root)
-                .Select(d => ReadBuild(Path.GetFileName(d), options.Value, env))
-                .Where(b => b is not null)
-                .Select(b => new FirmwareBuildDto(b!.Name, b.Role, b.Board, b.ChipFamily, b.Built, b.Version, b.Signature is not null))
-                .OrderBy(b => b.Build, StringComparer.Ordinal)
-                .ToArray();
-        });
+            ListBuilds(options.Value, env)
+                .Select(b => new FirmwareBuildDto(b.Name, b.Role, b.Board, b.ChipFamily, b.Built, b.Version, b.Signature is not null))
+                .ToArray());
         return app;
+    }
+
+    /// <summary>Every complete build the hive carries, by name.</summary>
+    internal static IReadOnlyList<Build> ListBuilds(ProvisioningOptions options, IHostEnvironment env)
+    {
+        var root = Path.GetFullPath(Path.Combine(env.ContentRootPath, options.FirmwareDir));
+        if (!Directory.Exists(root))
+            return [];
+        return Directory.GetDirectories(root)
+            .Select(d => ReadBuild(Path.GetFileName(d), options, env))
+            .OfType<Build>()
+            .OrderBy(b => b.Name, StringComparer.Ordinal)
+            .ToList();
     }
 
     internal sealed record Part(string File, int Offset);
