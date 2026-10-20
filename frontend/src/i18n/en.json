@@ -674,7 +674,8 @@
     "replaceFailed": "Could not prepare the replacement. Go back to the swarm and try again.",
     "modeTasmota": "Tasmota relay",
     "flashLoadFailed": "The Flash button did not load. Usually the page was opened before the hive was updated: reload it. You can still download the firmware file below.",
-    "reloadPage": "Reload the page"
+    "reloadPage": "Reload the page",
+    "modeZigbee": "Zigbee"
   },
   "time": {
     "justNow": "just now",
@@ -710,7 +711,8 @@
     "heat": "Heater",
     "leak": "Leak sensor",
     "plant": "Plants",
-    "ble": "Bluetooth bridge (kitchen thermometer)"
+    "ble": "Bluetooth bridge (kitchen thermometer)",
+    "sensor": "Sensor (motion, door, leak)"
   },
   "boards": {
     "esp32cam-aithinker": "ESP32-CAM AI-Thinker",
@@ -904,5 +906,28 @@
     "dump": "Write the thermometer's raw data to the log (to compare the numbers with the Inkbird app)",
     "save": "Save",
     "saved": "Saved, the hornet applies it the next time it connects"
+  },
+  "zigbee": {
+    "title": "Zigbee: dongle and zigbee2mqtt",
+    "hint": "Zigbee sensors and plugs join the dongle on the hive, not Wi-Fi. Allow joining, put the device in pairing mode (most: hold its button for 5 seconds until the LED blinks) and it appears in the list below.",
+    "bridgeDown": "zigbee2mqtt does not answer: check that the container runs and the dongle is plugged in (docs/zigbee.md).",
+    "start": "Allow joining for 2 minutes",
+    "stop": "Stop",
+    "pairing": "Pairing, {s} s left",
+    "found": "Devices found",
+    "none": "Nothing yet. Allow joining and put the device in pairing mode.",
+    "interviewing": "The device is being interviewed, wait.",
+    "unsupported": "zigbee2mqtt does not know this model yet: readings may not arrive.",
+    "add": "Add",
+    "addGo": "Add to the hive",
+    "added": "Added. The first reading arrives when the device reports.",
+    "known": "Already in the hive",
+    "off": "Zigbee is off. Plug in the dongle and start zigbee2mqtt as in docs/zigbee.md (Zigbee__Enabled).",
+    "permitFailed": "Could not turn pairing on",
+    "bridge": {
+      "online": "bridge online",
+      "offline": "bridge offline",
+      "unknown": "bridge not heard"
+    }
   }
 }

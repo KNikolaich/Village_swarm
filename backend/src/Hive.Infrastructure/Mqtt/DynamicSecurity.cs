@@ -13,7 +13,7 @@ namespace Hive.Infrastructure.Mqtt;
 /// own topics. Commands go to $CONTROL/dynamic-security/v1 over the api's broker connection, which must
 /// belong to a client with the dynsec admin role.
 /// </summary>
-public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses responses, IOptions<MqttOptions> options, ILogger<DynamicSecurity> logger)
+public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses responses, IOptions<MqttOptions> options, IOptions<ZigbeeOptions> zigbee, ILogger<DynamicSecurity> logger)
 {
     public const string ControlTopic = "$CONTROL/dynamic-security/v1";
     public const string ResponseTopic = ControlTopic + "/response";
@@ -52,6 +52,9 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
             Acl("addRoleACL", options.Value.AdminRole, "subscribePattern", "tele/#", 0),
             Acl("addRoleACL", options.Value.AdminRole, "subscribePattern", "stat/#", 0),
             Acl("addRoleACL", options.Value.AdminRole, "publishClientSend", "cmnd/#", 0),
+            // zigbee2mqtt: the api reads what it publishes and writes its requests and device commands.
+            Acl("addRoleACL", options.Value.AdminRole, "subscribePattern", $"{zigbee.Value.BaseTopic}/#", 0),
+            Acl("addRoleACL", options.Value.AdminRole, "publishClientSend", $"{zigbee.Value.BaseTopic}/#", 0),
         ], ct, ignoreErrors: true);
     }
 
@@ -113,6 +116,34 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
         ], ct);
     }
 
+    /// <summary>
+    /// The login of the zigbee2mqtt container: its own base topic, nothing else. Called at every (re)connect of the api, so it
+    /// only creates the login when it is missing: changing a password or deleting a client drops a connected zigbee2mqtt.
+    /// To change the password later, delete the client "zigbee2mqtt" with mosquitto_ctrl and restart the api.
+    /// </summary>
+    public async Task ProvisionZigbeeBridgeAsync(string user, string password, string baseTopic, CancellationToken ct)
+    {
+        if (!Enabled)
+            return;
+        const string role = "zigbee2mqtt-bridge";
+        var existing = await SendAsync([new JsonObject { ["command"] = "getClient", ["username"] = user }], ct, ignoreErrors: true);
+        if (existing.FirstOrDefault()?["error"] is null)
+            return;
+        await SendAsync(
+        [
+            new JsonObject { ["command"] = "createRole", ["rolename"] = role },
+            Acl("addRoleACL", role, "publishClientSend", $"{baseTopic}/#", 0),
+            Acl("addRoleACL", role, "subscribePattern", $"{baseTopic}/#", 0),
+            new JsonObject
+            {
+                ["command"] = "createClient",
+                ["username"] = user,
+                ["password"] = password,
+                ["roles"] = new JsonArray { new JsonObject { ["rolename"] = role } },
+            },
+        ], ct, ignoreErrors: true);
+    }
+
     /// <summary>Removes the hornet's login, e.g. when it is deleted or factory reset (spec 5.3).</summary>
     public async Task RevokeHornetAsync(string deviceId, CancellationToken ct)
     {
@@ -132,7 +163,7 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
         ["allow"] = allow,
     };
 
-    private async Task SendAsync(JsonObject[] commands, CancellationToken ct, bool ignoreErrors = false)
+    private async Task<JsonArray> SendAsync(JsonObject[] commands, CancellationToken ct, bool ignoreErrors = false)
     {
         await mqtt.WaitConnectedAsync(Timeout, ct);
         var correlation = Guid.NewGuid().ToString("N");
@@ -154,6 +185,7 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
                 else
                     throw new InvalidOperationException($"Mosquitto dynsec {r!["command"]} failed: {error}");
             }
+            return results;
         }
         finally
         {

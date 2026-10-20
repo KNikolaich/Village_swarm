@@ -462,7 +462,7 @@ export function SwarmPage() {
               <div className="min-w-0 flex-1 basis-48">
                 <DeviceName device={d} editable={isAdmin && d.status !== 'disabled'} />
                 <p className="truncate text-xs text-neutral-500">
-                  {d.deviceId} · {d.type} · {d.driver === 'tasmota' ? 'Tasmota' : (d.fw ?? '—')} · {formatAgo(d.lastSeenAt)}
+                  {d.deviceId} · {d.type} · {d.driver === 'tasmota' ? 'Tasmota' : d.driver === 'zigbee' ? 'Zigbee' : (d.fw ?? '—')} · {formatAgo(d.lastSeenAt)}
                 </p>
                 {canControl && d.type === 'meteo' && d.status !== 'disabled' && (
                   <label className="mt-1 flex flex-wrap items-center gap-2 text-xs text-neutral-400" title={t('swarm.sleepHint')}>
@@ -504,14 +504,14 @@ export function SwarmPage() {
                     {statusLabel(d.status)}
                   </Badge>
                 )}
-                {isAdmin && d.status !== 'disabled' && d.driver !== 'tasmota' && d.type !== 'hive' && (
+                {isAdmin && d.status !== 'disabled' && d.driver === 'hornet' && d.type !== 'hive' && (
                   <Button variant="ghost" size="icon" title={newerBuild(d) ? t('swarm.updateAvailable') : t('swarm.update')}
                     className={newerBuild(d) ? 'text-amber-400' : undefined} onClick={() => setFwOpen(fwOpen === d.deviceId ? null : d.deviceId)}><Cpu /></Button>
                 )}
-                {isAdmin && d.status === 'disabled' && (
+                {isAdmin && d.status === 'disabled' && d.driver !== 'zigbee' && (
                   <Button variant="outline" size="sm" title={t('swarm.reviveTitle')} onClick={() => replace(d.deviceId, true)}><ArrowRightLeft />{t('swarm.revive')}</Button>
                 )}
-                {isAdmin && d.status !== 'disabled' && d.type !== 'hive' && (
+                {isAdmin && d.status !== 'disabled' && d.type !== 'hive' && d.driver !== 'zigbee' && (
                   <Button variant="ghost" size="icon" title={t('swarm.replaceTitle')} onClick={() => replace(d.deviceId)}><ArrowRightLeft /></Button>
                 )}
               </div>

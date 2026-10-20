@@ -14,7 +14,7 @@ tarball="$(ls -1t dist/hive-images-"$version"-*.tar.gz | head -1)"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/hive-bundle/images"
-cp -r compose.yaml compose.home.yaml .env.example mosquitto install.sh update.sh restore.sh "$stage/hive-bundle/"
+cp -r compose.yaml compose.home.yaml compose.zigbee.yaml .env.example mosquitto install.sh update.sh restore.sh "$stage/hive-bundle/"
 cp "$tarball" "$stage/hive-bundle/images/"
 echo "$version" >"$stage/hive-bundle/images/VERSION"
 
@@ -27,7 +27,7 @@ ssh -t "$target" "
 	set -e
 	# Update only when the hive is running: a half-finished install has a .env but no database yet.
 	if sudo test -f /opt/hive/.env && sudo docker compose -f /opt/hive/compose.yaml -f /opt/hive/compose.home.yaml --project-directory /opt/hive ps -q postgres | grep -q .; then
-		sudo cp -r /tmp/hive-bundle/compose.yaml /tmp/hive-bundle/compose.home.yaml /tmp/hive-bundle/.env.example \
+		sudo cp -r /tmp/hive-bundle/compose.yaml /tmp/hive-bundle/compose.home.yaml /tmp/hive-bundle/compose.zigbee.yaml /tmp/hive-bundle/.env.example \
 			/tmp/hive-bundle/mosquitto /tmp/hive-bundle/install.sh /tmp/hive-bundle/update.sh /tmp/hive-bundle/restore.sh /opt/hive/
 		sudo bash /opt/hive/update.sh '$version' '$image'
 	else

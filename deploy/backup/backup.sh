@@ -40,7 +40,7 @@ if restic_configured; then
 	fi
 	say "Copying to $RESTIC_REPOSITORY"
 	paths=("$DB_DIR")
-	for p in /source/media /source/keys /source/mosquitto /source/caddy /source/config; do [ -e "$p" ] && paths+=("$p"); done
+	for p in /source/media /source/keys /source/mosquitto /source/zigbee2mqtt /source/caddy /source/config; do [ -e "$p" ] && paths+=("$p"); done
 	if out="$(restic backup --host hive --tag hive --json "${paths[@]}" 2>&1)"; then
 		added="$(printf '%s\n' "$out" | grep '"message_type":"summary"' | tail -1 | sed -n 's/.*"data_added":\([0-9]*\).*/\1/p')"
 		say "Off-site copy ready (added ${added:-?} bytes)"

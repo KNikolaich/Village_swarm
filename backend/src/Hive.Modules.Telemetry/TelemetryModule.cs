@@ -19,6 +19,7 @@ public static class TelemetryModule
         services.AddSingleton<IMqttMessageHandler, NativeHornetAdapter>();
         services.TryAddSingleton<TasmotaPending>();
         services.AddSingleton<IMqttMessageHandler, TasmotaAdapter>();
+        services.AddSingleton<IMqttMessageHandler, ZigbeeAdapter>();
         services.AddScoped<IngestWriter>();
         services.AddSingleton<IngestPipeline>();
         services.AddHostedService(sp => sp.GetRequiredService<IngestPipeline>());

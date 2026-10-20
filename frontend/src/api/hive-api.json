@@ -903,6 +903,79 @@
         }
       }
     },
+    "/api/zigbee": {
+      "get": {
+        "tags": [
+          "zigbee"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZigbeeDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/zigbee/permit-join": {
+      "post": {
+        "tags": [
+          "zigbee"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PermitJoinRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/zigbee/devices": {
+      "post": {
+        "tags": [
+          "zigbee"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddZigbeeDeviceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/devices": {
       "get": {
         "tags": [
@@ -2745,6 +2818,36 @@
           }
         }
       },
+      "AddZigbeeDeviceRequest": {
+        "required": [
+          "ieee",
+          "deviceId",
+          "type",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "ieee": {
+            "type": "string"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "zoneId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "ArmedDto": {
         "required": [
           "armed",
@@ -4107,6 +4210,18 @@
           }
         }
       },
+      "PermitJoinRequest": {
+        "required": [
+          "seconds"
+        ],
+        "type": "object",
+        "properties": {
+          "seconds": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "PinRow": {
         "required": [
           "function",
@@ -5406,6 +5521,91 @@
           }
         }
       },
+      "ZigbeeDeviceDto": {
+        "required": [
+          "ieee",
+          "friendlyName",
+          "type",
+          "vendor",
+          "model",
+          "description",
+          "supported",
+          "interviewCompleted",
+          "deviceId"
+        ],
+        "type": "object",
+        "properties": {
+          "ieee": {
+            "type": "string"
+          },
+          "friendlyName": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "vendor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "model": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "supported": {
+            "type": "boolean"
+          },
+          "interviewCompleted": {
+            "type": "boolean"
+          },
+          "deviceId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ZigbeeDto": {
+        "required": [
+          "enabled",
+          "bridge",
+          "permitJoinUntil",
+          "devices"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "bridge": {
+            "type": "string"
+          },
+          "permitJoinUntil": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ZigbeeDeviceDto"
+            }
+          }
+        }
+      },
       "ZoneDto": {
         "required": [
           "id",
@@ -5473,6 +5673,9 @@
     },
     {
       "name": "telemetry"
+    },
+    {
+      "name": "zigbee"
     },
     {
       "name": "provision"

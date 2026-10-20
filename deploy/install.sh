@@ -98,7 +98,7 @@ fi
 if [ "$SRC" != "$HIVE_DIR" ]; then
 	say "Копирую файлы в $HIVE_DIR"
 	mkdir -p "$HIVE_DIR"
-	cp -r "$SRC/compose.yaml" "$SRC/compose.home.yaml" "$SRC/.env.example" "$SRC/mosquitto" \
+	cp -r "$SRC/compose.yaml" "$SRC/compose.home.yaml" "$SRC/compose.zigbee.yaml" "$SRC/.env.example" "$SRC/mosquitto" \
 		"$SRC/install.sh" "$SRC/update.sh" "$SRC/restore.sh" "$HIVE_DIR/"
 fi
 chmod +x "$HIVE_DIR/install.sh" "$HIVE_DIR/update.sh" "$HIVE_DIR/restore.sh"

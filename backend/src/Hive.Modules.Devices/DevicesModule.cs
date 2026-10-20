@@ -78,6 +78,7 @@ public static class DevicesModule
         services.AddScoped<ArmService>();
         services.AddScoped<ZoneService>();
         services.AddScoped<IrButtonService>();
+        services.AddScoped<ZigbeeService>();
         services.AddHostedService<ZoneBootstrap>();
         services.AddScoped<ProvisioningService>();
         services.AddHostedService<DynamicSecurityBootstrap>();
@@ -91,6 +92,7 @@ public static class DevicesModule
 
     public static IEndpointRouteBuilder MapDevicesEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapZigbeeEndpoints();
         var devices = app.MapGroup("/api/devices").WithTags("devices");
         devices.MapGet("", (int? zone, string? type, string? status, DeviceQueries q, CancellationToken ct) =>
             q.ListAsync(zone, type, status, ct));

@@ -39,7 +39,7 @@ public enum SendStatus
 }
 
 /// <summary>Sends commands over MQTT (spec 4.4 cmd, 6.3 CommandDispatcher): stored first, ack updates it later.</summary>
-public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TasmotaPending tasmota, TimeProvider time)
+public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TasmotaPending tasmota, Microsoft.Extensions.Options.IOptions<ZigbeeOptions> zigbee, TimeProvider time)
 {
     public const int DefaultTtlS = 60;
 
@@ -59,6 +59,10 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TasmotaPe
         // A Tasmota device speaks its own commands: only the ones that map to them (relay, reboot) are accepted.
         var plan = driver == Drivers.Tasmota ? TasmotaCommands.Plan(name, payload) : null;
         if (driver == Drivers.Tasmota && plan is null)
+            return (SendStatus.BadRequest, null);
+        // A Zigbee device is switched through zigbee2mqtt: only the commands that map to its /set are accepted.
+        var zigbeePlan = driver == Drivers.Zigbee ? ZigbeeCommands.Plan(name, payload) : null;
+        if (driver == Drivers.Zigbee && zigbeePlan is null)
             return (SendStatus.BadRequest, null);
         if (!mqtt.IsConnected)
             return (SendStatus.BrokerDown, null);
@@ -91,6 +95,12 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TasmotaPe
         };
         db.Commands.Add(command);
         await db.SaveChangesAsync(ct);
+        if (zigbeePlan is not null)
+        {
+            tasmota.Expect(deviceId, zigbeePlan.Confirms, cid);
+            await mqtt.PublishAsync(ZigbeeTopics.Set(zigbee.Value.BaseTopic, deviceId), zigbeePlan.Call.Payload, retain: false, ct);
+            return (SendStatus.Sent, command);
+        }
         if (plan is null)
         {
             await mqtt.PublishAsync(Topics.Cmd(deviceId, name), message.ToJsonString(), retain: false, ct);

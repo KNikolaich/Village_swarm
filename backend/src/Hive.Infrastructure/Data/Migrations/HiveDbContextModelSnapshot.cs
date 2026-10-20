@@ -549,6 +549,12 @@ namespace Hive.Infrastructure.Data.Migrations
                             Code = "ble",
                             OfflineAfterS = 180,
                             Title = "Мост Bluetooth (кухонный термометр)"
+                        },
+                        new
+                        {
+                            Code = "sensor",
+                            OfflineAfterS = 1800,
+                            Title = "Датчик (движение, дверь, протечка, температура)"
                         });
                 });
 

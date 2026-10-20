@@ -20,6 +20,7 @@ namespace Hive.Tests.Integration;
 public sealed class DynSecFixture : IAsyncLifetime
 {
     public const string AdminPassword = "dynsec-admin-password";
+    public const string ZigbeePassword = "zigbee-bridge-password";
     private const string BrokerConfig = """
         listener 1883
         allow_anonymous false
@@ -54,6 +55,8 @@ public sealed class DynSecFixture : IAsyncLifetime
             b.UseSetting("Mqtt:Password", AdminPassword);
             b.UseSetting("Mqtt:ClientId", "hive-api-dynsec");
             b.UseSetting("Mqtt:DynamicSecurity", "true");
+            b.UseSetting("Zigbee:Enabled", "true");
+            b.UseSetting("Zigbee:MqttPassword", ZigbeePassword);
             b.UseSetting("Telegram:Token", ""); // never the developer's real bot from deploy/.env
             b.UseSetting("Provisioning:MqttHost", Broker.Host);
             b.UseSetting("Provisioning:MqttPort", Broker.Port.ToString(System.Globalization.CultureInfo.InvariantCulture));

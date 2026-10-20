@@ -46,6 +46,7 @@ public static class Drivers
 {
     public const string Hornet = "hornet";
     public const string Tasmota = "tasmota";
+    public const string Zigbee = "zigbee";
 }
 
 /// <summary>A hornet. <see cref="DeviceId"/> is the MQTT id (guard-gate1), <see cref="Id"/> the surrogate key.</summary>
