@@ -13,7 +13,7 @@ services:
   web:
     <<: *common
     image: ${HIVE_IMAGES:-ghcr.io/knikolaich/village-swarm}-web:${HIVE_VERSION:?set HIVE_VERSION in .env}
-    ports: ["80:80", "443:443"]
+    ports: ["${HIVE_HTTP_PORT:-80}:80", "${HIVE_HTTPS_PORT:-443}:443"]
     environment:
       HIVE_HOSTS: ${HIVE_HOSTS:-localhost}
       HIVE_DEFAULT_SNI: ${HIVE_DEFAULT_SNI:-localhost}
@@ -25,7 +25,7 @@ services:
   mosquitto:
     <<: *common
     image: eclipse-mosquitto:2
-    ports: ["1883:1883"]
+    ports: ["${HIVE_MQTT_PORT:-1883}:1883"]
     entrypoint: ["/bin/sh", "/mosquitto/config/entrypoint.sh"]
     environment:
       MQTT_ADMIN_USER: ${MQTT_ADMIN_USER:-hive-api}

@@ -189,7 +189,7 @@ docker compose up -d --remove-orphans
 say "Жду, пока Улей ответит"
 ok=0
 for _ in $(seq 1 60); do
-	if curl -fsk https://localhost/readyz >/dev/null 2>&1; then ok=1; break; fi
+	if curl -fsk "https://localhost:$(get_env HIVE_HTTPS_PORT | grep . || echo 443)/readyz" >/dev/null 2>&1; then ok=1; break; fi
 	sleep 3
 done
 docker compose ps
