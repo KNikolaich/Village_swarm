@@ -158,7 +158,8 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
         if (existing.FirstOrDefault()?["error"] is null)
         {
             // A login made by an earlier version: only the permissions added since are put on its role (nothing changes when it has them).
-            await SendAsync([Acl("addRoleACL", role, "publishClientSend", $"{prefix}/sync/home/#", 0)], ct, ignoreErrors: true);
+            await SendAsync([Acl("addRoleACL", role, "publishClientSend", $"{prefix}/sync/home/#", 0),
+                             Acl("addRoleACL", role, "subscribePattern", $"{prefix}/sync/city/#", 0)], ct, ignoreErrors: true);
             return;
         }
         await SendAsync(
@@ -170,6 +171,7 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
             Acl("addRoleACL", role, "publishClientSend", $"{prefix}/sync/home/#", 0),
             Acl("addRoleACL", role, "subscribePattern", $"{prefix}/hive/city/#", 0),
             Acl("addRoleACL", role, "subscribePattern", $"{prefix}/hive/active", 0),
+            Acl("addRoleACL", role, "subscribePattern", $"{prefix}/sync/city/#", 0),
             new JsonObject
             {
                 ["command"] = "createClient",

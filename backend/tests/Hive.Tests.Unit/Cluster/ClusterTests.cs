@@ -91,3 +91,20 @@ public class ClusterTests
         Assert.True(city.Notifies("guard-gate1"));
     }
 }
+
+public sealed class ReplicaCodecTests
+{
+    [Fact]
+    public void A_chunk_survives_packing_and_a_request_is_plain_json()
+    {
+        var chunk = new ReplicaChunk(1, "req-1", 0, 1, false, 42,
+            [new ReplicaEvent("e1", "guard-1", "motion", "Alarm", 1000, 1001, System.Text.Json.JsonDocument.Parse("{\"zone\":2}").RootElement, true)]);
+        var back = ReplicaCodec.UnpackChunk(ReplicaCodec.PackChunk(chunk))!;
+        Assert.Equal(("req-1", 42L), (back.RequestId, back.LastTs));
+        Assert.Equal(("e1", "guard-1", true), (back.Events[0].Id, back.Events[0].DeviceId, back.Events[0].Armed));
+        Assert.Equal(2, back.Events[0].Payload.GetProperty("zone").GetInt32());
+
+        var request = ReplicaCodec.UnpackRequest(System.Text.Encoding.UTF8.GetBytes(ReplicaCodec.PackRequest(new ReplicaRequest(1, "r", 5))))!;
+        Assert.Equal(("r", 5L), (request.Id, request.Since));
+    }
+}

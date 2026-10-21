@@ -34,6 +34,10 @@ topic vs/v1/hive/home/# out 1
 # The home catalog (devices, rules, zones, users) is retained, so a restarted city has it at once. Hornets cannot read this topic.
 topic vs/v1/sync/home/# out 1
 topic vs/v1/hive/city/# in 1
+# The city's answer to a request for events home missed while it was down. Hornets cannot read it.
+topic vs/v1/sync/city/# in 1
+# What the city sends back to a request for events missed while home was down. Hornets cannot read it.
+topic vs/v1/sync/city/# in 1
 topic vs/v1/hive/active both 1
 EOF
 	echo "bridge to the city: ${CITY_MQTT_HOST}:${CITY_MQTT_PORT:-1883}"

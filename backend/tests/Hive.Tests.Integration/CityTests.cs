@@ -379,4 +379,72 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
             await Task.Delay(100);
         Assert.Equal(before + 2, Count());
     }
+
+    /// <summary>
+    /// Home came back and asks what the city saw: the city answers with its events after "since" (not the ones about home itself),
+    /// and home keeps the ones it does not have, once, for devices it knows.
+    /// </summary>
+    [Fact]
+    public async Task The_city_hands_the_events_home_missed_back_and_home_keeps_each_once()
+    {
+        var deviceId = $"replica-{Guid.NewGuid():N}"[..16];
+        var since = DateTimeOffset.UtcNow.AddHours(1);   // later than anything the other tests wrote
+        var ids = new[] { Ulid.New(), Ulid.New(), Ulid.New() };
+        await city.QueryAsync(async db =>
+        {
+            db.Devices.Add(new Device { DeviceId = deviceId, TypeCode = "guard-cam", Name = "Для догрузки", Status = DeviceStatus.Online, CreatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+            DeviceEvent Make(string id, string device, int minutes) => new()
+            {
+                Id = id, DeviceId = device, Type = "motion", Severity = EventSeverity.Alarm, Ts = since.AddMinutes(minutes), ReceivedAt = since.AddMinutes(minutes),
+                Payload = JsonDocument.Parse("{\"zone\":1}"),
+            };
+            db.Events.AddRange(Make(ids[0], deviceId, 1), Make(ids[1], deviceId, 2), Make(ids[2], HomeWatch.HomeDevice, 3));   // the last is the city's own view of home
+            await db.SaveChangesAsync();
+            return 0;
+        });
+
+        var chunks = new List<ReplicaChunk>();
+        using var home = await ConnectAsync($"replica-home-{Guid.NewGuid():N}");
+        home.ApplicationMessageReceivedAsync += m =>
+        {
+            if (m.ApplicationMessage.Topic == ReplicaCodec.ChunkTopic && ReplicaCodec.UnpackChunk(System.Buffers.BuffersExtensions.ToArray(m.ApplicationMessage.Payload)) is { } c)
+                lock (chunks)
+                    chunks.Add(c);
+            return Task.CompletedTask;
+        };
+        await home.SubscribeAsync(ReplicaCodec.ChunkTopic);
+        var request = new ReplicaRequest(1, Ulid.New(), since.AddMinutes(-1).ToUnixTimeMilliseconds());
+        await home.PublishStringAsync(ReplicaCodec.RequestTopic, ReplicaCodec.PackRequest(request));
+        for (var i = 0; i < 100; i++)
+        {
+            lock (chunks)
+                if (chunks.Any(c => c.RequestId == request.Id))
+                    break;
+            await Task.Delay(100);
+        }
+
+        ReplicaChunk answer;
+        lock (chunks)
+            answer = Assert.Single(chunks, c => c.RequestId == request.Id);
+        Assert.Equal((0, 1, false), (answer.Part, answer.Parts, answer.More));
+        Assert.Equal([ids[0], ids[1]], answer.Events.Select(e => e.Id).ToArray());
+
+        // home: a copy of its own database stands in here (the same database): the events it has are not added twice, an unknown device is skipped
+        await city.QueryAsync(async db =>
+        {
+            Assert.Equal(0, await ReplicaCatchUp.StoreAsync(db, answer.Events, CancellationToken.None));
+            var fresh = new ReplicaEvent(Ulid.New(), deviceId, "leak", "Alarm", since.AddMinutes(5).ToUnixTimeMilliseconds(), since.AddMinutes(5).ToUnixTimeMilliseconds(), JsonDocument.Parse("{}").RootElement, null);
+            var stranger = fresh with { Id = Ulid.New(), DeviceId = "nobody-knows-me" };
+            Assert.Equal(1, await ReplicaCatchUp.StoreAsync(db, [fresh, stranger, answer.Events[0]], CancellationToken.None));
+            Assert.Equal(0, await ReplicaCatchUp.StoreAsync(db, [fresh], CancellationToken.None));
+            var stored = await db.Events.AsNoTracking().SingleAsync(e => e.Id == fresh.Id);
+            Assert.Equal((HiveNode.City, EventSeverity.Alarm), (stored.ViaNode, stored.Severity));
+            // the event about home was only here for the check and must not confuse the other test
+            db.Events.RemoveRange(db.Events.Where(e => e.Id == ids[2]));
+            await db.SaveChangesAsync();
+            return 0;
+        });
+    }
 }
+

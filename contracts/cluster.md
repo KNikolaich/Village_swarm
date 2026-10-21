@@ -41,3 +41,18 @@ The city applies a snapshot that is newer than the last one it applied, by name 
 zones and devices are created or updated (a device removed at home arrives as `disabled`); rules are created or updated, and a rule that came from home
 (`updated_by = sync:home`) and is no longer in the snapshot is deleted; users are created or updated with the same password hash and roles.
 Nothing the city has of its own is deleted: no zone, no device, no user, no rule it made itself. Runtime data (status, readings, firmware, photos) is not in the catalog.
+
+## Catch-up of events after home is back (`vs/v1/hive/home/replica/request`, `vs/v1/sync/city/replica`)
+
+While home was gone and hornets spoke to the city broker directly, the city saw events home never got (the bridge only copies home to city). When home takes the active role back from the city
+(it saw `vs/v1/hive/active = city`) it asks the city for what it missed, over the same bridge:
+
+| Topic | From | What |
+|---|---|---|
+| `vs/v1/hive/home/replica/request` | home | JSON `{v: 1, id, since}`: `id` is a ULID, `since` unix ms (the time the city took the role, minus 5 minutes) |
+| `vs/v1/sync/city/replica` | city | gzip JSON chunk, not retained: `{v: 1, requestId, part, parts, more, lastTs, events: [{id, deviceId, type, severity, ts, receivedAt, payload, armed}]}` |
+
+The city answers with the events whose `ts` is after `since`, oldest first, except the ones about `hive-home` (those are the city's own view of home). At most 2000 events per request, in chunks of 100;
+`more: true` means the limit cut the list and `lastTs` is where to ask again. An empty answer is one chunk with no events, so home knows it is done.
+Home inserts the events it does not have (by `id`; devices it does not know are skipped) with `via_node = City`. Nothing is notified and no rule runs for them: the city already told people.
+Home repeats a request every 60 s until the whole answer is in. Hornets cannot read `vs/v1/sync/#`; the bridge on home takes `vs/v1/sync/city/#` in, and the bridge login on the city may read it.

@@ -288,6 +288,7 @@ public sealed class HeartbeatPublisher(
     ILogger<HeartbeatPublisher> logger) : BackgroundService, IMqttMessageHandler
 {
     private volatile bool _cityHasTheRole;
+    private long _cityRoleSinceMs;
 
     // Resolved when needed: the gateway itself is built from the list of message handlers, this class among them.
     private MqttGateway Mqtt => services.GetRequiredService<MqttGateway>();
@@ -301,7 +302,10 @@ public sealed class HeartbeatPublisher(
             return ValueTask.CompletedTask;
         try
         {
-            _cityHasTheRole = JsonDocument.Parse(payload).RootElement.TryGetProperty("node", out var n) && n.GetString() == "city";
+            var active = JsonDocument.Parse(payload).RootElement;
+            _cityHasTheRole = active.TryGetProperty("node", out var n) && n.GetString() == "city";
+            if (_cityHasTheRole && active.TryGetProperty("ts", out var ts) && ts.TryGetInt64(out var since))
+                Interlocked.Exchange(ref _cityRoleSinceMs, since);
         }
         catch (JsonException)
         {
@@ -354,6 +358,8 @@ public sealed class HeartbeatPublisher(
         if (self == BrokerNode.Home && _cityHasTheRole)
         {
             _cityHasTheRole = false;
+            // The city saw what hornets said to it meanwhile: ask for it (spec 11.3).
+            services.GetRequiredService<ReplicaCatchUp>().Want(DateTimeOffset.FromUnixTimeMilliseconds(Interlocked.Read(ref _cityRoleSinceMs)));
             await Mqtt.PublishAsync(Topics.HiveActive,
                 JsonSerializer.Serialize(new ActiveNodeMessage { Ts = now.ToUnixTimeMilliseconds(), Node = BrokerNode.Home }, ContractJson.Options), retain: true, ct);
         }
@@ -432,6 +438,13 @@ public static class ClusterModule
         services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<HeartbeatPublisher>());
         services.AddHostedService(sp => sp.GetRequiredService<HeartbeatPublisher>());
         services.AddHostedService<BridgeLogin>();
+
+        // Events the city saw while home was down, back to home (spec 11.3).
+        services.AddSingleton<ReplicaServer>();
+        services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<ReplicaServer>());
+        services.AddSingleton<ReplicaCatchUp>();
+        services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<ReplicaCatchUp>());
+        services.AddHostedService(sp => sp.GetRequiredService<ReplicaCatchUp>());
 
         // The catalog of reference data, home to city (spec 11.2).
         services.AddSingleton<CatalogState>();
