@@ -107,6 +107,10 @@ public sealed record DeviceConfig
 public sealed record HwConfig
 {
     public int? OnewirePin { get; init; }
+
+    /// <summary>DHT11/DHT22 data pin, used when Thermometer is dht11 or dht22.</summary>
+    public int? DhtPin { get; init; }
+
     public int? SdaPin { get; init; }
     public int? SclPin { get; init; }
     public int? RelayPin { get; init; }
@@ -119,6 +123,9 @@ public sealed record HwConfig
 
     /// <summary>Divider ratio (R1+R2)/R2: battery V = pin V x ratio.</summary>
     public double? VbatRatio { get; init; }
+
+    /// <summary>The sensor the feature "thermometer" reads: ds18b20, dht11 or dht22; null: the board's.</summary>
+    public string? Thermometer { get; init; }
 }
 
 /// <summary>Small local screen: up to two metrics shown large.</summary>

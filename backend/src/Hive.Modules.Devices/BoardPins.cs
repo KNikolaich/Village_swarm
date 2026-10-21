@@ -6,7 +6,9 @@ namespace Hive.Modules.Devices;
 /// </summary>
 public static class BoardPins
 {
-    public sealed record Defaults(int? OneWire, int? Sda, int? Scl, int? Relay, int? Button, int? Dht, bool RelayActiveLow, string Note);
+    /// <summary>Thermometer: the sensor feature "thermometer" reads when the config "hw" does not say (DeviceFeatures.Ds18b20...).</summary>
+    public sealed record Defaults(int? OneWire, int? Sda, int? Scl, int? Relay, int? Button, int? Dht, bool RelayActiveLow, string Note,
+        string Thermometer = DeviceFeatures.Ds18b20);
 
     public sealed record PinRow(string Function, string Key, int? Pin, string Source, string? Note);
 
@@ -18,7 +20,7 @@ public static class BoardPins
         ["wemos-d1-mini"] = new(14, 4, 5, 12, 0, null, false, "D5/D2/D1 for 1-Wire/I2C, D6 relay, D3 button"),
         ["nodemcu-v3"] = new(14, 4, 5, 12, 0, null, false, "as Wemos D1 mini; D3 is the FLASH button"),
         ["esp-01"] = new(2, 0, 2, 0, null, null, true, "GPIO2 is shared by 1-Wire and I2C SCL; wire one kind of sensor only"),
-        ["esp-01-dht11"] = new(null, null, null, null, null, 2, false, "ESP-01S DHT11 module: DHT11 on GPIO2, nothing else"),
+        ["esp-01-dht11"] = new(null, null, null, null, null, 2, false, "ESP-01S DHT11 module: DHT11 on GPIO2, nothing else", DeviceFeatures.Dht11),
     };
 
     /// <summary>Roles and the functions they use: a pin is checked for conflicts only among these.</summary>
@@ -26,7 +28,7 @@ public static class BoardPins
     {
         ["meteo"] = ["onewire", "sda", "scl", "vbat", "dht"],
         ["relay"] = ["relay", "button", "vbat"],
-        ["heat"] = ["onewire", "sda", "scl", "relay", "button", "vbat"],
+        ["heat"] = ["onewire", "sda", "scl", "relay", "button", "vbat", "dht"],
         ["guard-cam"] = ["relay"],
     };
 
@@ -48,9 +50,30 @@ public static class BoardPins
 
     public static Defaults? For(string? board) => board is not null && Boards.TryGetValue(board, out var d) ? d : null;
 
-    /// <summary>Effective pins of the functions the hornet uses: the config "hw" override where given, else the board default.</summary>
+    /// <summary>Functions that do nothing without a pin: shown as not set (Source "none") instead of being left out.</summary>
+    private static readonly string[] NeedPin = ["onewire", "sda", "scl", "relay", "dht"];
+
+    /// <summary>
+    /// The sensor the feature "thermometer" reads: config "hw".thermometer when set, else the board's (a DHT11 on the
+    /// esp-01-dht11 module, a DS18B20 elsewhere).
+    /// </summary>
+    public static string ThermometerSensor(string? board, System.Text.Json.JsonElement? hw) =>
+        ThermometerByHand(hw) is { } s ? s : For(board)?.Thermometer ?? DeviceFeatures.Ds18b20;
+
+    /// <summary>The config "hw".thermometer, or null when the board default applies.</summary>
+    public static string? ThermometerByHand(System.Text.Json.JsonElement? hw) =>
+        hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty("thermometer", out var v)
+        && v.ValueKind == System.Text.Json.JsonValueKind.String && DeviceFeatures.ThermometerSensors.Contains(v.GetString())
+            ? v.GetString() : null;
+
+    /// <summary>
+    /// Effective pins of the functions the hornet uses: the config "hw" override where given, else the board default.
+    /// A pin the hornet needs but neither gives is listed with no pin (Source "none"), so a missing default shows.
+    /// The thermometer uses the 1-Wire pin for DS18B20s and the DHT pin for a DHT11/DHT22, never both.
+    /// </summary>
     public static IReadOnlyList<PinRow> Rows(string? board, string type, System.Text.Json.JsonElement? hw, IReadOnlyCollection<string>? features = null)
     {
+        var dht = ThermometerSensor(board, hw) != DeviceFeatures.Ds18b20;
         var d = For(board) ?? new Defaults(null, null, null, null, null, null, false, "unknown board: pins are whatever the config says");
         int? Pick(string key, int? fallback) =>
             hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
@@ -63,13 +86,18 @@ public static class BoardPins
             new("relay", "relay_pin", Pick("relay_pin", d.Relay), Source(hw, "relay_pin"), d.RelayActiveLow ? "active low" : "active high"),
             new("button", "button_pin", Pick("button_pin", d.Button), Source(hw, "button_pin"), "local toggle"),
             new("vbat", "vbat_pin", Pick("vbat_pin", null), Source(hw, "vbat_pin"), "battery divider (ADC)"),
-            new("dht", "dht_pin", d.Dht, "default", "DHT11/22 data"),
+            new("dht", "dht_pin", Pick("dht_pin", d.Dht), Source(hw, "dht_pin"), "DHT11/22 data"),
         };
-        return rows.Where(r => r.Pin is not null && Uses(type, features, r.Function)).ToList();
+        return rows
+            .Where(r => (r.Pin is not null || NeedPin.Contains(r.Function)) && Uses(type, features, r.Function))
+            .Where(r => r.Function switch { "onewire" => !dht, "dht" => dht, _ => true })
+            .Select(r => r.Pin is null ? r with { Source = "none" } : r)
+            .ToList();
     }
 
     private static string Source(System.Text.Json.JsonElement? hw, string key) =>
-        hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty(key, out _) ? "config" : "default";
+        hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
+            ? "config" : "default";
 
     /// <summary>Pins used twice by the functions a role uses, or taken by the board itself; empty when the wiring is clean.</summary>
     public static IReadOnlyList<string> Conflicts(string type, IReadOnlyList<PinRow> rows, string? board = null, IReadOnlyCollection<string>? features = null)

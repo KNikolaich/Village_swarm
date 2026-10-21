@@ -28,8 +28,9 @@ In VS Code the PlatformIO toolbar does the same (✓ build, → upload, plug ico
 Every build lands in `firmware/dist/<env>/` with a `build.json` (chip, flash offsets); the web flasher in
 "Добавить шершня" offers the boards that exist there for the chosen role.
 
-Default pins (override per hornet with the config `hw` section: `onewire_pin`, `sda_pin`, `scl_pin`,
-`relay_pin`, `relay_active_low`, `button_pin`):
+Default pins (override per hornet with the config `hw` section: `onewire_pin`, `dht_pin`, `sda_pin`, `scl_pin`,
+`relay_pin`, `relay_active_low`, `button_pin`). No board but the ESP-01S DHT11 module has a default DHT pin:
+the swarm screen shows it as "не задан" until one is set.
 
 | Board | 1-Wire (DS18B20) | I2C SDA/SCL (BME280) | Relay | Button |
 |---|---|---|---|---|
@@ -42,9 +43,11 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
 
 - **meteo**: detects a BME280 (0x76/0x77) and any number of DS18B20 at start. Publishes `temperature`,
   `humidity`, `pressure` (hPa) and further thermometers as `temperature_2`, `temperature_3`...
-- **DHT11** (`meteo-esp01dht`): temperature and humidity once per `tele_interval_s`; the DHT shares GPIO2 with
-  1-Wire and I2C on the ESP-01, so that build reads only the DHT. Accuracy ±2 °C / ±5 %, and the ESP next to it
-  warms it by a degree or two.
+- **DHT11 / DHT22** (any meteo or heat build): the feature `thermometer` reads DS18B20s by default; config
+  `hw.thermometer` = `dht11` or `dht22` makes it one DHT on `hw.dht_pin` instead (set both in the swarm screen,
+  pins panel), publishing `temperature` and `humidity`. `meteo-esp01dht` reads its DHT11 on GPIO2 by default; a
+  DHT22 on that module needs `hw.thermometer` = `dht22`, or every read fails ("DHT read failed: TIMEOUT").
+  DHT11 accuracy is ±2 °C / ±5 % (DHT22 ±0.5 °C / ±2 %), and the ESP next to it warms it by a degree or two.
 - **OTA**: every build can be updated over the air with the `ota` command (see [docs/ota.md](../docs/ota.md)); the version is
   `0.2.0+<commit>` (scripts/version.py) and goes into `build.json`. ESP8266 has no rollback.
 - **Battery mode** (any meteo build): config `sleep_s` (set in the swarm screen) makes the hornet wake, send one

@@ -23,13 +23,15 @@ public class DeviceFeaturesTests
         Assert.Equal(["thermometer"], DeviceFeatures.Effective("heat", Config("""{ "features": ["thermometer"] }""")));
         Assert.Equal(["thermometer", "relay", "heater"], DeviceFeatures.Effective("heat", Config("""{ "features": ["heater", "thermometer"] }""")));
         Assert.Equal(["thermometer"], DeviceFeatures.Effective("meteo", Config("""{ "features": ["thermometer", "relay"] }""")));
+        Assert.Empty(DeviceFeatures.Effective("heat", Config("""{ "features": [] }"""))!);
     }
 
     [Theory]
     [InlineData("heat", new[] { "thermometer", "relay", "heater" }, true)]
     [InlineData("heat", new[] { "relay" }, true)]
     [InlineData("heat", new[] { "relay", "heater" }, false)]   // a heater needs a sensor
-    [InlineData("heat", new string[0], false)]
+    [InlineData("heat", new string[0], true)]                  // nothing wired: no heater, no relay, no sensors
+    [InlineData("meteo", new string[0], true)]                 // e.g. a DHT build: the DS18B20/BME280 pins are left alone
     [InlineData("meteo", new[] { "relay" }, false)]            // the meteo firmware has no relay
     [InlineData("guard-cam", new[] { "relay" }, false)]
     public void Validation(string type, string[] features, bool ok) =>

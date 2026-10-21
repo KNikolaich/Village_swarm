@@ -163,7 +163,7 @@ export function DevicePage() {
   const device = (devices.data ?? []).find((d) => d.deviceId === deviceId)
   // Only what the hornet is used for: a relay that once sent a temperature does not keep showing it.
   const readings = (latest.data ?? [])
-    .filter((v) => v.deviceId === deviceId && showsMetric(device?.features, v.metric, device?.hw))
+    .filter((v) => v.deviceId === deviceId && showsMetric(device?.features, v.metric, device?.thermometer))
     .sort((a, b) => a.metric.localeCompare(b.metric))
 
   const send = useSendCommand(deviceId)

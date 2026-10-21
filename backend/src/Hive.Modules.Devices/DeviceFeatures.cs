@@ -3,8 +3,8 @@ using System.Text.Json;
 namespace Hive.Modules.Devices;
 
 /// <summary>
-/// What a hornet is used for (config "features", contracts/schemas/config.schema.json): thermometer, bme280, relay,
-/// heater. The roles meteo, relay and heat can be told which of their abilities are wired; the hive then shows only
+/// What a hornet is used for (config "features", contracts/schemas/config.schema.json): thermometer (DS18B20s or a
+/// DHT11/DHT22, chosen with the pins: "hw".thermometer), bme280, relay, heater. The roles meteo, relay and heat can be told which of their abilities are wired; the hive then shows only
 /// those pins, readings and commands. heat is the universal ESP8266 firmware that can do all four.
 /// </summary>
 public static class DeviceFeatures
@@ -13,6 +13,12 @@ public static class DeviceFeatures
     public const string Bme280 = "bme280";
     public const string Relay = "relay";
     public const string Heater = "heater";
+
+    /// <summary>Sensors the feature "thermometer" can read (config "hw".thermometer): DS18B20s on 1-Wire, or one DHT.</summary>
+    public const string Ds18b20 = "ds18b20";
+    public const string Dht11 = "dht11";
+    public const string Dht22 = "dht22";
+    public static readonly string[] ThermometerSensors = [Ds18b20, Dht11, Dht22];
 
     /// <summary>Failsafe defaults the firmware uses when the config has no failsafe.heater (HeaterFailsafe.h).</summary>
     public const double DefaultMinC = 5.0;
@@ -37,6 +43,7 @@ public static class DeviceFeatures
     private static readonly Dictionary<string, string[]> Functions = new()
     {
         ["onewire"] = [Thermometer],
+        ["dht"] = [Thermometer],
         ["sda"] = [Bme280],
         ["scl"] = [Bme280],
         ["relay"] = [Relay],
@@ -65,21 +72,23 @@ public static class DeviceFeatures
         return new[] { Thermometer, Bme280, Relay, Heater }.Where(x => set.Contains(x)).ToList();
     }
 
-    /// <summary>Whether a pin function is used with these features; functions no feature owns (vbat, dht) always are.</summary>
+    /// <summary>Whether a pin function is used with these features; functions no feature owns (vbat) always are.</summary>
     public static bool Uses(IReadOnlyCollection<string> features, string function) =>
         !Functions.TryGetValue(function, out var owners) || owners.Any(o => features.Contains(o));
 
-    /// <summary>Why this set of features cannot be used by the role, or null when it can.</summary>
+    /// <summary>
+    /// Why this set of features cannot be used by the role, or null when it can. An empty set is allowed: the hornet then
+    /// touches none of these pins (a battery watchdog on the heat firmware, a DHT on the meteo one) and, unlike a config
+    /// without "features", does not fall back to the role's default.
+    /// </summary>
     public static string? Validate(string type, IReadOnlyCollection<string> features)
     {
         if (!Supported.TryGetValue(type, out var known))
             return $"тип {type} не настраивается";
-        if (features.Count == 0)
-            return "выберите хотя бы одно назначение";
         if (features.FirstOrDefault(f => !known.Contains(f)) is { } unknown)
             return $"прошивка {type} не умеет «{unknown}»";
         if (features.Contains(Heater) && !features.Contains(Thermometer) && !features.Contains(Bme280))
-            return "обогреву нужен датчик температуры (DS18B20 или BME280)";
+            return "обогреву нужен датчик температуры (термометр или BME280)";
         return null;
     }
 

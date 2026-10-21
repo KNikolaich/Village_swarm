@@ -157,10 +157,19 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
     /// <summary>
     /// Pins to override, keyed as in the config "hw" section (onewire_pin, sda_pin, …). Null keeps the board default.
     /// VbatRatio is the battery divider ratio (R1+R2)/R2 that turns the ADC voltage into the battery voltage.
+    /// Thermometer is the sensor the feature "thermometer" reads (ds18b20, dht11, dht22); null keeps the board's.
     /// </summary>
-    public sealed record PinsRequest(int? OnewirePin = null, int? SdaPin = null, int? SclPin = null, int? RelayPin = null, int? ButtonPin = null, int? VbatPin = null, double? VbatRatio = null);
+    public sealed record PinsRequest(int? OnewirePin = null, int? SdaPin = null, int? SclPin = null, int? RelayPin = null, int? ButtonPin = null, int? VbatPin = null, double? VbatRatio = null,
+        int? DhtPin = null, string? Thermometer = null);
 
-    public sealed record PinsResult(ConfigUpdateStatus Status, string? Error, IReadOnlyList<BoardPins.PinRow> Rows, IReadOnlyList<string> Conflicts, double? VbatRatio = null);
+    /// <summary>Thermometer: the sensor the hornet reads as its thermometer, null for a role without one; ThermometerByHand: set in the config.</summary>
+    public sealed record PinsResult(ConfigUpdateStatus Status, string? Error, IReadOnlyList<BoardPins.PinRow> Rows, IReadOnlyList<string> Conflicts, double? VbatRatio = null,
+        string? Thermometer = null, bool ThermometerByHand = false);
+
+    private static PinsResult Pins(Device device, JsonElement? hw, IReadOnlyList<BoardPins.PinRow> rows, IReadOnlyList<string> conflicts, string? error = null) =>
+        new(error is null ? ConfigUpdateStatus.Updated : ConfigUpdateStatus.BadRequest, error, rows, conflicts, BoardPins.VbatRatio(hw),
+            DeviceFeatures.SupportedBy(device.TypeCode)?.Contains(DeviceFeatures.Thermometer) == true ? BoardPins.ThermometerSensor(device.Hw, hw) : null,
+            BoardPins.ThermometerByHand(hw) is not null);
 
     /// <summary>
     /// Sets pins by hand (where a sensor is wired is not always the default). Rejected when a pin is out of range or
@@ -171,11 +180,13 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
         if (device is null)
             return new PinsResult(ConfigUpdateStatus.NotFound, null, [], []);
-        foreach (var pin in new[] { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin })
+        foreach (var pin in new[] { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin, r.DhtPin })
             if (pin is { } p && !BoardPins.ValidPin(p))
                 return new PinsResult(ConfigUpdateStatus.BadRequest, "pin: от 0 до 39", [], []);
         if (r.VbatRatio is { } ratio && !BoardPins.ValidVbatRatio(ratio))
             return new PinsResult(ConfigUpdateStatus.BadRequest, "Коэффициент делителя: больше 0 и не больше 100", [], []);
+        if (r.Thermometer is { } sensor && !DeviceFeatures.ThermometerSensors.Contains(sensor))
+            return new PinsResult(ConfigUpdateStatus.BadRequest, "Датчик термометра: ds18b20, dht11 или dht22", [], []);
 
         var config = device.Config is { } current
             ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
@@ -192,6 +203,9 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         Set("relay_pin", r.RelayPin);
         Set("button_pin", r.ButtonPin);
         Set("vbat_pin", r.VbatPin);
+        Set("dht_pin", r.DhtPin);
+        if (r.Thermometer is { } t) hw["thermometer"] = t;
+        else hw.Remove("thermometer");
         if (r.VbatRatio is { } vr) hw["vbat_ratio"] = vr;
         else hw.Remove("vbat_ratio");
         var hwElement = JsonDocument.Parse(hw.ToJsonString()).RootElement;
@@ -199,17 +213,17 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         var rows = BoardPins.Rows(device.Hw, device.TypeCode, hwElement, features);
         var conflicts = BoardPins.Conflicts(device.TypeCode, rows, device.Hw, features);
         if (conflicts.Count > 0)
-            return new PinsResult(ConfigUpdateStatus.BadRequest, "Пины конфликтуют: " + string.Join("; ", conflicts), rows, conflicts);
+            return Pins(device, hwElement, rows, conflicts, "Пины конфликтуют: " + string.Join("; ", conflicts));
 
         if (hw.Count == 0) config.Remove("hw"); else config["hw"] = hw;
         device.ConfigRev++;
         config["rev"] = device.ConfigRev;
         device.Config = JsonDocument.Parse(config.ToJsonString());
-        Audit.Record(db, time.GetUtcNow(), by, "device_pins", deviceId, new { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin, r.VbatRatio });
+        Audit.Record(db, time.GetUtcNow(), by, "device_pins", deviceId, new { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin, r.VbatRatio, r.DhtPin, r.Thermometer });
         await db.SaveChangesAsync(ct);
         if (mqtt.IsConnected)
             await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
-        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, conflicts, r.VbatRatio);
+        return Pins(device, hwElement, rows, conflicts);
     }
 
     /// <summary>The pins a hornet uses now, with where each one comes from, and any conflict.</summary>
@@ -221,7 +235,7 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         JsonElement? hw = device.Config?.RootElement.TryGetProperty("hw", out var h) == true ? h : null;
         var features = DeviceFeatures.Effective(device.TypeCode, device.Config?.RootElement);
         var rows = BoardPins.Rows(device.Hw, device.TypeCode, hw, features);
-        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, BoardPins.Conflicts(device.TypeCode, rows, device.Hw, features), BoardPins.VbatRatio(hw));
+        return Pins(device, hw, rows, BoardPins.Conflicts(device.TypeCode, rows, device.Hw, features));
     }
 
     /// <summary>

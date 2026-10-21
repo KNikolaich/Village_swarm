@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
 import { formatAgo, formatValue } from '@/lib/format'
-import { usesPin } from '@/lib/features'
+import { thermometerSensors, usesPin } from '@/lib/features'
 import { candidates, newerBuild as newerBuildFor } from '@/lib/otaRollout'
 import { groupDevices, groupings, mainReadings, quickControls, type Grouping } from '@/lib/swarm'
 import { cn } from '@/lib/utils'
@@ -26,11 +26,11 @@ function asleep(d: DeviceDto): boolean {
 }
 
 /** Pin fields per role, narrowed by the hornet's features; an unknown type shows them all (BoardPins.RoleFunctions). */
-const pinFields = [['onewirePin', 'onewire'], ['sdaPin', 'sda'], ['sclPin', 'scl'], ['relayPin', 'relay'], ['buttonPin', 'button'], ['vbatPin', 'vbat']] as const
+const pinFields = [['onewirePin', 'onewire'], ['dhtPin', 'dht'], ['sdaPin', 'sda'], ['sclPin', 'scl'], ['relayPin', 'relay'], ['buttonPin', 'button'], ['vbatPin', 'vbat']] as const
 const roleFunctions: Record<string, readonly string[]> = {
-  meteo: ['onewire', 'sda', 'scl', 'vbat'],
+  meteo: ['onewire', 'dht', 'sda', 'scl', 'vbat'],
   relay: ['relay', 'button', 'vbat'],
-  heat: ['onewire', 'sda', 'scl', 'relay', 'button', 'vbat'],
+  heat: ['onewire', 'dht', 'sda', 'scl', 'relay', 'button', 'vbat'],
   'guard-cam': ['relay'],
 }
 
@@ -64,7 +64,10 @@ export function PinsPanel({ deviceId, editable, board, type, features }: { devic
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [help, setHelp] = useState<string | null>(null)
   const used = type ? roleFunctions[type] : undefined
-  const keys = pinFields.filter(([, fn]) => (!used || used.includes(fn)) && usesPin(features, fn))
+  // The thermometer's sensor (DS18B20 or DHT) decides between the 1-Wire and the DHT pin; '' in the draft = the board's.
+  const showSensor = pins.data?.thermometer != null && (!features || features.includes('thermometer'))
+  const sensor = draft.thermometer !== undefined ? draft.thermometer || null : (pins.data?.thermometer ?? null)
+  const keys = pinFields.filter(([, fn]) => (!used || used.includes(fn)) && usesPin(features, fn, sensor))
   const showRatio = keys.some(([, fn]) => fn === 'vbat')
 
   async function save() {
@@ -92,8 +95,9 @@ export function PinsPanel({ deviceId, editable, board, type, features }: { devic
       toast.error(t('swarm.ratioInvalid'))
       return
     } else body.vbatRatio = Number(ratioText)
+    const thermometer = draft.thermometer !== undefined ? draft.thermometer || null : pins.data?.thermometerByHand ? (pins.data.thermometer ?? null) : null
     try {
-      await call(api.PUT('/api/devices/{deviceId}/pins', { params: { path: { deviceId } }, body }))
+      await call(api.PUT('/api/devices/{deviceId}/pins', { params: { path: { deviceId } }, body: { ...body, thermometer } }))
       setDraft({})
       toast.success(t('swarm.pinsSaved'))
       await qc.invalidateQueries({ queryKey: ['devices', deviceId, 'pins'] })
@@ -115,9 +119,11 @@ export function PinsPanel({ deviceId, editable, board, type, features }: { devic
             {rows.map((r) => (
               <tr key={r.function} className="border-t border-neutral-800">
                 <td className="py-1 pr-2 text-neutral-400">{r.function}</td>
-                <td className="py-1 pr-2 tabular-nums">{r.function === 'vbat' && board && esp8266Boards.includes(board) ? 'A0' : `GPIO${r.pin}`}</td>
+                <td className={cn('py-1 pr-2 tabular-nums', r.pin == null && 'text-amber-400')}>
+                  {r.pin == null ? t('swarm.pinsUnset') : r.function === 'vbat' && board && esp8266Boards.includes(board) ? 'A0' : `GPIO${r.pin}`}
+                </td>
                 <td className="py-1 text-neutral-500">
-                  {r.source === 'config' ? t('swarm.pinsByHand') : t('swarm.pinsDefault')}{r.note ? ` · ${r.note}` : ''}
+                  {r.source === 'config' ? t('swarm.pinsByHand') : r.source === 'none' ? t('swarm.pinsUnsetHint') : t('swarm.pinsDefault')}{r.note ? ` · ${r.note}` : ''}
                   {r.function === 'vbat' ? ` · ×${ratio ?? 1}` : ''}
                 </td>
               </tr>
@@ -125,8 +131,25 @@ export function PinsPanel({ deviceId, editable, board, type, features }: { devic
           </tbody>
         </table>
       )}
+      {showSensor && !editable && <p className="text-neutral-500">{t('swarm.thermometer')}: {t(`swarm.sensor.${pins.data?.thermometer}`)}</p>}
       {editable && (
         <div className="grid grid-cols-3 gap-2">
+          {showSensor && (
+            <label className="col-span-3 space-y-1">
+              <span className="flex items-center gap-1 text-neutral-500">
+                {t('swarm.thermometer')}
+                <HelpTip text={t('swarm.pinHelp.thermometer')} open={help === 'thermometer'} onToggle={() => setHelp(help === 'thermometer' ? null : 'thermometer')} />
+              </span>
+              <Select
+                value={draft.thermometer ?? (pins.data?.thermometerByHand ? (pins.data.thermometer ?? '') : '')}
+                onChange={(e) => setDraft({ ...draft, thermometer: e.target.value })}
+                className="h-8 w-full text-xs"
+              >
+                <option value="">{t('swarm.sensorBoard').replace('{sensor}', t(`swarm.sensor.${pins.data?.thermometerByHand ? 'unknown' : pins.data?.thermometer}`))}</option>
+                {thermometerSensors.map((s) => <option key={s} value={s}>{t(`swarm.sensor.${s}`)}</option>)}
+              </Select>
+            </label>
+          )}
           {keys.map(([field, label]) => (
             <label key={field} className="space-y-1">
               <span className="flex items-center gap-1 text-neutral-500">
@@ -157,7 +180,7 @@ export function PinsPanel({ deviceId, editable, board, type, features }: { devic
               />
             </label>
           )}
-          {help && <p className="col-span-3 whitespace-pre-line rounded-lg bg-neutral-900 p-2 text-neutral-300">{help === 'ratio' ? t('swarm.pinHelp.ratio') : pinHelp(help, board)}</p>}
+          {help && <p className="col-span-3 whitespace-pre-line rounded-lg bg-neutral-900 p-2 text-neutral-300">{help === 'ratio' || help === 'thermometer' ? t(`swarm.pinHelp.${help}`) : pinHelp(help, board)}</p>}
           <Button size="sm" className="col-span-3" onClick={() => void save()} disabled={Object.keys(draft).length === 0}>{t('swarm.pinsSave')}</Button>
         </div>
       )}

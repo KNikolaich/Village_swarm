@@ -3976,6 +3976,12 @@
             "type": "integer",
             "format": "int32",
             "default": 0
+          },
+          "thermometer": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -5401,6 +5407,19 @@
               "number"
             ],
             "format": "double"
+          },
+          "dhtPin": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "thermometer": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -5430,6 +5449,16 @@
               "number"
             ],
             "format": "double"
+          },
+          "thermometer": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "thermometerByHand": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

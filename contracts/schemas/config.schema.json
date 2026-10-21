@@ -61,7 +61,7 @@
           "heater"
         ]
       },
-      "description": "What the hornet is used for (roles meteo, relay, heat). thermometer: DS18B20 on 1-Wire; bme280: BME280 on I2C; relay: a relay switched by commands; heater: that relay heats and the hornet itself keeps failsafe.heater (needs relay and a sensor). Pins of features not listed are left alone. Absent: the role's default (meteo: thermometer, bme280; relay: relay; heat: thermometer, relay, heater)"
+      "description": "What the hornet is used for (roles meteo, relay, heat). thermometer: a temperature sensor, DS18B20s on 1-Wire or a DHT11/DHT22 (hw.thermometer); bme280: BME280 on I2C; relay: a relay switched by commands; heater: that relay heats and the hornet itself keeps failsafe.heater (needs relay and a sensor). Pins of features not listed are left alone. Absent: the role's default (meteo: thermometer, bme280; relay: relay; heat: thermometer, relay, heater)"
     },
     "failsafe": {
       "type": "object",
@@ -178,6 +178,12 @@
           "minimum": 0,
           "maximum": 48
         },
+        "dht_pin": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 48,
+          "description": "DHT11/DHT22 data pin, used when thermometer is dht11 or dht22"
+        },
         "sda_pin": {
           "type": "integer",
           "minimum": 0,
@@ -216,6 +222,14 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "description": "Divider ratio (R1+R2)/R2, e.g. 5.7 for 47k/10k: battery V = pin V x ratio"
+        },
+        "thermometer": {
+          "enum": [
+            "ds18b20",
+            "dht11",
+            "dht22"
+          ],
+          "description": "Which sensor the feature thermometer reads (roles meteo and heat). ds18b20: one or more on 1-Wire (onewire_pin); dht11 or dht22: one DHT on dht_pin, which also gives humidity. Absent: the board's (dht11 on the esp-01-dht11 module, ds18b20 elsewhere)"
         }
       },
       "additionalProperties": false

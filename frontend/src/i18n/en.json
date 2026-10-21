@@ -626,7 +626,10 @@
       "vbat": "Battery or supply voltage through a divider. Works in the meteo, relay and heat roles and arrives as the Battery voltage metric (V), usable in rules. Empty turns it off. Set the divider ratio too.",
       "vbatEsp8266": "The ESP8266 has one analog input, A0: enter 17.",
       "vbatEsp32c3": "On the ESP32-C3 the ADC is on GPIO0–GPIO4.",
-      "ratio": "Voltage divider ratio: (R1 + R2) / R2, R1 being the upper leg (to +), R2 the lower one (to ground). Voltage = pin reading × ratio. Empty = 1.\nExample: up to 15 V with R1 = 47 kΩ, R2 = 10 kΩ, ratio 5.7.\n+12V → R1 47k → A0 → R2 10k → ground.\nKeep the pin at or below 3.2 V (NodeMCU, D1 mini) or 3.3 V (ESP32).\nFine tuning: new ratio = current × (multimeter / hive reading)."
+      "ratio": "Voltage divider ratio: (R1 + R2) / R2, R1 being the upper leg (to +), R2 the lower one (to ground). Voltage = pin reading × ratio. Empty = 1.\nExample: up to 15 V with R1 = 47 kΩ, R2 = 10 kΩ, ratio 5.7.\n+12V → R1 47k → A0 → R2 10k → ground.\nKeep the pin at or below 3.2 V (NodeMCU, D1 mini) or 3.3 V (ESP32).\nFine tuning: new ratio = current × (multimeter / hive reading).",
+      "dht": "Data pin of a DHT11/DHT22 (roles meteo and heat, when the thermometer is a DHT). GPIO number.",
+      "dhtEsp8266": "Usually GPIO2 on the ESP-01. On NodeMCU and D1 mini, D5 = GPIO14 or D7 = GPIO13 will do.",
+      "thermometer": "What the thermometer is: DS18B20s (one or more on the 1-Wire bus) or one DHT11/DHT22, which also gives humidity. DHT11 and DHT22 are read differently: pick the wrong one and the log says \"DHT read failed\". \"The board's\" is a DHT11 on the ESP-01S DHT11 module and a DS18B20 elsewhere."
     },
     "rename": "Rename",
     "renamed": "Name saved",
@@ -712,7 +715,17 @@
     "sortInvalid": "The place is a whole number from 0 to 9999",
     "sortFailed": "Could not save the place",
     "fwUsb": "Flash over USB",
-    "fwUsbHint": "Connect the board to this computer with a USB cable, press Flash and choose the port. The board's settings (Wi-Fi, hive address, name) are kept: do not tick 'Erase device' in the flashing window. The hornet stays the same, no board replacement needed. When the board is offline this is the only way."
+    "fwUsbHint": "Connect the board to this computer with a USB cable, press Flash and choose the port. The board's settings (Wi-Fi, hive address, name) are kept: do not tick 'Erase device' in the flashing window. The hornet stays the same, no board replacement needed. When the board is offline this is the only way.",
+    "pinsUnset": "not set",
+    "pinsUnsetHint": "the board has none, set it by hand",
+    "thermometer": "Thermometer sensor",
+    "sensorBoard": "the board's ({sensor})",
+    "sensor": {
+      "ds18b20": "DS18B20 (1-Wire)",
+      "dht11": "DHT11",
+      "dht22": "DHT22 (AM2302)",
+      "unknown": "per firmware"
+    }
   },
   "add": {
     "step1": "Hornet and code",
@@ -772,12 +785,12 @@
   "features": {
     "title": "Used for",
     "hint": "What is wired to this hornet. Pins, readings and buttons below follow the choice.",
-    "thermometer": "DS18B20 thermometer",
+    "thermometer": "Thermometer",
     "bme280": "BME280 weather sensor",
     "relay": "Relay",
     "heater": "Heater",
     "help": {
-      "thermometer": "One or more DS18B20 on the 1-Wire bus (onewire pin)",
+      "thermometer": "A temperature sensor: DS18B20s on the 1-Wire bus or a DHT11/DHT22. Which one, and on which pin, is set with the pins below",
       "bme280": "Temperature, humidity and pressure over I2C (sda and scl pins). On the ESP-01 it shares GPIO0 with the relay",
       "relay": "A relay switched by buttons, rules and Telegram (relay pin)",
       "heater": "The relay heats: the hornet keeps the temperature within the limits below by itself, even without the hive. Needs a temperature sensor"
@@ -786,6 +799,7 @@
     "minC": "minimum, °C",
     "maxC": "maximum, °C",
     "maxOnH": "at most, h",
+    "none": "Nothing chosen: the hornet leaves these pins alone, measures no temperature, does not heat and does not switch a relay. It stays connected and still reports its battery.",
     "save": "Save",
     "rejected": "Not saved",
     "notNumber": "Heater limits: numbers please, e.g. 5 or 22.5"

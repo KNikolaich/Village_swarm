@@ -4194,6 +4194,7 @@ export interface components {
              * @default 0
              */
             sort: number;
+            thermometer?: null | string;
         };
         DeviceLogDto: {
             /** Format: int64 */
@@ -4569,12 +4570,18 @@ export interface components {
             vbatPin?: null | number;
             /** Format: double */
             vbatRatio?: null | number;
+            /** Format: int32 */
+            dhtPin?: null | number;
+            thermometer?: null | string;
         };
         PinsView: {
             pins: components["schemas"]["PinRow"][];
             conflicts: string[];
             /** Format: double */
             vbatRatio: null | number;
+            thermometer?: null | string;
+            /** @default false */
+            thermometerByHand: boolean;
         };
         RecoveryCodesDto: {
             recoveryCodes: string[];

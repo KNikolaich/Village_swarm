@@ -18,14 +18,16 @@ public sealed record DeviceDto(
     string DeviceId, string Name, string Type, string Status, int? ZoneId, string? Zone,
     string? Hw, string? Fw, string? Mac, string? Ip, int? Rssi, int? Boot, DateTimeOffset? LastSeenAt,
     JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev, int? SleepS, string SleepMode, string Driver,
-    IReadOnlyList<string>? Features = null, IReadOnlyList<string>? SupportedFeatures = null, HeaterLimitsDto? Heater = null, int Sort = 0);
+    IReadOnlyList<string>? Features = null, IReadOnlyList<string>? SupportedFeatures = null, HeaterLimitsDto? Heater = null, int Sort = 0,
+    string? Thermometer = null);
 
 /// <summary>The limits a heater keeps by itself (config failsafe.heater, or the firmware defaults).</summary>
 public sealed record HeaterLimitsDto(double MinC, double MaxC, int MaxOnS);
 
 /// <summary>Device registry reads (spec 6.5). Editing, commands and provisioning come in later steps.</summary>
 /// <summary>Pins of a hornet: what each function uses, from the board default or the config, and conflicts. VbatRatio is the battery divider ratio set in the config (null: 1.0).</summary>
-public sealed record PinsView(IReadOnlyList<BoardPins.PinRow> Pins, IReadOnlyList<string> Conflicts, double? VbatRatio);
+/// Thermometer is the sensor its feature "thermometer" reads (ds18b20, dht11, dht22; null for a role without one), ThermometerByHand whether the config sets it.
+public sealed record PinsView(IReadOnlyList<BoardPins.PinRow> Pins, IReadOnlyList<string> Conflicts, double? VbatRatio, string? Thermometer = null, bool ThermometerByHand = false);
 
 public sealed class DeviceQueries(HiveDbContext db)
 {
@@ -50,11 +52,18 @@ public sealed class DeviceQueries(HiveDbContext db)
         d.DeviceId, d.Name, d.TypeCode, d.Status.ToString().ToLowerInvariant(), d.ZoneId, d.Zone?.Name,
         d.Hw, d.FwVersion, d.Mac, d.Ip, d.Rssi, d.Boot, d.LastSeenAt,
         d.Info?.RootElement.Clone(), d.State?.RootElement.Clone(), d.ConfigRev, d.ConfigAppliedRev, DeviceConfigService.SleepS(d), DeviceConfigService.SleepMode(d), d.Driver,
-        Features(d), d.Driver == Drivers.Hornet ? DeviceFeatures.SupportedBy(d.TypeCode) : null, HeaterLimits(d), d.Sort);
+        Features(d), d.Driver == Drivers.Hornet ? DeviceFeatures.SupportedBy(d.TypeCode) : null, HeaterLimits(d), d.Sort,
+        Thermometer(d));
 
     /// <summary>Features of a native hornet (Tasmota devices keep their own settings).</summary>
     private static IReadOnlyList<string>? Features(Device d) =>
         d.Driver == Drivers.Hornet ? DeviceFeatures.Effective(d.TypeCode, d.Config?.RootElement) : null;
+
+    /// <summary>The sensor a hornet with the feature "thermometer" reads (a DHT also gives humidity), else null.</summary>
+    private static string? Thermometer(Device d) =>
+        Features(d)?.Contains(DeviceFeatures.Thermometer) == true
+            ? BoardPins.ThermometerSensor(d.Hw, d.Config?.RootElement.TryGetProperty("hw", out var hw) == true ? hw : null)
+            : null;
 
     private static HeaterLimitsDto? HeaterLimits(Device d)
     {
@@ -177,7 +186,7 @@ public static class DevicesModule
 
         devices.MapGet("/{deviceId}/pins", async Task<Results<Ok<PinsView>, NotFound>> (string deviceId, DeviceConfigService configs, CancellationToken ct) =>
             await configs.GetPinsAsync(deviceId, ct) is { Status: ConfigUpdateStatus.Updated } r
-                ? TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio))
+                ? TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio, r.Thermometer, r.ThermometerByHand))
                 : TypedResults.NotFound());
 
         devices.MapPut("/{deviceId}/pins", async Task<Results<Ok<PinsView>, NotFound, ValidationProblem>> (
@@ -188,7 +197,7 @@ public static class DevicesModule
                 {
                     ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
                     ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["pins"] = [r.Error ?? "bad pins"] }),
-                    _ => TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio)),
+                    _ => TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio, r.Thermometer, r.ThermometerByHand)),
                 };
             })
             .RequireAuthorization(HiveRoles.CanControl);
