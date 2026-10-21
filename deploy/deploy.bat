@@ -61,5 +61,5 @@ wsl bash -lc "cd '%REPO%' && bash deploy/build-images.sh %HIVE_PLATFORM% && bash
 set "CODE=%ERRORLEVEL%"
 echo.
 if "%CODE%"=="0" (echo Готово.) else (echo Остановилось с ошибкой, код %CODE%.)
-pause
+if not "%NOPAUSE%"=="1" pause
 exit /b %CODE%
