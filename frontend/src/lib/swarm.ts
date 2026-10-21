@@ -79,7 +79,7 @@ export function mainReadings(d: DeviceDto, latest: readonly LatestValueDto[]): L
     return i < 0 ? readingOrder.length : i
   }
   return latest
-    .filter((v) => v.deviceId === d.deviceId && showsMetric(d.features, v.metric, d.hw))
+    .filter((v) => v.deviceId === d.deviceId && showsMetric(d.features, v.metric, d.thermometer))
     .sort((a, b) => rank(a.metric) - rank(b.metric) || a.metric.localeCompare(b.metric))
 }
 

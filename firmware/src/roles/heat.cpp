@@ -1,6 +1,7 @@
 // Role heat: the universal ESP8266 hornet. Config "features" says what this one is used for, and only those pins are
 // touched (on the ESP-01 the relay, 1-Wire and I2C share GPIO0/GPIO2):
 //   thermometer  DS18B20s on hw.onewire_pin          -> temperature, temperature_2...
+//                or, with hw.thermometer dht11/dht22, one DHT on hw.dht_pin -> temperature, humidity
 //   bme280       BME280 on hw.sda_pin/hw.scl_pin      -> temperature, humidity, pressure (BME280 first in the names)
 //   relay        relay on hw.relay_pin (+ hw.button_pin): cmd/relay {channel, set, for_s}, retained state/{channel}
 //   heater       the relay heats: the hornet keeps failsafe.heater itself (spec 5.6, HeaterFailsafe.h) using the
@@ -12,6 +13,7 @@
 
 #include <Adafruit_BME280.h>
 #include <Battery.h>
+#include <DHTesp.h>
 #include <DallasTemperature.h>
 #include <Features.h>
 #include <HeaterFailsafe.h>
@@ -19,6 +21,10 @@
 #include <OneWire.h>
 #include <RelayTimer.h>
 #include <Wire.h>
+
+#ifndef HW_DHT_PIN
+#define HW_DHT_PIN -1
+#endif
 
 namespace {
 
@@ -37,6 +43,7 @@ public:
         std::vector<const char*> c;
         if (dsCount_ > 0) c.push_back("sensor.ds18b20");
         if (bmeOk_) c.push_back("sensor.bme280");
+        if (dhtOk_) c.push_back(sensor_ == TempSensor::Dht22 ? "sensor.dht22" : "sensor.dht11");
         if (features_.has(kRelay)) c.push_back("relay");
         if (features_.has(kRelay) && buttonPin_ >= 0) c.push_back("button");
         if (features_.has(kHeater)) c.push_back("heater.failsafe");
@@ -50,6 +57,7 @@ public:
             m.push_back("humidity");
             m.push_back("pressure");
         }
+        if (dhtOk_) m.push_back(dhtHumidity_.c_str());
         if (battery_.enabled()) m.push_back("battery_voltage");
         return m;
     }
@@ -57,8 +65,8 @@ public:
     void setup(Core& core) override {
         core_ = &core;
         core.onCommand("relay", [this](JsonObjectConst p) { return command(p); });
-        configure(Features{kThermometer | kRelay | kHeater}.normalized(), HW_ONEWIRE_PIN, HW_SDA_PIN, HW_SCL_PIN,
-                  HW_RELAY_PIN, HW_RELAY_ACTIVE_LOW != 0, HW_BUTTON_PIN);
+        configure(Features{kThermometer | kRelay | kHeater}.normalized(), TempSensor::Ds18b20, HW_ONEWIRE_PIN, HW_DHT_PIN,
+                  HW_SDA_PIN, HW_SCL_PIN, HW_RELAY_PIN, HW_RELAY_ACTIVE_LOW != 0, HW_BUTTON_PIN);
     }
 
     void applyConfig(Core& core, JsonObjectConst config) override {
@@ -81,9 +89,10 @@ public:
         if (topics::isValidSegment(ch)) channel_ = ch;
         maxOnS_ = relay["max_on_s"] | 0U;
 
-        const bool changed = configure(features, hw["onewire_pin"] | HW_ONEWIRE_PIN, hw["sda_pin"] | HW_SDA_PIN, hw["scl_pin"] | HW_SCL_PIN,
-                                       hw["relay_pin"] | HW_RELAY_PIN, hw["relay_active_low"] | (HW_RELAY_ACTIVE_LOW != 0),
-                                       hw["button_pin"] | HW_BUTTON_PIN);
+        const TempSensor sensor = parseTempSensor(hw["thermometer"].as<const char*>(), TempSensor::Ds18b20);
+        const bool changed = configure(features, sensor, hw["onewire_pin"] | HW_ONEWIRE_PIN, hw["dht_pin"] | HW_DHT_PIN,
+                                       hw["sda_pin"] | HW_SDA_PIN, hw["scl_pin"] | HW_SCL_PIN, hw["relay_pin"] | HW_RELAY_PIN,
+                                       hw["relay_active_low"] | (HW_RELAY_ACTIVE_LOW != 0), hw["button_pin"] | HW_BUTTON_PIN);
         if (changed) core.refreshInfo();
         if (features_.has(kRelay)) publishState(core);
     }
@@ -128,15 +137,18 @@ private:
     }
 
     // Returns true when what the hornet does changed (info is sent again).
-    bool configure(Features features, int onewire, int sda, int scl, int relayPin, bool activeLow, int buttonPin) {
-        const bool changed = features.bits != features_.bits;
+    bool configure(Features features, TempSensor sensor, int onewire, int dhtPin, int sda, int scl, int relayPin, bool activeLow,
+                   int buttonPin) {
+        const bool changed = features.bits != features_.bits || sensor != sensor_ || dhtPin != dhtPin_;
         const bool sensorsChanged = changed || onewire != onewirePin_ || sda != sdaPin_ || scl != sclPin_;
         if (changed && features_.has(kRelay) && !features.has(kRelay)) {
             commanded_ = false;
             write(false);  // the relay is no longer used: leave it off
         }
         features_ = features;
+        sensor_ = sensor;
         onewirePin_ = onewire;
+        dhtPin_ = dhtPin;
         sdaPin_ = sda;
         sclPin_ = scl;
         if (features_.has(kRelay) && (relayPin != relayPin_ || activeLow != activeLow_)) {
@@ -154,9 +166,17 @@ private:
     }
 
     void initSensors() {
+        // The thermometer is either DS18B20s or a DHT (hw.thermometer), never both.
+        const bool dht = features_.has(kThermometer) && sensor_ != TempSensor::Ds18b20;
         dsCount_ = 0;
         bmeOk_ = false;
-        if (features_.has(kThermometer) && onewirePin_ >= 0 && onewirePin_ != relayPin_) {
+        dhtOk_ = false;
+        if (dht && dhtPin_ >= 0 && dhtPin_ != relayPin_) {
+            dht_.setup(dhtPin_, sensor_ == TempSensor::Dht22 ? DHTesp::DHT22 : DHTesp::DHT11);
+            dhtOk_ = true;
+            dhtFailures_ = 0;
+        }
+        if (features_.has(kThermometer) && !dht && onewirePin_ >= 0 && onewirePin_ != relayPin_) {
             oneWire_.begin(onewirePin_);
             dallas_.setOneWire(&oneWire_);
             dallas_.begin();
@@ -167,13 +187,20 @@ private:
             Wire.begin(sdaPin_, sclPin_);
             bmeOk_ = bme_.begin(0x76, &Wire) || bme_.begin(0x77, &Wire);
         }
+        // temperature, temperature_2... in order: BME280 first, then the DHT or the DS18B20s.
         names_.clear();
         if (bmeOk_) names_.push_back("temperature");
+        if (dhtOk_) {
+            names_.push_back(names_.empty() ? String("temperature") : String("temperature_2"));
+            dhtName_ = names_.back();
+            dhtHumidity_ = bmeOk_ ? "humidity_2" : "humidity";
+        }
         for (uint8_t i = 0; i < dsCount_; ++i)
             names_.push_back(names_.empty() ? String("temperature") : "temperature_" + String(names_.size() + 1));
         warned_ = false;
-        Serial.printf("[heat] features=%u ds18b20=%u bme280=%s relay=%d (1-wire %d, i2c %d/%d)\n", features_.bits, dsCount_,
-                      bmeOk_ ? "yes" : "no", features_.has(kRelay) ? relayPin_ : -1, onewirePin_, sdaPin_, sclPin_);
+        Serial.printf("[heat] features=%u ds18b20=%u dht=%s bme280=%s relay=%d (1-wire %d, dht %d, i2c %d/%d)\n", features_.bits,
+                      dsCount_, dhtOk_ ? (sensor_ == TempSensor::Dht22 ? "dht22" : "dht11") : "no", bmeOk_ ? "yes" : "no",
+                      features_.has(kRelay) ? relayPin_ : -1, onewirePin_, dhtPin_, sdaPin_, sclPin_);
     }
 
     void readSensors(Core& core, uint32_t now, bool sleepy) {
@@ -200,9 +227,9 @@ private:
 
     void read(Core& core, uint32_t now, bool publish) {
         if (publish && battery_.enabled() && !features_.has(kRelay)) core.publishTele("battery_voltage", battery_.read(), "V");
-        if (!bmeOk_ && dsCount_ == 0) {
+        if (!bmeOk_ && dsCount_ == 0 && !dhtOk_) {
             if (!warned_ && (features_.has(kThermometer) || features_.has(kBme280)))
-                core.log(LogLevel::Warn, "no sensor found (DS18B20 or BME280)");
+                core.log(LogLevel::Warn, "no sensor found (DS18B20, DHT or BME280)");
             warned_ = true;
             return;
         }
@@ -217,6 +244,18 @@ private:
             if (publish && !isnan(h)) core.publishTele("humidity", h, "%");
             if (publish && !isnan(p) && p > 300) core.publishTele("pressure", p, "hPa");
             name = 1;
+        }
+        if (dhtOk_) {
+            // About 25 ms; a heater reads every 30 s, well apart for a DHT11 (1 s) or a DHT22 (2 s).
+            const TempAndHumidity v = dht_.getTempAndHumidity();
+            if (dht_.getStatus() != DHTesp::ERROR_NONE || isnan(v.temperature) || isnan(v.humidity)) {
+                if (++dhtFailures_ == 3) core.log(LogLevel::Warn, String("DHT read failed: ") + dht_.getStatusString());
+            } else {
+                dhtFailures_ = 0;
+                if (isnan(control)) control = v.temperature;
+                if (publish) core.publishTele(dhtName_.c_str(), v.temperature, "C");
+                if (publish) core.publishTele(dhtHumidity_.c_str(), v.humidity, "%");
+            }
         }
         for (uint8_t i = 0; i < dsCount_; ++i, ++name) {
             const float t = dallas_.getTempCByIndex(i);
@@ -304,8 +343,15 @@ private:
     int onewirePin_ = -1;
     int sdaPin_ = -1;
     int sclPin_ = -1;
+    int dhtPin_ = HW_DHT_PIN;
+    TempSensor sensor_ = TempSensor::Ds18b20;
     uint8_t dsCount_ = 0;
     bool bmeOk_ = false;
+    DHTesp dht_;
+    bool dhtOk_ = false;
+    uint8_t dhtFailures_ = 0;
+    String dhtName_ = "temperature";
+    String dhtHumidity_ = "humidity";
     bool warned_ = false;
     std::vector<String> names_;
     uint32_t teleIntervalMs_ = 60000;

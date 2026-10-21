@@ -91,4 +91,37 @@ public class BoardPinsTests
         var rows = BoardPins.Rows("esp-01", "heat", null, features);
         Assert.Contains(BoardPins.Conflicts("heat", rows, "esp-01", features), c => c.StartsWith("GPIO0:"));
     }
+
+    [Fact]
+    public void A_dht_thermometer_uses_the_dht_pin_instead_of_1wire()
+    {
+        string[] thermometer = [DeviceFeatures.Thermometer];
+        var rows = BoardPins.Rows("esp-01", "heat", Hw("""{ "thermometer": "dht22", "dht_pin": 2 }"""), thermometer);
+        Assert.Equal([("dht", (int?)2, "config")], rows.Select(r => (r.Function, r.Pin, r.Source)));
+        Assert.Equal(DeviceFeatures.Dht22, BoardPins.ThermometerSensor("esp-01", Hw("""{ "thermometer": "dht22" }""")));
+
+        // The ESP-01S DHT11 module reads its DHT by default; other boards read DS18B20s.
+        Assert.Equal(DeviceFeatures.Dht11, BoardPins.ThermometerSensor("esp-01-dht11", null));
+        Assert.Equal(DeviceFeatures.Ds18b20, BoardPins.ThermometerSensor("esp-01", Hw("""{ "thermometer": "dht21" }""")));
+        Assert.Contains(BoardPins.Rows("esp-01-dht11", "meteo", null, thermometer), r => r is { Function: "dht", Pin: 2, Source: "default" });
+    }
+
+    [Fact]
+    public void A_needed_pin_without_a_default_is_shown_as_not_set()
+    {
+        // esp-01 has no DHT pin of its own: the hornet would read nothing until one is given.
+        var rows = BoardPins.Rows("esp-01", "meteo", Hw("""{ "thermometer": "dht11" }"""), [DeviceFeatures.Thermometer]);
+        Assert.Equal([("dht", (int?)null, "none")], rows.Select(r => (r.Function, r.Pin, r.Source)));
+        Assert.Empty(BoardPins.Conflicts("meteo", rows, "esp-01", [DeviceFeatures.Thermometer]));
+        // An optional pin (the battery divider) is still left out when not set.
+        Assert.DoesNotContain(BoardPins.Rows("esp-01", "meteo", null, [DeviceFeatures.Thermometer]), r => r.Function == "vbat");
+    }
+
+    [Fact]
+    public void A_dht_and_a_bme280_on_the_same_esp01_pin_conflict()
+    {
+        string[] features = [DeviceFeatures.Thermometer, DeviceFeatures.Bme280];
+        var rows = BoardPins.Rows("esp-01", "meteo", Hw("""{ "thermometer": "dht22", "dht_pin": 2 }"""), features);
+        Assert.Contains(BoardPins.Conflicts("meteo", rows, "esp-01", features), c => c.StartsWith("GPIO2:"));
+    }
 }

@@ -81,6 +81,35 @@ public sealed class PinsTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task The_thermometer_can_be_a_dht_on_its_own_pin()
+    {
+        await RegisterAsync("meteo-pins4");
+        var admin = await hive.LoginAsync();
+
+        using var unknown = await admin.PutAsJsonAsync("/api/devices/meteo-pins4/pins", new { thermometer = "dht21" });
+        Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+
+        using var ok = await admin.PutAsJsonAsync("/api/devices/meteo-pins4/pins", new { thermometer = "dht22", dhtPin = 7 });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        var body = await ok.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(("dht22", true), (body.GetProperty("thermometer").GetString(), body.GetProperty("thermometerByHand").GetBoolean()));
+        var functions = body.GetProperty("pins").EnumerateArray().Select(p => p.GetProperty("function").GetString()).ToList();
+        Assert.Contains("dht", functions);
+        Assert.DoesNotContain("onewire", functions);  // a DHT thermometer leaves the 1-Wire pin alone
+
+        var device = await hive.QueryAsync(db => db.Devices.SingleAsync(d => d.DeviceId == "meteo-pins4"));
+        var hw = device.Config!.RootElement.GetProperty("hw");
+        Assert.Equal(("dht22", 7), (hw.GetProperty("thermometer").GetString(), hw.GetProperty("dht_pin").GetInt32()));
+        var dto = await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-pins4");
+        Assert.Equal("dht22", dto.GetProperty("thermometer").GetString());
+
+        // Back to the board's sensor: no thermometer key is left behind.
+        using var reset = await admin.PutAsJsonAsync("/api/devices/meteo-pins4/pins", new { });
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+        Assert.False((await reset.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("thermometerByHand").GetBoolean());
+    }
+
+    [Fact]
     public async Task Viewers_cannot_move_pins()
     {
         await RegisterAsync("meteo-pins2");

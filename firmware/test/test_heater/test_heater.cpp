@@ -141,6 +141,14 @@ static void test_features_heater_implies_relay() {
     TEST_ASSERT_EQUAL_UINT8(0, Features::parseOne(nullptr));
 }
 
+static void test_thermometer_sensor_from_config() {
+    using hornet::TempSensor;
+    TEST_ASSERT_TRUE(hornet::parseTempSensor("dht22", TempSensor::Ds18b20) == TempSensor::Dht22);
+    TEST_ASSERT_TRUE(hornet::parseTempSensor("ds18b20", TempSensor::Dht11) == TempSensor::Ds18b20);
+    TEST_ASSERT_TRUE(hornet::parseTempSensor(nullptr, TempSensor::Dht11) == TempSensor::Dht11);  // the build's default
+    TEST_ASSERT_TRUE(hornet::parseTempSensor("dht21", TempSensor::Ds18b20) == TempSensor::Ds18b20);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_follows_commands_between_limits);
@@ -152,5 +160,6 @@ int main(int, char**) {
     RUN_TEST(test_lost_sensor_runs_antifreeze_cycle);
     RUN_TEST(test_failed_reads_do_not_count);
     RUN_TEST(test_features_heater_implies_relay);
+    RUN_TEST(test_thermometer_sensor_from_config);
     return UNITY_END();
 }
