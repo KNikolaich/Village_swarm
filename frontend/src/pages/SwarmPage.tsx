@@ -250,7 +250,12 @@ const canBecome = (type: string, role: string) => role === 'heat' && (type === '
 function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: Schemas['FirmwareBuildDto'][]; onDone: () => void }) {
   const [busy, setBusy] = useState(false)
   const [usbOpen, setUsbOpen] = useState<string | null>(null)
+  const qc = useQueryClient()
   const env = `${device.type}-${device.hw ?? '?'}`
+  // A deep sleeper cannot take the command while it sleeps: the hive keeps the wish and sends it at the next wake-up.
+  const sleeper = !!device.sleepS && device.sleepMode === 'deep'
+  const waiting = useQuery({ queryKey: ['ota', 'pending'], queryFn: () => call(api.GET('/api/ota/pending')), enabled: sleeper })
+  const pending = waiting.data?.find((p) => p.deviceId === device.deviceId)
   const suitable = builds.filter((b) => b.board === device.hw && (b.role === device.type || canBecome(device.type, b.role)))
 
   async function update(build: Schemas['FirmwareBuildDto']) {
@@ -272,6 +277,30 @@ function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: 
     toast.error(reason ? `${t('swarm.updateRefused')}: ${reason}` : t('swarm.updateRefused'))
   }
 
+  async function queue(build: Schemas['FirmwareBuildDto']) {
+    const risky = (device.hw ?? '').startsWith('esp-01')
+    const text = t('swarm.waitConfirm').replace('{name}', device.name).replace('{to}', build.version ?? '?')
+    const notes = [risky ? t('swarm.updateRisk') : '', build.signed ? '' : t('swarm.updateUnsigned')].filter(Boolean)
+    if (!window.confirm(notes.length ? `${text}\n\n${notes.join('\n\n')}` : text)) return
+    setBusy(true)
+    const { response, error } = await api.PUT('/api/devices/{deviceId}/ota/pending', { params: { path: { deviceId: device.deviceId } }, body: { build: build.build } })
+    setBusy(false)
+    if (response.ok) {
+      toast.success(t('swarm.waitQueued'))
+      await qc.invalidateQueries({ queryKey: ['ota', 'pending'] })
+      return
+    }
+    const reason = (error as { errors?: Record<string, string[]> } | undefined)?.errors?.ota?.[0]
+    toast.error(reason ? `${t('swarm.updateRefused')}: ${reason}` : t('swarm.updateRefused'))
+  }
+
+  async function cancelWaiting() {
+    setBusy(true)
+    await api.DELETE('/api/devices/{deviceId}/ota/pending', { params: { path: { deviceId: device.deviceId } } })
+    setBusy(false)
+    await qc.invalidateQueries({ queryKey: ['ota', 'pending'] })
+  }
+
   return (
     <div className="space-y-2 text-xs">
       <p className="text-neutral-400">{t('swarm.fwRunning').replace('{version}', device.fw ?? '?')}</p>
@@ -288,6 +317,13 @@ function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: 
             <div className="flex shrink-0 items-center gap-2">
               {current ? (
                 <span className="text-neutral-500">{t('swarm.fwCurrent')}</span>
+              ) : sleeper && pending?.build === b.build ? (
+                <>
+                  <span className="text-amber-400">{t('swarm.waitPending').replace('{n}', String(pending.attempts))}</span>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void cancelWaiting()}>{t('common.cancel')}</Button>
+                </>
+              ) : sleeper ? (
+                <Button size="sm" disabled={busy} onClick={() => void queue(b)}>{t('swarm.fwInstallOnWake')}</Button>
               ) : (
                 <Button size="sm" disabled={busy || device.status !== 'online'} onClick={() => void update(b)}>{t('swarm.fwInstall')}</Button>
               )}

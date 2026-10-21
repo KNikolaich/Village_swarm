@@ -728,7 +728,11 @@
       "dht11": "DHT11",
       "dht22": "DHT22 (AM2302)",
       "unknown": "per firmware"
-    }
+    },
+    "fwInstallOnWake": "Update on next wake-up",
+    "waitConfirm": "\"{name}\" is asleep on battery and does not hear commands now. The hive remembers the update to {to} and sends it when the hornet next wakes. It will not go back to sleep until the firmware is installed, so it stays up once for a long while and spends some charge. Continue?",
+    "waitQueued": "The update waits for the hornet to wake up",
+    "waitPending": "waiting for wake-up, tries: {n}"
   },
   "add": {
     "step1": "Hornet and code",

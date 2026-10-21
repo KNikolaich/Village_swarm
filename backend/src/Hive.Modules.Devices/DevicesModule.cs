@@ -94,6 +94,9 @@ public static class DevicesModule
         services.AddHostedService<CommandTimeoutJob>();
         services.AddScoped<DeviceConfigService>();
         services.AddScoped<OtaService>();
+        services.AddScoped<OtaPendingStore>();
+        services.AddSingleton<OtaWakeDelivery>();
+        services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<OtaWakeDelivery>());
         services.AddSingleton<OtaRolloutRunner>();
         services.AddHostedService(sp => sp.GetRequiredService<OtaRolloutRunner>());
         services.AddSingleton<SleepingDeviceWatch>();
@@ -217,6 +220,7 @@ public static class DevicesModule
 
         app.MapProvisioningEndpoints();
         app.MapOtaEndpoints();
+        app.MapOtaPendingEndpoints();
         app.MapOtaRolloutEndpoints();
 
         var modes = app.MapGroup("/api/modes").WithTags("modes");

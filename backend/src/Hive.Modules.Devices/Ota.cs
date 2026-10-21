@@ -22,9 +22,11 @@ public enum OtaStatus
     UnknownBuild,
     Refused,
     BrokerDown,
+    /// <summary>Only checked: the build suits the hornet (used when an update is queued for a sleeper's next wake-up).</summary>
+    Valid,
 }
 
-public sealed record OtaResult(OtaStatus Status, string? Error = null, CommandDto? Command = null);
+public sealed record OtaResult(OtaStatus Status, string? Error = null, CommandDto? Command = null, string? Version = null);
 
 /// <summary>
 /// Over-the-air update (spec 5.5): checks that the build suits the hornet, then sends it the "ota" command with the
@@ -47,7 +49,11 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
     /// </summary>
     public static bool CanBecome(string type, string role) => role == "heat" && type is ("meteo" or "relay");
 
-    public async Task<OtaResult> StartAsync(string deviceId, string build, string by, CancellationToken ct)
+    /// <summary>
+    /// <paramref name="needOnline"/> false: a deep sleeper that has just woken (its status may not have caught up yet).
+    /// <paramref name="checkOnly"/>: validate and stop before anything is sent.
+    /// </summary>
+    public async Task<OtaResult> StartAsync(string deviceId, string build, string by, CancellationToken ct, bool needOnline = true, bool checkOnly = false)
     {
         var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Status != DeviceStatus.Disabled, ct);
         if (device is null)
@@ -62,7 +68,7 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
             return new OtaResult(OtaStatus.Refused, "the build has no version: rebuild the firmware");
         if (b.Version == device.FwVersion)
             return new OtaResult(OtaStatus.Refused, $"already on {b.Version}");
-        if (device.Status != DeviceStatus.Online)
+        if (needOnline && device.Status != DeviceStatus.Online)
             return new OtaResult(OtaStatus.Refused, "the hornet is not online");
 
         var file = Path.Combine(b.Dir, "firmware.bin");
@@ -72,6 +78,9 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
         var hive = await HiveUrlAsync(ct);
         if (string.IsNullOrEmpty(hive))
             return new OtaResult(OtaStatus.Refused, "set the hive address in Settings first");
+
+        if (checkOnly)
+            return new OtaResult(OtaStatus.Valid, null, null, b.Version);
 
         var image = await File.ReadAllBytesAsync(file, ct);
         var md5 = Convert.ToHexStringLower(MD5.HashData(image));

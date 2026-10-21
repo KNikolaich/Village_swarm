@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Hive.Contracts;
 using Hive.Domain;
 using Hive.Simulator;
 using Hive.Simulator.Roles;
@@ -183,4 +184,70 @@ public sealed class OtaTests(HiveFixture hive)
         Assert.Equal(image, await ok.Content.ReadAsByteArrayAsync());
         Assert.Equal(HttpStatusCode.NotFound, (await hornet.GetAsync("/api/ota/no-such-build/firmware.bin")).StatusCode);
     }
+    /// <summary>A deep sleeper cannot take a command while it sleeps: the hive keeps the wish and sends "ota" when the hornet wakes.</summary>
+    [Fact]
+    public async Task An_update_for_a_sleeper_waits_and_goes_out_when_the_hornet_wakes()
+    {
+        AddBuild("meteo-ota-sleep", "meteo", Board, "9.9.9+sleep");
+        await RegisterAsync("meteo-ota-sl");
+        await RegisterAsync("meteo-ota-awake");
+        var admin = await hive.LoginAsync();
+        using var sleepy = await admin.PatchAsJsonAsync("/api/devices/meteo-ota-sl/config", new { sleepS = 600 });
+        Assert.Equal(HttpStatusCode.OK, sleepy.StatusCode);
+
+        // only a deep sleeper may wait
+        using var refused = await admin.PutAsJsonAsync("/api/devices/meteo-ota-awake/ota/pending", new { build = "meteo-ota-sleep" });
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+
+        using var queued = await admin.PutAsJsonAsync("/api/devices/meteo-ota-sl/ota/pending", new { build = "meteo-ota-sleep" });
+        Assert.Equal(HttpStatusCode.NoContent, queued.StatusCode);
+        var list = await admin.GetFromJsonAsync<JsonElement>("/api/ota/pending");
+        var entry = list.EnumerateArray().Single(p => p.GetProperty("deviceId").GetString() == "meteo-ota-sl");
+        Assert.Equal(("meteo-ota-sleep", "9.9.9+sleep", 0), (entry.GetProperty("build").GetString(), entry.GetProperty("version").GetString(), entry.GetProperty("attempts").GetInt32()));
+
+        using var client = new MqttClientFactory().CreateMqttClient();
+        string? seen = null;
+        client.ApplicationMessageReceivedAsync += m =>
+        {
+            seen = m.ApplicationMessage.ConvertPayloadToString();
+            return Task.CompletedTask;
+        };
+        await client.ConnectAsync(new MqttClientOptionsBuilder().WithTcpServer(hive.MqttHost, hive.MqttPort).WithClientId("ota-sleep-watch").Build());
+        await client.SubscribeAsync("vs/v1/dev/meteo-ota-sl/cmd/ota");
+
+        // a health that is not from a wake-up sends nothing
+        await PublishHealthAsync(client, "meteo-ota-sl", "poweron");
+        await Task.Delay(1200);
+        Assert.Null(seen);
+
+        await PublishHealthAsync(client, "meteo-ota-sl", "deepsleep");
+        for (var i = 0; i < 50 && seen is null; i++)
+            await Task.Delay(100);
+        using var cmd = JsonDocument.Parse(seen ?? throw new TimeoutException("no ota command at the wake-up"));
+        Assert.Equal("9.9.9+sleep", cmd.RootElement.GetProperty("version").GetString());
+        // it stays queued (attempt 1) until the hornet reports the new version
+        await hive.WaitForAsync(async _ => (await admin.GetFromJsonAsync<JsonElement>("/api/ota/pending")).EnumerateArray()
+            .Any(p => p.GetProperty("deviceId").GetString() == "meteo-ota-sl" && p.GetProperty("attempts").GetInt32() == 1), "attempt counted");
+
+        // the hornet came back on the new version: the next wake-up finds nothing left to do
+        await hive.QueryAsync(async db =>
+        {
+            (await db.Devices.SingleAsync(d => d.DeviceId == "meteo-ota-sl")).FwVersion = "9.9.9+sleep";
+            await db.SaveChangesAsync();
+            return 0;
+        });
+        seen = null;
+        await PublishHealthAsync(client, "meteo-ota-sl", "deepsleep");
+        await hive.WaitForAsync(async _ => !(await admin.GetFromJsonAsync<JsonElement>("/api/ota/pending")).EnumerateArray()
+            .Any(p => p.GetProperty("deviceId").GetString() == "meteo-ota-sl"), "the finished wish removed");
+        Assert.Null(seen);
+
+        // a version the hornet already runs is not queued
+        using var again = await admin.PutAsJsonAsync("/api/devices/meteo-ota-sl/ota/pending", new { build = "meteo-ota-sleep" });
+        Assert.Equal(HttpStatusCode.BadRequest, again.StatusCode);   // it already runs that version
+    }
+
+    private static Task PublishHealthAsync(IMqttClient client, string id, string resetReason) => client.PublishStringAsync(
+        $"vs/v1/dev/{id}/health",
+        JsonSerializer.Serialize(new { v = 1, id = Ulid.New(), ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), uptime_s = 3, rssi = -60, heap_free = 20000, reset_reason = resetReason }));
 }

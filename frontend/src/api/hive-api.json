@@ -536,6 +536,93 @@
         }
       }
     },
+    "/api/devices/{deviceId}/ota/pending": {
+      "put": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueueOtaRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/ota/pending": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OtaPendingDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/devices/{deviceId}/zone": {
       "put": {
         "tags": [
@@ -5244,6 +5331,39 @@
           }
         }
       },
+      "OtaPendingDto": {
+        "required": [
+          "deviceId",
+          "build",
+          "version",
+          "requestedAt",
+          "requestedBy",
+          "attempts"
+        ],
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "build": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requestedBy": {
+            "type": "string"
+          },
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "OtaRolloutDto": {
         "required": [
           "state",
@@ -5585,6 +5705,17 @@
           "thermometerByHand": {
             "type": "boolean",
             "default": false
+          }
+        }
+      },
+      "QueueOtaRequest": {
+        "required": [
+          "build"
+        ],
+        "type": "object",
+        "properties": {
+          "build": {
+            "type": "string"
           }
         }
       },

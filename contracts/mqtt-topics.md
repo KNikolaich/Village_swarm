@@ -30,6 +30,9 @@ Sleeping hornets (config `sleep_s` > 0, `sleep_mode` `deep` or absent): on each 
 so `status` stays `online` while it sleeps; the hive marks it offline when it misses several wake-ups
 (last message older than 3 x `sleep_s` + 60 s). Commands are not delivered while it sleeps; config is retained
 and applied at the next wake-up.
+An over-the-air update is therefore queued on the hive (`PUT /api/devices/{id}/ota/pending {build}`, `DELETE` cancels, `GET /api/ota/pending` lists):
+at the first `health` of a wake-up (`reset_reason` `deepsleep`) the hive sends the usual `ota` command, which the hornet runs at once instead of going back to sleep.
+It tries on at most 5 wake-ups and stops when the hornet reports the new version.
 With `sleep_mode` `light` the hornet stays connected (Wi-Fi power saving, readings every `sleep_s`), so it
 behaves like any other hornet: LWT, commands and config work as usual.
 
