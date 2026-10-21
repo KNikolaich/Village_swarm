@@ -76,7 +76,10 @@ public sealed class HiveSensorReader(string sysRoot)
         }
     }
 
-    public static double? DiskUsedPct(string path)
+    public static double? DiskUsedPct(string path) => Disk(path)?.UsedPct;
+
+    /// <summary>Size and free space of the disk (mount) that holds <paramref name="path"/>.</summary>
+    public static DiskSpace? Disk(string path)
     {
         try
         {
@@ -87,13 +90,30 @@ public sealed class HiveSensorReader(string sysRoot)
                 .MaxBy(d => d.RootDirectory.FullName.Length);
             if (drive is null || drive.TotalSize == 0)
                 return null;
-            return Math.Round(100.0 * (drive.TotalSize - drive.AvailableFreeSpace) / drive.TotalSize, 1);
+            return new DiskSpace(drive.TotalSize, drive.AvailableFreeSpace);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException)
         {
             return null;
         }
     }
+}
+
+/// <summary>How big a disk is and how much of it is free, in bytes.</summary>
+public sealed record DiskSpace(long Total, long Free)
+{
+    public double UsedPct => Math.Round(100.0 * (Total - Free) / Total, 1);
+}
+
+/// <summary>Reads the disk that holds a path; replaced in tests with a small pretend disk.</summary>
+public interface IDiskSpaceReader
+{
+    DiskSpace? Read(string path);
+}
+
+public sealed class SystemDiskSpaceReader : IDiskSpaceReader
+{
+    public DiskSpace? Read(string path) => HiveSensorReader.Disk(path);
 }
 
 /// <summary>Limit with hysteresis: reports when a value goes over the limit and when it is back to normal.</summary>

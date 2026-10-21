@@ -12,6 +12,8 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Hive.Modules.Telemetry;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -103,6 +105,7 @@ public static class RetentionModule
     public static IServiceCollection AddRetentionModule(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<RetentionOptions>(configuration.GetSection(RetentionOptions.Section));
+        services.TryAddSingleton<IDiskSpaceReader, SystemDiskSpaceReader>();
         services.AddScoped<RetentionService>();
         services.AddHostedService<RetentionJob>();
         return services;

@@ -13,13 +13,13 @@ public sealed class RetentionTests(HiveFixture hive)
 {
     private static readonly byte[] Jpeg = [0xFF, 0xD8, 0xFF, 0xD9];
 
-    private async Task<string> AddPhotoAsync(string name, MediaKind kind, EventSeverity? severity, int ageDays, bool pinned = false)
+    private async Task<string> AddPhotoAsync(string name, MediaKind kind, EventSeverity? severity, int ageDays, bool pinned = false, int size = 4)
     {
         var ts = DateTimeOffset.UtcNow.AddDays(-ageDays);
         var path = $"photos/retention-test/{name}.jpg";
         var full = Path.Combine(hive.MediaRoot, path);
         Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-        await File.WriteAllBytesAsync(full, Jpeg);
+        await File.WriteAllBytesAsync(full, size == Jpeg.Length ? Jpeg : [.. Jpeg, .. new byte[size - Jpeg.Length]]);
         await hive.QueryAsync(async db =>
         {
             string? eventId = null;
@@ -28,7 +28,7 @@ public sealed class RetentionTests(HiveFixture hive)
                 eventId = Hive.Contracts.Ulid.New(ts);
                 db.Events.Add(new DeviceEvent { Id = eventId, DeviceId = "retention-cam", Type = "motion", Severity = s, Ts = ts, ReceivedAt = ts, Payload = JsonDocument.Parse("{}") });
             }
-            db.Media.Add(new MediaItem { Id = name, DeviceId = "retention-cam", EventId = eventId, Kind = kind, Ts = ts, ReceivedAt = ts, Path = path, Bytes = Jpeg.Length, Sha256 = name, Pinned = pinned });
+            db.Media.Add(new MediaItem { Id = name, DeviceId = "retention-cam", EventId = eventId, Kind = kind, Ts = ts, ReceivedAt = ts, Path = path, Bytes = size, Sha256 = name, Pinned = pinned });
             await db.SaveChangesAsync();
             return 0;
         });
@@ -87,6 +87,45 @@ public sealed class RetentionTests(HiveFixture hive)
         Assert.False(File.Exists(info10));
         Assert.True(File.Exists(alarm40) && File.Exists(pinnedOld));
         Assert.False(File.Exists(alarm100));
+    }
+
+    /// <summary>A pretend small disk: the photos under the media root plus a fixed amount of other data (database, backups).</summary>
+    private sealed class SmallDisk(string root, long total, long other) : Hive.Modules.Telemetry.IDiskSpaceReader
+    {
+        public Hive.Modules.Telemetry.DiskSpace? Read(string path)
+        {
+            var photos = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
+            return new Hive.Modules.Telemetry.DiskSpace(total, total - other - photos);
+        }
+    }
+
+    [Fact]
+    public async Task A_disk_at_90_percent_loses_only_as_many_of_the_oldest_ordinary_photos_as_it_takes_to_get_to_80()
+    {
+        // 30 ordinary photos of 1 KB (10 to 39 days old), 3 young alarms and one pinned photo, all on a 100 KB disk
+        for (var age = 10; age < 40; age++)
+            await AddPhotoAsync($"s-info{age}", MediaKind.Photo, EventSeverity.Info, age, size: 1000);
+        foreach (var age in new[] { 40, 45, 50 })
+            await AddPhotoAsync($"s-alarm{age}", MediaKind.Photo, EventSeverity.Alarm, age, size: 1000);
+        await AddPhotoAsync("s-pinned", MediaKind.Photo, EventSeverity.Info, 300, pinned: true, size: 1000);
+        const long total = 100_000;
+        var inMedia = Directory.EnumerateFiles(hive.MediaRoot, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
+        var disk = new SmallDisk(hive.MediaRoot, total, other: 90_000 - inMedia);   // 90 % used
+        Assert.Equal(90.0, disk.Read(hive.MediaRoot)!.UsedPct);
+
+        var result = await WithServiceAsync(s => ActivatorUtilities.CreateInstance<RetentionService>(
+            hive.App.Services.CreateScope().ServiceProvider, disk).RelieveDiskAsync(CancellationToken.None));
+
+        var after = disk.Read(hive.MediaRoot)!.UsedPct;
+        Assert.InRange(after, 79.0, 80.5);   // down to the target, not further
+        Assert.InRange(result.PhotoBytes, 9_900, 11_000);
+        // the oldest went, the youngest stayed, alarms and the pinned photo were not touched
+        for (var age = 30; age < 40; age++)
+            Assert.False(await HasRowAsync($"s-info{age}"), $"info {age} days");
+        for (var age = 10; age < 26; age++)
+            Assert.True(await HasRowAsync($"s-info{age}"), $"info {age} days");
+        Assert.True(await HasRowAsync("s-alarm40") && await HasRowAsync("s-alarm45") && await HasRowAsync("s-alarm50") && await HasRowAsync("s-pinned"));
+        Assert.Equal(1, result.PressureLevel);   // the first step was enough
     }
 
     [Fact]

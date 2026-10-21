@@ -230,6 +230,8 @@ public sealed class OtaTests(HiveFixture hive)
             .Any(p => p.GetProperty("deviceId").GetString() == "meteo-ota-sl" && p.GetProperty("attempts").GetInt32() == 1), "attempt counted");
 
         // the hornet came back on the new version: the next wake-up finds nothing left to do
+        // (the health messages sent above may still be in the ingest queue, and writing the device row back: let them finish first)
+        await Task.Delay(1500);
         await hive.QueryAsync(async db =>
         {
             (await db.Devices.SingleAsync(d => d.DeviceId == "meteo-ota-sl")).FwVersion = "9.9.9+sleep";

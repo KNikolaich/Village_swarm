@@ -23,7 +23,7 @@ public sealed record RetentionResult(
 
 /// <summary>The daily cleanup (spec 7.4) and the emergency one when the disk fills up.</summary>
 public sealed partial class RetentionService(
-    HiveDbContext db, MediaStore media, IOptions<RetentionOptions> options, TimeProvider time, ILogger<RetentionService> logger)
+    HiveDbContext db, MediaStore media, IDiskSpaceReader disks, IOptions<RetentionOptions> options, TimeProvider time, ILogger<RetentionService> logger)
 {
     public const string LastRunKey = "retention.last";
     private const int Batch = 500;
@@ -31,7 +31,7 @@ public sealed partial class RetentionService(
     [GeneratedRegex(@"^telemetry_(\d{4})_(\d{2})$")]
     private static partial Regex PartitionName();
 
-    public double? DiskUsedPct() => HiveSensorReader.DiskUsedPct(media.Root);
+    public double? DiskUsedPct() => disks.Read(media.Root)?.UsedPct;
 
     /// <summary>The normal schedule: photos by age, old months of readings into hourly rows, health, logs, housekeeping.</summary>
     public async Task<RetentionResult> RunDailyAsync(CancellationToken ct)
@@ -62,7 +62,9 @@ public sealed partial class RetentionService(
 
     /// <summary>
     /// The disk is above its limit: step by step, ordinary photos first, until it is below the target or nothing more
-    /// may go (pinned photos and young alarm photos stay).
+    /// may go (pinned photos and young alarm photos stay). Each step removes the oldest eligible photos and stops as soon
+    /// as the disk would be at its target, so a disk that is full of something else (the database, backups) does not
+    /// cost the family all its photos.
     /// </summary>
     public async Task<RetentionResult> RelieveDiskAsync(CancellationToken ct)
     {
@@ -70,9 +72,11 @@ public sealed partial class RetentionService(
         var total = new RetentionResult(0, 0, 0, 0, 0, 0);
         for (var level = 1; level <= RetentionPolicy.MaxPressureLevel; level++)
         {
-            if (DiskUsedPct() is not { } used || used < (level == 1 ? o.DiskHighPct : o.DiskTargetPct))
+            if (disks.Read(media.Root) is not { } disk || (level == 1 ? disk.UsedPct < o.DiskHighPct : disk.UsedPct <= o.DiskTargetPct))
                 break;
-            var step = await DeletePhotosAsync(level, time.GetUtcNow(), ct);
+            // What has to leave the disk to bring it down to the target; a photo goes whole, so a little more may.
+            var budget = (long)Math.Ceiling((disk.UsedPct - o.DiskTargetPct) / 100.0 * disk.Total);
+            var step = await DeletePhotosAsync(level, time.GetUtcNow(), ct, budget);
             total += step with { PressureLevel = step.PhotosDeleted > 0 ? level : 0 };
         }
         if (total.PhotosDeleted > 0)
@@ -87,7 +91,7 @@ public sealed partial class RetentionService(
     }
 
     /// <summary>Deletes the photos the policy lets go at <paramref name="level"/>: files first, then rows, in batches.</summary>
-    internal async Task<RetentionResult> DeletePhotosAsync(int level, DateTimeOffset now, CancellationToken ct)
+    internal async Task<RetentionResult> DeletePhotosAsync(int level, DateTimeOffset now, CancellationToken ct, long? budgetBytes = null)
     {
         var o = options.Value;
         var oldest = now - RetentionPolicy.YoungestDeletable(level, o);
@@ -111,19 +115,25 @@ public sealed partial class RetentionService(
                 break;
             (lastTs, lastId) = (page[^1].Ts, page[^1].Id);
 
-            var go = page.Where(p => RetentionPolicy.ShouldDelete(false, p.Kind, p.Severity, p.Ts, now, level, o)).ToList();
-            foreach (var p in go)
+            var ids = new List<string>();
+            var enough = false;
+            foreach (var p in page.Where(p => RetentionPolicy.ShouldDelete(false, p.Kind, p.Severity, p.Ts, now, level, o)))
             {
                 DeleteFile(p.Path);
                 if (p.ThumbPath is not null)
                     DeleteFile(p.ThumbPath);
                 bytes += p.Bytes;
+                ids.Add(p.Id);
+                if (budgetBytes is { } budget && bytes >= budget)
+                {
+                    enough = true;
+                    break;
+                }
             }
-            if (go.Count > 0)
-            {
-                var ids = go.Select(p => p.Id).ToList();
+            if (ids.Count > 0)
                 deleted += await db.Media.Where(m => ids.Contains(m.Id)).ExecuteDeleteAsync(ct);
-            }
+            if (enough)
+                break;
         }
         return new RetentionResult(deleted, bytes, 0, 0, 0, 0);
     }
