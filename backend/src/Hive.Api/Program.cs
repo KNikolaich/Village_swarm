@@ -8,6 +8,7 @@ using Hive.Infrastructure.Identity;
 using Hive.Infrastructure.Mqtt;
 using Hive.Modules.Assistant;
 using Hive.Modules.Backup;
+using Hive.Modules.Cluster;
 using Hive.Modules.Devices;
 using Hive.Modules.Events;
 using Hive.Modules.Media;
@@ -57,6 +58,7 @@ builder.Services.AddNotifyModule(builder.Configuration);
 builder.Services.AddAssistantModule(builder.Configuration);
 builder.Services.AddWeatherModule(builder.Configuration);
 builder.Services.AddRulesModule();
+builder.Services.AddClusterModule(builder.Configuration);
 builder.Services.AddScoped<WifiRollout>();
 builder.Services.AddBackupModule(builder.Configuration);
 builder.Services.AddRetentionModule(builder.Configuration);
@@ -118,6 +120,7 @@ if (behindProxy)
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseClusterReadOnly();
 
 app.MapUsersEndpoints();
 app.MapSettingsEndpoints();
@@ -134,6 +137,7 @@ app.MapWeatherEndpoints();
 app.MapRulesEndpoints();
 app.MapBackupEndpoints();
 app.MapRetentionEndpoints();
+app.MapClusterEndpoints();
 app.MapHub<LiveHub>(LiveHub.Path);
 app.MapGet("/api/monitor", (long? since, MqttMonitor monitor) => TypedResults.Ok(monitor.Since(since ?? 0)))
     .RequireAuthorization(HiveRoles.AdminOnly)

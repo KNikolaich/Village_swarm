@@ -13,12 +13,12 @@ namespace Hive.Modules.Notify;
 /// Turns ingested events into outbox rows per linked chat (spec 6.7): info only in the feed, warn silent,
 /// alarm/critical with sound and photos; the same alarm again within the window is grouped ("×N").
 /// </summary>
-public sealed class NotificationPlanner(IServiceScopeFactory scopes, IOptions<TelegramOptions> options, IOptions<HiveOptions> hive, TimeProvider time)
+public sealed class NotificationPlanner(IServiceScopeFactory scopes, IOptions<TelegramOptions> options, IOptions<HiveOptions> hive, NodeState node, TimeProvider time)
     : IIngestListener
 {
     public async Task OnIngestedAsync(IReadOnlyList<IngestItem> items, CancellationToken ct)
     {
-        var events = items.OfType<DeviceEventReceived>().Where(e => e.Severity >= EventSeverity.Warn).ToList();
+        var events = items.OfType<DeviceEventReceived>().Where(e => e.Severity >= EventSeverity.Warn && node.Notifies(e.DeviceId)).ToList();
         if (events.Count == 0 || !options.Value.Enabled)
             return;
 

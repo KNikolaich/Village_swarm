@@ -388,7 +388,10 @@
     "monitor_threshold": "Out of range",
     "monitor_normal": "Back in range",
     "monitor_stale": "Thermometer went silent",
-    "monitor_resumed": "Thermometer reporting again"
+    "monitor_resumed": "Thermometer reporting again",
+    "home_offline": "Contact with home lost",
+    "home_offline_long": "Home is offline",
+    "home_online": "Contact with home restored"
   },
   "severity": {
     "info": "Info",
@@ -1096,5 +1099,10 @@
       "purple": "Purple",
       "gray": "Gray"
     }
+  },
+  "cluster": {
+    "observer": "City node: shows a copy of the events. Changes are made on the main node, at home.",
+    "homeDown": "Home has not answered for {m} min. Waiting for it.",
+    "standby": "Home has not answered for {m} min and hornets write here. The city node has taken over the alarms; rules only notify, commands by hand."
   }
 }

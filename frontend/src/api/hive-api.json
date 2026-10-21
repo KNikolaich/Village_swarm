@@ -676,6 +676,25 @@
         }
       }
     },
+    "/api/cluster": {
+      "get": {
+        "tags": [
+          "cluster"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/monitor": {
       "get": {
         "tags": [
@@ -3617,6 +3636,43 @@
           }
         }
       },
+      "ClusterDto": {
+        "required": [
+          "enabled",
+          "node",
+          "role",
+          "home",
+          "activeNode"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "node": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "home": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HomeStatusDto"
+              }
+            ]
+          },
+          "activeNode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "CommandDto": {
         "required": [
           "cid",
@@ -4447,6 +4503,30 @@
             "format": "double"
           },
           "maxOnS": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "HomeStatusDto": {
+        "required": [
+          "phase",
+          "lastHeartbeatAt",
+          "silentSeconds"
+        ],
+        "type": "object",
+        "properties": {
+          "phase": {
+            "type": "string"
+          },
+          "lastHeartbeatAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "silentSeconds": {
             "type": "integer",
             "format": "int32"
           }
@@ -6901,6 +6981,9 @@
     },
     {
       "name": "retention"
+    },
+    {
+      "name": "cluster"
     },
     {
       "name": "monitor"

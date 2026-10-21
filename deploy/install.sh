@@ -2,8 +2,9 @@
 # Installs or re-configures the hive on a Raspberry Pi (spec 13.4). Idempotent: run it again after moving
 # the RPi to another network (refreshes the addresses) or to change options; passwords in .env are kept.
 #
-#   sudo ./install.sh [--host ADDR]... [--rtc] [--w1-pin N] [--no-sensors] [--yes]
+#   sudo ./install.sh [--host ADDR]... [--rtc] [--w1-pin N] [--no-sensors] [--node home|city] [--yes]
 #
+# --node city installs the city node on a Debian VM (docs/city-node.md); the default is the home node.
 # --host adds an address the UI will be opened by later, e.g. the dacha IP while preparing the RPi in the city.
 #
 # Run it from the folder ship.sh copied to the RPi (or from /opt/hive). Images come from images/*.tar.gz
@@ -16,12 +17,14 @@ W1_PIN=4
 SENSORS=1
 ASSUME_YES=0
 EXTRA_HOSTS=()
+NODE=home
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--host) EXTRA_HOSTS+=("$2"); shift ;;
 		--rtc) RTC=1 ;;
 		--w1-pin) W1_PIN="$2"; shift ;;
 		--no-sensors) SENSORS=0 ;;
+		--node) NODE="$2"; shift ;;
 		--yes|-y) ASSUME_YES=1 ;;
 		-h|--help) sed -n '2,12p' "$0"; exit 0 ;;
 		*) echo "unknown option: $1" >&2; exit 2 ;;
@@ -98,7 +101,7 @@ fi
 if [ "$SRC" != "$HIVE_DIR" ]; then
 	say "Копирую файлы в $HIVE_DIR"
 	mkdir -p "$HIVE_DIR"
-	cp -r "$SRC/compose.yaml" "$SRC/compose.home.yaml" "$SRC/compose.zigbee.yaml" "$SRC/.env.example" "$SRC/mosquitto" \
+	cp -r "$SRC/compose.yaml" "$SRC/compose.home.yaml" "$SRC/compose.zigbee.yaml" "$SRC/compose.city.yaml" "$SRC/.env.example" "$SRC/mosquitto" \
 		"$SRC/install.sh" "$SRC/update.sh" "$SRC/restore.sh" "$HIVE_DIR/"
 fi
 chmod +x "$HIVE_DIR/install.sh" "$HIVE_DIR/update.sh" "$HIVE_DIR/restore.sh"
@@ -121,7 +124,17 @@ set_env() { # key value: replace or append, value written literally
 get_env() { grep -E "^$1=" "$ENV" | tail -1 | cut -d= -f2-; }
 secret() { openssl rand -hex 16; }
 
-for key in PG_PASSWORD MQTT_ADMIN_PASSWORD; do
+case "$NODE" in
+	home) ;;
+	city)
+		set_env COMPOSE_FILE compose.yaml:compose.city.yaml
+		SENSORS=0
+		;;
+	*) die "--node: home или city" ;;
+esac
+keys="PG_PASSWORD MQTT_ADMIN_PASSWORD"
+[ "$NODE" = city ] && keys="$keys CITY_MQTT_PASSWORD"
+for key in $keys; do
 	case "$(get_env $key)" in ""|change-me) set_env "$key" "$(secret)" ;; esac
 done
 admin_password=""

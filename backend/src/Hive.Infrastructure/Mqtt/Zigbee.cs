@@ -113,7 +113,20 @@ public sealed class ZigbeeLogin(MqttGateway mqtt, DynamicSecurity dynsec, IOptio
         if (!options.Value.Enabled || string.IsNullOrEmpty(options.Value.MqttPassword))
             return Task.CompletedTask;
         mqtt.Connected += Provision;
-        return mqtt.IsConnected ? Provision(cancellationToken) : Task.CompletedTask;
+        // Not awaited: the broker's first answers can take ten seconds (the api has no permissions yet), and a host must start without waiting.
+        if (mqtt.IsConnected)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Provision(CancellationToken.None);
+                }
+                catch (Exception)
+                {
+                    // the next (re)connect of the api tries again
+                }
+            }, CancellationToken.None);
+        return Task.CompletedTask;
     }
 
     private Task Provision(CancellationToken ct) =>

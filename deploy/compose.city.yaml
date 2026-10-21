@@ -1,0 +1,20 @@
+# City node (spec 11, 13.6): a Debian VM on the city Proxmox, reached from home through the WireGuard tunnel only.
+# Same images as at home. It watches home, keeps a copy of the events, and takes over the alarms when home is gone.
+# install.sh --node city sets COMPOSE_FILE=compose.yaml:compose.city.yaml in .env. Fill in TELEGRAM__TOKEN with the CITY's own bot.
+services:
+  api:
+    environment:
+      Hive__Node: city
+      Hive__Role: observer
+      Cluster__Enabled: "true"
+      # The login the home bridge uses on this broker: the api creates it, home's .env has the same CITY_MQTT_PASSWORD.
+      Cluster__BridgePassword: ${CITY_MQTT_PASSWORD:?set CITY_MQTT_PASSWORD in .env}
+      # No sensors on a VM; the hive-city device would only be noise.
+      Hive__Sensors__Enabled: "false"
+    mem_limit: 512m
+  postgres:
+    mem_limit: 1g
+  # The broker listens on 1883 for the home bridge and for hornets that reach the city directly: keep the port closed to the internet
+  # (firewall: only the WireGuard tunnel and, if hornets connect directly, their network).
+  mosquitto:
+    mem_limit: 128m

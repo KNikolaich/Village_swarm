@@ -10,4 +10,30 @@ if [ ! -f "$file" ]; then
 	echo "dynamic security initialised for $MQTT_ADMIN_USER"
 fi
 chown -R mosquitto:mosquitto /mosquitto/data
+
+# Home node only: copy the hornets' topics to the city broker and take the city's back (spec 11.2). Rewritten at every start.
+mkdir -p /mosquitto/config/conf.d
+rm -f /mosquitto/config/conf.d/city-bridge.conf
+if [ -n "${CITY_MQTT_HOST:-}" ]; then
+	: "${CITY_MQTT_PASSWORD:?CITY_MQTT_PASSWORD is not set}"
+	cat >/mosquitto/config/conf.d/city-bridge.conf <<EOF
+connection city
+address ${CITY_MQTT_HOST}:${CITY_MQTT_PORT:-1883}
+remote_clientid hive-home-bridge
+remote_username ${CITY_MQTT_USER:-bridge-home}
+remote_password ${CITY_MQTT_PASSWORD}
+bridge_protocol_version mqttv311
+try_private true
+cleansession false
+start_type automatic
+restart_timeout 5 60
+keepalive_interval 30
+# What home publishes goes to the city (hornets, home's heartbeat); what the city says comes back.
+topic vs/v1/dev/# out 1
+topic vs/v1/hive/home/# out 1
+topic vs/v1/hive/city/# in 1
+topic vs/v1/hive/active both 1
+EOF
+	echo "bridge to the city: ${CITY_MQTT_HOST}:${CITY_MQTT_PORT:-1883}"
+fi
 exec mosquitto -c /mosquitto/config/mosquitto.conf

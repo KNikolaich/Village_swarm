@@ -23,6 +23,9 @@ public static class Texts
         "wifi" => "Смена Wi-Fi",
         "device_offline" => "Шершень не на связи",
         "device_online" => "Шершень снова на связи",
+        "home_offline" => "Связь с домом потеряна",
+        "home_offline_long" => "Дом не на связи",
+        "home_online" => "Связь с домом восстановлена",
         "backup" => "Проблема с бэкапом",
         "disk_cleanup" => "Диск заполнен: удалены старые фото",
         "backup_cleared" => "Бэкапы снова в порядке",
@@ -62,6 +65,12 @@ public static class Texts
             text += RolloutDetail(e.Payload.RootElement);
         if (e.Type == "device_offline" && e.Payload.RootElement.TryGetProperty("minutes", out var gone))
             text += $"\nне отвечает уже {gone.GetInt32()} мин";
+        if (e.Type == "home_offline" && e.Payload.RootElement.TryGetProperty("seconds", out var quiet))
+            text += $"\nот дома нет вестей уже {quiet.GetInt32() / 60} мин";
+        if (e.Type == "home_offline_long" && e.Payload.RootElement.TryGetProperty("minutes", out var longQuiet))
+            text += $"\nДом не отвечает {longQuiet.GetInt32()} мин: возможно, пропали питание или интернет на даче.";
+        if (e.Type == "home_online" && e.Payload.RootElement.TryGetProperty("downSeconds", out var wasDown))
+            text += $"\nне отвечал {wasDown.GetInt32() / 60} мин";
         if (e.Type == "wifi" && e.Payload.RootElement.TryGetProperty("ssid", out var network))
             text += WifiDetail(network.GetString(), e.Payload.RootElement.TryGetProperty("phase", out var phase) ? phase.GetString() : null);
         if (e.Type == "disk_cleanup")

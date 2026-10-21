@@ -964,6 +964,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cluster": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ClusterDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/monitor": {
         parameters: {
             query?: never;
@@ -4109,6 +4144,13 @@ export interface components {
             currentPassword: string;
             newPassword: string;
         };
+        ClusterDto: {
+            enabled: boolean;
+            node: string;
+            role: string;
+            home: null | components["schemas"]["HomeStatusDto"];
+            activeNode: null | string;
+        };
         CommandDto: {
             cid: string;
             deviceId: string;
@@ -4318,6 +4360,13 @@ export interface components {
             maxC: number;
             /** Format: int32 */
             maxOnS: number;
+        };
+        HomeStatusDto: {
+            phase: string;
+            /** Format: date-time */
+            lastHeartbeatAt: null | string;
+            /** Format: int32 */
+            silentSeconds: number;
         };
         HttpValidationProblemDetails: {
             type?: null | string;

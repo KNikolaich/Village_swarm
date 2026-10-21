@@ -28,6 +28,7 @@ public static class InfrastructureServices
         services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<DynamicSecurityResponses>());
         services.AddSingleton<DynamicSecurity>();
         services.AddZigbeeBridge();
+        services.AddSingleton<NodeState>();
         services.AddHostedService<ZigbeeLogin>();
         return services;
     }

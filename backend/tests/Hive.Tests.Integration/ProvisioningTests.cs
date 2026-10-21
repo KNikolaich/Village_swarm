@@ -66,6 +66,31 @@ public sealed class DynSecFixture : IAsyncLifetime
             b.UseSetting("Auth:AuthRequestsPerMinute", "10000");
         });
         _ = App.Server;
+        await WarmUpAsync();
+    }
+
+    /// <summary>
+    /// On a broker that was just set up the api sets its own permissions during its first seconds and is dropped once while it does:
+    /// a dynamic security command sent in that window is lost. Tests start when enrolling a device works.
+    /// </summary>
+    private async Task WarmUpAsync()
+    {
+        var client = App.CreateClient();
+        using var login = await client.PostAsJsonAsync("/api/auth/login", new { login = "admin", password = HiveFixture.AdminPassword });
+        login.EnsureSuccessStatusCode();
+        var deadline = DateTime.UtcNow.AddSeconds(90);
+        while (DateTime.UtcNow < deadline)
+        {
+            using var code = await client.PostAsJsonAsync("/api/provision/codes", new { deviceId = "warm-up1", type = "meteo", name = "warm up" });
+            if (code.IsSuccessStatusCode)
+            {
+                var issued = await code.Content.ReadFromJsonAsync<Hive.Modules.Devices.EnrollmentCodeDto>();
+                using var enrolled = await App.CreateClient().PostAsJsonAsync("/api/provision/enroll", new { code = issued!.Code, mac = "02:00:00:00:ff:01" });
+                if (enrolled.IsSuccessStatusCode)
+                    return;
+            }
+            await Task.Delay(1000);
+        }
     }
 
     public async Task DisposeAsync()

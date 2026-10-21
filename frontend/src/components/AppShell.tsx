@@ -8,6 +8,7 @@ import { t } from '@/i18n'
 import type { LiveState } from '@/lib/live'
 import { cn } from '@/lib/utils'
 import { HoneycombLogo } from '@/components/HoneycombLogo'
+import { ClusterBanner } from '@/components/ClusterBanner'
 import { LanguageSwitch } from '@/components/LanguageSwitch'
 
 // Labels are looked up when the shell renders, not when this file loads: the hive language is read before the
@@ -84,6 +85,7 @@ export function AppShell({ live }: { live: LiveState }) {
           </div>
         </header>
 
+        <ClusterBanner />
         <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-24 md:pb-8">
           <Outlet />
         </main>

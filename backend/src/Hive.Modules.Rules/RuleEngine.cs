@@ -128,12 +128,14 @@ public sealed class RuleDataLoader(HiveDbContext db, WeatherService weather)
 /// <summary>Judges one rule now and, when it passes, carries out its actions and writes the journal.</summary>
 public sealed class RuleRunner(
     HiveDbContext db, RuleDataLoader loader, CommandService commands, ArmService arm, IngestQueue ingest,
-    IOptions<HiveOptions> hive, TimeProvider time, ILogger<RuleRunner> logger)
+    IOptions<HiveOptions> hive, NodeState node, TimeProvider time, ILogger<RuleRunner> logger)
 {
     private static readonly SemaphoreSlim Gate = new(1, 1);
 
     public async Task RunAsync(int ruleId, CancellationToken ct)
     {
+        if (!node.RulesRun)
+            return;  // an observer node keeps a copy: its rules never run
         await Gate.WaitAsync(ct);
         try
         {
@@ -197,6 +199,9 @@ public sealed class RuleRunner(
 
     private async Task<(bool Ok, string Result)> ActAsync(Rule row, RuleAction action, double? value, DateTimeOffset now, CancellationToken ct)
     {
+        // A standby node only tells people things; commands, snapshots and mode changes wait for the active node or a person.
+        if (!node.RulesMayCommand && action.Kind is "command" or "snapshot" or "set_mode")
+            return (false, "standby: not on the active node");
         try
         {
             switch (action.Kind)

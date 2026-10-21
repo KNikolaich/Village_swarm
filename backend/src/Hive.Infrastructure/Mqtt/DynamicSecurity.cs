@@ -144,6 +144,37 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
         ], ct, ignoreErrors: true);
     }
 
+    /// <summary>
+    /// The login the home node's Mosquitto bridge uses on the city broker: it may write what home publishes (hornet topics and
+    /// home's own hive topics) and read what the city says (its hive topics and the active node). Created once, when missing.
+    /// </summary>
+    public async Task ProvisionBridgeAsync(string user, string password, CancellationToken ct)
+    {
+        if (!Enabled)
+            return;
+        const string role = "bridge-home";
+        var prefix = Topics.Prefix;
+        var existing = await SendAsync([new JsonObject { ["command"] = "getClient", ["username"] = user }], ct, ignoreErrors: true);
+        if (existing.FirstOrDefault()?["error"] is null)
+            return;
+        await SendAsync(
+        [
+            new JsonObject { ["command"] = "createRole", ["rolename"] = role },
+            Acl("addRoleACL", role, "publishClientSend", $"{prefix}/dev/#", 0),
+            Acl("addRoleACL", role, "publishClientSend", $"{prefix}/hive/home/#", 0),
+            Acl("addRoleACL", role, "publishClientSend", $"{prefix}/hive/active", 0),
+            Acl("addRoleACL", role, "subscribePattern", $"{prefix}/hive/city/#", 0),
+            Acl("addRoleACL", role, "subscribePattern", $"{prefix}/hive/active", 0),
+            new JsonObject
+            {
+                ["command"] = "createClient",
+                ["username"] = user,
+                ["password"] = password,
+                ["roles"] = new JsonArray { new JsonObject { ["rolename"] = role } },
+            },
+        ], ct, ignoreErrors: true);
+    }
+
     /// <summary>Removes the hornet's login, e.g. when it is deleted or factory reset (spec 5.3).</summary>
     public async Task RevokeHornetAsync(string deviceId, CancellationToken ct)
     {
