@@ -156,13 +156,18 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
         var prefix = Topics.Prefix;
         var existing = await SendAsync([new JsonObject { ["command"] = "getClient", ["username"] = user }], ct, ignoreErrors: true);
         if (existing.FirstOrDefault()?["error"] is null)
+        {
+            // A login made by an earlier version: only the permissions added since are put on its role (nothing changes when it has them).
+            await SendAsync([Acl("addRoleACL", role, "publishClientSend", $"{prefix}/sync/home/#", 0)], ct, ignoreErrors: true);
             return;
+        }
         await SendAsync(
         [
             new JsonObject { ["command"] = "createRole", ["rolename"] = role },
             Acl("addRoleACL", role, "publishClientSend", $"{prefix}/dev/#", 0),
             Acl("addRoleACL", role, "publishClientSend", $"{prefix}/hive/home/#", 0),
             Acl("addRoleACL", role, "publishClientSend", $"{prefix}/hive/active", 0),
+            Acl("addRoleACL", role, "publishClientSend", $"{prefix}/sync/home/#", 0),
             Acl("addRoleACL", role, "subscribePattern", $"{prefix}/hive/city/#", 0),
             Acl("addRoleACL", role, "subscribePattern", $"{prefix}/hive/active", 0),
             new JsonObject

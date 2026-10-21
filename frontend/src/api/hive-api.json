@@ -3621,6 +3621,33 @@
           }
         }
       },
+      "CatalogCounts": {
+        "required": [
+          "zones",
+          "devices",
+          "rules",
+          "users"
+        ],
+        "type": "object",
+        "properties": {
+          "zones": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "devices": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "rules": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "users": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "ChangePasswordRequest": {
         "required": [
           "currentPassword",
@@ -3642,7 +3669,9 @@
           "node",
           "role",
           "home",
-          "activeNode"
+          "activeNode",
+          "catalogAt",
+          "catalog"
         ],
         "type": "object",
         "properties": {
@@ -3669,6 +3698,23 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "catalogAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "catalog": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CatalogCounts"
+              }
             ]
           }
         }

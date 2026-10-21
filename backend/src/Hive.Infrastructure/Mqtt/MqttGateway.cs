@@ -71,6 +71,14 @@ public sealed class MqttGateway(
             .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
             .Build(), ct);
 
+    public Task PublishAsync(string topic, byte[] payload, bool retain, CancellationToken ct) =>
+        _client.PublishAsync(new MqttApplicationMessageBuilder()
+            .WithTopic(topic)
+            .WithPayload(payload)
+            .WithRetainFlag(retain)
+            .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+            .Build(), ct);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var o = options.Value;

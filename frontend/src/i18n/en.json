@@ -1103,6 +1103,8 @@
   "cluster": {
     "observer": "City node: shows a copy of the events. Changes are made on the main node, at home.",
     "homeDown": "Home has not answered for {m} min. Waiting for it.",
-    "standby": "Home has not answered for {m} min and hornets write here. The city node has taken over the alarms; rules only notify, commands by hand."
+    "standby": "Home has not answered for {m} min and hornets write here. The city node has taken over the alarms; rules only notify, commands by hand.",
+    "catalog": "Catalog from home: {time}.",
+    "noCatalog": "No catalog from home yet."
   }
 }

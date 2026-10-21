@@ -31,6 +31,8 @@ keepalive_interval 30
 # What home publishes goes to the city (hornets, home's heartbeat); what the city says comes back.
 topic vs/v1/dev/# out 1
 topic vs/v1/hive/home/# out 1
+# The home catalog (devices, rules, zones, users) is retained, so a restarted city has it at once. Hornets cannot read this topic.
+topic vs/v1/sync/home/# out 1
 topic vs/v1/hive/city/# in 1
 topic vs/v1/hive/active both 1
 EOF

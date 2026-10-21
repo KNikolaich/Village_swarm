@@ -4140,6 +4140,16 @@ export interface components {
             /** @default false */
             dump: boolean;
         };
+        CatalogCounts: {
+            /** Format: int32 */
+            zones: number;
+            /** Format: int32 */
+            devices: number;
+            /** Format: int32 */
+            rules: number;
+            /** Format: int32 */
+            users: number;
+        };
         ChangePasswordRequest: {
             currentPassword: string;
             newPassword: string;
@@ -4150,6 +4160,9 @@ export interface components {
             role: string;
             home: null | components["schemas"]["HomeStatusDto"];
             activeNode: null | string;
+            /** Format: date-time */
+            catalogAt: null | string;
+            catalog: null | components["schemas"]["CatalogCounts"];
         };
         CommandDto: {
             cid: string;

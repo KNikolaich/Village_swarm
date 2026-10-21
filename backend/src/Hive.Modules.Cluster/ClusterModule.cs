@@ -42,6 +42,11 @@ public sealed class ClusterOptions
     /// <summary>How often the watchdog looks (seconds).</summary>
     public int TickS { get; set; } = 5;
 
+    /// <summary>Home: how often it looks whether the catalog changed, and the longest it goes without publishing it (seconds).</summary>
+    public int CatalogCheckS { get; set; } = 60;
+
+    public int CatalogEveryS { get; set; } = 300;
+
     /// <summary>City only: the login home's Mosquitto bridge uses on the city broker (created when missing).</summary>
     public string BridgeUser { get; set; } = "bridge-home";
 
@@ -96,7 +101,7 @@ public sealed class HomeWatchLogic(DateTimeOffset startedAt, TimeSpan silence, T
 
 public sealed record HomeStatusDto(string Phase, DateTimeOffset? LastHeartbeatAt, int SilentSeconds);
 
-public sealed record ClusterDto(bool Enabled, string Node, string Role, HomeStatusDto? Home, string? ActiveNode);
+public sealed record ClusterDto(bool Enabled, string Node, string Role, HomeStatusDto? Home, string? ActiveNode, DateTimeOffset? CatalogAt, CatalogCounts? Catalog);
 
 /// <summary>
 /// The city's watch on home (spec 11.4): heartbeats in, events out ("home_offline" warn, "home_offline_long" alarm, "home_online"),
@@ -109,6 +114,7 @@ public sealed class HomeWatch(
     IngestQueue ingest,
     IServiceProvider services,
     IServiceScopeFactory scopes,
+    CatalogState catalog,
     TimeProvider time,
     ILogger<HomeWatch> logger) : BackgroundService, IMqttMessageHandler
 {
@@ -140,7 +146,7 @@ public sealed class HomeWatch(
             if (_logic is not null)
                 home = new HomeStatusDto(_logic.Phase.ToString(), _logic.LastHeartbeat, (int)Math.Max(0, _logic.SilentFor(now).TotalSeconds));
         }
-        return new ClusterDto(options.Value.Enabled, hive.Value.Node, node.Role.ToString(), home, _activeNode);
+        return new ClusterDto(options.Value.Enabled, hive.Value.Node, node.Role.ToString(), home, _activeNode, catalog.AppliedAt, catalog.Counts);
     }
 
     public ValueTask HandleAsync(string topic, ReadOnlyMemory<byte> payload, bool retained, DateTimeOffset receivedAt)
@@ -418,6 +424,14 @@ public static class ClusterModule
         services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<HeartbeatPublisher>());
         services.AddHostedService(sp => sp.GetRequiredService<HeartbeatPublisher>());
         services.AddHostedService<BridgeLogin>();
+
+        // The catalog of reference data, home to city (spec 11.2).
+        services.AddSingleton<CatalogState>();
+        services.AddScoped<CatalogBuilder>();
+        services.AddScoped<CatalogApplier>();
+        services.AddSingleton<CatalogReceiver>();
+        services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<CatalogReceiver>());
+        services.AddHostedService<CatalogPublisher>();
         return services;
     }
 
