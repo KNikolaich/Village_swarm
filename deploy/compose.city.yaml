@@ -11,9 +11,10 @@ services:
       Cluster__BridgePassword: ${CITY_MQTT_PASSWORD:?set CITY_MQTT_PASSWORD in .env}
       # No sensors on a VM; the hive-city device would only be noise.
       Hive__Sensors__Enabled: "false"
-    mem_limit: 512m
+    mem_limit: 384m
+  # Sized for a 2 GB VM or container (the default of the RPi stack, a little more for the copy of the home data).
   postgres:
-    mem_limit: 1g
+    mem_limit: 512m
   # The broker listens on 1883 for the home bridge and for hornets that reach the city directly: keep the port closed to the internet
   # (firewall: only the WireGuard tunnel and, if hornets connect directly, their network).
   mosquitto:
