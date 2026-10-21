@@ -19,7 +19,7 @@ Hornets cannot subscribe to `vs/v1/sync/#` (their ACL reads their own topics and
 | Role | Node | Rules | Notifications | UI |
 |---|---|---|---|---|
 | `Active` | home | run, may command | all | writes |
-| `Observer` | city while home is alive | do not run | only about `hive-home` (the other node) | read only: `POST/PUT/PATCH/DELETE /api/*` except `/api/auth/*` give 403 |
+| `Observer` | city while home is alive | do not run | only about `hive-home` (the other node) | read only: `POST/PUT/PATCH/DELETE /api/*` give 403, except `/api/auth/*` (signing in) and `/api/me/*` (a person's own password and Telegram chats) |
 | `Standby` | city while home is silent and a hornet speaks on the city broker | run, only notify | all | writes |
 
 The city makes events on the device `hive-home`: `home_offline` (warn, `Cluster__HomeSilenceS`, 180 s without a heartbeat), `home_offline_long` (alarm,

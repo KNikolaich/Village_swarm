@@ -171,6 +171,13 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/zones")).StatusCode);
 
+        // a person's own settings stay open on an observer: the password (a wrong current one is answered as a validation error, not "403"),
+        // and linking a Telegram chat to the city's bot
+        using var ownPassword = await admin.PostAsJsonAsync("/api/me/password", new { currentPassword = "not-my-password", newPassword = "Another-pass-12345" });
+        Assert.NotEqual(HttpStatusCode.Forbidden, ownPassword.StatusCode);
+        using var linkCode = await admin.PostAsync("/api/me/telegram/code", null);
+        Assert.NotEqual(HttpStatusCode.Forbidden, linkCode.StatusCode);
+
         // and it stays silent about what home already tells people: an alarm from a hornet reaches the city bridge as a copy
         var spec = new HornetSpec { Id = "guard-city1", Type = "guard-cam", Motion = new MotionSpec { EverySeconds = 0 } };
         var hornet = new VirtualHornet(spec, HornetRole.Create(spec, "no-photos"));

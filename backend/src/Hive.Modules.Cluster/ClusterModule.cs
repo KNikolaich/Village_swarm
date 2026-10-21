@@ -393,14 +393,17 @@ public sealed class BridgeLogin(MqttGateway mqtt, DynamicSecurity dynsec, IOptio
     }
 }
 
-/// <summary>The observer node only reads (spec 11.3): everything that would change something is refused, except signing in.</summary>
+/// <summary>
+/// The observer node only reads (spec 11.3): everything that would change the house is refused. Signing in and a person's own
+/// settings (<c>/api/me</c>: password, linking a Telegram chat to this node's bot) stay open: they change nothing of the house.
+/// </summary>
 public sealed class ReadOnlyMiddleware(RequestDelegate next, NodeState node)
 {
     public async Task InvokeAsync(HttpContext context)
     {
         var request = context.Request;
         var changes = !HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method) && !HttpMethods.IsOptions(request.Method);
-        if (node.ReadOnly && changes && request.Path.StartsWithSegments("/api") && !request.Path.StartsWithSegments("/api/auth"))
+        if (node.ReadOnly && changes && request.Path.StartsWithSegments("/api") && !request.Path.StartsWithSegments("/api/auth") && !request.Path.StartsWithSegments("/api/me"))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             await context.Response.WriteAsJsonAsync(new { title = "Этот узел только наблюдает: изменения вносятся на главном узле (дома)" });
