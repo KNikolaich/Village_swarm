@@ -79,6 +79,7 @@ export function FeaturesPanel({ device, editable }: { device: DeviceDto; editabl
           </label>
         ))}
       </div>
+      {chosen.length === 0 && <p className="text-neutral-500">{t('features.none')}</p>}
       {heater && (
         <div className="space-y-2">
           <p className="text-neutral-500">{t('features.heaterHint')}</p>
@@ -99,7 +100,7 @@ export function FeaturesPanel({ device, editable }: { device: DeviceDto; editabl
         </div>
       )}
       {editable && (
-        <Button size="sm" className="w-full" onClick={() => void save()} disabled={busy || chosen.length === 0 || (!changed && !limitsTyped)}>{t('features.save')}</Button>
+        <Button size="sm" className="w-full" onClick={() => void save()} disabled={busy || (!changed && !limitsTyped)}>{t('features.save')}</Button>
       )}
     </div>
   )

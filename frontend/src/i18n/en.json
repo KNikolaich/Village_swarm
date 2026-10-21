@@ -786,6 +786,7 @@
     "minC": "minimum, °C",
     "maxC": "maximum, °C",
     "maxOnH": "at most, h",
+    "none": "Nothing chosen: the hornet leaves these pins alone, does not heat and does not switch a relay. It stays connected and still reports its battery and the sensors its firmware always reads (DHT).",
     "save": "Save",
     "rejected": "Not saved",
     "notNumber": "Heater limits: numbers please, e.g. 5 or 22.5"

@@ -55,6 +55,21 @@ public sealed class FeaturesTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task All_features_can_be_cleared_without_falling_back_to_the_default()
+    {
+        await RegisterAsync("heat-feat3", "heat");
+        var admin = await hive.LoginAsync();
+
+        using var none = await admin.PutAsJsonAsync("/api/devices/heat-feat3/features", new { features = Array.Empty<string>() });
+        Assert.Equal(HttpStatusCode.OK, none.StatusCode);
+        var dto = await none.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Empty(Features(dto));
+        Assert.Equal(JsonValueKind.Null, dto.GetProperty("heater").ValueKind);
+        var device = await hive.QueryAsync(db => db.Devices.SingleAsync(d => d.DeviceId == "heat-feat3"));
+        Assert.Empty(device.Config!.RootElement.GetProperty("features").EnumerateArray());  // [] in the config, not absent
+    }
+
+    [Fact]
     public async Task Features_the_firmware_cannot_do_are_refused()
     {
         await RegisterAsync("heat-feat2", "heat");

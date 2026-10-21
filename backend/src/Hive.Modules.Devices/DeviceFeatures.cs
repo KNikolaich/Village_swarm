@@ -69,13 +69,15 @@ public static class DeviceFeatures
     public static bool Uses(IReadOnlyCollection<string> features, string function) =>
         !Functions.TryGetValue(function, out var owners) || owners.Any(o => features.Contains(o));
 
-    /// <summary>Why this set of features cannot be used by the role, or null when it can.</summary>
+    /// <summary>
+    /// Why this set of features cannot be used by the role, or null when it can. An empty set is allowed: the hornet then
+    /// touches none of these pins (a battery watchdog on the heat firmware, a DHT on the meteo one) and, unlike a config
+    /// without "features", does not fall back to the role's default.
+    /// </summary>
     public static string? Validate(string type, IReadOnlyCollection<string> features)
     {
         if (!Supported.TryGetValue(type, out var known))
             return $"тип {type} не настраивается";
-        if (features.Count == 0)
-            return "выберите хотя бы одно назначение";
         if (features.FirstOrDefault(f => !known.Contains(f)) is { } unknown)
             return $"прошивка {type} не умеет «{unknown}»";
         if (features.Contains(Heater) && !features.Contains(Thermometer) && !features.Contains(Bme280))
