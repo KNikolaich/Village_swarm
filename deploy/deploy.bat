@@ -9,6 +9,8 @@ set "TARGET=%~1"
 if "%TARGET%"=="" set "TARGET=kirill@192.168.10.4"
 set "HOST=%TARGET:*@=%"
 set "EXTRA=%~2"
+rem Processor of the target: linux/arm64 for the RPi (default), linux/amd64 for a PC or a Proxmox VM (set HIVE_PLATFORM first).
+if "%HIVE_PLATFORM%"=="" set "HIVE_PLATFORM=linux/arm64"
 
 wsl --status >nul 2>&1
 if errorlevel 1 (
@@ -55,7 +57,7 @@ if not "%FWFAILED%"=="0" echo Не собралось прошивок: %FWFAILE
 :images
 echo.
 echo === Образы backend и frontend, затем доставка на %TARGET% ===
-wsl bash -lc "cd '%REPO%' && bash deploy/build-images.sh linux/arm64 && bash deploy/ship.sh %TARGET% --host %HOST% %EXTRA%"
+wsl bash -lc "cd '%REPO%' && bash deploy/build-images.sh %HIVE_PLATFORM% && bash deploy/ship.sh %TARGET% --host %HOST% %EXTRA%"
 set "CODE=%ERRORLEVEL%"
 echo.
 if "%CODE%"=="0" (echo Готово.) else (echo Остановилось с ошибкой, код %CODE%.)
