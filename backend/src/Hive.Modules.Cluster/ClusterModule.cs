@@ -403,7 +403,7 @@ public sealed class ReadOnlyMiddleware(RequestDelegate next, NodeState node)
     {
         var request = context.Request;
         var changes = !HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method) && !HttpMethods.IsOptions(request.Method);
-        if (node.ReadOnly && changes && request.Path.StartsWithSegments("/api") && !request.Path.StartsWithSegments("/api/auth") && !request.Path.StartsWithSegments("/api/me"))
+        if (node.ReadOnly && changes && request.Path.StartsWithSegments("/api") && !NodeLocal(request.Path))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             await context.Response.WriteAsJsonAsync(new { title = "Этот узел только наблюдает: изменения вносятся на главном узле (дома)" });
@@ -411,6 +411,11 @@ public sealed class ReadOnlyMiddleware(RequestDelegate next, NodeState node)
         }
         await next(context);
     }
+
+    /// <summary>What belongs to this node alone and is never copied from home: sign-in, a person's own account, and this node's own weather and language settings.</summary>
+    private static bool NodeLocal(PathString path) =>
+        path.StartsWithSegments("/api/auth") || path.StartsWithSegments("/api/me")
+        || path.StartsWithSegments("/api/settings/weather") || path.StartsWithSegments("/api/settings/language");
 }
 
 public static class ClusterModule
