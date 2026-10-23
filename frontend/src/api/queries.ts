@@ -231,7 +231,8 @@ export function useSnapshot(deviceId: string) {
       return
     }
     toast.success(t('device.commandSent'))
-    for (let i = 0; i < 25; i++) {
+    // An IP camera's frame may wait behind others of the same NVR: up to about a minute.
+    for (let i = 0; i < 45; i++) {
       await new Promise((r) => setTimeout(r, 2000))
       const cmd = (await api.GET('/api/devices/{deviceId}/commands/{cid}', { params: { path: { deviceId, cid: data.cid } } })).data
       if (!cmd || cmd.status === 'sent') continue

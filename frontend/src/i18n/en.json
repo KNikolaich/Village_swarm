@@ -1313,6 +1313,23 @@
       "locked": "The NVR locked the login, {n} min left. The hive leaves it alone meanwhile so the lock is not extended.",
       "paused": "The NVR refused the password twice. The hive stopped asking it to avoid a lockout: check the login and save it again.",
       "wait": "The NVR refused the password ({n} attempts left). Next try in a minute."
+    },
+    "snapshotQuality": "Snapshot quality",
+    "qualities": {
+      "fast": "fast (sub-stream)",
+      "detailed": "detailed (main stream)"
+    },
+    "stream": {
+      "connected": "Event stream: up since {since}, last signal {last}, reconnects {n}",
+      "connecting": "Event stream: connecting…",
+      "down": "Event stream: down",
+      "off": "No event stream (no channels, or this hive only watches)"
+    },
+    "diag": {
+      "motion": "Motion from the NVR: {at}",
+      "never": "none since the hive started",
+      "snapshotOk": "Snapshot {at}: {via}, {size}, {s} s",
+      "snapshotFailed": "Snapshot {at} failed ({s} s)"
     }
   }
 }

@@ -50,6 +50,7 @@ public sealed class IpCamWatch(
     IOptions<IpCamOptions> options,
     Snapshots snapshots,
     NvrLogins logins,
+    IpCamDiagnostics diagnostics,
     NodeState node,
     TimeProvider time,
     ILogger<IpCamWatch> logger) : BackgroundService, IDirectDriver
@@ -129,7 +130,7 @@ public sealed class IpCamWatch(
                 continue;
             }
             var run = new NvrRun(nvr.Id, nvr.Name, new DahuaClient(new NvrEndpoint(nvr.Host, nvr.Port, nvr.Username, password, nvr.RtspPort), logins),
-                nvr.Channels.ToDictionary(c => c.Channel, c => new ChannelInfo(c.DeviceId, c.Channel, c.RecordWhenDisarmed, c.SnapshotSource, c.SnapshotVia)), now);
+                nvr.Channels.ToDictionary(c => c.Channel, c => new ChannelInfo(c.DeviceId, c.Channel, c.RecordWhenDisarmed, c.SnapshotSource, c.SnapshotVia, c.SnapshotQuality)), now);
             run.Task = Task.Run(() => RunStreamAsync(run, run.Stop.Token), CancellationToken.None);
             runs.Add(run);
         }
@@ -190,6 +191,7 @@ public sealed class IpCamWatch(
                 lock (run.Lost)
                     run.Lost.Clear(); // the NVR repeats the losses that still last
                 run.Alive(time.GetUtcNow(), connected: true);
+                run.Opened(time.GetUtcNow());
                 logger.LogInformation("NVR {Nvr}: event stream open", run.Name);
                 backoff = TimeSpan.FromSeconds(2);
                 while (true)
@@ -222,10 +224,11 @@ public sealed class IpCamWatch(
             }
             catch (NvrAuthException ex) when (ex.Block is not null || ex.Error is { Locked: true } or { Status: 401 })
             {
-                // NvrLogins has said it once; the loop waits above.
+                run.LastError = ex.Message; // NvrLogins has logged it once; the loop waits above
             }
             catch (Exception ex)
             {
+                run.LastError = ex.Message;
                 logger.LogWarning("NVR {Nvr}: event stream failed: {Error}", run.Name, ex.Message);
             }
             run.Connected = false;
@@ -251,6 +254,7 @@ public sealed class IpCamWatch(
             case DahuaEvent.VideoMotion when e.IsStart:
                 lock (_lastMotion)
                 {
+                    diagnostics.Motion(info.DeviceId, now);
                     var cooling = _lastMotion.TryGetValue(info.DeviceId, out var last) && now - last < TimeSpan.FromSeconds(options.Value.CooldownS);
                     // Said every time, so the log shows whether the NVR reports motion of a camera at all.
                     logger.LogInformation("NVR {Nvr} channel {Channel} ({Device}): motion{Cooldown}", run.Id, channel, info.DeviceId, cooling ? ", within the cooldown" : "");
@@ -301,22 +305,27 @@ public sealed class IpCamWatch(
             ingest.Enqueue(new DeviceEventReceived(info.DeviceId, eventId, now, now, "motion", severity, armed, payload));
 
             var media = scope.ServiceProvider.GetRequiredService<PhotoIngestService>();
+            string? failed = null;
+            var missing = 0;
             for (var i = 0; i < photos.Count; i++)
             {
                 if (i > 0)
                     await Task.Delay(TimeSpan.FromMilliseconds(options.Value.PhotoIntervalMs), time, ct);
                 try
                 {
-                    var jpeg = await SnapshotAsync(run, info, ct);
-                    var stored = await media.StoreFetchedAsync(info.DeviceId, photos[i], eventId, "motion", jpeg, "nvr", ct);
+                    var jpeg = await SnapshotAsync(run, info, SnapshotPurpose.Alarm, ct);
+                    var stored = await media.StoreFetchedAsync(info.DeviceId, photos[i], eventId, "motion", jpeg.Jpeg, "nvr", ct);
                     if (stored.Status is not (PhotoIngestStatus.Created or PhotoIngestStatus.Duplicate))
                         logger.LogWarning("NVR {Nvr} channel {Channel}: snapshot not stored: {Error}", run.Id, info.Channel, stored.Error);
                 }
-                catch (SnapshotFailedException)
+                catch (SnapshotFailedException ex)
                 {
-                    // already in the log and the camera's journal
+                    failed = ex.Message; // the details are in the log and the camera's journal already
+                    missing++;
                 }
             }
+            if (failed is not null)
+                PhotoFailed(info.DeviceId, failed, eventId, missing);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
@@ -373,18 +382,27 @@ public sealed class IpCamWatch(
                 result = new { error = "the NVR of this camera is not connected" };
             else
             {
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Clamp(command.TtlS, 5, 60)));
-                var jpeg = await SnapshotAsync(run, info, timeout.Token);
-                using var scope = scopes.CreateScope();
-                var stored = await scope.ServiceProvider.GetRequiredService<PhotoIngestService>()
-                    .StoreFetchedAsync(command.DeviceId, $"{command.Cid}-1", null, "snapshot", jpeg, "nvr", timeout.Token);
-                status = stored.Status is PhotoIngestStatus.Created or PhotoIngestStatus.Duplicate ? CommandStatus.Ok : CommandStatus.Error;
-                result = new { photo = stored.Media?.Id, error = stored.Error };
+                // The snapshot service keeps its own time (the queue for the NVR included), not the command's ttl.
+                var taken = await SnapshotAsync(run, info, SnapshotPurpose.Look, CancellationToken.None);
+                if (taken.Shared)
+                {
+                    status = CommandStatus.Ok; // pressed again while a frame was on its way: that frame answers both
+                    result = new { shared = true, via = taken.Via };
+                }
+                else
+                {
+                    using var scope = scopes.CreateScope();
+                    var stored = await scope.ServiceProvider.GetRequiredService<PhotoIngestService>()
+                        .StoreFetchedAsync(command.DeviceId, $"{command.Cid}-1", null, "snapshot", taken.Jpeg, "nvr", CancellationToken.None);
+                    status = stored.Status is PhotoIngestStatus.Created or PhotoIngestStatus.Duplicate ? CommandStatus.Ok : CommandStatus.Error;
+                    result = new { photo = stored.Media?.Id, via = taken.Via, error = stored.Error };
+                }
             }
         }
         catch (Exception ex)
         {
             result = new { error = ex.Message };
+            PhotoFailed(command.DeviceId, ex.Message, null, 1);
         }
 
         try
@@ -407,16 +425,42 @@ public sealed class IpCamWatch(
     }
 
     /// <summary>A frame of the channel, cgi or RTSP as its settings say; the way that worked is remembered for next time.</summary>
-    private async Task<byte[]> SnapshotAsync(NvrRun run, ChannelInfo info, CancellationToken ct)
+    private async Task<SnapshotTaken> SnapshotAsync(NvrRun run, ChannelInfo info, SnapshotPurpose purpose, CancellationToken ct)
     {
-        var taken = await snapshots.TakeAsync(run.Client, new SnapshotTarget(run.Id, info.DeviceId, info.Channel, info.Source, info.Via), ct);
+        var taken = await snapshots.TakeAsync(run.Client.Endpoint,
+            new SnapshotTarget(run.Id, info.DeviceId, info.Channel, info.Source, info.Via, info.Quality), purpose, ct);
         info.Via = taken.Via;
-        return taken.Jpeg;
+        return taken;
+    }
+
+    /// <summary>
+    /// A missing frame in the event feed (info: no Telegram), so it is seen where people look, not only in the journal.
+    /// One per motion or per button press, however many frames were missing.
+    /// </summary>
+    private void PhotoFailed(string deviceId, string reason, string? eventId, int missing)
+    {
+        var now = time.GetUtcNow();
+        ingest.Enqueue(new DeviceEventReceived(deviceId, Ulid.New(now), now, now, "photo_failed", EventSeverity.Info, null,
+            JsonSerializer.SerializeToDocument(new { reason, eventId, missing, via = "nvr" })));
+    }
+
+    /// <summary>The NVR's event stream for the settings page; "off" when the hive does not run one for it.</summary>
+    public NvrStreamDto Stream(int nvrId)
+    {
+        NvrRun? run;
+        lock (_gate)
+            run = _runs.FirstOrDefault(r => r.Id == nvrId);
+        if (run is null)
+            return new NvrStreamDto("off", null, null, 0, null);
+        return run.Connected
+            ? new NvrStreamDto("connected", run.Since, run.LastAlive, run.Reconnects, run.LastError)
+            : new NvrStreamDto(run.Reconnects == 0 && run.LastError is null ? "connecting" : "down", run.Since, run.LastAlive, run.Reconnects, run.LastError);
     }
 
     /// <summary>A channel of an NVR as the watch knows it.</summary>
-    internal sealed class ChannelInfo(string deviceId, int channel, bool recordWhenDisarmed, string source, string? via)
+    internal sealed class ChannelInfo(string deviceId, int channel, bool recordWhenDisarmed, string source, string? via, string quality)
     {
+        public string Quality { get; } = quality;
         public string DeviceId { get; } = deviceId;
         public int Channel { get; } = channel;
         public bool RecordWhenDisarmed { get; } = recordWhenDisarmed;
@@ -446,6 +490,20 @@ public sealed class IpCamWatch(
         public HashSet<int> Lost { get; } = [];
 
         public volatile bool Connected;
+
+        /// <summary>When the stream opened last, and how often it was opened again after that (diagnostics).</summary>
+        public DateTimeOffset? Since { get; private set; }
+
+        public int Reconnects { get; private set; }
+        public string? LastError { get; set; }
+
+        public void Opened(DateTimeOffset now)
+        {
+            if (Since is not null)
+                Reconnects++;
+            Since = now;
+            LastError = null;
+        }
         private long _lastAlive = started.UtcTicks;
 
         /// <summary>The last line from the stream (written by the stream, read by the status check).</summary>

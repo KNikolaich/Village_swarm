@@ -190,7 +190,7 @@ public sealed class IpCamTests(HiveFixture hive) : IAsyncLifetime
     public async Task A_channel_without_nvr_snapshots_gets_frames_from_its_rtsp_stream()
     {
         hive.Grabber.Reset();
-        hive.Grabber.FailSubtypes["subtype=0"] = true; // the camera gives the NVR only its sub-stream
+        hive.Grabber.FailSubtypes["subtype=1"] = true; // the light sub-stream gives nothing here, the main stream does
         _nvr.NoSnapshot[3] = true;                      // and the NVR no snapshot of it, like the Asecam PTZ
         using var admin = await hive.LoginAsync();
         var nvr = await AddNvrAsync(admin, "Улица", new IpCamChannelRequest(3, "Зум 30"));
@@ -201,7 +201,7 @@ public sealed class IpCamTests(HiveFixture hive) : IAsyncLifetime
         await hive.WaitForAsync(db => db.Commands.AnyAsync(c => c.Cid == cid && c.Status == CommandStatus.Ok), "snapshot via RTSP");
         Assert.True(await hive.QueryAsync(db => db.Media.AnyAsync(m => m.DeviceId == cam && m.Kind == MediaKind.Snapshot)));
         Assert.Equal(
-            [$"rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=3&subtype=0", "rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=3&subtype=1"],
+            ["rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=3&subtype=1", "rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=3&subtype=0"],
             hive.Grabber.Urls);
         Assert.Equal(SnapshotSources.Rtsp, await hive.QueryAsync(db => db.NvrChannels.Where(c => c.DeviceId == cam).Select(c => c.SnapshotVia).SingleAsync()));
 
@@ -311,5 +311,78 @@ public sealed class IpCamTests(HiveFixture hive) : IAsyncLifetime
             new NvrRequest("Старый пароль", "127.0.0.1", _nvr.Port, FakeNvr.User, FakeNvr.Password, [new IpCamChannelRequest(1, "Ворота")]));
         Assert.Equal(HttpStatusCode.OK, fixedLogin.StatusCode);
         await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == nvr.Channels[0].DeviceId && d.Status == DeviceStatus.Online), "online with the new password");
+    }
+
+    [Fact]
+    public async Task Snapshots_of_one_nvr_queue_one_at_a_time_and_a_second_press_joins_the_first()
+    {
+        _nvr.SnapshotDelayMs = 1500;
+        using var admin = await hive.LoginAsync();
+        var nvr = await AddNvrAsync(admin, "Медленный", new IpCamChannelRequest(1, "Ворота"), new IpCamChannelRequest(2, "Двор"));
+        var gate = nvr.Channels[0].DeviceId;
+        var before = _nvr.Snapshots;
+
+        // Three presses on the same camera at once: one frame, three answers.
+        var presses = await Task.WhenAll(Enumerable.Range(0, 3).Select(async _ =>
+        {
+            using var sent = await admin.PostAsJsonAsync($"/api/devices/{gate}/commands", new { name = "snapshot" });
+            return (await sent.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cid").GetString()!;
+        }));
+        foreach (var cid in presses)
+            await hive.WaitForAsync(db => db.Commands.AnyAsync(c => c.Cid == cid && c.Status == CommandStatus.Ok), "every press answered");
+        Assert.Equal(before + 1, _nvr.Snapshots);
+        Assert.Equal(1, await hive.QueryAsync(db => db.Media.CountAsync(m => m.DeviceId == gate && m.Kind == MediaKind.Snapshot)));
+
+        // Two cameras of the same NVR at once: asked one after the other, never together.
+        var looks = await Task.WhenAll(new[] { 1, 2 }.Select(async ch =>
+        {
+            using var live = await admin.GetAsync($"/api/ipcams/{nvr.Id}/snapshot?channel={ch}");
+            return live.StatusCode;
+        }));
+        Assert.All(looks, s => Assert.Equal(HttpStatusCode.OK, s));
+        Assert.Equal(1, _nvr.MaxConcurrentSnapshots);
+
+        // The settings page tells how it went.
+        var shown = (await admin.GetFromJsonAsync<List<NvrDto>>("/api/ipcams"))!.Single(n => n.Id == nvr.Id);
+        Assert.Equal("connected", shown.Stream.State);
+        var last = shown.Channels[0].LastSnapshot!;
+        Assert.True(last.Ok);
+        Assert.Equal(SnapshotSources.Cgi, last.Via);
+        Assert.Matches("^[0-9]+x[0-9]+$", last.Size!);
+    }
+
+    [Fact]
+    public async Task Detailed_quality_asks_the_main_stream_first_and_motion_is_shown_in_the_settings()
+    {
+        hive.Grabber.Reset();
+        using var admin = await hive.LoginAsync();
+        var nvr = await AddNvrAsync(admin, "Подробно",
+            new IpCamChannelRequest(1, "Ворота", SnapshotSource: SnapshotSources.Rtsp, SnapshotQuality: SnapshotQualities.Detailed));
+        var cam = nvr.Channels[0].DeviceId;
+
+        using var live = await admin.GetAsync($"/api/ipcams/{nvr.Id}/snapshot?channel=1");
+        Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+        Assert.EndsWith("subtype=0", Assert.Single(hive.Grabber.Urls));
+
+        _nvr.Motion(0);
+        await hive.WaitForAsync(db => db.Events.AnyAsync(e => e.DeviceId == cam && e.Type == "motion"), "motion in the feed");
+        var shown = (await admin.GetFromJsonAsync<List<NvrDto>>("/api/ipcams"))!.Single(n => n.Id == nvr.Id);
+        Assert.NotNull(shown.Channels[0].LastMotionAt);
+        Assert.Equal(SnapshotQualities.Detailed, shown.Channels[0].SnapshotQuality);
+    }
+
+    [Fact]
+    public async Task A_failed_press_shows_in_the_event_feed()
+    {
+        _nvr.NoSnapshot[1] = true;
+        using var admin = await hive.LoginAsync();
+        var nvr = await AddNvrAsync(admin, "Без снимков", new IpCamChannelRequest(1, "Ворота", SnapshotSource: SnapshotSources.Cgi));
+        var cam = nvr.Channels[0].DeviceId;
+
+        using var sent = await admin.PostAsJsonAsync($"/api/devices/{cam}/commands", new { name = "snapshot" });
+        Assert.Equal(HttpStatusCode.Accepted, sent.StatusCode);
+        await hive.WaitForAsync(db => db.Events.AnyAsync(e => e.DeviceId == cam && e.Type == "photo_failed" && e.Severity == EventSeverity.Info), "photo_failed in the feed");
+        var failed = await hive.QueryAsync(db => db.Events.SingleAsync(e => e.DeviceId == cam && e.Type == "photo_failed"));
+        Assert.Contains("Internal Error", failed.Payload.RootElement.GetProperty("reason").GetString());
     }
 }

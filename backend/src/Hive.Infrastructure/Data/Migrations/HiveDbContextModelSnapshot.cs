@@ -1111,6 +1111,14 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("record_when_disarmed");
 
+                    b.Property<string>("SnapshotQuality")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasDefaultValue("fast")
+                        .HasColumnName("snapshot_quality");
+
                     b.Property<string>("SnapshotSource")
                         .IsRequired()
                         .ValueGeneratedOnAdd()

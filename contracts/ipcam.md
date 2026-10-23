@@ -50,16 +50,21 @@ The video stream for a later stage is `rtsp://{host}/cam/realmonitor?channel=N&s
   Down or unreachable for more than 60 s → its channels go offline (and the usual "не на связи" after 15 minutes).
   `VideoLoss` `Start`/`Stop` takes one channel offline/online (camera unplugged from the NVR).
   The stream reconnects with backoff 2, 4, 8 … 60 s.
-- **Snapshots**: per channel `snapshotSource`:
+- **Snapshots**: per channel `snapshotSource` and `snapshotQuality`:
   - `auto` (default): `snapshot.cgi`, and when it gives no JPEG a frame of the RTSP stream. A Dahua NVR often has no snapshot
     of a third-party ONVIF camera (it answers 200 with `Error` text). The way that worked is kept as `snapshotVia` and goes
     first next time.
   - `cgi`: only `snapshot.cgi`; `rtsp`: only the stream.
-  - RTSP: `ffmpeg -rtsp_transport tcp -i rtsp://{user}:{pass}@{host}:{rtspPort}/cam/realmonitor?channel=N&subtype=0 -frames:v 1 -q:v 3 -f image2 -`,
-    8 s at most, then the same with `subtype=1`. ffmpeg is in the api image. The URL with the login is passed as one argument
-    and cut out of ffmpeg's messages; it is never logged or returned.
+  - RTSP: `ffmpeg -fflags nobuffer -analyzeduration 1000000 -probesize 1000000 -rtsp_transport tcp -i rtsp://{user}:{pass}@{host}:{rtspPort}/cam/realmonitor?channel=N&subtype=S -an -frames:v 1 -q:v 3 -f image2 -`,
+    12 s at most per stream. `snapshotQuality` `fast` (default) takes the light sub-stream (`subtype=1`) first, `detailed` the
+    main stream (`subtype=0`) first; the other one follows when the first gives nothing, for alarms and buttons alike.
+    ffmpeg is in the api image. The URL with the login is passed as one argument and cut out of ffmpeg's messages; it is
+    never logged or returned.
+  - One NVR is asked one frame at a time (a queue per NVR, 50 s at most per request with the wait); a request for a channel
+    that already has one under way joins it. The size and time of each frame are logged.
   - A failure is logged (NVR id, channel, HTTP status, content type, the start of a non-JPEG body, ffmpeg's error) and written
-    to the camera's journal as `warn` `snapshot failed: …`. Each `VideoMotion` that arrives is logged (Information), so the
+    to the camera's journal as `warn` `snapshot failed: …`; a press or a motion that got no frame also leaves an `info` event
+    `photo_failed` with the reason in the feed. Each `VideoMotion` that arrives is logged (Information), so the
     log shows whether the NVR reports motion of a camera at all.
 - **Login lockout**: Dahua locks an account after a few wrong logins (403
   `Error {"ErrorCode":268632081,"Result":false,"RmLock":1320,"RmLogin":0}`: 0x10030011 = locked, `RmLock` seconds left,
@@ -68,5 +73,7 @@ The video stream for a later stage is `rtsp://{host}/cam/realmonitor?channel=N&s
   - 401 with attempts left: the same password waits 60 s; refused twice in a row, the hive stops until the login is saved again.
   - A 403 without a lock (an account without rights) is reported, not counted.
   - `GET /api/ipcams` gives `login: {state: ok|locked|wait|paused, until, attemptsLeft}`; the settings page says it.
+- **Diagnostics** in `GET /api/ipcams` (kept in memory): `stream: {state: connected|connecting|down|off, since, lastLine,
+  reconnects, lastError}`, per channel `lastMotionAt` and `lastSnapshot: {at, purpose, via, ok, ms, error, size}`.
 - **Commands**: only `snapshot` is accepted (one frame from the NVR, stored as a snapshot), so the Telegram `/photo`, "📷 Ещё фото"
   and a rule's `snapshot` action work. Anything else is refused with 400.
