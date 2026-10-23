@@ -4,6 +4,7 @@ using DotNet.Testcontainers.Containers;
 using Hive.Infrastructure.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;
 
@@ -76,6 +77,9 @@ public sealed class HiveFixture : IAsyncLifetime
 
     public FakeLlm Llm { get; private set; } = null!;
 
+    /// <summary>Stands in for ffmpeg: IP camera frames taken from the RTSP stream (IpCamTests).</summary>
+    public FakeFrameGrabber Grabber { get; } = new();
+
     public async Task InitializeAsync()
     {
         await Task.WhenAll(_postgres.StartAsync(), _mosquitto.StartAsync());
@@ -109,6 +113,8 @@ public sealed class HiveFixture : IAsyncLifetime
             b.UseSetting("Assistant:BaseUrl", Llm.BaseUrl);
             // IpCamTests: a cut NVR takes its cameras offline in seconds, not a minute.
             b.UseSetting("IpCams:OfflineAfterS", "3");
+            b.UseSetting("IpCams:AuthRetryS", "2");
+            b.ConfigureTestServices(s => s.AddSingleton<Hive.Modules.IpCams.IFrameGrabber>(Grabber));
         });
         _ = App.Server; // start the host: migrations, MQTT gateway, ingest pipeline
     }

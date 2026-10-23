@@ -185,4 +185,131 @@ public sealed class IpCamTests(HiveFixture hive) : IAsyncLifetime
         _nvr.ComeBack();
         await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == cam && d.Status == DeviceStatus.Online), "online again", timeoutS: 30);
     }
+
+    [Fact]
+    public async Task A_channel_without_nvr_snapshots_gets_frames_from_its_rtsp_stream()
+    {
+        hive.Grabber.Reset();
+        hive.Grabber.FailSubtypes["subtype=0"] = true; // the camera gives the NVR only its sub-stream
+        _nvr.NoSnapshot[3] = true;                      // and the NVR no snapshot of it, like the Asecam PTZ
+        using var admin = await hive.LoginAsync();
+        var nvr = await AddNvrAsync(admin, "Улица", new IpCamChannelRequest(3, "Зум 30"));
+        var cam = nvr.Channels[0].DeviceId;
+
+        using var sent = await admin.PostAsJsonAsync($"/api/devices/{cam}/commands", new { name = "snapshot" });
+        var cid = (await sent.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cid").GetString();
+        await hive.WaitForAsync(db => db.Commands.AnyAsync(c => c.Cid == cid && c.Status == CommandStatus.Ok), "snapshot via RTSP");
+        Assert.True(await hive.QueryAsync(db => db.Media.AnyAsync(m => m.DeviceId == cam && m.Kind == MediaKind.Snapshot)));
+        Assert.Equal(
+            [$"rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=3&subtype=0", "rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=3&subtype=1"],
+            hive.Grabber.Urls);
+        Assert.Equal(SnapshotSources.Rtsp, await hive.QueryAsync(db => db.NvrChannels.Where(c => c.DeviceId == cam).Select(c => c.SnapshotVia).SingleAsync()));
+
+        // Remembered: the next photo goes to the stream first and does not wait for snapshot.cgi.
+        var cgiBefore = _nvr.Snapshots;
+        using var again = await admin.PostAsJsonAsync($"/api/devices/{cam}/commands", new { name = "snapshot" });
+        var cid2 = (await again.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cid").GetString();
+        await hive.WaitForAsync(db => db.Commands.AnyAsync(c => c.Cid == cid2 && c.Status == CommandStatus.Ok), "second snapshot");
+        Assert.Equal(cgiBefore, _nvr.Snapshots);
+
+        // The settings page shows where it came from; the password is in no answer.
+        using var live = await admin.GetAsync($"/api/ipcams/{nvr.Id}/snapshot?channel=3");
+        Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+        Assert.Equal("rtsp", live.Headers.GetValues("X-Snapshot-Via").Single());
+        var listed = await admin.GetStringAsync("/api/ipcams");
+        Assert.Contains("\"snapshotVia\":\"rtsp\"", listed);
+        Assert.DoesNotContain(FakeNvr.Password, listed);
+    }
+
+    [Fact]
+    public async Task Snapshot_failures_say_why_and_reach_the_cameras_journal()
+    {
+        hive.Grabber.Reset();
+        _nvr.NoSnapshot[2] = true;
+        using var admin = await hive.LoginAsync();
+        var nvr = await AddNvrAsync(admin, "Только cgi", new IpCamChannelRequest(2, "Двор", SnapshotSource: SnapshotSources.Cgi));
+        var cam = nvr.Channels[0].DeviceId;
+
+        using var live = await admin.GetAsync($"/api/ipcams/{nvr.Id}/snapshot?channel=2");
+        Assert.Equal(HttpStatusCode.BadGateway, live.StatusCode);
+        var problem = await live.Content.ReadFromJsonAsync<JsonElement>();
+        var detail = problem.GetProperty("detail").GetString()!;
+        Assert.Contains("cgi: HTTP 200, text/plain", detail);
+        Assert.Contains("Internal Error", detail);
+        Assert.Empty(hive.Grabber.Urls); // cgi only: the stream is not tried
+
+        using var sent = await admin.PostAsJsonAsync($"/api/devices/{cam}/commands", new { name = "snapshot" });
+        var cid = (await sent.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cid").GetString();
+        await hive.WaitForAsync(db => db.Commands.AnyAsync(c => c.Cid == cid && c.Status == CommandStatus.Error), "snapshot command failed");
+        var ack = await admin.GetFromJsonAsync<JsonElement>($"/api/devices/{cam}/commands/{cid}");
+        Assert.Contains("Internal Error", ack.GetProperty("ack").GetProperty("error").GetString());
+        await hive.WaitForAsync(db => db.DeviceLogs.AnyAsync(l => l.DeviceId == cam && l.Level == "warn" && l.Msg.StartsWith("snapshot failed")), "failure in the journal");
+
+        // Switched to auto, the stream is tried after the NVR and gives the frame.
+        using var update = await admin.PutAsJsonAsync($"/api/ipcams/{nvr.Id}",
+            new NvrRequest("Только cgi", "127.0.0.1", _nvr.Port, FakeNvr.User, null, [new IpCamChannelRequest(2, "Двор", SnapshotSource: SnapshotSources.Auto)]));
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        using var retry = await admin.GetAsync($"/api/ipcams/{nvr.Id}/snapshot?channel=2");
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        Assert.Single(hive.Grabber.Urls);
+    }
+
+    [Fact]
+    public async Task A_locked_nvr_is_left_alone_until_it_unlocks_and_says_so()
+    {
+        hive.Grabber.Reset();
+        _nvr.LockedFor = 1320;
+        using var admin = await hive.LoginAsync();
+        using var created = await admin.PostAsJsonAsync("/api/ipcams",
+            new NvrRequest("Заблокирован", "127.0.0.1", _nvr.Port, FakeNvr.User, FakeNvr.Password, [new IpCamChannelRequest(1, "Ворота")]));
+        var nvr = (await created.Content.ReadFromJsonAsync<NvrDto>())!;
+
+        NvrDto? listed = null;
+        for (var i = 0; i < 40 && listed?.Login.State != NvrLogins.Locked; i++)
+        {
+            await Task.Delay(250);
+            listed = (await admin.GetFromJsonAsync<List<NvrDto>>("/api/ipcams"))!.Single(n => n.Id == nvr.Id);
+        }
+        Assert.Equal(NvrLogins.Locked, listed!.Login.State);
+        Assert.InRange((listed.Login.Until!.Value - DateTimeOffset.UtcNow).TotalMinutes, 21, 24); // 1320 s and a margin
+
+        // Nothing more goes to it: not the stream's reconnects, not a photo, not "Проверить", not ffmpeg.
+        var seen = _nvr.LoginRequests;
+        using var sent = await admin.PostAsJsonAsync($"/api/devices/{nvr.Channels[0].DeviceId}/commands", new { name = "snapshot" });
+        var cid = (await sent.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cid").GetString();
+        await hive.WaitForAsync(db => db.Commands.AnyAsync(c => c.Cid == cid && c.Status == CommandStatus.Error), "snapshot refused while locked");
+        var probe = await (await admin.PostAsync($"/api/ipcams/{nvr.Id}/probe", null)).Content.ReadFromJsonAsync<ProbeResultDto>();
+        Assert.Equal("locked", probe!.Error);
+        await Task.Delay(5000);
+        Assert.Equal(seen, _nvr.LoginRequests);
+        Assert.Empty(hive.Grabber.Urls);
+    }
+
+    [Fact]
+    public async Task A_refused_password_is_tried_once_more_then_waits_for_the_settings()
+    {
+        using var admin = await hive.LoginAsync();
+        using var created = await admin.PostAsJsonAsync("/api/ipcams",
+            new NvrRequest("Старый пароль", "127.0.0.1", _nvr.Port, FakeNvr.User, "stale-password", [new IpCamChannelRequest(1, "Ворота")]));
+        var nvr = (await created.Content.ReadFromJsonAsync<NvrDto>())!;
+
+        NvrDto? listed = null;
+        for (var i = 0; i < 60 && listed?.Login.State != NvrLogins.Paused; i++)
+        {
+            await Task.Delay(250);
+            listed = (await admin.GetFromJsonAsync<List<NvrDto>>("/api/ipcams"))!.Single(n => n.Id == nvr.Id);
+        }
+        Assert.Equal(NvrLogins.Paused, listed!.Login.State);
+        Assert.Equal(4, listed.Login.AttemptsLeft);
+        var seen = _nvr.LoginRequests;
+        Assert.InRange(seen, 2, 3); // the first try and one more after the pause, never a burst
+        await Task.Delay(5000);
+        Assert.Equal(seen, _nvr.LoginRequests);
+
+        // The right password saved: back to work at once.
+        using var fixedLogin = await admin.PutAsJsonAsync($"/api/ipcams/{nvr.Id}",
+            new NvrRequest("Старый пароль", "127.0.0.1", _nvr.Port, FakeNvr.User, FakeNvr.Password, [new IpCamChannelRequest(1, "Ворота")]));
+        Assert.Equal(HttpStatusCode.OK, fixedLogin.StatusCode);
+        await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == nvr.Channels[0].DeviceId && d.Status == DeviceStatus.Online), "online with the new password");
+    }
 }

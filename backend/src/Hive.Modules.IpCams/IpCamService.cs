@@ -9,17 +9,21 @@ using Microsoft.EntityFrameworkCore;
 namespace Hive.Modules.IpCams;
 
 /// <summary>A channel to take into the swarm: its device gets the name and zone given here.</summary>
-public sealed record IpCamChannelRequest(int Channel, string Name, int? ZoneId = null, bool RecordWhenDisarmed = false);
+/// <summary>SnapshotSource: auto (snapshot.cgi, then the RTSP stream), cgi or rtsp; null keeps auto.</summary>
+public sealed record IpCamChannelRequest(int Channel, string Name, int? ZoneId = null, bool RecordWhenDisarmed = false, string? SnapshotSource = null);
 
 /// <summary>An empty Password on an update keeps the stored one.</summary>
-public sealed record NvrRequest(string Name, string Host, int? Port, string Username, string? Password, IReadOnlyList<IpCamChannelRequest> Channels);
+public sealed record NvrRequest(string Name, string Host, int? Port, string Username, string? Password, IReadOnlyList<IpCamChannelRequest> Channels, int? RtspPort = null);
 
 public sealed record NvrProbeRequest(string Host, int? Port, string Username, string Password);
 
-public sealed record IpCamChannelDto(int Channel, string DeviceId, string Name, int? ZoneId, string Status, bool RecordWhenDisarmed, string RtspUrl);
+/// <summary>SnapshotVia: how the last frame came (cgi or rtsp), null before the first one.</summary>
+public sealed record IpCamChannelDto(
+    int Channel, string DeviceId, string Name, int? ZoneId, string Status, bool RecordWhenDisarmed, string RtspUrl, string SnapshotSource, string? SnapshotVia);
 
 /// <summary>An NVR as the settings show it: never its password, only whether one is stored.</summary>
-public sealed record NvrDto(int Id, string Name, string Host, int Port, string Username, bool PasswordSet, IReadOnlyList<IpCamChannelDto> Channels);
+/// <summary>Login: whether the hive may talk to the NVR now, or waits because it locked or refused the login (see NvrLogins).</summary>
+public sealed record NvrDto(int Id, string Name, string Host, int Port, string Username, bool PasswordSet, IReadOnlyList<IpCamChannelDto> Channels, int RtspPort, NvrLoginDto Login);
 
 public enum NvrChange
 {
@@ -29,7 +33,7 @@ public enum NvrChange
 }
 
 /// <summary>NVRs and their channels (contracts/ipcam.md): each channel is a device of driver and type ipcam.</summary>
-public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider protection, IpCamWatch watch, TimeProvider time)
+public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider protection, IpCamWatch watch, NvrLogins logins, TimeProvider time)
 {
     public const int MaxChannels = 64;
     private readonly IDataProtector _protector = protection.CreateProtector(IpCamWatch.ProtectorPurpose);
@@ -42,17 +46,35 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
         var nvrs = await db.Nvrs.AsNoTracking().Include(n => n.Channels).OrderBy(n => n.Id).ToListAsync(ct);
         var ids = nvrs.SelectMany(n => n.Channels).Select(c => c.DeviceId).ToList();
         var devices = await db.Devices.AsNoTracking().Where(d => ids.Contains(d.DeviceId)).ToDictionaryAsync(d => d.DeviceId, ct);
-        return nvrs.Select(n => ToDto(n, devices)).ToList();
+        return nvrs.Select(n => ToDto(n, devices, LoginState(n))).ToList();
     }
 
     public async Task<NvrDto?> GetAsync(int id, CancellationToken ct) =>
         (await ListAsync(ct)).FirstOrDefault(n => n.Id == id);
 
+    private NvrLoginDto LoginState(Nvr n)
+    {
+        try
+        {
+            return logins.State(new NvrEndpoint(n.Host, n.Port, n.Username, _protector.Unprotect(n.PasswordProtected), n.RtspPort));
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            return new NvrLoginDto(NvrLogins.Paused, null, null); // the keys are gone: the password has to be entered again
+        }
+    }
+
     /// <summary>The stored login of an NVR, for "Проверить" and the live snapshot; null when there is no such NVR.</summary>
     public async Task<NvrEndpoint?> EndpointAsync(int id, CancellationToken ct) =>
         await db.Nvrs.AsNoTracking().FirstOrDefaultAsync(n => n.Id == id, ct) is { } n
-            ? new NvrEndpoint(n.Host, n.Port, n.Username, _protector.Unprotect(n.PasswordProtected))
+            ? new NvrEndpoint(n.Host, n.Port, n.Username, _protector.Unprotect(n.PasswordProtected), n.RtspPort)
             : null;
+
+    /// <summary>What the snapshot service needs of a channel: its device and settings when it is in the swarm, else auto.</summary>
+    public async Task<SnapshotTarget> TargetAsync(int id, int channel, CancellationToken ct) =>
+        await db.NvrChannels.AsNoTracking().Where(c => c.NvrId == id && c.Channel == channel)
+            .Select(c => new SnapshotTarget(id, c.DeviceId, c.Channel, c.SnapshotSource, c.SnapshotVia)).FirstOrDefaultAsync(ct)
+        ?? new SnapshotTarget(id, null, channel, SnapshotSources.Auto, null);
 
     public async Task<(NvrChange Result, string? Error, NvrDto? Nvr)> CreateAsync(NvrRequest r, string by, CancellationToken ct)
     {
@@ -66,6 +88,7 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
             Name = r.Name.Trim(),
             Host = Host(r.Host),
             Port = r.Port ?? 80,
+            RtspPort = r.RtspPort ?? 554,
             Username = r.Username.Trim(),
             PasswordProtected = _protector.Protect(r.Password),
             CreatedAt = now,
@@ -75,6 +98,7 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
         await SetChannelsAsync(nvr, r.Channels, now, ct);
         Audit.Record(db, now, by, "nvr_add", nvr.Name, new { nvr.Host, nvr.Port, channels = r.Channels.Select(c => c.Channel) });
         await db.SaveChangesAsync(ct);
+        logins.Forget(nvr.Host, nvr.Port);
         watch.Reload();
         return (NvrChange.Ok, null, await GetAsync(nvr.Id, ct));
     }
@@ -90,6 +114,7 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
         nvr.Name = r.Name.Trim();
         nvr.Host = Host(r.Host);
         nvr.Port = r.Port ?? 80;
+        nvr.RtspPort = r.RtspPort ?? nvr.RtspPort;
         nvr.Username = r.Username.Trim();
         if (!string.IsNullOrEmpty(r.Password))
             nvr.PasswordProtected = _protector.Protect(r.Password);
@@ -97,6 +122,7 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
         Audit.Record(db, now, by, "nvr_update", nvr.Name,
             new { nvr.Host, nvr.Port, channels = r.Channels.Select(c => c.Channel), passwordChanged = !string.IsNullOrEmpty(r.Password) });
         await db.SaveChangesAsync(ct);
+        logins.Forget(nvr.Host, nvr.Port);
         watch.Reload();
         return (NvrChange.Ok, null, await GetAsync(nvr.Id, ct));
     }
@@ -134,6 +160,10 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
                 nvr.Channels.Add(channel);
             }
             channel.RecordWhenDisarmed = w.RecordWhenDisarmed;
+            var source = w.SnapshotSource ?? SnapshotSources.Auto;
+            if (channel.SnapshotSource != source)
+                channel.SnapshotVia = null; // a new way to try: nothing known about it yet
+            channel.SnapshotSource = source;
 
             // A channel taken out earlier and back again finds its old device, with its history.
             var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == channel.DeviceId, ct);
@@ -175,6 +205,10 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
             return "channels: номер канала от 1";
         if (r.Channels.GroupBy(c => c.Channel).Any(g => g.Count() > 1))
             return "channels: каналы повторяются";
+        if (r.RtspPort is < 1 or > 65535)
+            return "rtspPort: от 1 до 65535";
+        if (r.Channels.Any(c => c.SnapshotSource is not null && !SnapshotSources.IsKnown(c.SnapshotSource)))
+            return "channels: снимок берётся auto, cgi или rtsp";
         if (r.Channels.Any(c => string.IsNullOrWhiteSpace(c.Name) || c.Name.Trim().Length > 128))
             return "channels: у каждой камеры нужно имя до 128 символов";
         var zones = r.Channels.Select(c => c.ZoneId).OfType<int>().Distinct().ToList();
@@ -206,10 +240,10 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
         var d = devices.GetValueOrDefault(c.DeviceId);
         return new IpCamChannelDto(c.Channel, c.DeviceId, d?.Name ?? c.DeviceId, d?.ZoneId,
             (d?.Status ?? DeviceStatus.Pending).ToString().ToLowerInvariant(), c.RecordWhenDisarmed,
-            new NvrEndpoint(n.Host, n.Port, n.Username, "").RtspUrl(c.Channel));
+            new NvrEndpoint(n.Host, n.Port, n.Username, "", n.RtspPort).RtspUrl(c.Channel), c.SnapshotSource, c.SnapshotVia);
     }
 
-    private static NvrDto ToDto(Nvr n, IReadOnlyDictionary<string, Device> devices) =>
+    private static NvrDto ToDto(Nvr n, IReadOnlyDictionary<string, Device> devices, NvrLoginDto login) =>
         new(n.Id, n.Name, n.Host, n.Port, n.Username, n.PasswordProtected.Length > 0,
-            n.Channels.OrderBy(c => c.Channel).Select(c => ToChannelDto(n, c, devices)).ToList());
+            n.Channels.OrderBy(c => c.Channel).Select(c => ToChannelDto(n, c, devices)).ToList(), n.RtspPort, login);
 }

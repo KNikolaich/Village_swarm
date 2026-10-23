@@ -5556,6 +5556,8 @@ export interface components {
             status: string;
             recordWhenDisarmed: boolean;
             rtspUrl: string;
+            snapshotSource: string;
+            snapshotVia: null | string;
         };
         IpCamChannelRequest: {
             /** Format: int32 */
@@ -5565,6 +5567,7 @@ export interface components {
             zoneId?: null | number;
             /** @default false */
             recordWhenDisarmed: boolean;
+            snapshotSource?: null | string;
         };
         IrButtonsDto: {
             buttons: {
@@ -5751,6 +5754,16 @@ export interface components {
             username: string;
             passwordSet: boolean;
             channels: components["schemas"]["IpCamChannelDto"][];
+            /** Format: int32 */
+            rtspPort: number;
+            login: components["schemas"]["NvrLoginDto"];
+        };
+        NvrLoginDto: {
+            state: string;
+            /** Format: date-time */
+            until: null | string;
+            /** Format: int32 */
+            attemptsLeft: null | number;
         };
         NvrProbeRequest: {
             host: string;
@@ -5767,6 +5780,8 @@ export interface components {
             username: string;
             password: null | string;
             channels: components["schemas"]["IpCamChannelRequest"][];
+            /** Format: int32 */
+            rtspPort?: null | number;
         };
         OtaPendingDto: {
             deviceId: string;

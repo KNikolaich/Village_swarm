@@ -32,6 +32,15 @@ public sealed class FakeNvr : IAsyncDisposable
     public int Snapshots;
     public int StreamsOpened;
 
+    /// <summary>Requests that came with a login (each one counts towards a Dahua lockout).</summary>
+    public int LoginRequests;
+
+    /// <summary>Set: the account is locked for so many seconds, every request with a login gets Dahua's 403 and its error.</summary>
+    public volatile int LockedFor;
+
+    /// <summary>Channels whose snapshot.cgi answers like a Dahua NVR with a third-party ONVIF camera: 200, text, no JPEG.</summary>
+    public ConcurrentDictionary<int, bool> NoSnapshot { get; } = new();
+
     private FakeNvr(WebApplication app, byte[] jpeg)
     {
         _app = app;
@@ -79,10 +88,23 @@ public sealed class FakeNvr : IAsyncDisposable
             ctx.Abort();
             return;
         }
+        var withLogin = ctx.Request.Headers.Authorization.ToString().StartsWith("Digest ", StringComparison.Ordinal);
+        if (withLogin)
+            Interlocked.Increment(ref LoginRequests);
+        if (withLogin && LockedFor > 0)
+        {
+            // What the real NVR at the dacha answered once the hive had tried a stale password too often.
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            ctx.Response.ContentType = "text/plain;charset=utf-8";
+            await ctx.Response.WriteAsync($"Error {{\"ErrorCode\":268632081,\"Result\":false,\"RmLock\":{LockedFor},\"RmLogin\":0}}");
+            return;
+        }
         if (!Authorized(ctx.Request))
         {
             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
             ctx.Response.Headers.WWWAuthenticate = $"Digest realm=\"{Realm}\", qop=\"auth\", nonce=\"{Nonce}\", opaque=\"5ccc069c403ebaf9f0171e9517f40e41\"";
+            if (withLogin)
+                await ctx.Response.WriteAsync("Error {\"ErrorCode\":268632085,\"Result\":false,\"RmLock\":0,\"RmLogin\":4}");
             return;
         }
 
@@ -97,6 +119,11 @@ public sealed class FakeNvr : IAsyncDisposable
                 break;
             case "LogicDeviceManager.cgi":
                 await ctx.Response.WriteAsync("states[0].channel=0\r\nstates[0].connectionState=Connected\r\nstates[1].channel=1\r\nstates[1].connectionState=Connected\r\nstates[2].channel=2\r\nstates[2].connectionState=Disconnected\r\n");
+                break;
+            case "snapshot.cgi" when int.TryParse(ctx.Request.Query["channel"], out var ch) && NoSnapshot.ContainsKey(ch):
+                Interlocked.Increment(ref Snapshots);
+                ctx.Response.ContentType = "text/plain";
+                await ctx.Response.WriteAsync("Error\r\nInternal Error\r\n");
                 break;
             case "snapshot.cgi":
                 Interlocked.Increment(ref Snapshots);

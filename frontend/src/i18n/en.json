@@ -650,7 +650,8 @@
     "clearCommandsConfirm": "Clear the command list of “{name}”? They will not be shown here any more; the server removes them at the scheduled cleanup.",
     "clearLogs": "Clear the log",
     "clearLogsConfirm": "Clear the log of “{name}”? The entries will not be shown here any more; the server removes them after a month at the scheduled cleanup.",
-    "clearFailed": "Could not clear"
+    "clearFailed": "Could not clear",
+    "snapshotFailed": "No snapshot"
   },
   "monitoring": {
     "title": "Monitoring",
@@ -1295,7 +1296,23 @@
     "errors": {
       "auth": "The NVR refused the login or password",
       "unreachable": "Nothing answers at this address and port",
-      "not_dahua": "What answers here is not a Dahua NVR"
+      "not_dahua": "What answers here is not a Dahua NVR",
+      "locked": "The NVR locked the login after wrong passwords. Wait until it unlocks and check the password"
+    },
+    "snapshot": "Snapshot",
+    "snapshotFailed": "No snapshot",
+    "via": "snapshots: {via}",
+    "rtspPort": "RTSP port",
+    "snapshotSource": "Where snapshots come from",
+    "sources": {
+      "auto": "auto: the NVR, then the video stream",
+      "cgi": "the NVR snapshot (snapshot.cgi)",
+      "rtsp": "a frame of the video stream (RTSP)"
+    },
+    "login": {
+      "locked": "The NVR locked the login, {n} min left. The hive leaves it alone meanwhile so the lock is not extended.",
+      "paused": "The NVR refused the password twice. The hive stopped asking it to avoid a lockout: check the login and save it again.",
+      "wait": "The NVR refused the password ({n} attempts left). Next try in a minute."
     }
   }
 }

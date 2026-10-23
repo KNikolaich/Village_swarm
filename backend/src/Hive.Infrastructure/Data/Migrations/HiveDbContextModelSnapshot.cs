@@ -1066,6 +1066,12 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("port");
 
+                    b.Property<int>("RtspPort")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(554)
+                        .HasColumnName("rtsp_port");
+
                     b.Property<string>("Username")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -1104,6 +1110,19 @@ namespace Hive.Infrastructure.Data.Migrations
                     b.Property<bool>("RecordWhenDisarmed")
                         .HasColumnType("boolean")
                         .HasColumnName("record_when_disarmed");
+
+                    b.Property<string>("SnapshotSource")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasDefaultValue("auto")
+                        .HasColumnName("snapshot_source");
+
+                    b.Property<string>("SnapshotVia")
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("snapshot_via");
 
                     b.HasKey("Id")
                         .HasName("pk_nvr_channels");

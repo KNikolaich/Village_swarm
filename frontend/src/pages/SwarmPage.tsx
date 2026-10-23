@@ -6,7 +6,7 @@ import { FlashButton } from '@/components/FlashButton'
 import { OtaRolloutPanel } from '@/components/OtaRolloutPanel'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto, type LatestValueDto, type Schemas } from '@/api/client'
-import { keys, useDevices, useLatestTelemetry, useMe, useOtaRollout, useSendCommand, useZones } from '@/api/queries'
+import { keys, useDevices, useLatestTelemetry, useMe, useOtaRollout, useSendCommand, useSnapshot, useZones } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
@@ -358,6 +358,7 @@ function SleepHelp() {
 function QuickControls({ device }: { device: DeviceDto }) {
   const qc = useQueryClient()
   const send = useSendCommand(device.deviceId)
+  const takeSnapshot = useSnapshot(device.deviceId)
   const { relays, snapshot } = quickControls(device)
   if (relays.length === 0 && !snapshot) return null
 
@@ -381,7 +382,7 @@ function QuickControls({ device }: { device: DeviceDto }) {
         )
       })}
       {snapshot && (
-        <Button variant="outline" size="icon" title={t('swarm.snapshot')} aria-label={t('swarm.snapshot')} onClick={() => void send('snapshot', { count: 1 })}>
+        <Button variant="outline" size="icon" title={t('swarm.snapshot')} aria-label={t('swarm.snapshot')} onClick={() => void takeSnapshot()}>
           <Camera />
         </Button>
       )}

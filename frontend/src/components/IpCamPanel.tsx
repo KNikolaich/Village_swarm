@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { Camera, CheckCircle2, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { api, call, type Schemas } from '@/api/client'
@@ -13,7 +13,18 @@ type Nvr = Schemas['NvrDto']
 type Probe = Schemas['ProbeResultDto']
 
 /** A channel on the form: whether it goes into the swarm, under which name and group. */
-type Row = { channel: number; take: boolean; name: string; zoneId: number | null; recordWhenDisarmed: boolean; title?: string | null; connected?: boolean | null }
+type Row = {
+  channel: number
+  take: boolean
+  name: string
+  zoneId: number | null
+  recordWhenDisarmed: boolean
+  snapshotSource: string
+  title?: string | null
+  connected?: boolean | null
+}
+
+const snapshotSources = ['auto', 'cgi', 'rtsp']
 
 const nvrsKey = ['ipcams'] as const
 
@@ -85,14 +96,21 @@ function NvrCard({ nvr, onEdit, onDelete }: { nvr: Nvr; onEdit: () => void; onDe
         <span className="text-xs text-neutral-500">{nvr.host}{nvr.port !== 80 ? `:${nvr.port}` : ''}</span>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
-        <ul className="space-y-1">
+        <ul className="space-y-2">
           {nvr.channels.map((c) => (
-            <li key={c.channel} className="flex flex-wrap items-center justify-between gap-2">
-              <span className="min-w-0 truncate">{t('ipcam.channel')} {c.channel} · {c.name}</span>
-              <Badge tone={c.status === 'online' ? 'ok' : c.status === 'offline' ? 'alarm' : 'neutral'}>{t(`status.${c.status}`, c.status)}</Badge>
+            <li key={c.channel} className="space-y-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 truncate">{t('ipcam.channel')} {c.channel} · {c.name}</span>
+                <span className="flex flex-wrap items-center justify-end gap-2">
+                  {c.snapshotVia && <span className="text-xs text-neutral-500">{t('ipcam.via').replace('{via}', c.snapshotVia)}</span>}
+                  <Badge tone={c.status === 'online' ? 'ok' : c.status === 'offline' ? 'alarm' : 'neutral'}>{t(`status.${c.status}`, c.status)}</Badge>
+                  <LiveSnapshotButton nvrId={nvr.id} channel={c.channel} />
+                </span>
+              </div>
             </li>
           ))}
         </ul>
+        <LoginLine login={nvr.login} />
         {probe && <ProbeLine probe={probe} />}
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" onClick={() => void check()} disabled={busy}><Search />{t('ipcam.probe')}</Button>
@@ -102,6 +120,61 @@ function NvrCard({ nvr, onEdit, onDelete }: { nvr: Nvr; onEdit: () => void; onDe
       </CardContent>
     </Card>
   )
+}
+
+/**
+ * "Снимок" next to a channel: a frame taken right now the way photos are taken (snapshot.cgi, then the RTSP stream),
+ * or the NVR's own reason when there is none, so a camera that gives no photos can be told apart from one that gives no motion.
+ */
+function LiveSnapshotButton({ nvrId, channel }: { nvrId: number; channel: number }) {
+  const [state, setState] = useState<{ url?: string; via?: string; error?: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function take() {
+    setBusy(true)
+    if (state?.url) URL.revokeObjectURL(state.url)
+    try {
+      const response = await fetch(`/api/ipcams/${nvrId}/snapshot?channel=${channel}`, { credentials: 'same-origin' })
+      if (response.ok) {
+        setState({ url: URL.createObjectURL(await response.blob()), via: response.headers.get('X-Snapshot-Via') ?? undefined })
+      } else {
+        const problem = (await response.json().catch(() => null)) as { detail?: string } | null
+        setState({ error: problem?.detail ?? `HTTP ${response.status}` })
+      }
+    } catch (e) {
+      setState({ error: String(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => void take()} disabled={busy} title={t('ipcam.snapshot')}><Camera />{busy ? '…' : t('ipcam.snapshot')}</Button>
+      {state && (
+        <div className="basis-full space-y-1">
+          {state.url && <img src={state.url} alt="" className="max-h-60 rounded-md" />}
+          {state.via && <p className="text-xs text-neutral-500">{t('ipcam.via').replace('{via}', state.via)}</p>}
+          {state.error && <p className="break-words text-xs text-red-400">{t('ipcam.snapshotFailed')}: {state.error}</p>}
+        </div>
+      )}
+    </>
+  )
+}
+
+/**
+ * Why the hive is not talking to the NVR: it locked the login (Dahua does after a few wrong ones, for half an hour),
+ * or refused it and the hive stopped trying so as not to cause that. Saving the login again resumes.
+ */
+function LoginLine({ login }: { login: Nvr['login'] }) {
+  if (login.state === 'ok') return null
+  const minutes = login.until ? Math.max(1, Math.ceil((new Date(login.until).getTime() - Date.now()) / 60_000)) : null
+  const text = login.state === 'locked'
+    ? t('ipcam.login.locked').replace('{n}', String(minutes ?? '?'))
+    : login.state === 'paused'
+      ? t('ipcam.login.paused')
+      : t('ipcam.login.wait').replace('{n}', String(login.attemptsLeft ?? '?'))
+  return <p className="rounded-md border border-red-900/60 bg-red-950/30 p-2 text-sm text-red-300">{text}</p>
 }
 
 function ProbeLine({ probe }: { probe: Probe }) {
@@ -117,10 +190,11 @@ function NvrForm({ nvr, onDone, onCancel }: { nvr?: Nvr; onDone: () => void; onC
   const [name, setName] = useState(nvr?.name ?? t('ipcam.defaultName'))
   const [host, setHost] = useState(nvr?.host ?? '')
   const [port, setPort] = useState(nvr?.port ?? 80)
+  const [rtspPort, setRtspPort] = useState(nvr?.rtspPort ?? 554)
   const [username, setUsername] = useState(nvr?.username ?? 'admin')
   const [password, setPassword] = useState('')
   const [rows, setRows] = useState<Row[]>(
-    (nvr?.channels ?? []).map((c) => ({ channel: c.channel, take: true, name: c.name, zoneId: c.zoneId ?? null, recordWhenDisarmed: c.recordWhenDisarmed })),
+    (nvr?.channels ?? []).map((c) => ({ channel: c.channel, take: true, name: c.name, zoneId: c.zoneId ?? null, recordWhenDisarmed: c.recordWhenDisarmed, snapshotSource: c.snapshotSource })),
   )
   const [probe, setProbe] = useState<Probe | null>(null)
   const [extra, setExtra] = useState('')
@@ -137,7 +211,7 @@ function NvrForm({ nvr, onDone, onCancel }: { nvr?: Nvr; onDone: () => void; onC
         return c ? { ...r, title: c.title, connected: c.connected } : r
       })
       for (const c of result.channels) {
-        if (!next.some((r) => r.channel === c.channel)) next.push({ channel: c.channel, take: false, name: c.title || `${t('ipcam.camera')} ${c.channel}`, zoneId: null, recordWhenDisarmed: false, title: c.title, connected: c.connected })
+        if (!next.some((r) => r.channel === c.channel)) next.push({ channel: c.channel, take: false, name: c.title || `${t('ipcam.camera')} ${c.channel}`, zoneId: null, recordWhenDisarmed: false, snapshotSource: 'auto', title: c.title, connected: c.connected })
       }
       return next.sort((a, b) => a.channel - b.channel)
     })
@@ -163,7 +237,7 @@ function NvrForm({ nvr, onDone, onCancel }: { nvr?: Nvr; onDone: () => void; onC
   function addChannel() {
     const n = Number(extra)
     if (!Number.isInteger(n) || n < 1 || n > 256 || rows.some((r) => r.channel === n)) return
-    setRows((all) => [...all, { channel: n, take: true, name: `${t('ipcam.camera')} ${n}`, zoneId: null, recordWhenDisarmed: false }].sort((a, b) => a.channel - b.channel))
+    setRows((all) => [...all, { channel: n, take: true, name: `${t('ipcam.camera')} ${n}`, zoneId: null, recordWhenDisarmed: false, snapshotSource: 'auto' }].sort((a, b) => a.channel - b.channel))
     setExtra('')
   }
 
@@ -177,7 +251,8 @@ function NvrForm({ nvr, onDone, onCancel }: { nvr?: Nvr; onDone: () => void; onC
       port,
       username,
       password: password || null,
-      channels: rows.filter((r) => r.take).map((r) => ({ channel: r.channel, name: r.name, zoneId: r.zoneId, recordWhenDisarmed: r.recordWhenDisarmed })),
+      rtspPort,
+      channels: rows.filter((r) => r.take).map((r) => ({ channel: r.channel, name: r.name, zoneId: r.zoneId, recordWhenDisarmed: r.recordWhenDisarmed, snapshotSource: r.snapshotSource })),
     }
     const { error: err, response } = nvr
       ? await api.PUT('/api/ipcams/{id}', { params: { path: { id: nvr.id } }, body })
@@ -203,6 +278,7 @@ function NvrForm({ nvr, onDone, onCancel }: { nvr?: Nvr; onDone: () => void; onC
           <div className="flex gap-2">
             <Input className="flex-1" placeholder={t('ipcam.host')} value={host} onChange={(e) => setHost(e.target.value)} />
             <Input className="w-24" type="number" min={1} max={65535} value={port} onChange={(e) => setPort(Number(e.target.value))} aria-label={t('ipcam.port')} />
+            <Input className="w-24" type="number" min={1} max={65535} value={rtspPort} onChange={(e) => setRtspPort(Number(e.target.value))} aria-label={t('ipcam.rtspPort')} title={t('ipcam.rtspPort')} />
           </div>
           <Input placeholder={t('ipcam.username')} value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" />
           <PasswordInput placeholder={nvr ? t('ipcam.passwordKeep') : t('ipcam.password')} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
@@ -234,6 +310,12 @@ function NvrForm({ nvr, onDone, onCancel }: { nvr?: Nvr; onDone: () => void; onC
                       <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400">
                         <input type="checkbox" className="size-4 accent-amber-400" checked={r.recordWhenDisarmed} onChange={(e) => set(r.channel, { recordWhenDisarmed: e.target.checked })} />
                         {t('ipcam.recordWhenDisarmed')}
+                      </label>
+                      <label className="flex flex-wrap items-center gap-2 text-xs text-neutral-400">
+                        {t('ipcam.snapshotSource')}
+                        <Select className="h-9" value={r.snapshotSource} onChange={(e) => set(r.channel, { snapshotSource: e.target.value })}>
+                          {snapshotSources.map((s) => <option key={s} value={s}>{t(`ipcam.sources.${s}`)}</option>)}
+                        </Select>
                       </label>
                     </>
                   )}

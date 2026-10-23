@@ -5630,7 +5630,9 @@
           "zoneId",
           "status",
           "recordWhenDisarmed",
-          "rtspUrl"
+          "rtspUrl",
+          "snapshotSource",
+          "snapshotVia"
         ],
         "type": "object",
         "properties": {
@@ -5659,6 +5661,15 @@
           },
           "rtspUrl": {
             "type": "string"
+          },
+          "snapshotSource": {
+            "type": "string"
+          },
+          "snapshotVia": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -5686,6 +5697,12 @@
           "recordWhenDisarmed": {
             "type": "boolean",
             "default": false
+          },
+          "snapshotSource": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -6338,7 +6355,9 @@
           "port",
           "username",
           "passwordSet",
-          "channels"
+          "channels",
+          "rtspPort",
+          "login"
         ],
         "type": "object",
         "properties": {
@@ -6367,6 +6386,40 @@
             "items": {
               "$ref": "#/components/schemas/IpCamChannelDto"
             }
+          },
+          "rtspPort": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "login": {
+            "$ref": "#/components/schemas/NvrLoginDto"
+          }
+        }
+      },
+      "NvrLoginDto": {
+        "required": [
+          "state",
+          "until",
+          "attemptsLeft"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "until": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "attemptsLeft": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -6435,6 +6488,13 @@
             "items": {
               "$ref": "#/components/schemas/IpCamChannelRequest"
             }
+          },
+          "rtspPort": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           }
         }
       },
