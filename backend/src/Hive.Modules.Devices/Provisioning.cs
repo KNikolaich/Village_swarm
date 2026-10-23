@@ -8,6 +8,7 @@ using Hive.Infrastructure.Data;
 using Hive.Infrastructure.Mqtt;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Hive.Modules.Devices;
@@ -279,19 +280,58 @@ public sealed class ProvisioningService(
     private static string Secret() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(18)).Replace('+', '-').Replace('/', '_');
 }
 
-/// <summary>Sets dynsec defaults whenever the api (re)connects to the broker.</summary>
-public sealed class DynamicSecurityBootstrap(MqttGateway mqtt, DynamicSecurity dynsec) : IHostedService
+/// <summary>
+/// Sets dynsec defaults whenever the api (re)connects to the broker. A broker busy starting up may drop the answer (or the
+/// connection): that is logged and tried again in the background rather than stopping the api from starting.
+/// </summary>
+public sealed class DynamicSecurityBootstrap(MqttGateway mqtt, DynamicSecurity dynsec, ILogger<DynamicSecurityBootstrap> logger) : IHostedService
 {
-    public Task StartAsync(CancellationToken cancellationToken)
+    private readonly CancellationTokenSource _stop = new();
+
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         mqtt.Connected += dynsec.EnsureDefaultsAsync;
         // The gateway may have connected before this hook was added.
-        return mqtt.IsConnected ? dynsec.EnsureDefaultsAsync(cancellationToken) : Task.CompletedTask;
+        if (!mqtt.IsConnected)
+            return;
+        try
+        {
+            await dynsec.EnsureDefaultsAsync(cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            logger.LogWarning("The broker did not answer the dynamic security defaults at start-up; trying again in the background");
+            _ = RetryAsync(_stop.Token);
+        }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    private async Task RetryAsync(CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 30 && !ct.IsCancellationRequested; attempt++)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                await dynsec.EnsureDefaultsAsync(ct);
+                return;
+            }
+            catch (TimeoutException)
+            {
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Dynamic security defaults failed");
+            }
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
         mqtt.Connected -= dynsec.EnsureDefaultsAsync;
-        return Task.CompletedTask;
+        await _stop.CancelAsync();
     }
 }

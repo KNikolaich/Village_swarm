@@ -239,6 +239,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.Property(x => x.Host).HasMaxLength(255);
             e.Property(x => x.Username).HasMaxLength(64);
             e.Property(x => x.PasswordProtected).HasMaxLength(1024);
+            e.Property(x => x.RtspPort).HasDefaultValue(554);
             e.HasMany(x => x.Channels).WithOne().HasForeignKey(x => x.NvrId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -246,6 +247,8 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
         {
             e.ToTable("nvr_channels");
             e.Property(x => x.DeviceId).HasMaxLength(32);
+            e.Property(x => x.SnapshotSource).HasMaxLength(8).HasDefaultValue(SnapshotSources.Auto);
+            e.Property(x => x.SnapshotVia).HasMaxLength(8);
             e.HasIndex(x => new { x.NvrId, x.Channel }).IsUnique();
             e.HasIndex(x => x.DeviceId).IsUnique();
         });

@@ -218,6 +218,34 @@ export const useMetricSeries = (lines: { device: string; metric: string }[], hou
     })),
   })
 
+/**
+ * "Take a photo" with its outcome: the command is followed until the camera answers, and a failure says why (an IP camera
+ * whose NVR gives no frame, a guard-cam that could not upload). The photo itself is picked up by the media queries.
+ */
+export function useSnapshot(deviceId: string) {
+  const qc = useQueryClient()
+  return async () => {
+    const { data, response } = await api.POST('/api/devices/{deviceId}/commands', { params: { path: { deviceId } }, body: { name: 'snapshot', payload: { count: 1 } as unknown as Record<string, never> } })
+    if (!response.ok || !data) {
+      toast.error(t('device.commandRefused'))
+      return
+    }
+    toast.success(t('device.commandSent'))
+    for (let i = 0; i < 25; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
+      const cmd = (await api.GET('/api/devices/{deviceId}/commands/{cid}', { params: { path: { deviceId, cid: data.cid } } })).data
+      if (!cmd || cmd.status === 'sent') continue
+      void qc.invalidateQueries({ queryKey: ['media'] })
+      if (cmd.status !== 'ok') {
+        const ack = cmd.ack as { error?: unknown; reason?: unknown } | null | undefined
+        const why = typeof ack?.error === 'string' ? ack.error : typeof ack?.reason === 'string' ? ack.reason : t(`device.commandStatus.${cmd.status}`, cmd.status)
+        toast.error(`${t('device.snapshotFailed')}: ${why}`, { duration: 15_000 })
+      }
+      return
+    }
+  }
+}
+
 /** Sends a command to a hornet, with a toast for the outcome. */
 export function useSendCommand(deviceId: string) {
   return async (name: string, payload?: Record<string, unknown>) => {

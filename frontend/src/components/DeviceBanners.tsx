@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto, type LatestValueDto } from '@/api/client'
-import { useLatestPhoto, useRules, useSendCommand } from '@/api/queries'
+import { useLatestPhoto, useRules, useSendCommand, useSnapshot } from '@/api/queries'
 import { Lightbox } from '@/components/Lightbox'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/primitives'
@@ -21,6 +21,7 @@ export function CameraBanner({ device, shown, canControl }: { device: DeviceDto;
   const qc = useQueryClient()
   const photo = useLatestPhoto(device.deviceId)
   const send = useSendCommand(device.deviceId)
+  const takeSnapshot = useSnapshot(device.deviceId)
   const [open, setOpen] = useState(false)
   const online = device.status === 'online'
   const channel = relayChannels(device)[0]
@@ -28,9 +29,9 @@ export function CameraBanner({ device, shown, canControl }: { device: DeviceDto;
   const p = photo.data
 
   async function snapshot() {
-    await send('snapshot', { count: 1 })
-    // The photo comes over HTTP a few seconds later.
+    // The photo comes over HTTP a few seconds later; a failure is shown with its reason.
     for (const ms of [4000, 12_000]) setTimeout(() => void qc.invalidateQueries({ queryKey: ['media', 'latest', device.deviceId] }), ms)
+    await takeSnapshot()
   }
 
   return (

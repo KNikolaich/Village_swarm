@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Hive.Modules.IpCams;
 
@@ -22,6 +23,9 @@ public static class IpCamsModule
         services.AddHostedService(sp => sp.GetRequiredService<IpCamWatch>());
         services.AddSingleton<IDirectDriver>(sp => sp.GetRequiredService<IpCamWatch>());
         services.AddScoped<IpCamService>();
+        services.AddSingleton<Snapshots>();
+        services.AddSingleton<NvrLogins>();
+        services.TryAddSingleton<IFrameGrabber, FfmpegFrameGrabber>();
         return services;
     }
 
@@ -36,11 +40,11 @@ public static class IpCamsModule
             .RequireAuthorization(HiveRoles.AdminOnly);
 
         // Before saving: the add form checks the address and the login it was given.
-        ipcams.MapPost("/probe", async Task<Results<Ok<ProbeResultDto>, ValidationProblem>> (NvrProbeRequest r, CancellationToken ct) =>
+        ipcams.MapPost("/probe", async Task<Results<Ok<ProbeResultDto>, ValidationProblem>> (NvrProbeRequest r, NvrLogins logins, CancellationToken ct) =>
             {
                 if (IpCamService.HostError(r.Host, r.Port) is { } error)
                     return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["request"] = [error] });
-                using var client = new DahuaClient(new NvrEndpoint(IpCamService.Host(r.Host), r.Port ?? 80, r.Username.Trim(), r.Password));
+                using var client = new DahuaClient(new NvrEndpoint(IpCamService.Host(r.Host), r.Port ?? 80, r.Username.Trim(), r.Password), logins);
                 return TypedResults.Ok(await client.ProbeAsync(ct));
             })
             .RequireAuthorization(HiveRoles.AdminOnly);
@@ -71,29 +75,32 @@ public static class IpCamsModule
                 await s.DeleteAsync(id, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
             .RequireAuthorization(HiveRoles.AdminOnly);
 
-        ipcams.MapPost("/{id:int}/probe", async Task<Results<Ok<ProbeResultDto>, NotFound>> (int id, IpCamService s, CancellationToken ct) =>
+        ipcams.MapPost("/{id:int}/probe", async Task<Results<Ok<ProbeResultDto>, NotFound>> (int id, IpCamService s, NvrLogins logins, CancellationToken ct) =>
             {
                 if (await s.EndpointAsync(id, ct) is not { } endpoint)
                     return TypedResults.NotFound();
-                using var client = new DahuaClient(endpoint);
+                using var client = new DahuaClient(endpoint, logins);
                 return TypedResults.Ok(await client.ProbeAsync(ct));
             })
             .RequireAuthorization(HiveRoles.AdminOnly);
 
-        // A live frame, not stored: for the settings page and a look before picking a channel.
+        // A live frame, not stored: the settings page's "Снимок" and a look before picking a channel. Taken the same way as
+        // photos (snapshot.cgi, then the RTSP stream); X-Snapshot-Via says which gave it, a 502 says why neither did.
         ipcams.MapGet("/{id:int}/snapshot", async Task<Results<FileContentHttpResult, NotFound, ProblemHttpResult>> (
-                int id, int channel, IpCamService s, CancellationToken ct) =>
+                int id, int channel, HttpResponse response, IpCamService s, Snapshots snapshots, NvrLogins logins, CancellationToken ct) =>
             {
                 if (await s.EndpointAsync(id, ct) is not { } endpoint)
                     return TypedResults.NotFound();
-                using var client = new DahuaClient(endpoint);
+                using var client = new DahuaClient(endpoint, logins);
                 try
                 {
-                    return TypedResults.File(await client.SnapshotAsync(channel, ct), "image/jpeg");
+                    var taken = await snapshots.TakeAsync(client, await s.TargetAsync(id, channel, ct), ct);
+                    response.Headers["X-Snapshot-Via"] = taken.Via;
+                    return TypedResults.File(taken.Jpeg, "image/jpeg");
                 }
-                catch (Exception ex) when (!ct.IsCancellationRequested && ex is HttpRequestException or NvrAuthException or OperationCanceledException or IOException)
+                catch (SnapshotFailedException ex)
                 {
-                    return TypedResults.Problem(ex.Message, statusCode: StatusCodes.Status502BadGateway);
+                    return TypedResults.Problem(ex.Message, title: "No snapshot", statusCode: StatusCodes.Status502BadGateway);
                 }
             })
             .Produces(StatusCodes.Status200OK, contentType: "image/jpeg");

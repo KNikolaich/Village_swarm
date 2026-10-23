@@ -33,6 +33,9 @@ public sealed class IpCamOptions
 
     /// <summary>A stream silent this long (no heartbeat, no event) is taken for dead and reconnected.</summary>
     public int StaleStreamS { get; set; } = 30;
+
+    /// <summary>After the NVR refused a login, the same password is not tried again for this long (Dahua locks after a few).</summary>
+    public int AuthRetryS { get; set; } = 60;
 }
 
 /// <summary>
@@ -45,6 +48,8 @@ public sealed class IpCamWatch(
     IngestQueue ingest,
     IDataProtectionProvider protection,
     IOptions<IpCamOptions> options,
+    Snapshots snapshots,
+    NvrLogins logins,
     NodeState node,
     TimeProvider time,
     ILogger<IpCamWatch> logger) : BackgroundService, IDirectDriver
@@ -123,8 +128,8 @@ public sealed class IpCamWatch(
                 logger.LogError(ex, "Password of NVR {Nvr} cannot be decrypted (data protection keys lost?); enter it again", nvr.Name);
                 continue;
             }
-            var run = new NvrRun(nvr.Id, nvr.Name, new DahuaClient(new NvrEndpoint(nvr.Host, nvr.Port, nvr.Username, password)),
-                nvr.Channels.ToDictionary(c => c.Channel, c => new ChannelInfo(c.DeviceId, c.Channel, c.RecordWhenDisarmed)), now);
+            var run = new NvrRun(nvr.Id, nvr.Name, new DahuaClient(new NvrEndpoint(nvr.Host, nvr.Port, nvr.Username, password, nvr.RtspPort), logins),
+                nvr.Channels.ToDictionary(c => c.Channel, c => new ChannelInfo(c.DeviceId, c.Channel, c.RecordWhenDisarmed, c.SnapshotSource, c.SnapshotVia)), now);
             run.Task = Task.Run(() => RunStreamAsync(run, run.Stop.Token), CancellationToken.None);
             runs.Add(run);
         }
@@ -162,6 +167,21 @@ public sealed class IpCamWatch(
         var stale = TimeSpan.FromSeconds(Math.Max(5, options.Value.StaleStreamS));
         while (!ct.IsCancellationRequested)
         {
+            // A locked or refused login: nothing goes to the NVR (the stream's reconnects would keep it locked) until it may.
+            if (logins.Blocked(run.Client.Endpoint) is { } block)
+            {
+                run.Connected = false;
+                var wait = block.Until is { } until ? until - time.GetUtcNow() : TimeSpan.FromSeconds(30);
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(wait.TotalSeconds, 1, 30)), time, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                continue;
+            }
             try
             {
                 using var response = await run.Client.AttachAsync(ct);
@@ -200,6 +220,10 @@ public sealed class IpCamWatch(
             {
                 return;
             }
+            catch (NvrAuthException ex) when (ex.Block is not null || ex.Error is { Locked: true } or { Status: 401 })
+            {
+                // NvrLogins has said it once; the loop waits above.
+            }
             catch (Exception ex)
             {
                 logger.LogWarning("NVR {Nvr}: event stream failed: {Error}", run.Name, ex.Message);
@@ -227,7 +251,10 @@ public sealed class IpCamWatch(
             case DahuaEvent.VideoMotion when e.IsStart:
                 lock (_lastMotion)
                 {
-                    if (_lastMotion.TryGetValue(info.DeviceId, out var last) && now - last < TimeSpan.FromSeconds(options.Value.CooldownS))
+                    var cooling = _lastMotion.TryGetValue(info.DeviceId, out var last) && now - last < TimeSpan.FromSeconds(options.Value.CooldownS);
+                    // Said every time, so the log shows whether the NVR reports motion of a camera at all.
+                    logger.LogInformation("NVR {Nvr} channel {Channel} ({Device}): motion{Cooldown}", run.Id, channel, info.DeviceId, cooling ? ", within the cooldown" : "");
+                    if (cooling)
                         return;
                     _lastMotion[info.DeviceId] = now;
                 }
@@ -280,14 +307,14 @@ public sealed class IpCamWatch(
                     await Task.Delay(TimeSpan.FromMilliseconds(options.Value.PhotoIntervalMs), time, ct);
                 try
                 {
-                    var jpeg = await run.Client.SnapshotAsync(info.Channel, ct);
+                    var jpeg = await SnapshotAsync(run, info, ct);
                     var stored = await media.StoreFetchedAsync(info.DeviceId, photos[i], eventId, "motion", jpeg, "nvr", ct);
                     if (stored.Status is not (PhotoIngestStatus.Created or PhotoIngestStatus.Duplicate))
-                        logger.LogWarning("NVR {Nvr} channel {Channel}: snapshot not stored: {Error}", run.Name, info.Channel, stored.Error);
+                        logger.LogWarning("NVR {Nvr} channel {Channel}: snapshot not stored: {Error}", run.Id, info.Channel, stored.Error);
                 }
-                catch (Exception ex) when (!ct.IsCancellationRequested)
+                catch (SnapshotFailedException)
                 {
-                    logger.LogWarning("NVR {Nvr} channel {Channel}: snapshot failed: {Error}", run.Name, info.Channel, ex.Message);
+                    // already in the log and the camera's journal
                 }
             }
         }
@@ -347,7 +374,7 @@ public sealed class IpCamWatch(
             else
             {
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Clamp(command.TtlS, 5, 60)));
-                var jpeg = await run.Client.SnapshotAsync(info.Channel, timeout.Token);
+                var jpeg = await SnapshotAsync(run, info, timeout.Token);
                 using var scope = scopes.CreateScope();
                 var stored = await scope.ServiceProvider.GetRequiredService<PhotoIngestService>()
                     .StoreFetchedAsync(command.DeviceId, $"{command.Cid}-1", null, "snapshot", jpeg, "nvr", timeout.Token);
@@ -379,8 +406,31 @@ public sealed class IpCamWatch(
         }
     }
 
+    /// <summary>A frame of the channel, cgi or RTSP as its settings say; the way that worked is remembered for next time.</summary>
+    private async Task<byte[]> SnapshotAsync(NvrRun run, ChannelInfo info, CancellationToken ct)
+    {
+        var taken = await snapshots.TakeAsync(run.Client, new SnapshotTarget(run.Id, info.DeviceId, info.Channel, info.Source, info.Via), ct);
+        info.Via = taken.Via;
+        return taken.Jpeg;
+    }
+
     /// <summary>A channel of an NVR as the watch knows it.</summary>
-    internal sealed record ChannelInfo(string DeviceId, int Channel, bool RecordWhenDisarmed);
+    internal sealed class ChannelInfo(string deviceId, int channel, bool recordWhenDisarmed, string source, string? via)
+    {
+        public string DeviceId { get; } = deviceId;
+        public int Channel { get; } = channel;
+        public bool RecordWhenDisarmed { get; } = recordWhenDisarmed;
+        public string Source { get; } = source;
+
+        /// <summary>The way the last frame came; set by whichever photo or command got one.</summary>
+        public string? Via
+        {
+            get => Volatile.Read(ref _via);
+            set => Volatile.Write(ref _via, value);
+        }
+
+        private string? _via = via;
+    }
 
     /// <summary>The stream of one NVR and what is known of its health.</summary>
     internal sealed class NvrRun(int id, string name, DahuaClient client, Dictionary<int, ChannelInfo> channels, DateTimeOffset started)

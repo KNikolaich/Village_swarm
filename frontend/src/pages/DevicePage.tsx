@@ -9,7 +9,7 @@ import { useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
-import { chartWindow, keys, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useMonitoring, useSendCommand, useSeries, useTimelapse } from '@/api/queries'
+import { chartWindow, keys, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useMonitoring, useSendCommand, useSeries, useSnapshot, useTimelapse } from '@/api/queries'
 import { Chart, TimeAxis, type ChartPoint } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
@@ -231,6 +231,7 @@ export function DevicePage() {
     .sort((a, b) => a.metric.localeCompare(b.metric))
 
   const send = useSendCommand(deviceId)
+  const takeSnapshot = useSnapshot(deviceId)
   const qc = useQueryClient()
   const navigate = useNavigate()
 
@@ -368,7 +369,7 @@ export function DevicePage() {
           <CardHeader><CardTitle>{t('device.commands')}</CardTitle></CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {commands.includes('snapshot') && (
-              <Button variant="outline" onClick={() => void send('snapshot', { count: 1 })}><Camera />{t('device.snapshot')}</Button>
+              <Button variant="outline" onClick={() => void takeSnapshot()}><Camera />{t('device.snapshot')}</Button>
             )}
             {commands.includes('relay') && relayChannels(device).map((channel) => (
               <div key={channel} className="flex items-center gap-2">

@@ -14,11 +14,11 @@ like any hornet. Nothing goes over MQTT.
 |---|---|
 | `GET /api/ipcams` | NVRs with their channels. The password is never returned, only `passwordSet` |
 | `POST /api/ipcams/probe` `{host, port?, username, password}` | "Проверить" before saving: reaches the NVR, checks the login, lists its channels |
-| `POST /api/ipcams` `{name, host, port?, username, password, channels: [{channel, name, zoneId?, recordWhenDisarmed?}]}` | adds the NVR and a device per channel |
+| `POST /api/ipcams` `{name, host, port?, rtspPort?, username, password, channels: [{channel, name, zoneId?, recordWhenDisarmed?, snapshotSource?}]}` | adds the NVR and a device per channel; `rtspPort` 554 by default, `snapshotSource` see below |
 | `PUT /api/ipcams/{id}` | same body; an empty `password` keeps the stored one. A channel left out is removed from the swarm (its history stays) |
 | `DELETE /api/ipcams/{id}` | forgets the NVR, its devices are removed from the swarm |
 | `POST /api/ipcams/{id}/probe` | "Проверить" with the stored login |
-| `GET /api/ipcams/{id}/snapshot?channel=N` | a live JPEG from the NVR (any signed-in user) |
+| `GET /api/ipcams/{id}/snapshot?channel=N` | a live JPEG taken the way photos are (any signed-in user); `X-Snapshot-Via: cgi\|rtsp`. None: 502 with the reason in `detail` |
 
 The password is encrypted at rest (ASP.NET data protection, keys in `/srv/hive/keys`, like the hive's Wi-Fi password).
 
@@ -27,7 +27,7 @@ The password is encrypted at rest (ASP.NET data protection, keys in `/srv/hive/k
 | Request | Use |
 |---|---|
 | `GET /cgi-bin/eventManager.cgi?action=attach&codes=[VideoMotion,VideoLoss]&heartbeat=5` | long-lived `multipart/x-mixed-replace` stream of events |
-| `GET /cgi-bin/snapshot.cgi?channel=N` | JPEG of channel N (1-based) |
+| `GET /cgi-bin/snapshot.cgi?channel=N` | JPEG of channel N (1-based); 6 s at most |
 | `GET /cgi-bin/magicBox.cgi?action=getDeviceType` | probe: is it a Dahua, is the login right |
 | `GET /cgi-bin/configManager.cgi?action=getConfig&name=ChannelTitle` | probe: channels and their names (`table.ChannelTitle[0].Name=Gate`) |
 | `GET /cgi-bin/LogicDeviceManager.cgi?action=getCameraState&uniqueChannels[0]=-1` | probe, optional: which channels have a camera connected |
@@ -50,5 +50,23 @@ The video stream for a later stage is `rtsp://{host}/cam/realmonitor?channel=N&s
   Down or unreachable for more than 60 s → its channels go offline (and the usual "не на связи" after 15 minutes).
   `VideoLoss` `Start`/`Stop` takes one channel offline/online (camera unplugged from the NVR).
   The stream reconnects with backoff 2, 4, 8 … 60 s.
+- **Snapshots**: per channel `snapshotSource`:
+  - `auto` (default): `snapshot.cgi`, and when it gives no JPEG a frame of the RTSP stream. A Dahua NVR often has no snapshot
+    of a third-party ONVIF camera (it answers 200 with `Error` text). The way that worked is kept as `snapshotVia` and goes
+    first next time.
+  - `cgi`: only `snapshot.cgi`; `rtsp`: only the stream.
+  - RTSP: `ffmpeg -rtsp_transport tcp -i rtsp://{user}:{pass}@{host}:{rtspPort}/cam/realmonitor?channel=N&subtype=0 -frames:v 1 -q:v 3 -f image2 -`,
+    8 s at most, then the same with `subtype=1`. ffmpeg is in the api image. The URL with the login is passed as one argument
+    and cut out of ffmpeg's messages; it is never logged or returned.
+  - A failure is logged (NVR id, channel, HTTP status, content type, the start of a non-JPEG body, ffmpeg's error) and written
+    to the camera's journal as `warn` `snapshot failed: …`. Each `VideoMotion` that arrives is logged (Information), so the
+    log shows whether the NVR reports motion of a camera at all.
+- **Login lockout**: Dahua locks an account after a few wrong logins (403
+  `Error {"ErrorCode":268632081,"Result":false,"RmLock":1320,"RmLogin":0}`: 0x10030011 = locked, `RmLock` seconds left,
+  `RmLogin` attempts left). Every refusal (stream, snapshot, probe, ffmpeg's 401) is read:
+  - locked (that code, `RmLogin` 0 or `RmLock` > 0): nothing goes to the NVR, RTSP included, until `RmLock` + 30 s;
+  - 401 with attempts left: the same password waits 60 s; refused twice in a row, the hive stops until the login is saved again.
+  - A 403 without a lock (an account without rights) is reported, not counted.
+  - `GET /api/ipcams` gives `login: {state: ok|locked|wait|paused, until, attemptsLeft}`; the settings page says it.
 - **Commands**: only `snapshot` is accepted (one frame from the NVR, stored as a snapshot), so the Telegram `/photo`, "📷 Ещё фото"
   and a rule's `snapshot` action work. Anything else is refused with 400.
