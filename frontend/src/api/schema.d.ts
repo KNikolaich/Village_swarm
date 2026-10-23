@@ -4193,6 +4193,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rules/{id}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SetRuleEnabledRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RuleDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rules/dry-run": {
         parameters: {
             query?: never;
@@ -4998,6 +5046,9 @@ export interface components {
         SetDeviceZoneRequest: {
             /** Format: int32 */
             zoneId: null | number;
+        };
+        SetRuleEnabledRequest: {
+            enabled: boolean;
         };
         /** @enum {unknown} */
         SleepMode: "deep" | "light" | null;
