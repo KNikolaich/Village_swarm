@@ -5,9 +5,10 @@ import { keys } from '@/api/queries'
 import { metricLabel, t } from '@/i18n'
 import { dashboardItems, probeName, shownKeys, toggled } from '@/lib/dashboard'
 
-const itemLabel = (key: string, kind: 'metric' | 'button') =>
+/** A probe is named t1, t2... only when the hornet has several. */
+const itemLabel = (key: string, kind: 'metric' | 'button', probes: boolean) =>
   kind === 'button' ? t(`dashboard.buttons.${key}`, key)
-    : key.startsWith('temperature') ? `${probeName(key)} · ${metricLabel(key)}`
+    : key.startsWith('temperature') && probes ? `${probeName(key)} · ${metricLabel(key)}`
       : metricLabel(key)
 
 /**
@@ -24,6 +25,7 @@ export function DashboardChecks({ device, latest, editable, compact }: {
   const qc = useQueryClient()
   const items = dashboardItems(device, latest)
   const shown = shownKeys(device, latest)
+  const probes = items.filter((i) => i.key.startsWith('temperature')).length > 1
 
   async function save(value: string[] | null) {
     try {
@@ -48,7 +50,7 @@ export function DashboardChecks({ device, latest, editable, compact }: {
               disabled={!editable}
               onChange={(e) => void save(toggled(device, latest, item.key, e.target.checked))}
             />
-            {itemLabel(item.key, item.kind)}
+            {itemLabel(item.key, item.kind, probes)}
           </label>
         ))}
       </div>
