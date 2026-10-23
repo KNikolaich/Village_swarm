@@ -32,6 +32,14 @@ public sealed class FakeNvr : IAsyncDisposable
     public int Snapshots;
     public int StreamsOpened;
 
+    /// <summary>snapshot.cgi takes this long (an NVR fetching a frame from a camera), so overlapping requests can be seen.</summary>
+    public volatile int SnapshotDelayMs;
+
+    /// <summary>The most snapshot.cgi requests that were being answered at the same moment.</summary>
+    public int MaxConcurrentSnapshots;
+
+    private int _snapshotting;
+
     /// <summary>Requests that came with a login (each one counts towards a Dahua lockout).</summary>
     public int LoginRequests;
 
@@ -127,8 +135,22 @@ public sealed class FakeNvr : IAsyncDisposable
                 break;
             case "snapshot.cgi":
                 Interlocked.Increment(ref Snapshots);
-                ctx.Response.ContentType = "image/jpeg";
-                await ctx.Response.Body.WriteAsync(_jpeg);
+                var now = Interlocked.Increment(ref _snapshotting);
+                int seen;
+                while ((seen = MaxConcurrentSnapshots) < now && Interlocked.CompareExchange(ref MaxConcurrentSnapshots, now, seen) != seen)
+                {
+                }
+                try
+                {
+                    if (SnapshotDelayMs > 0)
+                        await Task.Delay(SnapshotDelayMs);
+                    ctx.Response.ContentType = "image/jpeg";
+                    await ctx.Response.Body.WriteAsync(_jpeg);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _snapshotting);
+                }
                 break;
             case "eventManager.cgi" when action == "attach":
                 await StreamAsync(ctx);

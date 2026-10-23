@@ -5632,7 +5632,10 @@
           "recordWhenDisarmed",
           "rtspUrl",
           "snapshotSource",
-          "snapshotVia"
+          "snapshotVia",
+          "snapshotQuality",
+          "lastMotionAt",
+          "lastSnapshot"
         ],
         "type": "object",
         "properties": {
@@ -5670,6 +5673,26 @@
               "null",
               "string"
             ]
+          },
+          "snapshotQuality": {
+            "type": "string"
+          },
+          "lastMotionAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "lastSnapshot": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SnapshotAttemptDto"
+              }
+            ]
           }
         }
       },
@@ -5699,6 +5722,12 @@
             "default": false
           },
           "snapshotSource": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "snapshotQuality": {
             "type": [
               "null",
               "string"
@@ -6357,7 +6386,8 @@
           "passwordSet",
           "channels",
           "rtspPort",
-          "login"
+          "login",
+          "stream"
         ],
         "type": "object",
         "properties": {
@@ -6393,6 +6423,9 @@
           },
           "login": {
             "$ref": "#/components/schemas/NvrLoginDto"
+          },
+          "stream": {
+            "$ref": "#/components/schemas/NvrStreamDto"
           }
         }
       },
@@ -6495,6 +6528,45 @@
               "integer"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "NvrStreamDto": {
+        "required": [
+          "state",
+          "since",
+          "lastLine",
+          "reconnects",
+          "lastError"
+        ],
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "since": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "lastLine": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "reconnects": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lastError": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -7684,6 +7756,51 @@
           "light",
           null
         ]
+      },
+      "SnapshotAttemptDto": {
+        "required": [
+          "at",
+          "purpose",
+          "via",
+          "ok",
+          "ms",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "via": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "ms": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "size": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
       },
       "StartMonitoringRequest": {
         "required": [

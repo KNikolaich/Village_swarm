@@ -249,6 +249,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.Property(x => x.DeviceId).HasMaxLength(32);
             e.Property(x => x.SnapshotSource).HasMaxLength(8).HasDefaultValue(SnapshotSources.Auto);
             e.Property(x => x.SnapshotVia).HasMaxLength(8);
+            e.Property(x => x.SnapshotQuality).HasMaxLength(8).HasDefaultValue(SnapshotQualities.Fast);
             e.HasIndex(x => new { x.NvrId, x.Channel }).IsUnique();
             e.HasIndex(x => x.DeviceId).IsUnique();
         });

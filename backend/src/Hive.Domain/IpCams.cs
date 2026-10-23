@@ -41,6 +41,20 @@ public class NvrChannel
 
     /// <summary>The way that gave the last frame (cgi or rtsp): tried first next time in auto.</summary>
     public string? SnapshotVia { get; set; }
+
+    /// <summary>
+    /// <see cref="SnapshotQualities"/>: fast takes RTSP frames from the light sub-stream (the main stream only when it gives none),
+    /// detailed from the main stream (the sub-stream when it gives none in time, so an alarm never lacks a photo).
+    /// </summary>
+    public string SnapshotQuality { get; set; } = SnapshotQualities.Fast;
+}
+
+public static class SnapshotQualities
+{
+    public const string Fast = "fast";
+    public const string Detailed = "detailed";
+
+    public static bool IsKnown(string? s) => s is Fast or Detailed;
 }
 
 /// <summary>

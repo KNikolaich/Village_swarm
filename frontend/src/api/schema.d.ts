@@ -5558,6 +5558,10 @@ export interface components {
             rtspUrl: string;
             snapshotSource: string;
             snapshotVia: null | string;
+            snapshotQuality: string;
+            /** Format: date-time */
+            lastMotionAt: null | string;
+            lastSnapshot: null | components["schemas"]["SnapshotAttemptDto"];
         };
         IpCamChannelRequest: {
             /** Format: int32 */
@@ -5568,6 +5572,7 @@ export interface components {
             /** @default false */
             recordWhenDisarmed: boolean;
             snapshotSource?: null | string;
+            snapshotQuality?: null | string;
         };
         IrButtonsDto: {
             buttons: {
@@ -5757,6 +5762,7 @@ export interface components {
             /** Format: int32 */
             rtspPort: number;
             login: components["schemas"]["NvrLoginDto"];
+            stream: components["schemas"]["NvrStreamDto"];
         };
         NvrLoginDto: {
             state: string;
@@ -5782,6 +5788,16 @@ export interface components {
             channels: components["schemas"]["IpCamChannelRequest"][];
             /** Format: int32 */
             rtspPort?: null | number;
+        };
+        NvrStreamDto: {
+            state: string;
+            /** Format: date-time */
+            since: null | string;
+            /** Format: date-time */
+            lastLine: null | string;
+            /** Format: int32 */
+            reconnects: number;
+            lastError: null | string;
         };
         OtaPendingDto: {
             deviceId: string;
@@ -6095,6 +6111,17 @@ export interface components {
         };
         /** @enum {unknown} */
         SleepMode: "deep" | "light" | null;
+        SnapshotAttemptDto: {
+            /** Format: date-time */
+            at: string;
+            purpose: string;
+            via: null | string;
+            ok: boolean;
+            /** Format: int32 */
+            ms: number;
+            error: null | string;
+            size?: null | string;
+        };
         StartMonitoringRequest: {
             /** Format: double */
             hours: number;

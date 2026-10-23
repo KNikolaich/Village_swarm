@@ -25,6 +25,7 @@ public static class IpCamsModule
         services.AddScoped<IpCamService>();
         services.AddSingleton<Snapshots>();
         services.AddSingleton<NvrLogins>();
+        services.AddSingleton<IpCamDiagnostics>();
         services.TryAddSingleton<IFrameGrabber, FfmpegFrameGrabber>();
         return services;
     }
@@ -87,15 +88,16 @@ public static class IpCamsModule
         // A live frame, not stored: the settings page's "Снимок" and a look before picking a channel. Taken the same way as
         // photos (snapshot.cgi, then the RTSP stream); X-Snapshot-Via says which gave it, a 502 says why neither did.
         ipcams.MapGet("/{id:int}/snapshot", async Task<Results<FileContentHttpResult, NotFound, ProblemHttpResult>> (
-                int id, int channel, HttpResponse response, IpCamService s, Snapshots snapshots, NvrLogins logins, CancellationToken ct) =>
+                int id, int channel, HttpResponse response, IpCamService s, Snapshots snapshots, CancellationToken ct) =>
             {
                 if (await s.EndpointAsync(id, ct) is not { } endpoint)
                     return TypedResults.NotFound();
-                using var client = new DahuaClient(endpoint, logins);
                 try
                 {
-                    var taken = await snapshots.TakeAsync(client, await s.TargetAsync(id, channel, ct), ct);
+                    var taken = await snapshots.TakeAsync(endpoint, await s.TargetAsync(id, channel, ct), SnapshotPurpose.Look, ct);
                     response.Headers["X-Snapshot-Via"] = taken.Via;
+                    if (Hive.Modules.Media.ImageTools.Identify(taken.Jpeg) is { } size)
+                        response.Headers["X-Snapshot-Size"] = $"{size.Width}x{size.Height}";
                     return TypedResults.File(taken.Jpeg, "image/jpeg");
                 }
                 catch (SnapshotFailedException ex)

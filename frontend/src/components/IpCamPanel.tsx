@@ -7,7 +7,7 @@ import { keys, useZones } from '@/api/queries'
 import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui/primitives'
-import { t } from '@/i18n'
+import { getLanguage, t } from '@/i18n'
 
 type Nvr = Schemas['NvrDto']
 type Probe = Schemas['ProbeResultDto']
@@ -20,11 +20,15 @@ type Row = {
   zoneId: number | null
   recordWhenDisarmed: boolean
   snapshotSource: string
+  snapshotQuality: string
   title?: string | null
   connected?: boolean | null
 }
 
 const snapshotSources = ['auto', 'cgi', 'rtsp']
+const snapshotQualities = ['fast', 'detailed']
+
+const clock = (iso?: string | null) => (iso ? new Date(iso).toLocaleTimeString(getLanguage() === 'en' ? 'en-GB' : 'ru-RU') : '—')
 
 const nvrsKey = ['ipcams'] as const
 
@@ -107,10 +111,12 @@ function NvrCard({ nvr, onEdit, onDelete }: { nvr: Nvr; onEdit: () => void; onDe
                   <LiveSnapshotButton nvrId={nvr.id} channel={c.channel} />
                 </span>
               </div>
+              <ChannelDiagnostics channel={c} />
             </li>
           ))}
         </ul>
         <LoginLine login={nvr.login} />
+        <StreamLine stream={nvr.stream} />
         {probe && <ProbeLine probe={probe} />}
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" onClick={() => void check()} disabled={busy}><Search />{t('ipcam.probe')}</Button>
@@ -177,6 +183,35 @@ function LoginLine({ login }: { login: Nvr['login'] }) {
   return <p className="rounded-md border border-red-900/60 bg-red-950/30 p-2 text-sm text-red-300">{text}</p>
 }
 
+/** The NVR's event stream: without it no motion comes, so this is the first thing to look at when there are no events. */
+function StreamLine({ stream }: { stream: Nvr['stream'] }) {
+  const text = stream.state === 'connected'
+    ? t('ipcam.stream.connected').replace('{since}', clock(stream.since)).replace('{last}', clock(stream.lastLine)).replace('{n}', String(stream.reconnects))
+    : t(`ipcam.stream.${stream.state}`, stream.state)
+  return (
+    <p className={`text-xs ${stream.state === 'connected' ? 'text-neutral-500' : 'text-amber-300'}`} title={stream.lastError ?? undefined}>
+      {text}{stream.state !== 'connected' && stream.lastError ? `: ${stream.lastError}` : ''}
+    </p>
+  )
+}
+
+/** When the NVR last reported motion of the camera, and how the last snapshot went (way, size, time taken, or why not). */
+function ChannelDiagnostics({ channel }: { channel: Nvr['channels'][number] }) {
+  const s = channel.lastSnapshot
+  const snapshot = !s
+    ? null
+    : s.ok
+      ? t('ipcam.diag.snapshotOk').replace('{via}', s.via ?? '?').replace('{size}', s.size ?? '?').replace('{s}', (s.ms / 1000).toFixed(1)).replace('{at}', clock(s.at))
+      : t('ipcam.diag.snapshotFailed').replace('{s}', (s.ms / 1000).toFixed(1)).replace('{at}', clock(s.at))
+  return (
+    <div className="space-y-0.5 text-xs text-neutral-500">
+      <p>{t('ipcam.diag.motion').replace('{at}', channel.lastMotionAt ? clock(channel.lastMotionAt) : t('ipcam.diag.never'))}</p>
+      {snapshot && <p className={s?.ok ? '' : 'text-red-400'}>{snapshot}</p>}
+      {s?.error && <p className="break-words text-neutral-600">{s.error}</p>}
+    </div>
+  )
+}
+
 function ProbeLine({ probe }: { probe: Probe }) {
   return probe.ok ? (
     <p className="flex items-center gap-1 text-emerald-400"><CheckCircle2 className="size-4" />{t('ipcam.probeOk').replace('{type}', probe.deviceType ?? '').replace('{n}', String(probe.channels.length))}</p>
@@ -194,7 +229,7 @@ function NvrForm({ nvr, onDone, onCancel }: { nvr?: Nvr; onDone: () => void; onC
   const [username, setUsername] = useState(nvr?.username ?? 'admin')
   const [password, setPassword] = useState('')
   const [rows, setRows] = useState<Row[]>(
-    (nvr?.channels ?? []).map((c) => ({ channel: c.channel, take: true, name: c.name, zoneId: c.zoneId ?? null, recordWhenDisarmed: c.recordWhenDisarmed, snapshotSource: c.snapshotSource })),
+    (nvr?.channels ?? []).map((c) => ({ channel: c.channel, take: true, name: c.name, zoneId: c.zoneId ?? null, recordWhenDisarmed: c.recordWhenDisarmed, snapshotSource: c.snapshotSource, snapshotQuality: c.snapshotQuality })),
   )
   const [probe, setProbe] = useState<Probe | null>(null)
   const [extra, setExtra] = useState('')
@@ -211,7 +246,7 @@ function NvrForm({ nvr, onDone, onCancel }: { nvr?: Nvr; onDone: () => void; onC
         return c ? { ...r, title: c.title, connected: c.connected } : r
       })
       for (const c of result.channels) {
-        if (!next.some((r) => r.channel === c.channel)) next.push({ channel: c.channel, take: false, name: c.title || `${t('ipcam.camera')} ${c.channel}`, zoneId: null, recordWhenDisarmed: false, snapshotSource: 'auto', title: c.title, connected: c.connected })
+        if (!next.some((r) => r.channel === c.channel)) next.push({ channel: c.channel, take: false, name: c.title || `${t('ipcam.camera')} ${c.channel}`, zoneId: null, recordWhenDisarmed: false, snapshotSource: 'auto', snapshotQuality: 'fast', title: c.title, connected: c.connected })
       }
       return next.sort((a, b) => a.channel - b.channel)
     })
@@ -237,7 +272,7 @@ function NvrForm({ nvr, onDone, onCancel }: { nvr?: Nvr; onDone: () => void; onC
   function addChannel() {
     const n = Number(extra)
     if (!Number.isInteger(n) || n < 1 || n > 256 || rows.some((r) => r.channel === n)) return
-    setRows((all) => [...all, { channel: n, take: true, name: `${t('ipcam.camera')} ${n}`, zoneId: null, recordWhenDisarmed: false, snapshotSource: 'auto' }].sort((a, b) => a.channel - b.channel))
+    setRows((all) => [...all, { channel: n, take: true, name: `${t('ipcam.camera')} ${n}`, zoneId: null, recordWhenDisarmed: false, snapshotSource: 'auto', snapshotQuality: 'fast' }].sort((a, b) => a.channel - b.channel))
     setExtra('')
   }
 
@@ -252,7 +287,7 @@ function NvrForm({ nvr, onDone, onCancel }: { nvr?: Nvr; onDone: () => void; onC
       username,
       password: password || null,
       rtspPort,
-      channels: rows.filter((r) => r.take).map((r) => ({ channel: r.channel, name: r.name, zoneId: r.zoneId, recordWhenDisarmed: r.recordWhenDisarmed, snapshotSource: r.snapshotSource })),
+      channels: rows.filter((r) => r.take).map((r) => ({ channel: r.channel, name: r.name, zoneId: r.zoneId, recordWhenDisarmed: r.recordWhenDisarmed, snapshotSource: r.snapshotSource, snapshotQuality: r.snapshotQuality })),
     }
     const { error: err, response } = nvr
       ? await api.PUT('/api/ipcams/{id}', { params: { path: { id: nvr.id } }, body })
@@ -315,6 +350,12 @@ function NvrForm({ nvr, onDone, onCancel }: { nvr?: Nvr; onDone: () => void; onC
                         {t('ipcam.snapshotSource')}
                         <Select className="h-9" value={r.snapshotSource} onChange={(e) => set(r.channel, { snapshotSource: e.target.value })}>
                           {snapshotSources.map((s) => <option key={s} value={s}>{t(`ipcam.sources.${s}`)}</option>)}
+                        </Select>
+                      </label>
+                      <label className="flex flex-wrap items-center gap-2 text-xs text-neutral-400">
+                        {t('ipcam.snapshotQuality')}
+                        <Select className="h-9" value={r.snapshotQuality} onChange={(e) => set(r.channel, { snapshotQuality: e.target.value })}>
+                          {snapshotQualities.map((q) => <option key={q} value={q}>{t(`ipcam.qualities.${q}`)}</option>)}
                         </Select>
                       </label>
                     </>
