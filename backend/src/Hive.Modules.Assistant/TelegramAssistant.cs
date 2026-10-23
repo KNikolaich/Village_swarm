@@ -230,7 +230,7 @@ public sealed class TelegramAssistant(
                 sb.AppendLine($"{Icon(Enum.Parse<EventSeverity>(e.Severity, true))} {hive.Value.ToLocal(e.Ts).ToString("dd.MM HH:mm", Ru)} {H(EventType(e.Type))} · {H(e.DeviceName ?? e.DeviceId)}");
         }
 
-        var cameras = devices.Where(d => d.TypeCode == "guard-cam").ToList();
+        var cameras = devices.Where(d => Cameras.Types.Contains(d.TypeCode)).ToList();
         var online = cameras.Where(d => d.Status == DeviceStatus.Online).ToList();
         var markup = online.Count > 0
             ? new InlineKeyboardMarkup(InlineKeyboardButton.WithCallbackData("📷 Снять свежие", $"{Prefix}snapzone:{zone.Id}"))
@@ -279,7 +279,7 @@ public sealed class TelegramAssistant(
     private async Task<string> ProposePhotosAsync(long chat, JsonObject args, int replyTo, CancellationToken ct)
     {
         var cameras = await db.Devices.AsNoTracking().Include(d => d.Zone)
-            .Where(d => d.TypeCode == "guard-cam" && d.Status == DeviceStatus.Online).OrderBy(d => d.Name).ToListAsync(ct);
+            .Where(d => Cameras.Types.Contains(d.TypeCode) && d.Status == DeviceStatus.Online).OrderBy(d => d.Name).ToListAsync(ct);
         var zone = Str(args, "zone");
         var place = Str(args, "place");
         var wanted = args["cameras"] is JsonArray list ? list.Select(x => x is JsonValue v && v.TryGetValue<string>(out var n) ? n : null).OfType<string>().ToList() : [];
@@ -450,7 +450,7 @@ public sealed class TelegramAssistant(
         else if (verb == "snapzone" && int.TryParse(arg, out var zoneId))
         {
             // The press itself is the confirmation: the button only offers the zone's own cameras.
-            var cameras = await db.Devices.AsNoTracking().Where(d => d.ZoneId == zoneId && d.TypeCode == "guard-cam").Select(d => d.DeviceId).ToListAsync(ct);
+            var cameras = await db.Devices.AsNoTracking().Where(d => d.ZoneId == zoneId && Cameras.Types.Contains(d.TypeCode)).Select(d => d.DeviceId).ToListAsync(ct);
             await bot.SnapshotAsync(chat, caller.Actor + " via assistant", cameras, callback.Message?.MessageId, ct);
             answer = "Снимаю…";
         }

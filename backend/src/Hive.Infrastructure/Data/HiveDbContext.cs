@@ -33,6 +33,8 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     public DbSet<RuleRun> RuleRuns => Set<RuleRun>();
     public DbSet<Note> Notes => Set<Note>();
     public DbSet<NoteAttachment> NoteAttachments => Set<NoteAttachment>();
+    public DbSet<Nvr> Nvrs => Set<Nvr>();
+    public DbSet<NvrChannel> NvrChannels => Set<NvrChannel>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -73,7 +75,8 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
                 new DeviceType { Code = "relay", Title = "Реле (свет, розетка)", OfflineAfterS = 180 },
                 new DeviceType { Code = "plant", Title = "Растения", OfflineAfterS = 600 },
                 new DeviceType { Code = "ble", Title = "Мост Bluetooth (кухонный термометр)", OfflineAfterS = 180 },
-                new DeviceType { Code = "sensor", Title = "Датчик (движение, дверь, протечка, температура)", OfflineAfterS = 1800 });
+                new DeviceType { Code = "sensor", Title = "Датчик (движение, дверь, протечка, температура)", OfflineAfterS = 1800 },
+                new DeviceType { Code = "ipcam", Title = "IP-камера (через видеорегистратор)", OfflineAfterS = 180 });
         });
 
         b.Entity<Device>(e =>
@@ -197,6 +200,24 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.Property(x => x.Path).HasMaxLength(256);
             e.HasOne<Note>().WithMany().HasForeignKey(x => x.NoteId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => x.NoteId);
+        });
+
+        b.Entity<Nvr>(e =>
+        {
+            e.ToTable("nvrs");
+            e.Property(x => x.Name).HasMaxLength(64);
+            e.Property(x => x.Host).HasMaxLength(255);
+            e.Property(x => x.Username).HasMaxLength(64);
+            e.Property(x => x.PasswordProtected).HasMaxLength(1024);
+            e.HasMany(x => x.Channels).WithOne().HasForeignKey(x => x.NvrId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<NvrChannel>(e =>
+        {
+            e.ToTable("nvr_channels");
+            e.Property(x => x.DeviceId).HasMaxLength(32);
+            e.HasIndex(x => new { x.NvrId, x.Channel }).IsUnique();
+            e.HasIndex(x => x.DeviceId).IsUnique();
         });
 
         b.Entity<RuleRun>(e =>

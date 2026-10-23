@@ -87,7 +87,7 @@ public sealed class AssistantContext(
         var buttons = IrButtonService.Read(d.Config).Keys.ToList();
         if (buttons.Count > 0)
             parts.Add("ИК-кнопки: " + string.Join(", ", buttons));
-        if (d.TypeCode == "guard-cam")
+        if (Cameras.Types.Contains(d.TypeCode))
             parts.Add("камера");
         return string.Join(" · ", parts);
     }

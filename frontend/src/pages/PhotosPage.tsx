@@ -25,7 +25,7 @@ export function PhotosPage() {
   const [pinnedOnly, setPinnedOnly] = useState(false)
   const devices = useDevices(true)
   // Only hornets that can have photos are offered: those with a camera role.
-  const cameras = (devices.data ?? []).filter((d) => d.type === 'guard-cam')
+  const cameras = (devices.data ?? []).filter((d) => d.type === 'guard-cam' || d.type === 'ipcam')
 
   return (
     <div className="space-y-4 md:grid md:grid-cols-[20rem_1fr] md:gap-4 md:space-y-0">

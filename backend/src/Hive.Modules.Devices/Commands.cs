@@ -38,8 +38,23 @@ public enum SendStatus
     BrokerDown,
 }
 
+/// <summary>
+/// A driver the hive speaks for itself, without MQTT (IP cameras behind an NVR, contracts/ipcam.md). It runs a stored
+/// command in the background and sets its status when done, as an ack would.
+/// </summary>
+public interface IDirectDriver
+{
+    string Driver { get; }
+
+    bool Accepts(string command);
+
+    void Run(DeviceCommand command);
+}
+
 /// <summary>Sends commands over MQTT (spec 4.4 cmd, 6.3 CommandDispatcher): stored first, ack updates it later.</summary>
-public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TasmotaPending tasmota, Microsoft.Extensions.Options.IOptions<ZigbeeOptions> zigbee, TimeProvider time)
+public sealed class CommandService(
+    HiveDbContext db, MqttGateway mqtt, TasmotaPending tasmota, Microsoft.Extensions.Options.IOptions<ZigbeeOptions> zigbee,
+    IEnumerable<IDirectDriver> direct, TimeProvider time)
 {
     public const int DefaultTtlS = 60;
 
@@ -64,7 +79,10 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TasmotaPe
         var zigbeePlan = driver == Drivers.Zigbee ? ZigbeeCommands.Plan(name, payload) : null;
         if (driver == Drivers.Zigbee && zigbeePlan is null)
             return (SendStatus.BadRequest, null);
-        if (!mqtt.IsConnected)
+        var directDriver = direct.FirstOrDefault(d => d.Driver == driver);
+        if (directDriver is not null && !directDriver.Accepts(name))
+            return (SendStatus.BadRequest, null);
+        if (directDriver is null && !mqtt.IsConnected)
             return (SendStatus.BrokerDown, null);
 
         var now = time.GetUtcNow();
@@ -95,6 +113,11 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TasmotaPe
         };
         db.Commands.Add(command);
         await db.SaveChangesAsync(ct);
+        if (directDriver is not null)
+        {
+            directDriver.Run(command);
+            return (SendStatus.Sent, command);
+        }
         if (zigbeePlan is not null)
         {
             tasmota.Expect(deviceId, zigbeePlan.Confirms, cid);
@@ -176,7 +199,7 @@ public sealed class ArmService(HiveDbContext db, CommandService commands, TimePr
     {
         var mode = await db.Modes.AsNoTracking().FirstAsync(m => m.Key == Mode.Armed, ct);
         var presence = await db.Modes.AsNoTracking().Where(m => m.Key == Mode.Presence).Select(m => m.Value).FirstOrDefaultAsync(ct);
-        var cameras = await db.Devices.CountAsync(d => d.TypeCode == "guard-cam" && d.Status != DeviceStatus.Disabled, ct);
+        var cameras = await db.Devices.CountAsync(d => Cameras.Types.Contains(d.TypeCode) && d.Status != DeviceStatus.Disabled, ct);
         var armed = mode.Value == "true";
         var name = !armed ? Disarmed : presence == Mode.PresenceArriving ? Arriving : ArmedMode;
         return new ArmedDto(armed, name, mode.UpdatedAt, mode.UpdatedBy, cameras);

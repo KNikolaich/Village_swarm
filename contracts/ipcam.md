@@ -1,0 +1,54 @@
+# IP cameras behind a Dahua NVR
+
+Third-party IP cameras (an Asecam PTZ over ONVIF, a Dahua IPC…) recorded by a Dahua NVR. The hive talks to the NVR, never
+to the cameras: one HTTP connection per NVR carries the motion of every channel, and the NVR hands out the snapshots.
+Code: `Hive.Modules.IpCams`. Background: `docs/architecture.md`, 3.6 (other people's devices).
+
+Mark of such a device in the hive: `devices.driver = 'ipcam'`, `devices.type = 'ipcam'`. Each NVR channel the family picked
+is one device (`ipcam{nvr}-ch{channel}`, e.g. `ipcam1-ch2`), so it lives in the swarm, zones, the guard tile and the rules
+like any hornet. Nothing goes over MQTT.
+
+## Settings (`/api/ipcams`, admin)
+
+| Call | What it does |
+|---|---|
+| `GET /api/ipcams` | NVRs with their channels. The password is never returned, only `passwordSet` |
+| `POST /api/ipcams/probe` `{host, port?, username, password}` | "Проверить" before saving: reaches the NVR, checks the login, lists its channels |
+| `POST /api/ipcams` `{name, host, port?, username, password, channels: [{channel, name, zoneId?, recordWhenDisarmed?}]}` | adds the NVR and a device per channel |
+| `PUT /api/ipcams/{id}` | same body; an empty `password` keeps the stored one. A channel left out is removed from the swarm (its history stays) |
+| `DELETE /api/ipcams/{id}` | forgets the NVR, its devices are removed from the swarm |
+| `POST /api/ipcams/{id}/probe` | "Проверить" with the stored login |
+| `GET /api/ipcams/{id}/snapshot?channel=N` | a live JPEG from the NVR (any signed-in user) |
+
+The password is encrypted at rest (ASP.NET data protection, keys in `/srv/hive/keys`, like the hive's Wi-Fi password).
+
+## What the hive asks the NVR (Dahua HTTP API, digest auth)
+
+| Request | Use |
+|---|---|
+| `GET /cgi-bin/eventManager.cgi?action=attach&codes=[VideoMotion,VideoLoss]&heartbeat=5` | long-lived `multipart/x-mixed-replace` stream of events |
+| `GET /cgi-bin/snapshot.cgi?channel=N` | JPEG of channel N (1-based) |
+| `GET /cgi-bin/magicBox.cgi?action=getDeviceType` | probe: is it a Dahua, is the login right |
+| `GET /cgi-bin/configManager.cgi?action=getConfig&name=ChannelTitle` | probe: channels and their names (`table.ChannelTitle[0].Name=Gate`) |
+| `GET /cgi-bin/LogicDeviceManager.cgi?action=getCameraState&uniqueChannels[0]=-1` | probe, optional: which channels have a camera connected |
+
+An event part of the stream is text like `Code=VideoMotion;action=Start;index=0` (`index` is the **0-based** channel; newer
+firmware adds `;data={…}` with JSON over several lines, which is ignored). `Heartbeat` parts arrive every 5 s.
+The video stream for a later stage is `rtsp://{host}/cam/realmonitor?channel=N&subtype=1`, kept as `rtspUrl` per channel.
+
+## Behaviour
+
+- **Motion**: `VideoMotion` `Start` of a channel → event `motion` of that device, through the same pipeline as MQTT events.
+  Ignored for 20 s after the last one of the same channel (cooldown). `Stop` is ignored.
+  - guard armed → `alarm`, `armed: true`; guard "arriving" → `warn`; disarmed → `info` (feed only).
+  - photos: 3 snapshots 0.7 s apart, stored as media of the event (`{event id}-1..3`), only when the guard is armed or
+    arriving, or the channel has `recordWhenDisarmed`. The event payload lists them in `photos`, so Telegram waits for them
+    and sends them with the alarm (spec 9.5) exactly as for a guard-cam.
+  - payload: `{"source": "camera", "channel": 2, "photos": ["…-1", "…-2", "…-3"], "via": "nvr"}`.
+- **Time**: the NVR clock is not trusted; every event and photo has the hive's time of arrival.
+- **Online**: the channels of an NVR are online while its event stream is up (a heartbeat or event at least every 30 s).
+  Down or unreachable for more than 60 s → its channels go offline (and the usual "не на связи" after 15 minutes).
+  `VideoLoss` `Start`/`Stop` takes one channel offline/online (camera unplugged from the NVR).
+  The stream reconnects with backoff 2, 4, 8 … 60 s.
+- **Commands**: only `snapshot` is accepted (one frame from the NVR, stored as a snapshot), so the Telegram `/photo`, "📷 Ещё фото"
+  and a rule's `snapshot` action work. Anything else is refused with 400.

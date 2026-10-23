@@ -603,6 +603,12 @@ namespace Hive.Infrastructure.Data.Migrations
                             Code = "sensor",
                             OfflineAfterS = 1800,
                             Title = "Датчик (движение, дверь, протечка, температура)"
+                        },
+                        new
+                        {
+                            Code = "ipcam",
+                            OfflineAfterS = 180,
+                            Title = "IP-камера (через видеорегистратор)"
                         });
                 });
 
@@ -1023,6 +1029,94 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasDatabaseName("ix_notifications_target_dedupe_key_created_at");
 
                     b.ToTable("notifications", (string)null);
+                });
+
+            modelBuilder.Entity("Hive.Domain.Nvr", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Host")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("host");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("PasswordProtected")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("password_protected");
+
+                    b.Property<int>("Port")
+                        .HasColumnType("integer")
+                        .HasColumnName("port");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("username");
+
+                    b.HasKey("Id")
+                        .HasName("pk_nvrs");
+
+                    b.ToTable("nvrs", (string)null);
+                });
+
+            modelBuilder.Entity("Hive.Domain.NvrChannel", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("integer")
+                        .HasColumnName("channel");
+
+                    b.Property<string>("DeviceId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("device_id");
+
+                    b.Property<int>("NvrId")
+                        .HasColumnType("integer")
+                        .HasColumnName("nvr_id");
+
+                    b.Property<bool>("RecordWhenDisarmed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("record_when_disarmed");
+
+                    b.HasKey("Id")
+                        .HasName("pk_nvr_channels");
+
+                    b.HasIndex("DeviceId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_nvr_channels_device_id");
+
+                    b.HasIndex("NvrId", "Channel")
+                        .IsUnique()
+                        .HasDatabaseName("ix_nvr_channels_nvr_id_channel");
+
+                    b.ToTable("nvr_channels", (string)null);
                 });
 
             modelBuilder.Entity("Hive.Domain.Rule", b =>
@@ -1630,6 +1724,16 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasConstraintName("fk_note_attachments_notes_note_id");
                 });
 
+            modelBuilder.Entity("Hive.Domain.NvrChannel", b =>
+                {
+                    b.HasOne("Hive.Domain.Nvr", null)
+                        .WithMany("Channels")
+                        .HasForeignKey("NvrId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_nvr_channels_nvrs_nvr_id");
+                });
+
             modelBuilder.Entity("Hive.Domain.RuleRun", b =>
                 {
                     b.HasOne("Hive.Domain.Rule", null)
@@ -1768,6 +1872,11 @@ namespace Hive.Infrastructure.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_user_tokens_users_user_id");
+                });
+
+            modelBuilder.Entity("Hive.Domain.Nvr", b =>
+                {
+                    b.Navigation("Channels");
                 });
 #pragma warning restore 612, 618
         }
