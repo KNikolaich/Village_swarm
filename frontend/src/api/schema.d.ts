@@ -970,6 +970,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/devices/{deviceId}/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SetDeviceDashboardRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ingest/photo": {
         parameters: {
             query?: never;
@@ -4359,6 +4414,7 @@ export interface components {
              */
             sort: number;
             thermometer?: null | string;
+            dashboard?: null | string[];
         };
         DeviceLogDto: {
             /** Format: int64 */
@@ -4931,6 +4987,9 @@ export interface components {
         SetArmedRequest: {
             armed: boolean;
             mode?: null | string;
+        };
+        SetDeviceDashboardRequest: {
+            shown: null | string[];
         };
         SetDeviceSortRequest: {
             /** Format: int32 */

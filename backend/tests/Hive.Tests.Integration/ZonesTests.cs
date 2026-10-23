@@ -111,5 +111,34 @@ public sealed class ZonesTests(HiveFixture hive)
         Assert.Equal(HttpStatusCode.Forbidden, assign.StatusCode);
         using var sort = await viewer.PutAsJsonAsync("/api/devices/anything/sort", new { sort = 1 });
         Assert.Equal(HttpStatusCode.Forbidden, sort.StatusCode);
+        using var dashboard = await viewer.PutAsJsonAsync("/api/devices/anything/dashboard", new { shown = new[] { "temperature" } });
+        Assert.Equal(HttpStatusCode.Forbidden, dashboard.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_hornet_keeps_what_the_dashboards_show_of_it_until_reset_to_the_defaults()
+    {
+        await RegisterAsync("meteo-dash-a");
+        var admin = await hive.LoginAsync();
+        Assert.Equal(JsonValueKind.Null, (await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-dash-a")).GetProperty("dashboard").ValueKind);
+
+        using var set = await admin.PutAsJsonAsync("/api/devices/meteo-dash-a/dashboard", new { shown = new[] { "temperature_2", "temperature_3", "battery_voltage", "temperature_2" } });
+        Assert.Equal(HttpStatusCode.NoContent, set.StatusCode);
+        var shown = (await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-dash-a")).GetProperty("dashboard").EnumerateArray().Select(v => v.GetString()).ToList();
+        Assert.Equal(["temperature_2", "temperature_3", "battery_voltage"], shown);
+
+        // Nothing ticked is a choice too: the hornet shows nothing, which is not the same as the defaults.
+        using var none = await admin.PutAsJsonAsync("/api/devices/meteo-dash-a/dashboard", new { shown = Array.Empty<string>() });
+        Assert.Equal(HttpStatusCode.NoContent, none.StatusCode);
+        Assert.Equal(0, (await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-dash-a")).GetProperty("dashboard").GetArrayLength());
+
+        using var reset = await admin.PutAsJsonAsync("/api/devices/meteo-dash-a/dashboard", new { shown = (string[]?)null });
+        Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
+        Assert.Equal(JsonValueKind.Null, (await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-dash-a")).GetProperty("dashboard").ValueKind);
+
+        using var bad = await admin.PutAsJsonAsync("/api/devices/meteo-dash-a/dashboard", new { shown = new[] { "Temperature; drop" } });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        using var missing = await admin.PutAsJsonAsync("/api/devices/nobody/dashboard", new { shown = new[] { "temperature" } });
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
     }
 }

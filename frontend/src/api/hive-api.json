@@ -713,6 +713,51 @@
         }
       }
     },
+    "/api/devices/{deviceId}/dashboard": {
+      "put": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDeviceDashboardRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ingest/photo": {
       "post": {
         "tags": [
@@ -4171,6 +4216,15 @@
               "null",
               "string"
             ]
+          },
+          "dashboard": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -6303,6 +6357,23 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "SetDeviceDashboardRequest": {
+        "required": [
+          "shown"
+        ],
+        "type": "object",
+        "properties": {
+          "shown": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

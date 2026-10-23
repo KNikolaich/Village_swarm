@@ -96,4 +96,10 @@ public class Device
 
     /// <summary>Place in the swarm list inside its group: lower first, equal ones in the usual order (trouble first, then id).</summary>
     public int Sort { get; set; }
+
+    /// <summary>
+    /// What the zone cards and the overview show of this hornet: its readings by metric (temperature_2...) and its
+    /// buttons (snapshot, light, relay). Null: the defaults of its kind, chosen by the UI.
+    /// </summary>
+    public List<string>? Dashboard { get; set; }
 }
