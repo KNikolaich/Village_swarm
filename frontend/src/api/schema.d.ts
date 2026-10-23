@@ -2836,6 +2836,124 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/timelapse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TimelapseDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/timelapse/{deviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SetTimelapseRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TimelapseDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dashboard/layout": {
         parameters: {
             query?: never;
@@ -5318,6 +5436,12 @@ export interface components {
         SetRuleEnabledRequest: {
             enabled: boolean;
         };
+        SetTimelapseRequest: {
+            /** Format: int32 */
+            intervalMin: number;
+            /** @default false */
+            light: boolean;
+        };
         /** @enum {unknown} */
         SleepMode: "deep" | "light" | null;
         StartMonitoringRequest: {
@@ -5355,6 +5479,26 @@ export interface components {
             enabled: boolean;
             botUsername: null | string;
             links: components["schemas"]["TelegramLinkDto"][];
+        };
+        TimelapseDto: {
+            deviceId: string;
+            /** Format: int32 */
+            intervalMin: number;
+            light: boolean;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            nextAt: string;
+            shooting: boolean;
+            /** Format: date-time */
+            lastPhotoAt: null | string;
+            lastPhotoId: null | string;
+            /** Format: date-time */
+            lastFailedAt: null | string;
+            lastError: null | string;
+            lastErrorDetail: null | string;
+            /** Format: int32 */
+            failures: number;
         };
         TotpCodeRequest: {
             code: string;

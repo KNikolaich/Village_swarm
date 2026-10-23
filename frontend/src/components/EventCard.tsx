@@ -1,6 +1,6 @@
-import { Check, History, ImageOff } from 'lucide-react'
+import { Camera, Check, History, ImageOff } from 'lucide-react'
 import type { EventDto, EventPhotoDto } from '@/api/client'
-import { useAckEvent } from '@/api/queries'
+import { useAckEvent, useMe, useSendCommand } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge, type BadgeTone } from '@/components/ui/primitives'
 import { eventTypeLabel, severityLabel, t } from '@/i18n'
@@ -50,6 +50,9 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
   compact?: boolean
 }) {
   const ack = useAckEvent()
+  const me = useMe()
+  const send = useSendCommand(event.deviceId)
+  const canControl = (me.data?.roles.includes('admin') ?? false) || (me.data?.roles.includes('member') ?? false)
   const alarm = event.severity === 'alarm' || event.severity === 'critical'
   const expectedPhotos = (event.payload as { photos?: unknown[] } | null)?.photos?.length ?? 0
   // A rule's own message: what the rule said, and which rule it was.
@@ -127,13 +130,26 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
           </div>
         </>
       ) : (
-        expectedPhotos > 0 && (
+        expectedPhotos > 0 && (Date.now() - new Date(event.receivedAt).getTime() < 5 * 60_000 ? (
           <p className="mt-2 flex items-center gap-1 text-xs text-neutral-500">
-            <ImageOff className="size-3.5" />
-            {// Hornets retry uploads from the SD card; after a few minutes it is worth saying so plainly.
-            Date.now() - new Date(event.receivedAt).getTime() < 5 * 60_000 ? t('events.photosPending') : t('events.photosMissing')}
+            <ImageOff className="size-3.5" />{t('events.photosPending')}
           </p>
-        )
+        ) : (
+          // Hornets retry uploads from the SD card; after a few minutes it is worth saying so plainly, and offering another go.
+          <div className="mt-2 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="flex items-center gap-1 text-xs text-neutral-500" title={t('events.photosMissingHint')}>
+                <ImageOff className="size-3.5" />{t('events.photosMissing')}
+              </p>
+              {canControl && (
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => void send('snapshot', { count: 1 })}>
+                  <Camera className="size-3.5" />{t('events.retake')}
+                </Button>
+              )}
+            </div>
+            {!compact && <p className="text-xs text-neutral-600">{t('events.photosMissingHint')}</p>}
+          </div>
+        ))
       )}
     </article>
   )

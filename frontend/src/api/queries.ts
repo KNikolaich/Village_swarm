@@ -9,6 +9,7 @@ export const keys = {
   devices: ['devices'] as const,
   latest: ['telemetry', 'latest'] as const,
   monitoring: ['telemetry', 'monitoring'] as const,
+  timelapse: ['timelapse'] as const,
   events: (filters: EventFilters) => ['events', filters] as const,
   eventsAll: ['events'] as const,
   mediaDay: (date: string, device?: string) => ['media', 'day', date, device ?? ''] as const,
@@ -159,6 +160,10 @@ export const useSeries = (device: string, metric: string, hours: number) =>
     },
     refetchInterval: 5 * 60_000,
   })
+
+/** Camera timelapses (Hive.Modules.Devices.Timelapse): polled often enough to follow a shot and its next time. */
+export const useTimelapse = () =>
+  useQuery({ queryKey: keys.timelapse, queryFn: () => call(api.GET('/api/timelapse')), refetchInterval: 15_000 })
 
 /** Monitoring sessions in progress (frequent readings for a while, Hive.Modules.Telemetry.Monitoring). */
 export const useMonitoring = () =>

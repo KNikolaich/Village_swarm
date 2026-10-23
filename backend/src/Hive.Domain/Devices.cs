@@ -95,6 +95,9 @@ public class Device
     /// <summary>A monitoring session in progress (Hive.Modules.Telemetry.Monitoring): frequent readings for a while; null when off.</summary>
     public JsonDocument? Monitor { get; set; }
 
+    /// <summary>A camera's timelapse (Hive.Modules.Devices.Timelapse): a photo every so often, with its light if asked; null when off.</summary>
+    public JsonDocument? Timelapse { get; set; }
+
     public string? MqttUser { get; set; }
 
     /// <summary>Who speaks for the device on the broker: our own firmware or a Tasmota/OpenBeken one (see <see cref="Drivers"/>).</summary>

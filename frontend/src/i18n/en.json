@@ -409,7 +409,9 @@
       "count": "{done} of {total} updated",
       "failed": "stopped at \"{device}\": {version}",
       "stopped": "stopped by hand"
-    }
+    },
+    "retake": "Take again",
+    "photosMissingHint": "The camera could not send the photo (usually weak Wi-Fi). With an SD card it retries every 30 s and the photo may still come; without one the photo is lost, so take another."
   },
   "photos": {
     "device": "Camera",
@@ -452,7 +454,8 @@
     "monitor_resumed": "Thermometer reporting again",
     "home_offline": "Contact with home lost",
     "home_offline_long": "Home is offline",
-    "home_online": "Contact with home restored"
+    "home_online": "Contact with home restored",
+    "timelapse": "Timelapse"
   },
   "severity": {
     "info": "Info",
@@ -646,6 +649,39 @@
     "breachBelow": "Out of range: below",
     "breachAbove": "Out of range: above",
     "stale": "No data since {time}"
+  },
+  "timelapse": {
+    "title": "Timelapse",
+    "hint": "The camera takes a photo at even intervals. Frames go to Photos, not to the event feed.",
+    "on": "timelapse on",
+    "every": "How often",
+    "minutes": "every {n} min",
+    "hours": "every {n} h",
+    "hour": "every hour",
+    "day": "once a day",
+    "light": "Turn the floodlight on for each shot",
+    "lightHint": "The floodlight goes on a couple of seconds before the photo and off as soon as the photo is in, or after 1.5 minutes if it is not. If it was on already, the timelapse leaves it alone. Even if the hive goes away, the camera switches it off by itself after 2 minutes.",
+    "withLight": "with the floodlight",
+    "next": "next photo at {time}",
+    "shooting": "shooting…",
+    "lastPhoto": "last frame {when}",
+    "noPhotoYet": "no frames yet",
+    "failed": "The photo of {when} failed: {why}",
+    "failures": "failures in a row: {n}",
+    "why": {
+      "offline": "the camera was off line",
+      "camera": "the camera refused",
+      "no_photo": "the camera took it, but the photo did not reach the hive"
+    },
+    "retryHint": "A failed photo is tried again in a minute, then the timelapse keeps its pace.",
+    "start": "Start timelapse",
+    "apply": "Save",
+    "change": "Change",
+    "stop": "Stop",
+    "started": "Timelapse on, the first photo now",
+    "changed": "Timelapse changed, the first photo now",
+    "stopped": "Timelapse off",
+    "photos": "Frames"
   },
   "swarm": {
     "title": "Swarm",

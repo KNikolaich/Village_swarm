@@ -104,6 +104,9 @@ public static class DevicesModule
         services.AddHostedService(sp => sp.GetRequiredService<OtaRolloutRunner>());
         services.AddSingleton<SleepingDeviceWatch>();
         services.AddHostedService(sp => sp.GetRequiredService<SleepingDeviceWatch>());
+        services.AddScoped<TimelapseService>();
+        services.AddSingleton<TimelapseWatch>();
+        services.AddHostedService(sp => sp.GetRequiredService<TimelapseWatch>());
         return services;
     }
 
@@ -251,6 +254,25 @@ public static class DevicesModule
         modes.MapGet("/armed", (ArmService arm, CancellationToken ct) => arm.GetAsync(ct));
         modes.MapPut("/armed", async Task<Results<Ok<ArmedDto>, BadRequest>> (SetArmedRequest request, ClaimsPrincipal user, ArmService arm, CancellationToken ct) =>
                 await arm.SetAsync(request, $"user:{user.Identity?.Name}", ct) is { } state ? (Results<Ok<ArmedDto>, BadRequest>)TypedResults.Ok(state) : TypedResults.BadRequest())
+            .RequireAuthorization(HiveRoles.CanControl);
+
+        var timelapse = app.MapGroup("/api/timelapse").WithTags("devices");
+        timelapse.MapGet("", (TimelapseService t, CancellationToken ct) => t.ListAsync(ct));
+        timelapse.MapPut("/{deviceId}", async Task<Results<Ok<TimelapseDto>, NotFound, ValidationProblem>> (
+                string deviceId, SetTimelapseRequest request, ClaimsPrincipal user, TimelapseService t, CancellationToken ct) =>
+            {
+                var (status, error, dto) = await t.SetAsync(deviceId, request, $"user:{user.Identity?.Name}", ct);
+                return status switch
+                {
+                    TimelapseStatus.NotFound => TypedResults.NotFound(),
+                    TimelapseStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["timelapse"] = [error ?? "bad request"] }),
+                    _ => TypedResults.Ok(dto!),
+                };
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
+        timelapse.MapDelete("/{deviceId}", async Task<Results<NoContent, NotFound>> (
+                string deviceId, ClaimsPrincipal user, TimelapseService t, CancellationToken ct) =>
+                await t.StopAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? (Results<NoContent, NotFound>)TypedResults.NoContent() : TypedResults.NotFound())
             .RequireAuthorization(HiveRoles.CanControl);
         return app;
     }
