@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/display.schema.json",
+  "title": "vs/v1/hive/display/{id} (retained): what the hive wants a hornet's screen to show",
+  "type": "object",
+  "required": ["v", "ts", "items"],
+  "properties": {
+    "v": { "const": 1 },
+    "ts": { "$ref": "common.schema.json#/$defs/unixMs" },
+    "items": {
+      "type": "array",
+      "maxItems": 4,
+      "description": "Empty: the hornet shows its own readings again (config display.lines or the defaults)",
+      "items": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "label": { "type": "string", "maxLength": 16, "description": "What it is (a zone, a device); may be absent" },
+          "text": { "type": "string", "maxLength": 12, "description": "The value, ready to show: 21.5°, 63%, 3.9V, --" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
