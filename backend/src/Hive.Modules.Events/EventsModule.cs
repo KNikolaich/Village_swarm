@@ -37,6 +37,8 @@ public sealed class EventQueries(HiveDbContext db, TimeProvider time)
         var query = db.Events.AsNoTracking();
         if (!string.IsNullOrEmpty(f.Type))
             query = query.Where(e => e.Type == f.Type);
+        else // timelapse frames go to the photos, not to the feed (a camera every 5 minutes would bury everything else)
+            query = query.Where(e => !db.Media.Any(m => m.EventId == e.Id && m.Kind == MediaKind.Timelapse));
         if (!string.IsNullOrEmpty(f.Device))
             query = query.Where(e => e.DeviceId == f.Device);
         if (f.Zone is { } zone)

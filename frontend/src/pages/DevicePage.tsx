@@ -9,7 +9,7 @@ import { useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
-import { chartWindow, keys, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useMonitoring, useSendCommand, useSeries } from '@/api/queries'
+import { chartWindow, keys, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useMonitoring, useSendCommand, useSeries, useTimelapse } from '@/api/queries'
 import { Chart, TimeAxis, type ChartPoint } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
@@ -22,6 +22,7 @@ import { DeviceName } from '@/components/DeviceName'
 import { PinsPanel } from '@/pages/SwarmPage'
 import { SortInput } from '@/components/SortInput'
 import { MonitoringPanel } from '@/components/MonitoringPanel'
+import { TimelapsePanel } from '@/components/TimelapsePanel'
 import { DashboardChecks } from '@/components/DashboardChecks'
 import { canMonitor } from '@/lib/monitoring'
 import { announcedCommands, hasCap, relayChannels } from '@/lib/swarm'
@@ -219,6 +220,7 @@ export function DevicePage() {
   const zones = useZones()
   const latest = useLatestTelemetry()
   const monitoring = useMonitoring()
+  const timelapse = useTimelapse()
   const me = useMe()
   const canControl = (me.data?.roles.includes('admin') ?? false) || (me.data?.roles.includes('member') ?? false)
   const isAdmin = me.data?.roles.includes('admin') ?? false
@@ -261,6 +263,8 @@ export function DevicePage() {
   const online = device.status === 'online'
   const configPending = device.configRev !== device.configAppliedRev
   const monitored = (monitoring.data ?? []).some((m) => m.deviceId === deviceId)
+  const timelapsing = (timelapse.data ?? []).some((x) => x.deviceId === deviceId)
+  const camera = device.driver === 'hornet' && device.type === 'guard-cam' && device.status !== 'disabled'
   // The spare Wi-Fi network (Settings → Wi-Fi for hornets) is the administrator's: so is dropping it.
   const forgetSpare = isAdmin && hasCap(device, 'wifi.forget')
 
@@ -332,6 +336,15 @@ export function DevicePage() {
               canControl={canControl}
               onStarted={() => setHours((h) => Math.min(h, 1))}
             />
+          </CardContent>
+        </Card>
+      )}
+
+      {camera && (canControl || timelapsing) && (
+        <Card>
+          <CardHeader><CardTitle>{t('timelapse.title')}</CardTitle></CardHeader>
+          <CardContent>
+            <TimelapsePanel device={device} canControl={canControl} hasLight={commands.includes('relay')} />
           </CardContent>
         </Card>
       )}

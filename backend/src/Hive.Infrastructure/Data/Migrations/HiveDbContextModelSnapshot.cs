@@ -261,6 +261,10 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("status");
 
+                    b.Property<JsonDocument>("Timelapse")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("timelapse");
+
                     b.Property<string>("TypeCode")
                         .IsRequired()
                         .HasMaxLength(32)

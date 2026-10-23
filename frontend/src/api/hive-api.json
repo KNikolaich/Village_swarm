@@ -2319,6 +2319,103 @@
         }
       }
     },
+    "/api/timelapse": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TimelapseDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/timelapse/{deviceId}": {
+      "put": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetTimelapseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelapseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/dashboard/layout": {
       "get": {
         "tags": [
@@ -6755,6 +6852,22 @@
           }
         }
       },
+      "SetTimelapseRequest": {
+        "required": [
+          "intervalMin"
+        ],
+        "type": "object",
+        "properties": {
+          "intervalMin": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "light": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
       "SleepMode": {
         "enum": [
           "deep",
@@ -6895,6 +7008,82 @@
             "items": {
               "$ref": "#/components/schemas/TelegramLinkDto"
             }
+          }
+        }
+      },
+      "TimelapseDto": {
+        "required": [
+          "deviceId",
+          "intervalMin",
+          "light",
+          "startedAt",
+          "nextAt",
+          "shooting",
+          "lastPhotoAt",
+          "lastPhotoId",
+          "lastFailedAt",
+          "lastError",
+          "lastErrorDetail",
+          "failures"
+        ],
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "intervalMin": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "light": {
+            "type": "boolean"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nextAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "shooting": {
+            "type": "boolean"
+          },
+          "lastPhotoAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "lastPhotoId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastFailedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "lastError": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastErrorDetail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "failures": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
