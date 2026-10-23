@@ -112,6 +112,33 @@ namespace Hive.Infrastructure.Data.Migrations
                     b.ToTable("backup_runs", (string)null);
                 });
 
+            modelBuilder.Entity("Hive.Domain.DashboardLayout", b =>
+                {
+                    b.Property<string>("Screen")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("screen");
+
+                    b.Property<JsonDocument>("Items")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("items");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("updated_by");
+
+                    b.HasKey("Screen")
+                        .HasName("pk_dashboard_layouts");
+
+                    b.ToTable("dashboard_layouts", (string)null);
+                });
+
             modelBuilder.Entity("Hive.Domain.Device", b =>
                 {
                     b.Property<int>("Id")

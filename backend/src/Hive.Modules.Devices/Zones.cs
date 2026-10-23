@@ -165,6 +165,7 @@ public static class ZoneEndpoints
 {
     public static IEndpointRouteBuilder MapZoneEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapDashboardEndpoints();
         var zones = app.MapGroup("/api/zones").WithTags("zones");
         zones.MapGet("", (ZoneService z, CancellationToken ct) => z.ListAsync(ct));
 

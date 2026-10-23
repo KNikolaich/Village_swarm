@@ -86,6 +86,7 @@ public static class DevicesModule
         services.AddScoped<CommandService>();
         services.AddScoped<ArmService>();
         services.AddScoped<ZoneService>();
+        services.AddScoped<DashboardLayoutService>();
         services.AddScoped<IrButtonService>();
         services.AddScoped<ZigbeeService>();
         services.AddHostedService<ZoneBootstrap>();

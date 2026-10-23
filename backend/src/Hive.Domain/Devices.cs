@@ -29,6 +29,18 @@ public class Zone
     public int Sort { get; set; }
 }
 
+/// <summary>
+/// How the overview is laid out on one kind of screen ("desktop" or "phone"): the widgets in order, each with its
+/// width in twelfths of a row and whether it is hidden. One for the whole family, set by an administrator.
+/// </summary>
+public class DashboardLayout
+{
+    public required string Screen { get; set; }
+    public required JsonDocument Items { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
+}
+
 /// <summary>Kind of hornet: guard-cam, meteo, heat... Seeded; provisioning picks one (spec 6.4).</summary>
 public class DeviceType
 {

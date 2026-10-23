@@ -2189,6 +2189,70 @@
         }
       }
     },
+    "/api/dashboard/layout": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardLayoutsDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dashboard/layout/{screen}": {
+      "put": {
+        "tags": [
+          "dashboard"
+        ],
+        "parameters": [
+          {
+            "name": "screen",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveDashboardLayoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/zones": {
       "get": {
         "tags": [
@@ -4077,6 +4141,53 @@
             "format": "int32"
           },
           "ir": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "DashboardLayoutsDto": {
+        "required": [
+          "desktop",
+          "phone"
+        ],
+        "type": "object",
+        "properties": {
+          "desktop": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DashboardWidgetDto"
+            }
+          },
+          "phone": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DashboardWidgetDto"
+            }
+          }
+        }
+      },
+      "DashboardWidgetDto": {
+        "required": [
+          "id"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "w": {
+            "type": "integer",
+            "format": "int32",
+            "default": 12
+          },
+          "hidden": {
             "type": "boolean",
             "default": false
           }
@@ -6290,6 +6401,23 @@
           }
         }
       },
+      "SaveDashboardLayoutRequest": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DashboardWidgetDto"
+            }
+          }
+        }
+      },
       "SaveRuleRequest": {
         "required": [
           "name",
@@ -7304,6 +7432,9 @@
     },
     {
       "name": "modes"
+    },
+    {
+      "name": "dashboard"
     },
     {
       "name": "zones"
