@@ -26,7 +26,7 @@ export function compareDevices(a: DeviceDto, b: DeviceDto): number {
 }
 
 /** Kinds in the order they are listed when grouped by kind; kinds not named here follow by code. */
-const typeOrder = ['meteo', 'heat', 'relay', 'guard-cam', 'leak', 'plant']
+const typeOrder = ['meteo', 'heat', 'relay', 'guard-cam', 'ipcam', 'leak', 'plant']
 
 function typeRank(type: string): number {
   const i = typeOrder.indexOf(type)

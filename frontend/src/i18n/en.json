@@ -887,7 +887,8 @@
     "modeTasmota": "Tasmota relay",
     "flashLoadFailed": "The Flash button did not load. Usually the page was opened before the hive was updated: reload it. You can still download the firmware file below.",
     "reloadPage": "Reload the page",
-    "modeZigbee": "Zigbee"
+    "modeZigbee": "Zigbee",
+    "modeIpcam": "IP cameras (NVR)"
   },
   "time": {
     "justNow": "just now",
@@ -925,7 +926,8 @@
     "leak": "Leak sensor",
     "plant": "Plants",
     "ble": "Bluetooth bridge (kitchen thermometer)",
-    "sensor": "Sensor (motion, door, leak)"
+    "sensor": "Sensor (motion, door, leak)",
+    "ipcam": "IP camera (via NVR)"
   },
   "boards": {
     "esp32cam-aithinker": "ESP32-CAM AI-Thinker",
@@ -1230,5 +1232,39 @@
     "saved": "Saved, the screen updates within a minute",
     "layout": "One line: a label and a large value. Two lines: two large values. Three or four: small rows with a label. Readings older than 30 minutes show as \"--\".",
     "remove": "Remove the line"
+  },
+  "ipcam": {
+    "intro": "Third-party IP cameras recorded by a Dahua NVR. The hive talks to the NVR, not to each camera: it takes motion and snapshots from it. Every channel picked becomes a camera of the swarm that can go into a group and into rules.",
+    "add": "Add an NVR",
+    "defaultName": "NVR",
+    "name": "Name, e.g. \"House NVR\"",
+    "host": "NVR address, e.g. 192.168.10.245",
+    "port": "HTTP port",
+    "username": "NVR login",
+    "password": "NVR password",
+    "passwordKeep": "Password (empty: keep the stored one)",
+    "loginHint": "The password is kept encrypted in the hive and never shown back. The NVR locks the login after a few wrong passwords: check with care.",
+    "probe": "Check",
+    "probeOk": "The NVR answers: {type}, channels: {n}",
+    "pickChannels": "Tick the channels that become cameras of the swarm and name them",
+    "channel": "Channel",
+    "camera": "Camera",
+    "channelNumber": "Channel no.",
+    "addChannel": "Add channel",
+    "noCamera": "no camera connected",
+    "zone": "Group",
+    "noZone": "No group",
+    "recordWhenDisarmed": "Take photos on motion even when disarmed",
+    "guardHint": "Motion when armed: an alarm with three photos in Telegram. \"Arriving\": a quiet warning. Disarmed: the feed only.",
+    "saved": "NVR saved",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleted": "NVR deleted, its cameras left the swarm",
+    "deleteConfirm": "Delete \"{name}\"? Its cameras leave the swarm, events and photos stay.",
+    "errors": {
+      "auth": "The NVR refused the login or password",
+      "unreachable": "Nothing answers at this address and port",
+      "not_dahua": "What answers here is not a Dahua NVR"
+    }
   }
 }

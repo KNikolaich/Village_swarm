@@ -91,8 +91,41 @@ public sealed partial class PhotoIngestService(
             Sha256 = Convert.ToHexStringLower(SHA256.HashData(request.Body)),
             UploadedVia = ms > 0 && receivedAt - ts > TimeSpan.FromMinutes(5) ? "sd" : "home",
         };
+        return await SaveAsync(media, request.Body, ct);
+    }
 
-        await store.WriteAtomicAsync(media.Path, request.Body, ct);
+    /// <summary>
+    /// A frame the hive fetched itself (an IP camera's snapshot from its NVR, contracts/ipcam.md), stored like an uploaded
+    /// photo. Its time is the hive's: the NVR clock is not trusted. Invalid when it is not a readable JPEG.
+    /// </summary>
+    public async Task<PhotoIngestResult> StoreFetchedAsync(
+        string deviceId, string photoId, string? eventId, string eventType, byte[] jpeg, string via, CancellationToken ct)
+    {
+        if (!IsJpeg(jpeg) || ImageTools.Identify(jpeg) is not { } size)
+            return new(PhotoIngestStatus.Invalid, "not a JPEG");
+        if (jpeg.LongLength > mediaOptions.Value.MaxPhotoBytes * 4)
+            return new(PhotoIngestStatus.TooLarge, $"photo exceeds {mediaOptions.Value.MaxPhotoBytes * 4} bytes");
+        var now = time.GetUtcNow();
+        return await SaveAsync(new MediaItem
+        {
+            Id = photoId,
+            EventId = eventId,
+            DeviceId = deviceId,
+            Kind = eventId is null ? MediaKind.Snapshot : MediaKind.Photo,
+            Ts = now,
+            ReceivedAt = now,
+            Path = MediaStore.PhotoPath(deviceId, hiveOptions.Value.ToLocal(now), eventType, photoId),
+            Bytes = jpeg.LongLength,
+            Width = size.Width,
+            Height = size.Height,
+            Sha256 = Convert.ToHexStringLower(SHA256.HashData(jpeg)),
+            UploadedVia = via,
+        }, jpeg, ct);
+    }
+
+    private async Task<PhotoIngestResult> SaveAsync(MediaItem media, byte[] body, CancellationToken ct)
+    {
+        await store.WriteAtomicAsync(media.Path, body, ct);
         db.Media.Add(media);
         try
         {

@@ -87,6 +87,8 @@ public sealed class HiveFixture : IAsyncLifetime
             b.UseSetting("Telegram:PhotoWaitS", "8");
             b.UseSetting("Assistant:ApiKey", FakeLlm.ApiKey);
             b.UseSetting("Assistant:BaseUrl", Llm.BaseUrl);
+            // IpCamTests: a cut NVR takes its cameras offline in seconds, not a minute.
+            b.UseSetting("IpCams:OfflineAfterS", "3");
         });
         _ = App.Server; // start the host: migrations, MQTT gateway, ingest pipeline
     }

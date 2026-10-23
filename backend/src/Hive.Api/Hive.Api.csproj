@@ -17,6 +17,7 @@
     <ProjectReference Include="../Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
     <ProjectReference Include="../Hive.Modules.Events/Hive.Modules.Events.csproj" />
     <ProjectReference Include="../Hive.Modules.Media/Hive.Modules.Media.csproj" />
+    <ProjectReference Include="../Hive.Modules.IpCams/Hive.Modules.IpCams.csproj" />
     <ProjectReference Include="../Hive.Modules.Retention/Hive.Modules.Retention.csproj" />
     <ProjectReference Include="../Hive.Modules.Rules/Hive.Modules.Rules.csproj" />
     <ProjectReference Include="../Hive.Modules.Notify/Hive.Modules.Notify.csproj" />

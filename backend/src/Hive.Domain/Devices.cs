@@ -59,6 +59,19 @@ public static class Drivers
     public const string Hornet = "hornet";
     public const string Tasmota = "tasmota";
     public const string Zigbee = "zigbee";
+
+    /// <summary>A channel of a Dahua NVR: the hive itself reads its events and snapshots over HTTP (contracts/ipcam.md).</summary>
+    public const string IpCam = "ipcam";
+}
+
+/// <summary>Device types that take photos: our guard-cams and IP cameras behind an NVR.</summary>
+public static class Cameras
+{
+    public const string GuardCam = "guard-cam";
+    public const string IpCam = "ipcam";
+
+    /// <summary>For queries: <c>Cameras.Types.Contains(d.TypeCode)</c> translates to SQL.</summary>
+    public static readonly string[] Types = [GuardCam, IpCam];
 }
 
 /// <summary>A hornet. <see cref="DeviceId"/> is the MQTT id (guard-gate1), <see cref="Id"/> the surrogate key.</summary>

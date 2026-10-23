@@ -45,6 +45,7 @@ public sealed class DynSecFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await Task.WhenAll(_postgres.StartAsync(), _mosquitto.StartAsync());
+        await BrokerReadyAsync();
         App = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Development");
@@ -67,6 +68,31 @@ public sealed class DynSecFixture : IAsyncLifetime
         });
         _ = App.Server;
         await WarmUpAsync();
+    }
+
+    /// <summary>
+    /// "running" in the broker log comes before it takes logins when the machine is busy (the whole suite in parallel). The api
+    /// gives its broker 10 s at start-up and retries 1, 2, 4, 8 s apart, so it starts only once the admin login is accepted.
+    /// </summary>
+    private async Task BrokerReadyAsync()
+    {
+        var options = new MqttClientOptionsBuilder().WithTcpServer(Broker.Host, Broker.Port).WithCredentials("admin", AdminPassword)
+            .WithClientId($"dynsec-ready-{Guid.NewGuid():N}").WithTimeout(TimeSpan.FromSeconds(5)).Build();
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (true)
+        {
+            using var client = new MqttClientFactory().CreateMqttClient();
+            try
+            {
+                await client.ConnectAsync(options);
+                await client.DisconnectAsync();
+                return;
+            }
+            catch (Exception) when (DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(500);
+            }
+        }
     }
 
     /// <summary>

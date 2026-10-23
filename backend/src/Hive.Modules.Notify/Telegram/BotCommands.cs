@@ -290,7 +290,7 @@ public sealed class BotCommands(
 
     private async Task<List<CameraChoice>?> OnlineCamerasAsync(CancellationToken ct) =>
         await db.Devices.AsNoTracking()
-            .Where(d => d.TypeCode == "guard-cam" && d.Status == DeviceStatus.Online)
+            .Where(d => Cameras.Types.Contains(d.TypeCode) && d.Status == DeviceStatus.Online)
             .OrderBy(d => d.Name)
             .Select(d => new CameraChoice(d.DeviceId, d.Name))
             .ToListAsync(ct);
@@ -320,7 +320,7 @@ public sealed class BotCommands(
     private async Task SnapshotAsync(Caller caller, long chat, string? target, int? replyTo, CancellationToken ct)
     {
         var cameras = await db.Devices.AsNoTracking()
-            .Where(d => d.TypeCode == "guard-cam" && d.Status == DeviceStatus.Online)
+            .Where(d => Cameras.Types.Contains(d.TypeCode) && d.Status == DeviceStatus.Online)
             .Select(d => new { d.DeviceId, d.Name })
             .ToListAsync(ct);
         if (!string.IsNullOrEmpty(target))
@@ -337,7 +337,7 @@ public sealed class BotCommands(
     public async Task SnapshotAsync(long chat, string actor, IReadOnlyCollection<string> deviceIds, int? replyTo, CancellationToken ct)
     {
         var cameras = await db.Devices.AsNoTracking()
-            .Where(d => d.TypeCode == "guard-cam" && d.Status == DeviceStatus.Online && deviceIds.Contains(d.DeviceId))
+            .Where(d => Cameras.Types.Contains(d.TypeCode) && d.Status == DeviceStatus.Online && deviceIds.Contains(d.DeviceId))
             .Select(d => new { d.DeviceId, d.Name })
             .ToListAsync(ct);
         if (cameras.Count == 0)
