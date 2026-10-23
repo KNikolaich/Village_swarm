@@ -1,4 +1,4 @@
-import type { DeviceDto, LatestValueDto } from '@/api/client'
+import type { DeviceDto, LatestValueDto, RuleDto } from '@/api/client'
 import { metricLabel } from '@/i18n'
 import { hasRelay } from '@/lib/features'
 import { formatValue } from '@/lib/format'
@@ -11,7 +11,7 @@ import { announcedCommands, mainReadings } from '@/lib/swarm'
 /** Kinds of climate zone (backend ZoneKind). */
 export const zoneKinds = ['garden', 'house', 'perimeter', 'tech'] as const
 
-export const buttons = ['snapshot', 'light', 'relay'] as const
+export const buttons = ['camera', 'snapshot', 'light', 'relay'] as const
 export type DashboardButton = (typeof buttons)[number]
 
 export interface DashboardItem {
@@ -44,6 +44,7 @@ export function dashboardItems(d: DeviceDto, latest: readonly LatestValueDto[]):
 
   const commands = announcedCommands(d)
   if (isCamera(d)) {
+    items.push({ key: 'camera', kind: 'button', byDefault: true })
     items.push({ key: 'snapshot', kind: 'button', byDefault: true })
     // The camera's output (white LED or a floodlight relay) is its light.
     if (commands.includes('relay')) items.push({ key: 'light', kind: 'button', byDefault: true })
@@ -52,6 +53,19 @@ export function dashboardItems(d: DeviceDto, latest: readonly LatestValueDto[]):
   }
   return items
 }
+
+/** Which banner the hornet has on its zone, if it is ticked for one: a camera with its photo, or a relay. */
+export function bannerKind(d: DeviceDto, latest: readonly LatestValueDto[]): 'camera' | 'relay' | null {
+  const shown = shownKeys(d, latest)
+  const offered = dashboardItems(d, latest).map((i) => i.key)
+  if (offered.includes('camera') && shown.has('camera')) return 'camera'
+  if (offered.includes('relay') && shown.has('relay')) return 'relay'
+  return null
+}
+
+/** The rules that switch this hornet's relay: what the "Авто" switch of its banner turns on and off. */
+export const rulesFor = (rules: readonly RuleDto[], deviceId: string) =>
+  rules.filter((r) => r.definition.actions.some((a) => a.kind === 'command' && a.device === deviceId && a.command === 'relay'))
 
 /** The keys shown: the ones ticked, or the defaults while nothing was chosen. */
 export function shownKeys(d: DeviceDto, latest: readonly LatestValueDto[]): Set<string> {

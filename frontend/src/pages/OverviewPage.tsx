@@ -2,13 +2,14 @@ import { ChevronRight, Wifi, WifiOff } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import type { DeviceDto, LatestValueDto, ZoneDto } from '@/api/client'
-import { useDevices, useEvents, useLatestTelemetry, useZones } from '@/api/queries'
+import { useDevices, useEvents, useLatestTelemetry, useMe, useZones } from '@/api/queries'
 import { EventCard, type PhotoRef } from '@/components/EventCard'
 import { GuardCard } from '@/components/GuardCard'
 import { Lightbox } from '@/components/Lightbox'
 import { WeatherCard } from '@/components/WeatherCard'
 import { ZoneTiles } from '@/components/ZoneTiles'
-import { zoneTiles } from '@/lib/dashboard'
+import { bannerKind, zoneTiles } from '@/lib/dashboard'
+import { ZoneBanners } from '@/components/DeviceBanners'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
 import { formatAgo, formatValue } from '@/lib/format'
@@ -20,6 +21,9 @@ export function OverviewPage() {
   const latest = useLatestTelemetry()
   const events = useEvents({ limit: 5 })
   const zones = useZones()
+  const me = useMe()
+  const isAdmin = me.data?.roles.includes('admin') ?? false
+  const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
   const [viewer, setViewer] = useState<{ photos: PhotoRef[]; index: number } | null>(null)
 
   const list = devices.data ?? []
@@ -51,7 +55,7 @@ export function OverviewPage() {
       </div>
 
       <WeatherCard />
-      <Climate latest={latest.data ?? []} devices={list} zones={zones.data ?? []} loading={latest.isLoading} />
+      <Climate latest={latest.data ?? []} devices={list} zones={zones.data ?? []} loading={latest.isLoading} canControl={canControl} isAdmin={isAdmin} />
       <HiveState device={list.find((d) => d.type === 'hive')} latest={latest.data ?? []} loading={latest.isLoading} />
 
       <Card>
@@ -88,13 +92,20 @@ export function OverviewPage() {
 }
 
 /** Every zone's tiles, as its card on the climate screen shows them (what each hornet is ticked to show). */
-function Climate({ latest, devices, zones, loading }: { latest: LatestValueDto[]; devices: DeviceDto[]; zones: ZoneDto[]; loading: boolean }) {
+function Climate({ latest, devices, zones, loading, canControl, isAdmin }: {
+  latest: LatestValueDto[]
+  devices: DeviceDto[]
+  zones: ZoneDto[]
+  loading: boolean
+  canControl: boolean
+  isAdmin: boolean
+}) {
   const hornets = devices.filter((d) => d.type !== 'hive')
   const known = new Set(zones.map((z) => z.id))
   const groups = [
     ...zones.map((z) => ({ key: String(z.id), title: z.name, devices: hornets.filter((d) => d.zoneId === z.id) })),
     { key: 'none', title: t('climate.unassigned'), devices: hornets.filter((d) => d.zoneId == null || !known.has(d.zoneId)) },
-  ].filter((g) => zoneTiles(g.devices, latest).length > 0)
+  ].filter((g) => zoneTiles(g.devices, latest).length > 0 || g.devices.some((d) => bannerKind(d, latest) != null))
 
   return (
     <Card>
@@ -106,6 +117,7 @@ function Climate({ latest, devices, zones, loading }: { latest: LatestValueDto[]
           <div key={g.key} className="space-y-1.5">
             {groups.length > 1 && <p className="text-xs text-neutral-500">{g.title}</p>}
             <ZoneTiles devices={g.devices} latest={latest} />
+            <ZoneBanners devices={g.devices} latest={latest} canControl={canControl} isAdmin={isAdmin} />
           </div>
         ))}
       </CardContent>

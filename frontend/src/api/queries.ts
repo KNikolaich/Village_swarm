@@ -70,6 +70,14 @@ export const useMediaDay = (date: string, device?: string) =>
     },
   })
 
+/** A camera's newest photo (its banner on a zone). */
+export const useLatestPhoto = (device: string) =>
+  useQuery({
+    queryKey: ['media', 'latest', device] as const,
+    queryFn: async () => (await call(api.GET('/api/media', { params: { query: { device, limit: 1 } } }))).items[0] ?? null,
+    refetchInterval: 60_000,
+  })
+
 export const useMediaDays = (from: string, to: string, device?: string) =>
   useQuery({ queryKey: keys.mediaDays(from, to, device), queryFn: () => call(api.GET('/api/media/days', { params: { query: { from, to, device } } })) })
 

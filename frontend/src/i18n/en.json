@@ -163,10 +163,19 @@
     "reset": "Back to defaults",
     "failed": "Could not save the choice",
     "buttons": {
+      "camera": "Camera banner",
       "snapshot": "Snapshot button",
       "light": "Light button",
       "relay": "Relay banner"
-    }
+    },
+    "noPhoto": "no photos",
+    "lightOn": "Light on",
+    "lightOff": "Light off",
+    "autoOn": "Auto",
+    "autoOff": "Auto off",
+    "autoFailed": "Could not switch the automation",
+    "autoSetup": "Set up automation",
+    "controls": "Controls"
   },
   "rules": {
     "title": "Rules",

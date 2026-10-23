@@ -30,7 +30,7 @@ describe('dashboard choice', () => {
 
   it('gives a camera a snapshot and a light button instead of a relay', () => {
     const cam = device('cam-hall', 'guard-cam', { info: info('snapshot', 'relay') })
-    expect(dashboardItems(cam, []).map((i) => i.key)).toEqual(['snapshot', 'light'])
+    expect(dashboardItems(cam, []).map((i) => i.key)).toEqual(['camera', 'snapshot', 'light'])
     expect(shownKeys({ ...cam, dashboard: ['snapshot'] }, []).has('light')).toBe(false)
   })
 

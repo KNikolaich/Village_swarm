@@ -1,21 +1,21 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Pencil, Plus, Power, PowerOff } from 'lucide-react'
+import { Pencil, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto, type LatestValueDto, type ZoneDto } from '@/api/client'
-import { historyWindow, keys, useDevices, useLatestTelemetry, useMe, useMetricSeries, useSendCommand, useWeather, useZones } from '@/api/queries'
+import { historyWindow, keys, useDevices, useLatestTelemetry, useMe, useMetricSeries, useWeather, useZones } from '@/api/queries'
 import { MultiChart, TimeAxis, type ChartPoint, type ChartSeries } from '@/components/Chart'
+import { ZoneBanners } from '@/components/DeviceBanners'
 import { ZoneEditor } from '@/components/ZoneEditor'
 import { ZoneTiles } from '@/components/ZoneTiles'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
+import { Card, CardContent, CardHeader, CardTitle, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { t } from '@/i18n'
-import { readingTitle, shownKeys, shownReadings, zoneKinds, zoneTiles } from '@/lib/dashboard'
+import { bannerKind, readingTitle, shownReadings, zoneKinds, zoneTiles } from '@/lib/dashboard'
 import { formatFixed, formatValue, metricUnit } from '@/lib/format'
 import { ranges, rangeLabel } from '@/lib/ranges'
 import { colorsByDevice } from '@/lib/seriesColors'
-import { hasRelay } from '@/lib/features'
 
 const forecastColor = { stroke: 'stroke-neutral-400', fill: 'fill-neutral-400', bg: 'bg-neutral-400' }
 
@@ -118,7 +118,7 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl, onEdit }:
   const readings = devices.flatMap((d) => shownReadings(d, latest).map((v) => ({ device: d, metric: v.metric })))
   const tempLines = readings.filter((r) => r.metric.startsWith('temperature'))
   const humidityLines = readings.filter((r) => r.metric === 'humidity')
-  const heaters = devices.filter((d) => (d.type === 'heat' || d.type === 'relay') && hasRelay(d.features) && shownKeys(d, latest).has('relay'))
+  const banners = devices.filter((d) => bannerKind(d, latest) != null)
   const temperature = useMetricSeries(tempLines.map((r) => ({ device: r.device.deviceId, metric: r.metric })), hours)
   const humidity = useMetricSeries(humidityLines.map((r) => ({ device: r.device.deviceId, metric: r.metric })), hours)
   const { from, to } = historyWindow(hours)
@@ -153,7 +153,7 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl, onEdit }:
         {isAdmin && <Button variant="ghost" size="icon" title={t('climate.editZone').replace('{name}', zone.name)} onClick={onEdit}><Pencil /></Button>}
       </CardHeader>
       <CardContent className="space-y-4">
-        {tiles.length === 0 && heaters.length === 0 && <p className="text-sm text-neutral-500">{t('climate.noSensors')}</p>}
+        {tiles.length === 0 && banners.length === 0 && <p className="text-sm text-neutral-500">{t('climate.noSensors')}</p>}
 
         <ZoneTiles devices={devices} latest={latest} editZone={isAdmin ? zone.id : undefined} />
 
@@ -172,37 +172,14 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl, onEdit }:
           </div>
         )}
 
-        {heaters.length > 0 && (
+        {banners.length > 0 && (
           <div className="space-y-2">
-            <p className="text-sm font-medium">{t('climate.heating')}</p>
-            {heaters.map((d) => <HeaterRow key={d.deviceId} device={d} canControl={canControl} />)}
+            <p className="text-sm font-medium">{t('dashboard.controls')}</p>
+            <ZoneBanners devices={banners} latest={latest} canControl={canControl} isAdmin={isAdmin} />
           </div>
         )}
       </CardContent>
     </Card>
-  )
-}
-
-/** A heater or relay: its state, and on-for-an-hour / off (manual control; the hornet keeps its own safety limits). */
-function HeaterRow({ device, canControl }: { device: DeviceDto; canControl: boolean }) {
-  const send = useSendCommand(device.deviceId)
-  const state = (device.state as Record<string, unknown> | null) ?? {}
-  const channel = Object.keys(state)[0] ?? (device.type === 'heat' && device.features?.includes('heater') !== false ? 'heater' : 'relay')
-  const value = state[channel]
-  const online = device.status === 'online'
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-neutral-800/50 p-2.5">
-      <div className="min-w-0">
-        <p className="truncate text-sm">{device.name}</p>
-        <Badge tone={value === 'on' ? 'ok' : 'neutral'}>{value === 'on' ? t('climate.heaterOn') : value === 'off' ? t('climate.heaterOff') : t('climate.heaterUnknown')}</Badge>
-      </div>
-      {canControl && online && (
-        <div className="flex shrink-0 gap-2">
-          <Button size="sm" variant="outline" onClick={() => void send('relay', { channel, set: 'on', for_s: 3600 })}><Power />{t('climate.heaterOnHour')}</Button>
-          <Button size="sm" variant="outline" onClick={() => void send('relay', { channel, set: 'off' })}><PowerOff />{t('climate.heaterOff2')}</Button>
-        </div>
-      )}
-    </div>
   )
 }
 
