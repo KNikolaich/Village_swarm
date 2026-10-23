@@ -40,17 +40,18 @@ export function DashboardChecks({ device, latest, editable, compact }: {
   return (
     <div className="space-y-2">
       {!compact && <p className="text-xs text-neutral-500">{t('dashboard.hint')}</p>}
-      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+      {/* Columns of one width, so the ticks of the hornets in a group line up under each other. */}
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-x-3 gap-y-1.5">
         {items.map((item) => (
-          <label key={item.key} className="flex items-center gap-1.5 text-sm">
+          <label key={item.key} className="flex min-w-0 items-center gap-1.5 text-sm" title={itemLabel(item.key, item.kind, probes)}>
             <input
               type="checkbox"
-              className="size-4 accent-amber-400"
+              className="size-4 shrink-0 accent-amber-400"
               checked={shown.has(item.key)}
               disabled={!editable}
               onChange={(e) => void save(toggled(device, latest, item.key, e.target.checked))}
             />
-            {itemLabel(item.key, item.kind, probes)}
+            <span className="truncate">{itemLabel(item.key, item.kind, probes)}</span>
           </label>
         ))}
       </div>
