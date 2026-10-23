@@ -13,10 +13,12 @@ services:
   web:
     <<: *common
     image: ${HIVE_IMAGES:-ghcr.io/knikolaich/village-swarm}-web:${HIVE_VERSION:?set HIVE_VERSION in .env}
-    ports: ["${HIVE_HTTP_PORT:-80}:80", "${HIVE_HTTPS_PORT:-443}:443"]
+    # 8088: the site the Keenetic router forwards from the internet (docs/keenetic-access.md).
+    ports: ["${HIVE_HTTP_PORT:-80}:80", "${HIVE_HTTPS_PORT:-443}:443", "${HIVE_EXTERNAL_PORT:-8088}:8088"]
     environment:
       HIVE_HOSTS: ${HIVE_HOSTS:-localhost}
       HIVE_DEFAULT_SNI: ${HIVE_DEFAULT_SNI:-localhost}
+      HIVE_ROUTER_IPS: ${HIVE_ROUTER_IPS:-private_ranges}
     volumes:
       - ${HIVE_DATA:-/srv/hive}/caddy:/data
     depends_on: [api]

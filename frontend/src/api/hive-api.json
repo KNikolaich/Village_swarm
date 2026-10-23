@@ -5,6 +5,25 @@
     "version": "1.0.0"
   },
   "paths": {
+    "/api/auth/options": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthOptionsDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/login": {
       "post": {
         "tags": [
@@ -75,6 +94,60 @@
         }
       }
     },
+    "/api/auth/recover": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/auth/recover/confirm": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/me": {
       "get": {
         "tags": [
@@ -122,6 +195,86 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/me/email": {
+      "put": {
+        "tags": [
+          "me"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me/devices": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TrustedDeviceDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/me/devices/{id}": {
+      "delete": {
+        "tags": [
+          "me"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
           }
         }
       }
@@ -4221,6 +4374,17 @@
           }
         }
       },
+      "AuthOptionsDto": {
+        "required": [
+          "recoveryByEmail"
+        ],
+        "type": "object",
+        "properties": {
+          "recoveryByEmail": {
+            "type": "boolean"
+          }
+        }
+      },
       "BackupRunDto": {
         "required": [
           "id",
@@ -5659,6 +5823,17 @@
                 "$ref": "#/components/schemas/MeDto"
               }
             ]
+          },
+          "totpAllowed": {
+            "type": "boolean",
+            "default": false
+          },
+          "lockedUntil": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -5666,8 +5841,10 @@
         "enum": [
           "ok",
           "totpRequired",
+          "codeRequired",
           "failed",
-          "lockedOut"
+          "lockedOut",
+          "secondFactorMissing"
         ]
       },
       "MediaDayDto": {
@@ -5751,7 +5928,8 @@
           "login",
           "displayName",
           "roles",
-          "totpEnabled"
+          "totpEnabled",
+          "email"
         ],
         "type": "object",
         "properties": {
@@ -5776,6 +5954,12 @@
           },
           "totpEnabled": {
             "type": "boolean"
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -6711,6 +6895,36 @@
           }
         }
       },
+      "RecoverConfirmRequest": {
+        "required": [
+          "login",
+          "code",
+          "newPassword"
+        ],
+        "type": "object",
+        "properties": {
+          "login": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "newPassword": {
+            "type": "string"
+          }
+        }
+      },
+      "RecoverRequest": {
+        "required": [
+          "login"
+        ],
+        "type": "object",
+        "properties": {
+          "login": {
+            "type": "string"
+          }
+        }
+      },
       "RecoveryCodesDto": {
         "required": [
           "recoveryCodes"
@@ -7359,6 +7573,24 @@
           }
         }
       },
+      "SetEmailRequest": {
+        "required": [
+          "email",
+          "currentPassword"
+        ],
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "currentPassword": {
+            "type": "string"
+          }
+        }
+      },
       "SetRuleEnabledRequest": {
         "required": [
           "enabled"
@@ -7631,7 +7863,7 @@
           },
           "rememberDevice": {
             "type": "boolean",
-            "default": false
+            "default": true
           }
         }
       },
@@ -7692,6 +7924,46 @@
           "purgeAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "TrustedDeviceDto": {
+        "required": [
+          "id",
+          "name",
+          "lastIp",
+          "createdAt",
+          "lastSeenAt",
+          "current"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastIp": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "current": {
+            "type": "boolean"
           }
         }
       },

@@ -1,4 +1,4 @@
-import { Copy, Send, Trash2 } from 'lucide-react'
+import { Copy, Download, Send, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router'
@@ -16,8 +16,9 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { getLanguage, t, type Language } from '@/i18n'
 import { formatAgo } from '@/lib/format'
+import { install, isInstalled, isIos, useInstallOffer } from '@/lib/install'
 
-/** Own account: Telegram link (spec 9.4), TOTP (spec 12), password. */
+/** Own account: Telegram link (spec 9.4), TOTP (spec 12), password, recovery email, trusted devices; the app install. */
 export function SettingsPage() {
   return (
     <div className="space-y-4">
@@ -25,6 +26,9 @@ export function SettingsPage() {
       <TelegramCard />
       <TotpCard />
       <PasswordCard />
+      <EmailCard />
+      <DevicesCard />
+      <InstallCard />
       <WifiCard />
       <WeatherSettingsCard />
       <LanguageCard />
@@ -291,6 +295,102 @@ function PasswordCard() {
           <PasswordInput autoComplete="new-password" placeholder={t('settings.newPassword')} value={next} onChange={(e) => setNext(e.target.value)} />
           <Button type="submit" variant="secondary" disabled={busy || !current || next.length < 10}>{t('settings.save')}</Button>
         </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+function EmailCard() {
+  const qc = useQueryClient()
+  const me = useMe()
+  const options = useQuery({ queryKey: ['auth', 'options'], queryFn: async () => (await api.GET('/api/auth/options')).data ?? null, staleTime: Infinity })
+  const [email, setEmail] = useState<string | null>(null)
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const value = email ?? me.data?.email ?? ''
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    const { response, error } = await api.PUT('/api/me/email', { body: { email: value || null, currentPassword: password } })
+    setBusy(false)
+    if (response.ok) {
+      toast.success(value && options.data?.recoveryByEmail ? t('settings.emailSaved') : t('settings.saved'))
+      setPassword('')
+      setEmail(null)
+      await qc.invalidateQueries({ queryKey: keys.me })
+    } else {
+      const errors = (error as { errors?: Record<string, string[]> } | undefined)?.errors
+      toast.error(errors ? Object.values(errors).flat().join(' ') : t('errors.generic'))
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>{t('settings.email')}</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-sm text-neutral-400">{t('settings.emailHint')}</p>
+        {options.data && !options.data.recoveryByEmail && <p className="text-sm text-amber-300">{t('settings.emailOff')}</p>}
+        <form onSubmit={submit} className="space-y-2">
+          <Input type="email" autoComplete="email" placeholder="name@example.org" value={value} onChange={(e) => setEmail(e.target.value)} />
+          <PasswordInput autoComplete="current-password" placeholder={t('settings.currentPassword')} value={password} onChange={(e) => setPassword(e.target.value)} />
+          <Button type="submit" variant="secondary" disabled={busy || !password}>{t('settings.save')}</Button>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
+
+function DevicesCard() {
+  const qc = useQueryClient()
+  const devices = useQuery({ queryKey: ['me', 'devices'], queryFn: async () => call(api.GET('/api/me/devices')) })
+
+  async function forget(id: number) {
+    await call(api.DELETE('/api/me/devices/{id}', { params: { path: { id } } }))
+    await qc.invalidateQueries({ queryKey: ['me', 'devices'] })
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>{t('settings.devices')}</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-sm text-neutral-400">{t('settings.devicesHint')}</p>
+        {devices.isLoading && <Skeleton className="h-12" />}
+        {devices.data?.length === 0 && <p className="text-sm text-neutral-500">{t('settings.devicesNone')}</p>}
+        <ul className="divide-y divide-neutral-800">
+          {devices.data?.map((d) => (
+            <li key={d.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+              <span className="min-w-0">
+                <span className="block truncate">
+                  {d.name ?? '—'} {d.current && <Badge tone="ok">{t('settings.deviceCurrent')}</Badge>}
+                </span>
+                <span className="text-neutral-500">{formatAgo(d.lastSeenAt)}{d.lastIp ? ` · ${d.lastIp}` : ''}</span>
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => void forget(d.id)}><Trash2 />{t('settings.deviceForget')}</Button>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
+  )
+}
+
+function InstallCard() {
+  const offer = useInstallOffer()
+  const installed = isInstalled()
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>{t('settings.install')}</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        {installed ? (
+          <p className="text-sm text-neutral-400">{t('settings.installDone')}</p>
+        ) : offer ? (
+          <Button onClick={() => void install()}><Download />{t('settings.installButton')}</Button>
+        ) : (
+          <p className="text-sm text-neutral-400">{isIos() ? t('settings.installIos') : t('settings.installManual')}</p>
+        )}
+        {!installed && !window.isSecureContext && <p className="text-sm text-amber-300">{t('settings.installHttps')}</p>}
       </CardContent>
     </Card>
   )

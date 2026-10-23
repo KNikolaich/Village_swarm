@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client'
 import { ApiError } from '@/api/client'
 import { type Language, setLanguage } from '@/i18n'
 import App from './App.tsx'
+import '@/lib/install'
 import './index.css'
 
 const queryClient = new QueryClient({

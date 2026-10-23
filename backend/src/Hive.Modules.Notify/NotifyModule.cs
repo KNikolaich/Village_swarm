@@ -40,6 +40,7 @@ public static class NotifyModule
         services.AddSingleton<TelegramBotHost>();
         services.AddHostedService(sp => sp.GetRequiredService<TelegramBotHost>());
         services.AddScoped<BotCommands>();
+        services.AddScoped<IAuthNotifier, TelegramAuthNotifier>();
         return services;
     }
 

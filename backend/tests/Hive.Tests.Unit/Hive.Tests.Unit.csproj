@@ -27,6 +27,7 @@
     <ProjectReference Include="../../src/Hive.Modules.Devices/Hive.Modules.Devices.csproj" />
     <ProjectReference Include="../../src/Hive.Modules.Assistant/Hive.Modules.Assistant.csproj" />
     <ProjectReference Include="../../src/Hive.Modules.Cluster/Hive.Modules.Cluster.csproj" />
+    <ProjectReference Include="../../src/Hive.Modules.Users/Hive.Modules.Users.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- The contract is the source of truth: tests read schemas and examples straight from contracts/. -->

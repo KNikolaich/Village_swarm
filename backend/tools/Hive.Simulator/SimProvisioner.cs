@@ -20,7 +20,7 @@ public sealed class SimProvisioner(HttpClient http)
             throw new InvalidOperationException($"Login to the hive failed: HTTP {(int)response.StatusCode}");
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
         if (body.GetProperty("status").GetString() != "ok")
-            throw new InvalidOperationException("The hive account has TOTP enabled; use an account without it for the simulator");
+            throw new InvalidOperationException("The hive asks this new device for a second factor (Telegram code or TOTP); use an account without Telegram and TOTP for the simulator, or set Auth:NewDeviceCode=External");
     }
 
     public async Task<Enrollment> EnrollAsync(HornetSpec spec, CancellationToken ct)

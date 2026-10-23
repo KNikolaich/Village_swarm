@@ -12,7 +12,22 @@
 	servers {
 		protocols h1 h2
 	}
+	# The router's site (:8088 below): the address of the visitor comes from the router in X-Forwarded-For.
+	# HIVE_ROUTER_IPS narrows who may say so (for example "192.168.10.1/32 10.10.10.1/32").
+	servers :8088 {
+		protocols h1 h2
+		trusted_proxies static {$HIVE_ROUTER_IPS:private_ranges}
+		client_ip_headers X-Forwarded-For X-Real-IP
+	}
 	default_sni {$HIVE_DEFAULT_SNI:localhost}
+}
+
+# The api behind every site. X-Hive-External says "came from the internet": only the router's site sets it,
+# the others drop it, so a browser at home cannot pretend.
+(api) {
+	reverse_proxy api:8080 {
+		header_up -X-Hive-External
+	}
 }
 
 (security_headers) {
@@ -31,7 +46,7 @@
 	import security_headers
 	@hornet path /api/ingest/* /api/provision/enroll /api/ota/* /healthz
 	handle @hornet {
-		reverse_proxy api:8080
+		import api
 	}
 	handle /ca.crt {
 		root * /data/caddy/pki/authorities/local
@@ -50,22 +65,52 @@
 	encode zstd gzip
 
 	handle /api/* {
-		reverse_proxy api:8080
+		import api
 	}
 	handle /hubs/* {
-		reverse_proxy api:8080
+		import api
 	}
 	handle /healthz {
-		reverse_proxy api:8080
+		import api
 	}
 	handle /readyz {
-		reverse_proxy api:8080
+		import api
 	}
 	handle /ca.crt {
 		root * /data/caddy/pki/authorities/local
 		rewrite * /root.crt
 		header Content-Type application/x-x509-ca-cert
 		file_server
+	}
+	handle {
+		root * /srv/web
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# The internet through a Keenetic router (docs/keenetic-access.md). KeenDNS keeps the HTTPS certificate (Let's Encrypt)
+# and forwards here over the local network or the WireGuard tunnel. Only the UI and its api: no hornet endpoints,
+# no CA certificate, no API docs. Sign-in from here always asks a new device for the Telegram code.
+http://:8088 {
+	import security_headers
+	header Strict-Transport-Security "max-age=31536000"
+	encode zstd gzip
+
+	@closed path /api/ingest/* /api/provision/enroll /api/ota/* /swagger* /openapi* /ca.crt
+	handle @closed {
+		respond 404
+	}
+
+	@api path /api/* /hubs/*
+	handle @api {
+		reverse_proxy api:8080 {
+			header_up X-Hive-External 1
+			header_up X-Forwarded-Proto https
+			header_up X-Forwarded-For {client_ip}
+		}
 	}
 	handle {
 		root * /srv/web

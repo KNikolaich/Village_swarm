@@ -1,13 +1,15 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using Hive.Infrastructure.Identity;
 using Hive.Modules.Users;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Hive.Tests.Integration;
 
-/// <summary>Login, TOTP, roles and lockout (build step 6).</summary>
+/// <summary>Login, TOTP, the Telegram code on new devices, pauses after wrong passwords, recovery by email, roles.</summary>
 [Collection(HiveCollection.Name)]
 public sealed class AuthTests(HiveFixture hive)
 {
@@ -31,6 +33,11 @@ public sealed class AuthTests(HiveFixture hive)
 
         var login = await client.PostAsJsonAsync("/api/auth/login", new { login = "admin", password = HiveFixture.AdminPassword });
         var result = await login.Content.ReadFromJsonAsync<LoginResultBody>();
+        if (result!.Status == "codeRequired") // admin already has Telegram when TelegramTests ran first
+        {
+            login = await client.PostAsJsonAsync("/api/auth/totp", new { code = hive.LastLoginCode() });
+            result = await login.Content.ReadFromJsonAsync<LoginResultBody>();
+        }
         Assert.Equal("ok", result!.Status);
         Assert.Contains(login.Headers.GetValues("Set-Cookie"), c => c.StartsWith("hive_session=", StringComparison.Ordinal) && c.Contains("httponly", StringComparison.OrdinalIgnoreCase));
 
@@ -84,15 +91,100 @@ public sealed class AuthTests(HiveFixture hive)
     }
 
     [Fact]
-    public async Task Repeated_wrong_passwords_lock_the_account()
+    public async Task Wrong_passwords_pause_the_device_and_not_the_account()
     {
         await hive.CreateUserAsync("victim", "victim-password-1", HiveRoles.Member);
-        var client = hive.App.CreateClient();
-        for (var i = 0; i < 5; i++)
-            await client.PostAsJsonAsync("/api/auth/login", new { login = "victim", password = "nope-nope-nope" });
+        var attacker = Device("10.9.0.1");
+        for (var i = 0; i < 4; i++)
+            Assert.Equal(HttpStatusCode.Unauthorized, (await attacker.PostAsJsonAsync("/api/auth/login", new { login = "victim", password = "nope-nope-nope" })).StatusCode);
 
-        var locked = await client.PostAsJsonAsync("/api/auth/login", new { login = "victim", password = "victim-password-1" });
-        Assert.Equal((HttpStatusCode)423, locked.StatusCode);
+        // The fifth wrong password starts an hour's pause; during it even the right password is not checked.
+        var fifth = await attacker.PostAsJsonAsync("/api/auth/login", new { login = "victim", password = "nope-nope-nope" });
+        Assert.Equal((HttpStatusCode)423, fifth.StatusCode);
+        var until = (await fifth.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("lockedUntil").GetDateTimeOffset();
+        Assert.InRange(until - DateTimeOffset.UtcNow, TimeSpan.FromMinutes(59), TimeSpan.FromMinutes(61));
+        Assert.Equal((HttpStatusCode)423, (await attacker.PostAsJsonAsync("/api/auth/login", new { login = "victim", password = "victim-password-1" })).StatusCode);
+        Assert.Equal((HttpStatusCode)423, (await attacker.PostAsJsonAsync("/api/auth/recover/confirm", new { login = "victim", code = "AAAAAAAA", newPassword = "whatever-1234" })).StatusCode);
+
+        // The owner on another device is not locked out.
+        var owner = Device("10.9.0.2");
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsJsonAsync("/api/auth/login", new { login = "victim", password = "victim-password-1" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync("/api/me")).StatusCode);
+    }
+
+    [Fact]
+    public async Task New_device_needs_the_code_from_Telegram()
+    {
+        const long chat = 7001;
+        await hive.CreateUserAsync("tg-user", "tg-user-password", HiveRoles.Member);
+        var home = Device("10.8.0.1");
+        Assert.Equal("ok", (await LoginStepAsync(home, "tg-user", "tg-user-password")).Status); // no Telegram yet: the password is enough at home
+        var link = await (await home.PostAsync("/api/me/telegram/code", null)).Content.ReadFromJsonAsync<JsonElement>();
+        hive.Telegram.UserSays(chat, $"/link {link.GetProperty("code").GetString()}");
+        await hive.Telegram.WaitForAsync(s => s.ChatId == chat && s.Text?.Contains("Чат привязан") == true, "link confirmation");
+
+        var phone = Device("10.8.0.2", userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36");
+        Assert.Equal("codeRequired", (await LoginStepAsync(phone, "tg-user", "tg-user-password")).Status);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await phone.GetAsync("/api/me")).StatusCode);
+        var message = hive.Telegram.Outbox.Last(s => s.ChatId == chat);
+        Assert.Contains("Chrome · Android", message.Text);
+        Assert.Contains("10.8.0.2", message.Text);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await phone.PostAsJsonAsync("/api/auth/totp", new { code = "000000" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await phone.PostAsJsonAsync("/api/auth/totp", new { code = hive.LastLoginCode() })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await phone.GetAsync("/api/me")).StatusCode);
+
+        // Known now: the password alone after logging out.
+        await phone.PostAsync("/api/auth/logout", null);
+        Assert.Equal("ok", (await LoginStepAsync(phone, "tg-user", "tg-user-password")).Status);
+        var devices = await phone.GetFromJsonAsync<List<TrustedDeviceDto>>("/api/me/devices");
+        var trusted = Assert.Single(devices!);
+        Assert.True(trusted.Current);
+        Assert.Equal("Chrome · Android", trusted.Name);
+
+        // Another browser is new again; a forgotten device asks for the code again.
+        Assert.Equal("codeRequired", (await LoginStepAsync(Device("10.8.0.3"), "tg-user", "tg-user-password")).Status);
+        Assert.Equal(HttpStatusCode.NoContent, (await phone.DeleteAsync($"/api/me/devices/{trusted.Id}")).StatusCode);
+        await phone.PostAsync("/api/auth/logout", null);
+        Assert.Equal("codeRequired", (await LoginStepAsync(phone, "tg-user", "tg-user-password")).Status);
+    }
+
+    [Fact]
+    public async Task Login_from_outside_needs_a_second_factor()
+    {
+        await hive.CreateUserAsync("no-tg-user", "no-tg-password", HiveRoles.Viewer);
+        var outside = Device("203.0.113.5", external: true);
+        Assert.Equal("secondFactorMissing", (await LoginStepAsync(outside, "no-tg-user", "no-tg-password")).Status);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await outside.GetAsync("/api/me")).StatusCode);
+
+        Assert.Equal("ok", (await LoginStepAsync(Device("10.7.0.1"), "no-tg-user", "no-tg-password")).Status);
+    }
+
+    [Fact]
+    public async Task Forgotten_password_is_reset_with_the_code_from_the_letter()
+    {
+        await hive.CreateUserAsync("mail-user", "mail-user-password", HiveRoles.Member);
+        var client = await hive.LoginAsync("mail-user", "mail-user-password");
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync("/api/me/email", new { email = "kirill@example.org", currentPassword = "wrong" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync("/api/me/email", new { email = "not an address", currentPassword = "mail-user-password" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await client.PutAsJsonAsync("/api/me/email", new { email = "kirill@example.org", currentPassword = "mail-user-password" })).StatusCode);
+        Assert.Equal("kirill@example.org", (await client.GetFromJsonAsync<MeDto>("/api/me"))!.Email);
+        Assert.Contains(Letters(), l => l.Contains("To: kirill@example.org", StringComparison.Ordinal) && l.Contains("«mail-user»", StringComparison.Ordinal));
+
+        var stranger = Device("10.6.0.1");
+        Assert.True((await stranger.GetFromJsonAsync<AuthOptionsDto>("/api/auth/options"))!.RecoveryByEmail);
+        Assert.Equal(HttpStatusCode.NoContent, (await stranger.PostAsJsonAsync("/api/auth/recover", new { login = "nobody-here" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await stranger.PostAsJsonAsync("/api/auth/recover", new { login = "mail-user" })).StatusCode);
+        var code = Letters().Select(l => Regex.Match(l, "Пароль восстановления для входа «mail-user»: ([A-Z2-9]{8})")).Single(m => m.Success).Groups[1].Value;
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await stranger.PostAsJsonAsync("/api/auth/recover/confirm", new { login = "mail-user", code = "ZZZZZZZZ", newPassword = "brand-new-password" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await stranger.PostAsJsonAsync("/api/auth/recover/confirm", new { login = "mail-user", code, newPassword = "short" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await stranger.PostAsJsonAsync("/api/auth/recover/confirm", new { login = "mail-user", code = code.ToLowerInvariant(), newPassword = "brand-new-password" })).StatusCode);
+        // The code works once.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await stranger.PostAsJsonAsync("/api/auth/recover/confirm", new { login = "mail-user", code, newPassword = "another-new-password" })).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Device("10.6.0.2").PostAsJsonAsync("/api/auth/login", new { login = "mail-user", password = "mail-user-password" })).StatusCode);
+        Assert.Equal("ok", (await LoginStepAsync(Device("10.6.0.3"), "mail-user", "brand-new-password")).Status);
     }
 
     [Fact]
@@ -136,6 +228,28 @@ public sealed class AuthTests(HiveFixture hive)
         }
         return [.. output];
     }
+
+    /// <summary>A browser of its own: its own cookies and its own address (X-Forwarded-For, as Caddy sets it).</summary>
+    private HttpClient Device(string ip, bool external = false, string? userAgent = null)
+    {
+        var client = hive.App.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Forwarded-For", ip);
+        if (external)
+            client.DefaultRequestHeaders.Add(AuthService.ExternalHeader, "1");
+        if (userAgent is not null)
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
+        return client;
+    }
+
+    private static async Task<LoginResultBody> LoginStepAsync(HttpClient client, string login, string password)
+    {
+        using var response = await client.PostAsJsonAsync("/api/auth/login", new { login, password });
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<LoginResultBody>())!;
+    }
+
+    private string[] Letters() =>
+        Directory.Exists(hive.MailRoot) ? Directory.GetFiles(hive.MailRoot, "*.eml").Select(File.ReadAllText).ToArray() : [];
 
     private sealed record LoginResultBody(string Status, MeDto? User);
 }

@@ -4,6 +4,41 @@
  */
 
 export interface paths {
+    "/api/auth/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthOptionsDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -115,6 +150,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RecoverRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/recover/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RecoverConfirmRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me": {
         parameters: {
             query?: never;
@@ -191,6 +309,129 @@ export interface paths {
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SetEmailRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TrustedDeviceDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/devices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -4996,6 +5237,9 @@ export interface components {
             /** Format: int32 */
             cameras: number;
         };
+        AuthOptionsDto: {
+            recoveryByEmail: boolean;
+        };
         BackupRunDto: {
             /** Format: int64 */
             id: number;
@@ -5361,9 +5605,13 @@ export interface components {
         LoginResult: {
             status: components["schemas"]["LoginStatus"];
             user?: null | components["schemas"]["MeDto"];
+            /** @default false */
+            totpAllowed: boolean;
+            /** Format: date-time */
+            lockedUntil?: null | string;
         };
         /** @enum {unknown} */
-        LoginStatus: "ok" | "totpRequired" | "failed" | "lockedOut";
+        LoginStatus: "ok" | "totpRequired" | "codeRequired" | "failed" | "lockedOut" | "secondFactorMissing";
         MediaDayDto: {
             /** Format: date */
             date: string;
@@ -5394,6 +5642,7 @@ export interface components {
             displayName: null | string;
             roles: string[];
             totpEnabled: boolean;
+            email: null | string;
         };
         MonitorEntry: {
             /** Format: int64 */
@@ -5629,6 +5878,14 @@ export interface components {
         QueueOtaRequest: {
             build: string;
         };
+        RecoverConfirmRequest: {
+            login: string;
+            code: string;
+            newPassword: string;
+        };
+        RecoverRequest: {
+            login: string;
+        };
         RecoveryCodesDto: {
             recoveryCodes: string[];
         };
@@ -5808,6 +6065,10 @@ export interface components {
             /** Format: int32 */
             zoneId: null | number;
         };
+        SetEmailRequest: {
+            email: null | string;
+            currentPassword: string;
+        };
         SetRuleEnabledRequest: {
             enabled: boolean;
         };
@@ -5882,7 +6143,7 @@ export interface components {
             code: string;
             /** @default true */
             rememberMe: boolean;
-            /** @default false */
+            /** @default true */
             rememberDevice: boolean;
         };
         TotpSetupDto: {
@@ -5901,6 +6162,17 @@ export interface components {
             deletedAt: string;
             /** Format: date-time */
             purgeAt: string;
+        };
+        TrustedDeviceDto: {
+            /** Format: int32 */
+            id: number;
+            name: null | string;
+            lastIp: null | string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            lastSeenAt: string;
+            current: boolean;
         };
         UpdateDeviceConfigRequest: {
             /** Format: int32 */

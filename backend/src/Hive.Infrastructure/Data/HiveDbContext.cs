@@ -35,6 +35,9 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     public DbSet<NoteAttachment> NoteAttachments => Set<NoteAttachment>();
     public DbSet<Nvr> Nvrs => Set<Nvr>();
     public DbSet<NvrChannel> NvrChannels => Set<NvrChannel>();
+    public DbSet<TrustedDevice> TrustedDevices => Set<TrustedDevice>();
+    public DbSet<AuthChallenge> AuthChallenges => Set<AuthChallenge>();
+    public DbSet<LoginThrottle> LoginThrottles => Set<LoginThrottle>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -53,6 +56,33 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
         b.Entity<IdentityUserToken<int>>().ToTable("user_tokens");
         b.Entity<IdentityRoleClaim<int>>().ToTable("role_claims");
         b.Entity<IdentityUserPasskey<int>>().ToTable("user_passkeys");
+
+        b.Entity<TrustedDevice>(e =>
+        {
+            e.ToTable("trusted_devices");
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.LastIp).HasMaxLength(64);
+            e.HasIndex(x => new { x.TokenHash, x.UserId }).IsUnique();
+            e.HasOne<HiveUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<AuthChallenge>(e =>
+        {
+            e.ToTable("auth_challenges");
+            e.Property(x => x.Id).HasMaxLength(64);
+            e.Property(x => x.CodeHash).HasMaxLength(64);
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(16);
+            e.HasIndex(x => new { x.UserId, x.Kind });
+            e.HasOne<HiveUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<LoginThrottle>(e =>
+        {
+            e.ToTable("login_throttles");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Key).HasMaxLength(96);
+        });
 
         b.Entity<Zone>(e =>
         {
