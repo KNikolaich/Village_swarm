@@ -118,7 +118,14 @@ Other console commands: `factory` (wipe settings), `set mqttuser|mqttpass|token|
 
 - PIR rising edge, at most once per `cooldown_s` (20 s): publishes `event/motion` with photo ids, then
   takes `burst` frames (3, 700 ms apart) and uploads them to `/api/ingest/photo` in a background task.
-- Upload fails: the photo goes to `/outbox` on the SD card and is retried every 30 s.
+- SD card (FAT32): every photo is written to `/outbox` before it is uploaded, so a reboot does not lose it.
+  Delivered photos move to `/archive/<first 6 ULID chars>/` (about 17 minutes each); undelivered ones stay in
+  `/outbox` and are retried every 30 s, oldest first. The card is a ring: before each write the oldest archive
+  folders are deleted to keep max(5% of the card, 32 MB) free; only with an empty archive the oldest undelivered
+  photos go (logged as an error). Partial writes are removed and never count as pending.
+- No SD card, or the write failed: 3 upload attempts (now, +2 s, +5 s, 15 s HTTP timeout each), then the photo is lost.
+- The hive journal (`log`) gets the SD state once per boot, every failed upload with its reason (HTTP code,
+  `no wifi`, timeout), lost photos and SD write failures or clean-ups.
 - Broker gone: events wait in a RAM buffer (50) and are sent with their original ids on reconnect.
 - Commands: `arm {armed}`, `snapshot {count}`, `relay {channel, set, for_s}`, `reboot`, `config_reload`; expired (`ttl_s`) and repeated
   (`cid`) commands are handled per the contract.
