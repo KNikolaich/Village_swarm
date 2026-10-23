@@ -10,7 +10,7 @@ import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Input, Select, 
 import { metricLabel, t } from '@/i18n'
 import { formatAgo, formatFixed, formatValue, metricUnit } from '@/lib/format'
 import { ranges, rangeLabel } from '@/lib/ranges'
-import { seriesColors } from '@/lib/seriesColors'
+import { colorsByDevice } from '@/lib/seriesColors'
 import { cn } from '@/lib/utils'
 import { hasRelay } from '@/lib/features'
 import { SortInput } from '@/components/SortInput'
@@ -116,8 +116,10 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl }: {
   const humidity = useDeviceSeries(humiditySensors.map((d) => d.deviceId), 'humidity', hours)
   const { from, to } = historyWindow(hours)
 
+  // Colours go by hornet, not by line number: the humidity of the third thermometer is drawn in its colour.
+  const colorOf = colorsByDevice(devices.filter((d) => sensors.includes(d) || humiditySensors.includes(d)).map((d) => d.deviceId))
   const toSeries = (hornets: DeviceDto[], results: typeof temperature): ChartSeries[] =>
-    hornets.map((d, i) => ({ name: d.name, color: seriesColors[i % seriesColors.length], points: results[i]?.data ?? [] }))
+    hornets.map((d, i) => ({ name: d.name, color: colorOf(d.deviceId), points: results[i]?.data ?? [] }))
 
   // Outdoors, the forecast runs alongside the sensors: what was expected against what happened, and what comes next.
   const forecast: ChartPoint[] = zone.kind === 'garden'
