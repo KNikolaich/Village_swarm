@@ -70,6 +70,14 @@ export const useMediaDay = (date: string, device?: string) =>
     },
   })
 
+/** A camera's newest photo (its banner on a zone). */
+export const useLatestPhoto = (device: string) =>
+  useQuery({
+    queryKey: ['media', 'latest', device] as const,
+    queryFn: async () => (await call(api.GET('/api/media', { params: { query: { device, limit: 1 } } }))).items[0] ?? null,
+    refetchInterval: 60_000,
+  })
+
 export const useMediaDays = (from: string, to: string, device?: string) =>
   useQuery({ queryKey: keys.mediaDays(from, to, device), queryFn: () => call(api.GET('/api/media/days', { params: { query: { from, to, device } } })) })
 
@@ -184,13 +192,17 @@ export const useCommandHistory = (device: string, enabled: boolean) =>
 export const useWeather = () =>
   useQuery({ queryKey: ['weather'] as const, queryFn: () => call(api.GET('/api/weather')), refetchInterval: 10 * 60_000 })
 
+/** How the overview is arranged on a wide screen and on a phone (null: the default order). */
+export const useDashboardLayout = () =>
+  useQuery({ queryKey: ['dashboard', 'layout'] as const, queryFn: () => call(api.GET('/api/dashboard/layout')), staleTime: 5 * 60_000 })
+
 export const useZones = () =>
   useQuery({ queryKey: ['zones'] as const, queryFn: () => call(api.GET('/api/zones')) })
 
-/** The same metric of several devices over one window (one line each on a zone chart). */
-export const useDeviceSeries = (devices: string[], metric: string, hours: number) =>
+/** Several (device, metric) lines over one window: the probes of a bridge each get their own line on a zone chart. */
+export const useMetricSeries = (lines: { device: string; metric: string }[], hours: number) =>
   useQueries({
-    queries: devices.map((device) => ({
+    queries: lines.map(({ device, metric }) => ({
       queryKey: ['telemetry', 'series', device, metric, hours],
       queryFn: () => {
         const { from, to } = historyWindow(hours)

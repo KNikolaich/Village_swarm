@@ -11,6 +11,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     : IdentityDbContext<HiveUser, IdentityRole<int>, int>(options)
 {
     public DbSet<Zone> Zones => Set<Zone>();
+    public DbSet<DashboardLayout> DashboardLayouts => Set<DashboardLayout>();
     public DbSet<DeviceType> DeviceTypes => Set<DeviceType>();
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<TelemetryPoint> Telemetry => Set<TelemetryPoint>();
@@ -102,6 +103,14 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
             e.HasIndex(x => new { x.DeviceId, x.IssuedAt });
             e.HasIndex(x => x.Status);
+        });
+
+        b.Entity<DashboardLayout>(e =>
+        {
+            e.ToTable("dashboard_layouts");
+            e.HasKey(x => x.Screen);
+            e.Property(x => x.Screen).HasMaxLength(16);
+            e.Property(x => x.UpdatedBy).HasMaxLength(64);
         });
 
         b.Entity<Mode>(e =>

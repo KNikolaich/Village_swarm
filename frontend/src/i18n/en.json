@@ -145,7 +145,68 @@
     "saved": "Saved",
     "exists": "A zone with this name already exists",
     "failed": "Could not save the zone",
-    "sort": "Zone place"
+    "sort": "Zone place",
+    "editZone": "Zone “{name}” settings",
+    "editHornet": "Hornet settings",
+    "hornets": "Hornets of the zone",
+    "noHornets": "No hornets in this zone yet",
+    "addHornet": "Add a hornet to the zone…",
+    "takeOut": "Remove from zone",
+    "save": "Save",
+    "kind": "Zone kind",
+    "back": "Back: {name}"
+  },
+  "dashboard": {
+    "title": "On the dashboard",
+    "hint": "What the climate zone and the overview show. Charts are drawn from the ticked temperatures and humidity.",
+    "nothing": "This hornet has nothing to show on the dashboard",
+    "reset": "Back to defaults",
+    "failed": "Could not save the choice",
+    "buttons": {
+      "camera": "Camera banner",
+      "snapshot": "Snapshot button",
+      "light": "Light button",
+      "relay": "Relay banner"
+    },
+    "noPhoto": "no photos",
+    "lightOn": "Light on",
+    "lightOff": "Light off",
+    "autoOn": "Auto",
+    "autoOff": "Auto off",
+    "autoFailed": "Could not switch the automation",
+    "autoSetup": "Set up automation",
+    "controls": "Controls"
+  },
+  "layout": {
+    "arrange": "Arrange",
+    "hint": "Drag widgets by the handle or move them with the arrows, pick a width, hide what you do not need.",
+    "save": "Save",
+    "cancel": "Cancel",
+    "reset": "Back to defaults",
+    "resetConfirm": "Go back to the default order for this screen?",
+    "saved": "Layout saved",
+    "failed": "Could not save the layout",
+    "drag": "Drag",
+    "up": "Up",
+    "down": "Down",
+    "width": "Width",
+    "show": "Show",
+    "hide": "Hide",
+    "screens": {
+      "desktop": "Desktop",
+      "phone": "Phone"
+    },
+    "widths": {
+      "3": "¼",
+      "4": "⅓",
+      "6": "½",
+      "8": "⅔",
+      "12": "full row"
+    },
+    "widgets": {
+      "guard": "Guard",
+      "weather": "Weather"
+    }
   },
   "rules": {
     "title": "Rules",

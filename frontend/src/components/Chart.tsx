@@ -9,7 +9,7 @@ export type ChartPoint = { ts: string; avg: number; min: number; max: number }
 export type ChartSeries = {
   name?: string
   /** Tailwind classes (written out in full so they are generated): line, marker dot, legend swatch. */
-  color?: { stroke: string; fill: string; bg: string }
+  color?: { stroke: string; fill: string; bg: string; band?: string }
   dashed?: boolean
   points: ChartPoint[]
 }
@@ -102,6 +102,8 @@ function ChartBody({ series, from, to, width, format, axisFormat }: {
   const label = axisFormat ?? ((v, d) => formatFixed(v, d))
   const vertical = timeTicks(from, to).ticks
   const single = series.length === 1
+  // A lone named line (one hornet on a zone chart) still says whose it is, in its own colour.
+  const legend = !single || series[0].name != null
 
   function onMove(e: React.PointerEvent<SVGSVGElement>) {
     // The svg is drawn at its real pixel size, so the pointer position is directly a plot coordinate.
@@ -115,7 +117,7 @@ function ChartBody({ series, from, to, width, format, axisFormat }: {
 
   return (
     <div>
-      {single ? (
+      {!legend ? (
         <p className="text-right text-xs text-neutral-500">
           <span className="tabular-nums text-neutral-200">{format(picks[0].avg)}</span> · {formatWhen(picks[0].ts)}
         </p>
@@ -152,7 +154,7 @@ function ChartBody({ series, from, to, width, format, axisFormat }: {
           ].join(' ')
           return (
             <g key={s.name ?? i}>
-              {single && <polygon points={band} className="fill-amber-400/15" />}
+              {single && <polygon points={band} className={color.band ?? 'fill-amber-400/15'} />}
               <path d={line} fill="none" className={color.stroke} strokeWidth="2" strokeLinejoin="round" strokeDasharray={s.dashed ? '4 3' : undefined} />
               {s.points.length === 1 && <circle cx={x(times[0])} cy={y(s.points[0].avg)} r="4" className={color.fill} />}
               {markerMs != null && <circle cx={x(new Date(picks[i].ts).getTime())} cy={y(picks[i].avg)} r="4" className={color.fill} />}

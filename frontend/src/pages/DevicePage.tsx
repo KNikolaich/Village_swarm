@@ -6,7 +6,7 @@ import { TasmotaConsole } from '@/components/TasmotaConsole'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Camera, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { chartWindow, keys, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useMonitoring, useSendCommand, useSeries } from '@/api/queries'
@@ -21,6 +21,7 @@ import { ZoneSelect } from '@/pages/ClimatePage'
 import { PinsPanel } from '@/pages/SwarmPage'
 import { SortInput } from '@/components/SortInput'
 import { MonitoringPanel } from '@/components/MonitoringPanel'
+import { DashboardChecks } from '@/components/DashboardChecks'
 import { canMonitor } from '@/lib/monitoring'
 import { announcedCommands, hasCap, relayChannels } from '@/lib/swarm'
 
@@ -153,6 +154,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /** Screen 4 (spec 8.2): one hornet's status, readings, commands and pins. Charts and logs need history endpoints. */
 export function DevicePage() {
   const { deviceId = '' } = useParams()
+  // Opened from a zone's editor (?zone=3): the way back leads to it.
+  const fromZone = useSearchParams()[0].get('zone')
   const [hours, setHours] = useState(24)
   const devices = useDevices(true)
   const zones = useZones()
@@ -184,9 +187,10 @@ export function DevicePage() {
     navigate('/swarm')
   }
 
+  const zone = (zones.data ?? []).find((z) => String(z.id) === fromZone)
   const back = (
-    <Link to="/swarm" className="flex items-center gap-1 text-sm text-amber-400">
-      <ArrowLeft className="size-4" />{t('device.back')}
+    <Link to={zone ? `/climate?edit=${zone.id}` : '/swarm'} className="flex items-center gap-1 text-sm text-amber-400">
+      <ArrowLeft className="size-4" />{zone ? t('climate.back').replace('{name}', zone.name) : t('device.back')}
     </Link>
   )
 
@@ -252,6 +256,13 @@ export function DevicePage() {
           </div>
         </CardContent>
       </Card>}
+
+      {device.type !== 'hive' && (isAdmin || device.dashboard != null) && (
+        <Card>
+          <CardHeader><CardTitle>{t('dashboard.title')}</CardTitle></CardHeader>
+          <CardContent><DashboardChecks device={device} latest={latest.data ?? []} editable={isAdmin} /></CardContent>
+        </Card>
+      )}
 
       {canMonitor(device) && readings.some((v) => v.metric.startsWith('temperature')) && (canControl || monitored) && (
         <Card>

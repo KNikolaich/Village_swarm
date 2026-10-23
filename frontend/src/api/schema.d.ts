@@ -970,6 +970,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/devices/{deviceId}/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SetDeviceDashboardRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ingest/photo": {
         parameters: {
             query?: never;
@@ -2713,6 +2768,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dashboard/layout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DashboardLayoutsDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dashboard/layout/{screen}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    screen: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SaveDashboardLayoutRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/zones": {
         parameters: {
             query?: never;
@@ -4223,6 +4368,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/rules/{id}/enabled": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: number;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["SetRuleEnabledRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["RuleDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rules/dry-run": {
         parameters: {
             query?: never;
@@ -4407,6 +4600,20 @@ export interface components {
             /** @default false */
             ir: boolean;
         };
+        DashboardLayoutsDto: {
+            desktop: null | components["schemas"]["DashboardWidgetDto"][];
+            phone: null | components["schemas"]["DashboardWidgetDto"][];
+        };
+        DashboardWidgetDto: {
+            id: string;
+            /**
+             * Format: int32
+             * @default 12
+             */
+            w: number;
+            /** @default false */
+            hidden: boolean;
+        };
         DeviceDto: {
             deviceId: string;
             name: string;
@@ -4444,6 +4651,7 @@ export interface components {
              */
             sort: number;
             thermometer?: null | string;
+            dashboard?: null | string[];
         };
         DeviceLogDto: {
             /** Format: int64 */
@@ -4994,6 +5202,9 @@ export interface components {
             /** Format: int32 */
             offlineMin?: null | number;
         };
+        SaveDashboardLayoutRequest: {
+            items: null | components["schemas"]["DashboardWidgetDto"][];
+        };
         SaveRuleRequest: {
             name: string;
             enabled: boolean;
@@ -5025,6 +5236,9 @@ export interface components {
             armed: boolean;
             mode?: null | string;
         };
+        SetDeviceDashboardRequest: {
+            shown: null | string[];
+        };
         SetDeviceSortRequest: {
             /** Format: int32 */
             sort: number;
@@ -5032,6 +5246,9 @@ export interface components {
         SetDeviceZoneRequest: {
             /** Format: int32 */
             zoneId: null | number;
+        };
+        SetRuleEnabledRequest: {
+            enabled: boolean;
         };
         /** @enum {unknown} */
         SleepMode: "deep" | "light" | null;

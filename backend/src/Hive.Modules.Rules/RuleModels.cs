@@ -59,6 +59,8 @@ public sealed record RuleDto(
 
 public sealed record SaveRuleRequest(string Name, bool Enabled, RuleDefinition Definition);
 
+public sealed record SetRuleEnabledRequest(bool Enabled);
+
 public sealed record RuleRunDto(long Id, DateTimeOffset Ts, string Outcome, System.Text.Json.JsonElement? Details);
 
 public sealed record DryRunRequest(RuleDefinition Definition, int? Hours = null);

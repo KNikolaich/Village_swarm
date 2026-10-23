@@ -29,6 +29,18 @@ public class Zone
     public int Sort { get; set; }
 }
 
+/// <summary>
+/// How the overview is laid out on one kind of screen ("desktop" or "phone"): the widgets in order, each with its
+/// width in twelfths of a row and whether it is hidden. One for the whole family, set by an administrator.
+/// </summary>
+public class DashboardLayout
+{
+    public required string Screen { get; set; }
+    public required JsonDocument Items { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
+}
+
 /// <summary>Kind of hornet: guard-cam, meteo, heat... Seeded; provisioning picks one (spec 6.4).</summary>
 public class DeviceType
 {
@@ -96,4 +108,10 @@ public class Device
 
     /// <summary>Place in the swarm list inside its group: lower first, equal ones in the usual order (trouble first, then id).</summary>
     public int Sort { get; set; }
+
+    /// <summary>
+    /// What the zone cards and the overview show of this hornet: its readings by metric (temperature_2...) and its
+    /// buttons (snapshot, light, relay). Null: the defaults of its kind, chosen by the UI.
+    /// </summary>
+    public List<string>? Dashboard { get; set; }
 }

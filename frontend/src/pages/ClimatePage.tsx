@@ -1,27 +1,29 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Pencil, Plus, Power, PowerOff, Trash2 } from 'lucide-react'
+import { Pencil, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
+import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto, type LatestValueDto, type ZoneDto } from '@/api/client'
-import { historyWindow, keys, useDeviceSeries, useDevices, useLatestTelemetry, useMe, useSendCommand, useWeather, useZones } from '@/api/queries'
+import { historyWindow, keys, useDevices, useLatestTelemetry, useMe, useMetricSeries, useWeather, useZones } from '@/api/queries'
 import { MultiChart, TimeAxis, type ChartPoint, type ChartSeries } from '@/components/Chart'
+import { ZoneBanners } from '@/components/DeviceBanners'
+import { ZoneEditor } from '@/components/ZoneEditor'
+import { ZoneTiles } from '@/components/ZoneTiles'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
-import { metricLabel, t } from '@/i18n'
-import { formatAgo, formatFixed, formatValue, metricUnit } from '@/lib/format'
+import { Card, CardContent, CardHeader, CardTitle, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
+import { t } from '@/i18n'
+import { bannerKind, readingTitle, shownReadings, zoneKinds, zoneTiles } from '@/lib/dashboard'
+import { formatFixed, formatValue, metricUnit } from '@/lib/format'
 import { ranges, rangeLabel } from '@/lib/ranges'
-import { seriesColors } from '@/lib/seriesColors'
-import { cn } from '@/lib/utils'
-import { hasRelay } from '@/lib/features'
-import { SortInput } from '@/components/SortInput'
-
-const kinds = ['garden', 'house', 'perimeter', 'tech'] as const
+import { colorsByDevice } from '@/lib/seriesColors'
 
 const forecastColor = { stroke: 'stroke-neutral-400', fill: 'fill-neutral-400', bg: 'bg-neutral-400' }
 
 /** Screen 6 (spec 8.2): the climate of every zone, with the forecast alongside outdoors, and the heaters in it. */
 export function ClimatePage() {
   const [hours, setHours] = useState(24)
+  // The zone editor is in the address (?edit=3), so the way back from a hornet's card opens it again.
+  const [params, setParams] = useSearchParams()
   const zones = useZones()
   const devices = useDevices()
   const latest = useLatestTelemetry()
@@ -29,7 +31,8 @@ export function ClimatePage() {
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
   const list = (devices.data ?? []).filter((d) => d.type !== 'hive')
-  const range = historyWindow(hours)
+  const editing = isAdmin ? (zones.data ?? []).find((z) => String(z.id) === params.get('edit')) : undefined
+  const edit = (id: number | null) => setParams(id == null ? {} : { edit: String(id) }, { replace: true })
 
   // A hornet "has climate" when it reports a temperature, or is a heater.
   const hasTemperature = (d: DeviceDto) => (latest.data ?? []).some((v) => v.deviceId === d.deviceId && v.metric === 'temperature')
@@ -46,17 +49,20 @@ export function ClimatePage() {
 
       {zones.isLoading && <Skeleton className="h-40" />}
       {!zones.isLoading && (zones.data ?? []).length === 0 && <Empty>{t('climate.noZones')}</Empty>}
-      {(zones.data ?? []).map((zone) => (
-        <ZoneCard
-          key={zone.id}
-          zone={zone}
-          devices={list.filter((d) => d.zoneId === zone.id)}
-          latest={latest.data ?? []}
-          hours={hours}
-          isAdmin={isAdmin}
-          canControl={canControl}
-        />
-      ))}
+      <div className="grid grid-cols-1 items-start gap-4 2xl:grid-cols-2">
+        {(zones.data ?? []).map((zone) => (
+          <ZoneCard
+            key={zone.id}
+            zone={zone}
+            devices={list.filter((d) => d.zoneId === zone.id)}
+            latest={latest.data ?? []}
+            hours={hours}
+            isAdmin={isAdmin}
+            canControl={canControl}
+            onEdit={() => edit(zone.id)}
+          />
+        ))}
+      </div>
 
       {isAdmin && orphans.length > 0 && (
         <Card>
@@ -74,7 +80,7 @@ export function ClimatePage() {
       )}
 
       {isAdmin && <AddZone />}
-      {(zones.data ?? []).length > 0 && <TimeAxis {...range} />}
+      {editing && <ZoneEditor zone={editing} devices={list} latest={latest.data ?? []} onClose={() => edit(null)} />}
     </div>
   )
 }
@@ -98,26 +104,35 @@ export function ZoneSelect({ device, zones }: { device: DeviceDto; zones: ZoneDt
   )
 }
 
-function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl }: {
+function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl, onEdit }: {
   zone: ZoneDto
   devices: DeviceDto[]
   latest: LatestValueDto[]
   hours: number
   isAdmin: boolean
   canControl: boolean
+  onEdit: () => void
 }) {
-  const qc = useQueryClient()
   const weather = useWeather()
-  const zones = useZones()
-  const sensors = devices.filter((d) => latest.some((v) => v.deviceId === d.deviceId && v.metric === 'temperature'))
-  const humiditySensors = devices.filter((d) => latest.some((v) => v.deviceId === d.deviceId && v.metric === 'humidity'))
-  const heaters = devices.filter((d) => (d.type === 'heat' || d.type === 'relay') && hasRelay(d.features))
-  const temperature = useDeviceSeries(sensors.map((d) => d.deviceId), 'temperature', hours)
-  const humidity = useDeviceSeries(humiditySensors.map((d) => d.deviceId), 'humidity', hours)
+  // Lines are what each hornet is ticked to show: a bridge's t2 and t3 are two lines, its t1 none when unticked.
+  const readings = devices.flatMap((d) => shownReadings(d, latest).map((v) => ({ device: d, metric: v.metric })))
+  const tempLines = readings.filter((r) => r.metric.startsWith('temperature'))
+  const humidityLines = readings.filter((r) => r.metric === 'humidity')
+  const banners = devices.filter((d) => bannerKind(d, latest) != null)
+  const temperature = useMetricSeries(tempLines.map((r) => ({ device: r.device.deviceId, metric: r.metric })), hours)
+  const humidity = useMetricSeries(humidityLines.map((r) => ({ device: r.device.deviceId, metric: r.metric })), hours)
   const { from, to } = historyWindow(hours)
 
-  const toSeries = (hornets: DeviceDto[], results: typeof temperature): ChartSeries[] =>
-    hornets.map((d, i) => ({ name: d.name, color: seriesColors[i % seriesColors.length], points: results[i]?.data ?? [] }))
+  // Colours go by hornet, not by line number: the humidity of the third thermometer is drawn in its colour.
+  // A hornet with several probes gives each probe a colour of its own.
+  const lineKey = (r: { device: DeviceDto; metric: string }) => (r.metric === 'humidity' ? r.device.deviceId : `${r.device.deviceId}/${r.metric}`)
+  const humidityKey = (d: DeviceDto) => {
+    const first = tempLines.find((r) => r.device === d)
+    return first ? lineKey(first) : d.deviceId
+  }
+  const colorOf = colorsByDevice([...tempLines.map(lineKey), ...humidityLines.map((r) => humidityKey(r.device))])
+  const tempSeriesOf: ChartSeries[] = tempLines.map((r, i) => ({ name: readingTitle(r.device, r.metric, latest), color: colorOf(lineKey(r)), points: temperature[i]?.data ?? [] }))
+  const humiditySeries: ChartSeries[] = humidityLines.map((r, i) => ({ name: r.device.name, color: colorOf(humidityKey(r.device)), points: humidity[i]?.data ?? [] }))
 
   // Outdoors, the forecast runs alongside the sensors: what was expected against what happened, and what comes next.
   const forecast: ChartPoint[] = zone.kind === 'garden'
@@ -125,63 +140,24 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl }: {
         .filter((h) => new Date(h.time) >= from && new Date(h.time) <= to)
         .map((h) => ({ ts: h.time, avg: h.temperature, min: h.temperature, max: h.temperature }))
     : []
-  const tempSeries = [...toSeries(sensors, temperature), ...(forecast.length > 0 ? [{ name: t('climate.forecast'), color: forecastColor, dashed: true, points: forecast }] : [])]
+  const tempSeries = [...tempSeriesOf, ...(forecast.length > 0 ? [{ name: t('climate.forecast'), color: forecastColor, dashed: true, points: forecast }] : [])]
   const all = temperature.flatMap((q) => q.data ?? [])
   const lo = all.length ? Math.min(...all.map((p) => p.min)) : null
   const hi = all.length ? Math.max(...all.map((p) => p.max)) : null
-
-  async function rename() {
-    const name = window.prompt(t('climate.renamePrompt'), zone.name)?.trim()
-    if (!name || name === zone.name) return
-    const response = await api.PUT('/api/zones/{id}', { params: { path: { id: zone.id } }, body: { name, kind: zone.kind } })
-    if (response.response.status === 409) toast.error(t('climate.exists'))
-    else if (!response.response.ok) toast.error(t('climate.failed'))
-    await qc.invalidateQueries({ queryKey: ['zones'] })
-  }
-
-  async function saveSort(sort: number) {
-    await call(api.PUT('/api/zones/{id}', { params: { path: { id: zone.id } }, body: { name: zone.name, kind: zone.kind, sort } }))
-    await qc.invalidateQueries({ queryKey: ['zones'] })
-  }
-
-  async function remove() {
-    if (!window.confirm(t('climate.deleteConfirm').replace('{name}', zone.name))) return
-    await call(api.DELETE('/api/zones/{id}', { params: { path: { id: zone.id } } }))
-    await Promise.all([qc.invalidateQueries({ queryKey: ['zones'] }), qc.invalidateQueries({ queryKey: keys.devices })])
-  }
+  const tiles = zoneTiles(devices, latest)
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>{zone.name} <span className="ml-1 text-xs font-normal text-neutral-500">{t(`climate.kinds.${zone.kind}`)}</span></CardTitle>
-        {isAdmin && (
-          <div className="flex items-center gap-1">
-            <SortInput value={zone.sort} onSave={saveSort} label={t('climate.sort')} className="w-16" />
-            <Button variant="ghost" size="icon" title={t('climate.rename')} onClick={() => void rename()}><Pencil /></Button>
-            <Button variant="ghost" size="icon" title={t('climate.delete')} onClick={() => void remove()}><Trash2 /></Button>
-          </div>
-        )}
+        {isAdmin && <Button variant="ghost" size="icon" title={t('climate.editZone').replace('{name}', zone.name)} onClick={onEdit}><Pencil /></Button>}
       </CardHeader>
       <CardContent className="space-y-4">
-        {sensors.length === 0 && heaters.length === 0 && <p className="text-sm text-neutral-500">{t('climate.noSensors')}</p>}
+        {tiles.length === 0 && banners.length === 0 && <p className="text-sm text-neutral-500">{t('climate.noSensors')}</p>}
 
-        {sensors.length > 0 && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {sensors.map((d) => {
-              const t1 = latest.find((v) => v.deviceId === d.deviceId && v.metric === 'temperature')
-              const h1 = latest.find((v) => v.deviceId === d.deviceId && v.metric === 'humidity')
-              return (
-                <div key={d.deviceId} className="rounded-lg bg-neutral-800/50 p-3">
-                  <p className="truncate text-xs text-neutral-400">{d.name}</p>
-                  <p className={cn('mt-1 text-2xl font-semibold tabular-nums', (t1?.value ?? 0) < 0 && 'text-sky-300')}>{t1 ? formatValue('temperature', t1.value) : '—'}</p>
-                  <p className="text-xs text-neutral-500">{h1 ? `${metricLabel('humidity')} ${formatValue('humidity', h1.value)} · ` : ''}{formatAgo(t1?.ts)}</p>
-                </div>
-              )
-            })}
-          </div>
-        )}
+        <ZoneTiles devices={devices} latest={latest} editZone={isAdmin ? zone.id : undefined} />
 
-        {tempSeries.length > 0 && (
+        {tempLines.length > 0 && (
           <div className="space-y-1">
             <p className="text-sm font-medium">{t('climate.temperature')}</p>
             <MultiChart series={tempSeries} from={from} to={to} format={(v) => formatValue('temperature', v)} axisFormat={(v, d) => `${formatFixed(v, d)}${metricUnit('temperature')}`} />
@@ -189,28 +165,20 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl }: {
           </div>
         )}
 
-        {humiditySensors.length > 0 && (
+        {humidityLines.length > 0 && (
           <div className="space-y-1">
             <p className="text-sm font-medium">{t('climate.humidity')}</p>
-            <MultiChart series={toSeries(humiditySensors, humidity)} from={from} to={to} format={(v) => formatValue('humidity', v)} axisFormat={(v, d) => `${formatFixed(v, d)}${metricUnit('humidity')}`} />
+            <MultiChart series={humiditySeries} from={from} to={to} format={(v) => formatValue('humidity', v)} axisFormat={(v, d) => `${formatFixed(v, d)}${metricUnit('humidity')}`} />
           </div>
         )}
 
-        {heaters.length > 0 && (
+        {/* The zones may stand side by side on a wide screen, so each card has its own row of times. */}
+        {(tempLines.length > 0 || humidityLines.length > 0) && <TimeAxis from={from} to={to} />}
+
+        {banners.length > 0 && (
           <div className="space-y-2">
-            <p className="text-sm font-medium">{t('climate.heating')}</p>
-            {heaters.map((d) => <HeaterRow key={d.deviceId} device={d} canControl={canControl} />)}
-          </div>
-        )}
-
-        {isAdmin && devices.length > 0 && (
-          <div className="space-y-1 border-t border-neutral-800 pt-3">
-            {devices.map((d) => (
-              <div key={d.deviceId} className="flex items-center justify-between gap-3 text-xs text-neutral-400">
-                <span className="min-w-0 truncate">{d.name}</span>
-                <ZoneSelect device={d} zones={zones.data ?? []} />
-              </div>
-            ))}
+            <p className="text-sm font-medium">{t('dashboard.controls')}</p>
+            <ZoneBanners devices={banners} latest={latest} canControl={canControl} isAdmin={isAdmin} />
           </div>
         )}
       </CardContent>
@@ -218,33 +186,10 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl }: {
   )
 }
 
-/** A heater or relay: its state, and on-for-an-hour / off (manual control; the hornet keeps its own safety limits). */
-function HeaterRow({ device, canControl }: { device: DeviceDto; canControl: boolean }) {
-  const send = useSendCommand(device.deviceId)
-  const state = (device.state as Record<string, unknown> | null) ?? {}
-  const channel = Object.keys(state)[0] ?? (device.type === 'heat' && device.features?.includes('heater') !== false ? 'heater' : 'relay')
-  const value = state[channel]
-  const online = device.status === 'online'
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-neutral-800/50 p-2.5">
-      <div className="min-w-0">
-        <p className="truncate text-sm">{device.name}</p>
-        <Badge tone={value === 'on' ? 'ok' : 'neutral'}>{value === 'on' ? t('climate.heaterOn') : value === 'off' ? t('climate.heaterOff') : t('climate.heaterUnknown')}</Badge>
-      </div>
-      {canControl && online && (
-        <div className="flex shrink-0 gap-2">
-          <Button size="sm" variant="outline" onClick={() => void send('relay', { channel, set: 'on', for_s: 3600 })}><Power />{t('climate.heaterOnHour')}</Button>
-          <Button size="sm" variant="outline" onClick={() => void send('relay', { channel, set: 'off' })}><PowerOff />{t('climate.heaterOff2')}</Button>
-        </div>
-      )}
-    </div>
-  )
-}
-
 function AddZone() {
   const qc = useQueryClient()
   const [name, setName] = useState('')
-  const [kind, setKind] = useState<(typeof kinds)[number]>('house')
+  const [kind, setKind] = useState<(typeof zoneKinds)[number]>('house')
 
   async function add(e: FormEvent) {
     e.preventDefault()
@@ -264,8 +209,8 @@ function AddZone() {
       <CardContent>
         <form onSubmit={add} className="flex flex-wrap items-center gap-2">
           <Input className="min-w-40 flex-1" placeholder={t('climate.zoneName')} value={name} onChange={(e) => setName(e.target.value)} />
-          <Select value={kind} onChange={(e) => setKind(e.target.value as (typeof kinds)[number])} className="w-auto">
-            {kinds.map((k) => <option key={k} value={k}>{t(`climate.kinds.${k}`)}</option>)}
+          <Select value={kind} onChange={(e) => setKind(e.target.value as (typeof zoneKinds)[number])} className="w-auto">
+            {zoneKinds.map((k) => <option key={k} value={k}>{t(`climate.kinds.${k}`)}</option>)}
           </Select>
           <Button type="submit" disabled={!name.trim()}><Plus />{t('climate.addZone')}</Button>
         </form>
