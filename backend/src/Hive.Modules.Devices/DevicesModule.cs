@@ -94,6 +94,8 @@ public static class DevicesModule
         services.AddHostedService<CommandTimeoutJob>();
         services.AddScoped<DeviceConfigService>();
         services.AddScoped<OtaService>();
+        services.AddScoped<DisplayFeedService>();
+        services.AddHostedService<DisplayFeed>();
         services.AddScoped<OtaPendingStore>();
         services.AddSingleton<OtaWakeDelivery>();
         services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<OtaWakeDelivery>());
@@ -160,6 +162,20 @@ public static class DevicesModule
                 return await configs.SetBleAsync(deviceId, request, $"user:{user.Identity?.Name}", ct) == ConfigUpdateStatus.NotFound
                     ? TypedResults.NotFound()
                     : TypedResults.Ok((await configs.GetBleAsync(deviceId, ct))!);
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
+
+        // What a hornet's screen shows: its own readings or those of other devices (contracts/mqtt-topics.md, vs/v1/hive/display/{id}).
+        devices.MapGet("/{deviceId}/display", async Task<Results<Ok<DisplayItemsDto>, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
+            await feed.GetAsync(deviceId, ct) is { } items ? TypedResults.Ok(new DisplayItemsDto(items)) : TypedResults.NotFound());
+        devices.MapPut("/{deviceId}/display", async Task<Results<Ok<DisplayItemsDto>, NotFound, ValidationProblem>> (
+                string deviceId, DisplayItemsDto request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+            {
+                if (DisplayText.Validate(request.Items) is { } error)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["items"] = [error] });
+                return await feed.SaveAsync(deviceId, request.Items, $"user:{user.Identity?.Name}", ct) == ConfigUpdateStatus.NotFound
+                    ? TypedResults.NotFound()
+                    : TypedResults.Ok(new DisplayItemsDto((await feed.GetAsync(deviceId, ct))!));
             })
             .RequireAuthorization(HiveRoles.CanControl);
 

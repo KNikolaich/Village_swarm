@@ -132,6 +132,32 @@ public sealed record HwConfig
 public sealed record DisplayConfig
 {
     public IReadOnlyList<string>? Lines { get; init; }
+
+    /// <summary>What to show, kept by the hive; it feeds the screen through vs/v1/hive/display/{id}.</summary>
+    public IReadOnlyList<DisplayConfigItem>? Items { get; init; }
+}
+
+public sealed record DisplayConfigItem
+{
+    /// <summary>The device whose reading is shown; absent: the hornet itself.</summary>
+    public string? Device { get; init; }
+
+    public required string Metric { get; init; }
+    public string? Label { get; init; }
+}
+
+/// <summary>vs/v1/hive/display/{id} (retained): ready texts for the hornet's screen. No items: it shows its own readings.</summary>
+public sealed record DisplayMessage
+{
+    public int V { get; init; } = 1;
+    public required long Ts { get; init; }
+    public required IReadOnlyList<DisplayItem> Items { get; init; }
+}
+
+public sealed record DisplayItem
+{
+    public string? Label { get; init; }
+    public required string Text { get; init; }
 }
 
 /// <summary>Role ble: the Bluetooth LE thermometer the hornet is a bridge for.</summary>

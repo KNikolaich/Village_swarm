@@ -168,4 +168,65 @@ public sealed class DeviceConfigTests(HiveFixture hive)
         var now = DateTimeOffset.UtcNow;
         Assert.Equal(overdue, SleepingDeviceWatch.IsOverdue(sleepS, now.AddSeconds(-secondsSinceSeen), now));
     }
+    /// <summary>A hornet with a screen may show another device's reading: the hive keeps the choice in the config and feeds the ready text.</summary>
+    [Fact]
+    public async Task A_screen_shows_readings_of_other_devices_as_ready_texts()
+    {
+        await RegisterAsync("meteo-disp-a");
+        await RegisterAsync("meteo-disp-b");
+        await hive.QueryAsync(async db =>
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                INSERT INTO telemetry (device_id, metric, ts, value, received_at)
+                VALUES ('meteo-disp-b', 'temperature', now(), -3.24, now())
+                """);
+            return 0;
+        });
+        var admin = await hive.LoginAsync();
+
+        using var client = new MqttClientFactory().CreateMqttClient();
+        var texts = new List<string>();
+        client.ApplicationMessageReceivedAsync += m =>
+        {
+            lock (texts)
+                texts.Add(m.ApplicationMessage.ConvertPayloadToString());
+            return Task.CompletedTask;
+        };
+        await client.ConnectAsync(new MqttClientOptionsBuilder().WithTcpServer(hive.MqttHost, hive.MqttPort).WithClientId("disp-watch").Build());
+        await client.SubscribeAsync("vs/v1/hive/display/meteo-disp-a");
+
+        using var tooMany = await admin.PutAsJsonAsync("/api/devices/meteo-disp-a/display",
+            new { items = Enumerable.Range(0, 5).Select(_ => new { metric = "temperature" }).ToArray() });
+        Assert.Equal(HttpStatusCode.BadRequest, tooMany.StatusCode);
+
+        using var saved = await admin.PutAsJsonAsync("/api/devices/meteo-disp-a/display",
+            new { items = new object[] { new { device = "meteo-disp-b", metric = "temperature", label = "Улица" }, new { metric = "humidity" } } });
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+
+        JsonElement Last()
+        {
+            lock (texts)
+                return JsonDocument.Parse(texts.Last()).RootElement.Clone();
+        }
+        for (var i = 0; i < 50 && texts.Count == 0; i++)
+            await Task.Delay(100);
+        var message = Last();
+        var items = message.GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(("Улица", "-3.2°"), (items[0].GetProperty("label").GetString(), items[0].GetProperty("text").GetString()));
+        Assert.Equal("--", items[1].GetProperty("text").GetString());   // no humidity of its own yet: no number is better than a wrong one
+        Assert.False(items[1].TryGetProperty("label", out _));
+
+        var back = await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-disp-a/display");
+        Assert.Equal(2, back.GetProperty("items").GetArrayLength());
+        var config = await hive.QueryAsync(db => db.Devices.AsNoTracking().SingleAsync(d => d.DeviceId == "meteo-disp-a"));
+        Assert.Equal("meteo-disp-b", config.Config!.RootElement.GetProperty("display").GetProperty("items")[0].GetProperty("device").GetString());
+
+        // no choice any more: an empty list goes out, so the hornet shows its own readings again
+        var before = texts.Count;
+        using var cleared = await admin.PutAsJsonAsync("/api/devices/meteo-disp-a/display", new { items = Array.Empty<object>() });
+        Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
+        for (var i = 0; i < 50 && texts.Count == before; i++)
+            await Task.Delay(100);
+        Assert.Equal(0, Last().GetProperty("items").GetArrayLength());
+    }
 }

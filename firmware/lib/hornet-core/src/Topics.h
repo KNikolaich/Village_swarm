@@ -45,6 +45,8 @@ inline std::string health(const std::string& id) { return device(id) + "/health"
 inline std::string state(const std::string& id) { return device(id) + "/state"; }
 inline std::string log(const std::string& id) { return device(id) + "/log"; }
 inline std::string config(const std::string& id) { return device(id) + "/config"; }
+// What the hive wants the screen to show (retained, hive to hornet; the hornet may read vs/v1/hive/#).
+inline std::string display(const std::string& id) { return std::string(kPrefix) + "/hive/display/" + id; }
 inline std::string tele(const std::string& id, const std::string& metric) { return device(id) + "/tele/" + metric; }
 inline std::string event(const std::string& id, const std::string& type) { return device(id) + "/event/" + type; }
 inline std::string cmd(const std::string& id, const std::string& name) { return device(id) + "/cmd/" + name; }

@@ -29,3 +29,4 @@ Thumbs.db
 
 # Python bytecode of the firmware build scripts
 __pycache__/
+.claude-tmp/

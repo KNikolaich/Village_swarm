@@ -1,5 +1,6 @@
 import { FeaturesPanel } from '@/components/FeaturesPanel'
 import { BlePanel } from '@/components/BlePanel'
+import { DisplayPanel } from '@/components/DisplayPanel'
 import { IrPanel } from '@/components/IrPanel'
 import { TasmotaConsole } from '@/components/TasmotaConsole'
 import { useQueryClient } from '@tanstack/react-query'
@@ -307,6 +308,13 @@ export function DevicePage() {
               </Button>
             )}
           </CardContent>
+        </Card>
+      )}
+
+      {device.driver === 'hornet' && (device.hw ?? '').includes('oled') && (
+        <Card>
+          <CardHeader><CardTitle>{t('display.title')}</CardTitle></CardHeader>
+          <CardContent><DisplayPanel deviceId={deviceId} editable={isAdmin} /></CardContent>
         </Card>
       )}
 

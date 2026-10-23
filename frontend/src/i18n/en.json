@@ -1110,5 +1110,19 @@
     "standby": "Home has not answered for {m} min and hornets write here. The city node has taken over the alarms; rules only notify, commands by hand.",
     "catalog": "Catalog from home: {time}.",
     "noCatalog": "No catalog from home yet."
+  },
+  "display": {
+    "title": "Screen",
+    "hint": "What the hornet's screen shows: its own readings or those of another device (a thermometer outside, say). The hive refreshes the screen when the readings change.",
+    "own": "Nothing chosen: the screen shows the hornet's own readings (temperature, humidity, voltage).",
+    "source": "From",
+    "thisHornet": "This hornet",
+    "data": "Show",
+    "label": "Label (optional)",
+    "add": "Add a line",
+    "save": "Save",
+    "saved": "Saved, the screen updates within a minute",
+    "layout": "One line: a label and a large value. Two lines: two large values. Three or four: small rows with a label. Readings older than 30 minutes show as \"--\".",
+    "remove": "Remove the line"
   }
 }

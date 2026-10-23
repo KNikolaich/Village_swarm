@@ -30,6 +30,7 @@ static void test_device_topics() {
     TEST_ASSERT_EQUAL_STRING("vs/v1/dev/guard-gate1/cmd/snapshot/ack", cmdAck("guard-gate1", "snapshot").c_str());
     TEST_ASSERT_EQUAL_STRING("vs/v1/dev/guard-gate1/cmd/#", cmdWildcard("guard-gate1").c_str());
     TEST_ASSERT_EQUAL_STRING("vs/v1/hive/#", hiveWildcard().c_str());
+    TEST_ASSERT_EQUAL_STRING("vs/v1/hive/display/meteo-c3oled1", display("meteo-c3oled1").c_str());
 }
 
 static void test_segments() {

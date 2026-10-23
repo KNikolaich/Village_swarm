@@ -38,6 +38,7 @@ public class ContractExamplesTests
         ["config"] = typeof(DeviceConfig),
         ["heartbeat"] = typeof(HeartbeatMessage),
         ["active"] = typeof(ActiveNodeMessage),
+        ["display"] = typeof(DisplayMessage),
     };
 
     public static TheoryData<string, string> ValidExamples() => Examples(invalid: false);

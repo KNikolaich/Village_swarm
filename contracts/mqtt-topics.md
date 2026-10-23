@@ -22,6 +22,7 @@ Prefix: `vs/v1/`. `{id}` is a hornet device_id, e.g. `guard-gate1`.
 | `vs/v1/dev/{id}/config` | hive → dev | yes | 1 | `config` |
 | `vs/v1/hive/{node}/heartbeat` | hive → all | no | 1 | `heartbeat` |
 | `vs/v1/hive/active` | hive → dev | yes | 1 | `active` |
+| `vs/v1/hive/display/{id}` | hive → dev | yes | 1 | `display` |
 | `vs/v1/hive/broadcast/cmd/{name}` | hive → dev | no | 1 | `cmd-{name}` |
 | `vs/v1/prov/{mac}/...` | provisioning | — | — | step 10 |
 
@@ -35,6 +36,10 @@ at the first `health` of a wake-up (`reset_reason` `deepsleep`) the hive sends t
 It tries on at most 5 wake-ups and stops when the hornet reports the new version.
 With `sleep_mode` `light` the hornet stays connected (Wi-Fi power saving, readings every `sleep_s`), so it
 behaves like any other hornet: LWT, commands and config work as usual.
+
+A hornet with a screen (config `display`) may show readings of other devices: the hive keeps the choice in config `display.items` (`device` absent = the hornet itself,
+`metric`, `label`) and publishes the ready texts to `vs/v1/hive/display/{id}` (retained, on change; the hornet reads `vs/v1/hive/#` already). An empty `items` list
+makes the hornet show its own readings again. The hornet does not read `display.items` itself.
 
 Rules:
 - device_id matches `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, max 32 chars (`guard-gate1`, `meteo-out1`).

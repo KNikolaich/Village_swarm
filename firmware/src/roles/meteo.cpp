@@ -229,6 +229,17 @@ private:
         values_[metric] = value;
     }
 
+    bool wantsDisplay() const override { return HORNET_DISPLAY != 0; }
+
+    // The hive's ready texts (another device's readings, say). Empty: back to this hornet's own readings.
+    void applyDisplay(Core&, JsonObjectConst message) override {
+        fed_.clear();
+        for (JsonObjectConst item : message["items"].as<JsonArrayConst>()) {
+            if (fed_.size() >= 4) break;
+            fed_.push_back({String(item["label"] | ""), String(item["text"] | "--")});
+        }
+    }
+
     // What goes on the screen when the config does not say: the first two of these that exist.
     std::vector<String> displayLines() const {
         if (!lines_.empty()) return lines_;
@@ -237,6 +248,38 @@ private:
             if (values_.count(m) && out.size() < 2) out.push_back(m);
         return out;
     }
+
+#if HORNET_DISPLAY
+    // 72x40: one line is a small label above a large text; two are two large texts; three or four are small rows, label on the left and text on the right.
+    void drawFed() {
+        const size_t n = fed_.size();
+        if (n <= 2) {
+            int y = n == 1 ? 38 : 18;
+            for (const auto& row : fed_) {
+                if (n == 1 && row.label.length()) {
+                    oled_.setFont(u8g2_font_5x8_t_cyrillic);
+                    oled_.drawUTF8(0, 8, row.label.c_str());
+                }
+                oled_.setFont(u8g2_font_logisoso16_tf);
+                oled_.drawUTF8(0, y, row.text.c_str());
+                y += 20;
+            }
+            return;
+        }
+        oled_.setFont(u8g2_font_5x8_t_cyrillic);
+        int y = 9;
+        for (const auto& row : fed_) {
+            String label = row.label;
+            // 14 characters of 5 px across: the text keeps its place, the label gives way
+            const int room = 14 - static_cast<int>(row.text.length()) - 1;
+            if (room <= 0) label = "";
+            else if (static_cast<int>(label.length()) > room) label = label.substring(0, room);
+            oled_.drawUTF8(0, y, label.c_str());
+            oled_.drawUTF8(72 - oled_.getUTF8Width(row.text.c_str()), y, row.text.c_str());
+            y += 10;
+        }
+    }
+#endif
 
     static String format(const String& metric, float v) {
         if (metric.startsWith("temperature")) return String(v, 1) + "°";
@@ -250,6 +293,12 @@ private:
 #if HORNET_DISPLAY
         if (!displayOk_) return;
         oled_.clearBuffer();
+        if (!fed_.empty()) {
+            drawFed();
+            if (core.online()) oled_.drawDisc(69, 2, 2);
+            oled_.sendBuffer();
+            return;
+        }
         oled_.setFont(u8g2_font_logisoso16_tf);
         int y = 18;
         for (const auto& line : displayLines()) {
@@ -284,6 +333,11 @@ private:
     bool warned_ = false;
     std::vector<String> names_;
     std::vector<String> lines_;
+    struct FedRow {
+        String label;
+        String text;
+    };
+    std::vector<FedRow> fed_;  // the hive's display message; empty: this hornet's own readings
     std::map<String, float> values_;
     Battery battery_;
 #if HORNET_DISPLAY

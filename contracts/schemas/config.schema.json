@@ -250,13 +250,28 @@
     },
     "display": {
       "type": "object",
-      "description": "Small local screen (0.42\" OLED): up to two metrics, large",
+      "description": "Small local screen (0.42\" OLED): up to two of its own metrics, large; or, with items, what the hive feeds it (vs/v1/hive/display/{id})",
       "properties": {
         "lines": {
           "type": "array",
           "maxItems": 2,
           "items": {
             "$ref": "common.schema.json#/$defs/segment"
+          }
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 4,
+          "description": "What the screen shows, kept by the hive: a reading of this hornet or of another device. The hornet does not read it: the hive turns it into the display message",
+          "items": {
+            "type": "object",
+            "required": ["metric"],
+            "properties": {
+              "device": { "$ref": "common.schema.json#/$defs/deviceId", "description": "Absent: this hornet" },
+              "metric": { "$ref": "common.schema.json#/$defs/segment" },
+              "label": { "type": "string", "maxLength": 16 }
+            },
+            "additionalProperties": false
           }
         }
       },

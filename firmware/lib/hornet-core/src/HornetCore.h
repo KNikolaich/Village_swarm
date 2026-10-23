@@ -74,6 +74,11 @@ struct Role {
 
     // Extra health fields (e.g. psram).
     virtual void fillHealth(JsonObject health) {}
+
+    // A role with a screen asks for the hive's display message (contracts/schemas/display.schema.json, retained on
+    // vs/v1/hive/display/{id}): what to show, as ready texts. An empty list means "show your own readings".
+    virtual bool wantsDisplay() const { return false; }
+    virtual void applyDisplay(Core& core, JsonObjectConst message) {}
 };
 
 using CommandHandler = std::function<AckResult(JsonObjectConst payload)>;
