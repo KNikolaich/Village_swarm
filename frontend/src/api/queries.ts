@@ -187,10 +187,10 @@ export const useWeather = () =>
 export const useZones = () =>
   useQuery({ queryKey: ['zones'] as const, queryFn: () => call(api.GET('/api/zones')) })
 
-/** The same metric of several devices over one window (one line each on a zone chart). */
-export const useDeviceSeries = (devices: string[], metric: string, hours: number) =>
+/** Several (device, metric) lines over one window: the probes of a bridge each get their own line on a zone chart. */
+export const useMetricSeries = (lines: { device: string; metric: string }[], hours: number) =>
   useQueries({
-    queries: devices.map((device) => ({
+    queries: lines.map(({ device, metric }) => ({
       queryKey: ['telemetry', 'series', device, metric, hours],
       queryFn: () => {
         const { from, to } = historyWindow(hours)

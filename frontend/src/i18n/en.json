@@ -145,7 +145,28 @@
     "saved": "Saved",
     "exists": "A zone with this name already exists",
     "failed": "Could not save the zone",
-    "sort": "Zone place"
+    "sort": "Zone place",
+    "editZone": "Zone “{name}” settings",
+    "editHornet": "Hornet settings",
+    "hornets": "Hornets of the zone",
+    "noHornets": "No hornets in this zone yet",
+    "addHornet": "Add a hornet to the zone…",
+    "takeOut": "Remove from zone",
+    "save": "Save",
+    "kind": "Zone kind",
+    "back": "Back: {name}"
+  },
+  "dashboard": {
+    "title": "On the dashboard",
+    "hint": "What the climate zone and the overview show. Charts are drawn from the ticked temperatures and humidity.",
+    "nothing": "This hornet has nothing to show on the dashboard",
+    "reset": "Back to defaults",
+    "failed": "Could not save the choice",
+    "buttons": {
+      "snapshot": "Snapshot button",
+      "light": "Light button",
+      "relay": "Relay banner"
+    }
   },
   "rules": {
     "title": "Rules",

@@ -1,12 +1,14 @@
-import { ChevronRight, Thermometer, Wifi, WifiOff } from 'lucide-react'
+import { ChevronRight, Wifi, WifiOff } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
-import type { DeviceDto, LatestValueDto } from '@/api/client'
-import { useDevices, useEvents, useLatestTelemetry } from '@/api/queries'
+import type { DeviceDto, LatestValueDto, ZoneDto } from '@/api/client'
+import { useDevices, useEvents, useLatestTelemetry, useZones } from '@/api/queries'
 import { EventCard, type PhotoRef } from '@/components/EventCard'
 import { GuardCard } from '@/components/GuardCard'
 import { Lightbox } from '@/components/Lightbox'
 import { WeatherCard } from '@/components/WeatherCard'
+import { ZoneTiles } from '@/components/ZoneTiles'
+import { zoneTiles } from '@/lib/dashboard'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
 import { formatAgo, formatValue } from '@/lib/format'
@@ -17,6 +19,7 @@ export function OverviewPage() {
   const devices = useDevices()
   const latest = useLatestTelemetry()
   const events = useEvents({ limit: 5 })
+  const zones = useZones()
   const [viewer, setViewer] = useState<{ photos: PhotoRef[]; index: number } | null>(null)
 
   const list = devices.data ?? []
@@ -48,7 +51,7 @@ export function OverviewPage() {
       </div>
 
       <WeatherCard />
-      <Climate latest={latest.data ?? []} devices={list} loading={latest.isLoading} />
+      <Climate latest={latest.data ?? []} devices={list} zones={zones.data ?? []} loading={latest.isLoading} />
       <HiveState device={list.find((d) => d.type === 'hive')} latest={latest.data ?? []} loading={latest.isLoading} />
 
       <Card>
@@ -84,33 +87,27 @@ export function OverviewPage() {
   )
 }
 
-function Climate({ latest, devices, loading }: { latest: LatestValueDto[]; devices: DeviceDto[]; loading: boolean }) {
-  const temps = latest.filter((v) => v.metric === 'temperature').sort((a, b) => a.deviceId.localeCompare(b.deviceId))
-  const name = (id: string) => devices.find((d) => d.deviceId === id)?.name ?? id
-  const humidity = (id: string) => latest.find((v) => v.deviceId === id && v.metric === 'humidity')
+/** Every zone's tiles, as its card on the climate screen shows them (what each hornet is ticked to show). */
+function Climate({ latest, devices, zones, loading }: { latest: LatestValueDto[]; devices: DeviceDto[]; zones: ZoneDto[]; loading: boolean }) {
+  const hornets = devices.filter((d) => d.type !== 'hive')
+  const known = new Set(zones.map((z) => z.id))
+  const groups = [
+    ...zones.map((z) => ({ key: String(z.id), title: z.name, devices: hornets.filter((d) => d.zoneId === z.id) })),
+    { key: 'none', title: t('climate.unassigned'), devices: hornets.filter((d) => d.zoneId == null || !known.has(d.zoneId)) },
+  ].filter((g) => zoneTiles(g.devices, latest).length > 0)
 
   return (
     <Card>
       <CardHeader><CardTitle>{t('overview.climate')}</CardTitle></CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
         {loading && <Skeleton className="h-16" />}
-        {!loading && temps.length === 0 && <p className="text-sm text-neutral-500">{t('overview.noClimate')}</p>}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {temps.map((v) => {
-            const h = humidity(v.deviceId)
-            return (
-              <div key={v.deviceId} className="rounded-lg bg-neutral-800/50 p-3">
-                <p className="flex items-center gap-1 truncate text-xs text-neutral-400"><Thermometer className="size-3.5" />{name(v.deviceId)}</p>
-                <p className={cn('mt-1 text-2xl font-semibold tabular-nums', v.value < 0 ? 'text-sky-300' : v.value > 28 ? 'text-orange-300' : '')}>
-                  {formatValue('temperature', v.value)}
-                </p>
-                <p className="text-xs text-neutral-500">
-                  {h ? `${metricLabel('humidity')} ${formatValue('humidity', h.value)} · ` : ''}{formatAgo(v.ts)}
-                </p>
-              </div>
-            )
-          })}
-        </div>
+        {!loading && groups.length === 0 && <p className="text-sm text-neutral-500">{t('overview.noClimate')}</p>}
+        {groups.map((g) => (
+          <div key={g.key} className="space-y-1.5">
+            {groups.length > 1 && <p className="text-xs text-neutral-500">{g.title}</p>}
+            <ZoneTiles devices={g.devices} latest={latest} />
+          </div>
+        ))}
       </CardContent>
     </Card>
   )
