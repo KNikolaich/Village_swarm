@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Save, Ungroup } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -63,10 +63,10 @@ export function ZoneEditor({ zone, devices, latest, onClose }: {
   }
 
   return (
-    <Dialog title={t('climate.editZone').replace('{name}', zone.name)} onClose={onClose}>
+    <Dialog title={t('climate.editZone').replace('{name}', zone.name)} onClose={onClose} wide>
       <div className="space-y-5 p-2">
-        <form onSubmit={save} className="space-y-2">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('climate.zoneName')} aria-label={t('climate.zoneName')} />
+        <form onSubmit={save} className="flex flex-col gap-2 lg:flex-row lg:items-center">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('climate.zoneName')} aria-label={t('climate.zoneName')} className="lg:flex-1" />
           <div className="flex flex-wrap items-center gap-2">
             <Select value={kind} onChange={(e) => setKind(e.target.value as Kind)} aria-label={t('climate.kind')}>
               {zoneKinds.map((k) => <option key={k} value={k}>{t(`climate.kinds.${k}`)}</option>)}
@@ -75,7 +75,7 @@ export function ZoneEditor({ zone, devices, latest, onClose }: {
               {t('climate.sort')}
               <Input type="number" min={0} max={9999} value={sort} onChange={(e) => setSort(e.target.value)} className="h-9 w-20 text-sm" />
             </label>
-            <Button type="submit" size="sm" className="ml-auto" disabled={!name.trim() || !sortOk || !changed}>{t('climate.save')}</Button>
+            <Button type="submit" size="icon" className="ml-auto" title={t('climate.save')} aria-label={t('climate.save')} disabled={!name.trim() || !sortOk || !changed}><Save /></Button>
           </div>
         </form>
 
@@ -83,17 +83,18 @@ export function ZoneEditor({ zone, devices, latest, onClose }: {
           <p className="text-sm font-medium">{t('climate.hornets')}</p>
           {members.length === 0 && <p className="text-sm text-neutral-500">{t('climate.noHornets')}</p>}
           {members.map((d) => (
-            <div key={d.deviceId} className="space-y-2 rounded-lg bg-neutral-800/50 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-sm">{d.name}</span>
-                <div className="flex shrink-0 items-center gap-1">
+            // On a wide screen the hornet's ticks sit on its line, between the name and the actions.
+            <div key={d.deviceId} className="flex flex-col gap-2 rounded-lg bg-neutral-800/50 p-3 lg:flex-row lg:items-center lg:gap-4">
+              <div className="flex items-center justify-between gap-2 lg:contents">
+                <span className="min-w-0 truncate text-sm lg:w-44 lg:shrink-0">{d.name}</span>
+                <div className="flex shrink-0 items-center gap-1 lg:order-last">
                   <Button variant="ghost" size="sm" className="text-xs text-neutral-400" onClick={() => void assign(d.deviceId, null)}>{t('climate.takeOut')}</Button>
                   <Link to={`/swarm/${d.deviceId}?zone=${zone.id}`} title={t('climate.editHornet')} aria-label={t('climate.editHornet')} className="p-1.5 text-neutral-400 hover:text-amber-400">
                     <Pencil className="size-4" />
                   </Link>
                 </div>
               </div>
-              <DashboardChecks device={d} latest={latest} editable compact />
+              <div className="min-w-0 lg:flex-1"><DashboardChecks device={d} latest={latest} editable compact /></div>
             </div>
           ))}
           {loose.length > 0 && (
@@ -106,7 +107,7 @@ export function ZoneEditor({ zone, devices, latest, onClose }: {
 
         <div className="flex justify-end border-t border-neutral-800 pt-3">
           <Button variant="outline" size="sm" className="border-red-900 text-red-400 hover:bg-red-950" onClick={() => void remove()}>
-            <Trash2 />{t('climate.delete')}
+            <Ungroup />{t('climate.delete')}
           </Button>
         </div>
       </div>

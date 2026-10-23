@@ -155,7 +155,7 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl, onEdit }:
       <CardContent className="space-y-4">
         {tiles.length === 0 && banners.length === 0 && <p className="text-sm text-neutral-500">{t('climate.noSensors')}</p>}
 
-        <ZoneTiles devices={devices} latest={latest} editZone={isAdmin ? zone.id : undefined} />
+        <ZoneTiles devices={devices} latest={latest} />
 
         {tempLines.length > 0 && (
           <div className="space-y-1">

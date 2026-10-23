@@ -2,9 +2,13 @@ import { X } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { t } from '@/i18n'
+import { cn } from '@/lib/utils'
 
-/** A sheet over the page: bottom sheet on a phone, centred box on a wide screen. Esc or a tap outside closes it. */
-export function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+/**
+ * A sheet over the page: bottom sheet on a phone, centred box on a wide screen (wider still with `wide`, for a form
+ * whose rows fit on one line there). Esc or a tap outside closes it.
+ */
+export function Dialog({ title, onClose, wide, children }: { title: string; onClose: () => void; wide?: boolean; children: ReactNode }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
     window.addEventListener('keydown', onKey)
@@ -16,7 +20,7 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
       <div
         role="dialog"
         aria-label={title}
-        className="flex max-h-[85vh] w-full flex-col rounded-t-2xl border border-neutral-800 bg-neutral-900 pb-[env(safe-area-inset-bottom)] sm:max-w-md sm:rounded-2xl"
+        className={cn('flex max-h-[85vh] w-full flex-col rounded-t-2xl border border-neutral-800 bg-neutral-900 pb-[env(safe-area-inset-bottom)] sm:max-w-md sm:rounded-2xl', wide && 'lg:max-w-4xl')}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between gap-2 border-b border-neutral-800 px-4 py-3">

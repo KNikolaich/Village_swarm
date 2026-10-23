@@ -145,7 +145,7 @@
     "saved": "Saved",
     "exists": "A zone with this name already exists",
     "failed": "Could not save the zone",
-    "sort": "Zone place",
+    "sort": "Sort order",
     "editZone": "Zone “{name}” settings",
     "editHornet": "Hornet settings",
     "hornets": "Hornets of the zone",

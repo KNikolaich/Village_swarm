@@ -5,7 +5,7 @@ import { groupDevices, mainReadings, quickControls } from './swarm'
 const device = (deviceId: string, type: string, extra: Partial<DeviceDto> = {}) =>
   ({ deviceId, type, name: deviceId, status: 'online', rssi: -50, zoneId: null, sort: 0, ...extra }) as DeviceDto
 const zone = (id: number, name: string, sort = 0) => ({ id, name, kind: 'house', deviceCount: 0, sort }) as ZoneDto
-const labels = { hives: 'Ульи', noZone: 'Без зоны', type: (t: string) => t }
+const labels = { hives: 'Ульи', noZone: 'Без группы', type: (t: string) => t }
 const ids = (groups: ReturnType<typeof groupDevices>) => groups.map((g) => [g.title, g.devices.map((d) => d.deviceId)])
 
 describe('groupDevices', () => {
@@ -24,7 +24,7 @@ describe('groupDevices', () => {
       ['Ульи', ['hive-pi']],
       ['Гостиная', ['heat-c', 'relay-b']],
       ['Улица', ['meteo-a']],
-      ['Без зоны', ['meteo-z']],
+      ['Без группы', ['meteo-z']],
     ])
   })
 
