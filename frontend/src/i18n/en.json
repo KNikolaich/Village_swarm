@@ -177,6 +177,37 @@
     "autoSetup": "Set up automation",
     "controls": "Controls"
   },
+  "layout": {
+    "arrange": "Arrange",
+    "hint": "Drag widgets by the handle or move them with the arrows, pick a width, hide what you do not need.",
+    "save": "Save",
+    "cancel": "Cancel",
+    "reset": "Back to defaults",
+    "resetConfirm": "Go back to the default order for this screen?",
+    "saved": "Layout saved",
+    "failed": "Could not save the layout",
+    "drag": "Drag",
+    "up": "Up",
+    "down": "Down",
+    "width": "Width",
+    "show": "Show",
+    "hide": "Hide",
+    "screens": {
+      "desktop": "Desktop",
+      "phone": "Phone"
+    },
+    "widths": {
+      "3": "¼",
+      "4": "⅓",
+      "6": "½",
+      "8": "⅔",
+      "12": "full row"
+    },
+    "widgets": {
+      "guard": "Guard",
+      "weather": "Weather"
+    }
+  },
   "rules": {
     "title": "Rules",
     "new": "New rule",

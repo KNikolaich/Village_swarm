@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { Bell, Images, LayoutDashboard, LogOut, Network, NotebookPen, Settings, Thermometer, Workflow } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router'
+import { NavLink, Outlet, useLocation } from 'react-router'
 import { api } from '@/api/client'
 import { keys } from '@/api/queries'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,9 @@ const nav = () => [
   { to: '/settings', label: t('nav.settings'), icon: Settings, end: false },
 ]
 
+/** Forms keep a readable width on a wide screen; the dashboards, lists and charts take all of it. */
+const narrow = (path: string) => path.startsWith('/settings') || path.startsWith('/rules') || path === '/swarm/add'
+
 function LiveDot({ state }: { state: LiveState }) {
   const color = state === 'connected' ? 'bg-emerald-400' : state === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-red-500'
   return (
@@ -37,6 +40,7 @@ function LiveDot({ state }: { state: LiveState }) {
 /** Header + sidebar on desktop, bottom tab bar on the phone. */
 export function AppShell({ live }: { live: LiveState }) {
   const qc = useQueryClient()
+  const { pathname } = useLocation()
 
   async function logout() {
     await api.POST('/api/auth/logout')
@@ -86,7 +90,7 @@ export function AppShell({ live }: { live: LiveState }) {
         </header>
 
         <ClusterBanner />
-        <main className="mx-auto w-full max-w-5xl flex-1 p-4 pb-24 md:pb-8">
+        <main className={cn('mx-auto w-full flex-1 p-4 pb-24 md:pb-8', narrow(pathname) ? 'max-w-5xl' : 'max-w-5xl lg:max-w-none lg:px-6')}>
           <Outlet />
         </main>
       </div>

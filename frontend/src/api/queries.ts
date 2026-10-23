@@ -192,6 +192,10 @@ export const useCommandHistory = (device: string, enabled: boolean) =>
 export const useWeather = () =>
   useQuery({ queryKey: ['weather'] as const, queryFn: () => call(api.GET('/api/weather')), refetchInterval: 10 * 60_000 })
 
+/** How the overview is arranged on a wide screen and on a phone (null: the default order). */
+export const useDashboardLayout = () =>
+  useQuery({ queryKey: ['dashboard', 'layout'] as const, queryFn: () => call(api.GET('/api/dashboard/layout')), staleTime: 5 * 60_000 })
+
 export const useZones = () =>
   useQuery({ queryKey: ['zones'] as const, queryFn: () => call(api.GET('/api/zones')) })
 

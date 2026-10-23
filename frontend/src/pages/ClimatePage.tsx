@@ -31,7 +31,6 @@ export function ClimatePage() {
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
   const list = (devices.data ?? []).filter((d) => d.type !== 'hive')
-  const range = historyWindow(hours)
   const editing = isAdmin ? (zones.data ?? []).find((z) => String(z.id) === params.get('edit')) : undefined
   const edit = (id: number | null) => setParams(id == null ? {} : { edit: String(id) }, { replace: true })
 
@@ -50,18 +49,20 @@ export function ClimatePage() {
 
       {zones.isLoading && <Skeleton className="h-40" />}
       {!zones.isLoading && (zones.data ?? []).length === 0 && <Empty>{t('climate.noZones')}</Empty>}
-      {(zones.data ?? []).map((zone) => (
-        <ZoneCard
-          key={zone.id}
-          zone={zone}
-          devices={list.filter((d) => d.zoneId === zone.id)}
-          latest={latest.data ?? []}
-          hours={hours}
-          isAdmin={isAdmin}
-          canControl={canControl}
-          onEdit={() => edit(zone.id)}
-        />
-      ))}
+      <div className="grid grid-cols-1 items-start gap-4 2xl:grid-cols-2">
+        {(zones.data ?? []).map((zone) => (
+          <ZoneCard
+            key={zone.id}
+            zone={zone}
+            devices={list.filter((d) => d.zoneId === zone.id)}
+            latest={latest.data ?? []}
+            hours={hours}
+            isAdmin={isAdmin}
+            canControl={canControl}
+            onEdit={() => edit(zone.id)}
+          />
+        ))}
+      </div>
 
       {isAdmin && orphans.length > 0 && (
         <Card>
@@ -79,7 +80,6 @@ export function ClimatePage() {
       )}
 
       {isAdmin && <AddZone />}
-      {(zones.data ?? []).length > 0 && <TimeAxis {...range} />}
       {editing && <ZoneEditor zone={editing} devices={list} latest={latest.data ?? []} onClose={() => edit(null)} />}
     </div>
   )
@@ -171,6 +171,9 @@ function ZoneCard({ zone, devices, latest, hours, isAdmin, canControl, onEdit }:
             <MultiChart series={humiditySeries} from={from} to={to} format={(v) => formatValue('humidity', v)} axisFormat={(v, d) => `${formatFixed(v, d)}${metricUnit('humidity')}`} />
           </div>
         )}
+
+        {/* The zones may stand side by side on a wide screen, so each card has its own row of times. */}
+        {(tempLines.length > 0 || humidityLines.length > 0) && <TimeAxis from={from} to={to} />}
 
         {banners.length > 0 && (
           <div className="space-y-2">

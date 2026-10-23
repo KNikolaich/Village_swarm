@@ -155,10 +155,12 @@ export function ZoneBanners({ devices, latest, canControl, isAdmin }: {
   })
   if (banners.length === 0) return null
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {banners.map(({ d, kind, shown }) => kind === 'camera'
-        ? <CameraBanner key={d.deviceId} device={d} shown={shown} canControl={canControl} />
-        : <RelayBanner key={d.deviceId} device={d} canControl={canControl} isAdmin={isAdmin} />)}
+    <div className="@container">
+      <div className="grid grid-cols-1 gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
+        {banners.map(({ d, kind, shown }) => kind === 'camera'
+          ? <CameraBanner key={d.deviceId} device={d} shown={shown} canControl={canControl} />
+          : <RelayBanner key={d.deviceId} device={d} canControl={canControl} isAdmin={isAdmin} />)}
+      </div>
     </div>
   )
 }
