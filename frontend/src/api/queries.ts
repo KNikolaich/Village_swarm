@@ -174,10 +174,11 @@ export const useHealthHistory = (device: string, hours: number) =>
     refetchInterval: 5 * 60_000,
   })
 
-export const useDeviceLogs = (device: string, level: string) =>
+export const useDeviceLogs = (device: string, level: string, enabled = true) =>
   useQuery({
     queryKey: ['telemetry', 'logs', device, level],
     queryFn: () => call(api.GET('/api/telemetry/logs', { params: { query: { device, level: level || undefined, limit: 30 } } })),
+    enabled,
     refetchInterval: 30_000,
   })
 

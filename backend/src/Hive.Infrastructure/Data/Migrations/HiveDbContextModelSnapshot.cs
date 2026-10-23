@@ -152,6 +152,10 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("boot");
 
+                    b.Property<DateTimeOffset?>("CommandsClearedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("commands_cleared_at");
+
                     b.Property<JsonDocument>("Config")
                         .HasColumnType("jsonb")
                         .HasColumnName("config");
@@ -207,6 +211,10 @@ namespace Hive.Infrastructure.Data.Migrations
                     b.Property<DateTimeOffset?>("LastSeenAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_seen_at");
+
+                    b.Property<DateTimeOffset?>("LogsClearedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("logs_cleared_at");
 
                     b.Property<string>("Mac")
                         .HasMaxLength(17)

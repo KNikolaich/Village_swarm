@@ -113,9 +113,31 @@ public sealed class CommandService(HiveDbContext db, MqttGateway mqtt, TasmotaPe
     }
 
     /// <summary>Newest commands of one device first (the history on the device page).</summary>
-    public async Task<IReadOnlyList<DeviceCommand>> ListAsync(string deviceId, int? limit, CancellationToken ct) =>
-        await db.Commands.AsNoTracking().Where(c => c.DeviceId == deviceId)
+    public async Task<IReadOnlyList<DeviceCommand>> ListAsync(string deviceId, int? limit, CancellationToken ct)
+    {
+        var since = await db.Devices.Where(d => d.DeviceId == deviceId).Select(d => d.CommandsClearedAt).FirstOrDefaultAsync(ct);
+        return await db.Commands.AsNoTracking().Where(c => c.DeviceId == deviceId && (since == null || c.IssuedAt > since))
             .OrderByDescending(c => c.IssuedAt).Take(Math.Clamp(limit ?? 20, 1, 100)).ToListAsync(ct);
+    }
+
+    /// <summary>Hides the history so far from the device page; the rows go with the retention cleanup. False: no such device.</summary>
+    public Task<bool> ClearHistoryAsync(string deviceId, string by, CancellationToken ct) =>
+        ClearAsync(deviceId, "commands", d => d.CommandsClearedAt = time.GetUtcNow(), by, ct);
+
+    /// <summary>The same for the hornet's journal (device_logs).</summary>
+    public Task<bool> ClearLogsAsync(string deviceId, string by, CancellationToken ct) =>
+        ClearAsync(deviceId, "logs", d => d.LogsClearedAt = time.GetUtcNow(), by, ct);
+
+    private async Task<bool> ClearAsync(string deviceId, string what, Action<Device> mark, string by, CancellationToken ct)
+    {
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null)
+            return false;
+        mark(device);
+        Audit.Record(db, time.GetUtcNow(), by, $"device_clear_{what}", deviceId, null);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
 
     /// <summary>
     /// What the journal keeps of a message: a Wi-Fi password is sent to the hornet but never stored (the journal is read

@@ -4,8 +4,8 @@ import { DisplayPanel } from '@/components/DisplayPanel'
 import { IrPanel } from '@/components/IrPanel'
 import { TasmotaConsole } from '@/components/TasmotaConsole'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Camera, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowLeft, Camera, ChevronDown, ChevronUp, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
@@ -18,6 +18,7 @@ import { hasRelay, showsMetric } from '@/lib/features'
 import { formatAgo, formatFixed, formatValue, formatWhen, metricUnit } from '@/lib/format'
 import { ranges, rangeLabel } from '@/lib/ranges'
 import { ZoneSelect } from '@/pages/ClimatePage'
+import { DeviceName } from '@/components/DeviceName'
 import { PinsPanel } from '@/pages/SwarmPage'
 import { SortInput } from '@/components/SortInput'
 import { MonitoringPanel } from '@/components/MonitoringPanel'
@@ -85,12 +86,62 @@ function ackMessage(ack: unknown): string | null {
   return typeof msg === 'string' && msg ? msg : null
 }
 
-function CommandHistory({ device }: { device: string }) {
-  const history = useCommandHistory(device, true)
-  const rows = history.data ?? []
+/**
+ * A card that starts folded: the arrow opens it, and open it offers the bin, which hides what is there now (the
+ * server drops the rows at its scheduled cleanup). `extra` sits by the buttons while it is open.
+ */
+function FoldedCard({ title, open, onOpen, onClear, clearLabel, extra, children }: {
+  title: string
+  open: boolean
+  onOpen: (open: boolean) => void
+  /** Missing for those who may only read. */
+  onClear?: () => void
+  clearLabel: string
+  extra?: ReactNode
+  children: ReactNode
+}) {
   return (
     <Card>
-      <CardHeader><CardTitle>{t('device.commandHistory')}</CardTitle></CardHeader>
+      <CardHeader className={open ? undefined : 'pb-4'}>
+        <button type="button" className="flex min-w-0 flex-1 items-center text-left" onClick={() => onOpen(!open)} aria-expanded={open}>
+          <CardTitle>{title}</CardTitle>
+        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {open && extra}
+          {open && onClear && (
+            <Button variant="ghost" size="icon" className="size-8 text-neutral-500 hover:text-red-400" title={clearLabel} aria-label={clearLabel} onClick={onClear}><Trash2 /></Button>
+          )}
+          <Button variant="ghost" size="icon" className="size-8 text-neutral-400" title={open ? t('device.collapse') : t('device.expand')} aria-label={open ? t('device.collapse') : t('device.expand')} aria-expanded={open} onClick={() => onOpen(!open)}>
+            {open ? <ChevronUp /> : <ChevronDown />}
+          </Button>
+        </div>
+      </CardHeader>
+      {open && children}
+    </Card>
+  )
+}
+
+/** Hides the list so far for everyone; the rows stay on the server until the retention cleanup. */
+function useClear(path: '/api/devices/{deviceId}/commands' | '/api/devices/{deviceId}/logs', deviceId: string, name: string, query: readonly unknown[]) {
+  const qc = useQueryClient()
+  return async () => {
+    if (!window.confirm(t(path.endsWith('logs') ? 'device.clearLogsConfirm' : 'device.clearCommandsConfirm').replace('{name}', name))) return
+    try {
+      await call(api.DELETE(path, { params: { path: { deviceId } } }))
+    } catch {
+      toast.error(t('device.clearFailed'))
+    }
+    await qc.invalidateQueries({ queryKey: query })
+  }
+}
+
+function CommandHistory({ device, name }: { device: string; name: string }) {
+  const [open, setOpen] = useState(false)
+  const history = useCommandHistory(device, open)
+  const clear = useClear('/api/devices/{deviceId}/commands', device, name, ['devices', device, 'commands'])
+  const rows = history.data ?? []
+  return (
+    <FoldedCard title={t('device.commandHistory')} open={open} onOpen={setOpen} onClear={() => void clear()} clearLabel={t('device.clearCommands')}>
       <CardContent>
         {history.isLoading && <Skeleton className="h-16" />}
         {!history.isLoading && rows.length === 0 && <p className="text-sm text-neutral-500">{t('device.noCommands')}</p>}
@@ -107,24 +158,31 @@ function CommandHistory({ device }: { device: string }) {
           ))}
         </ul>
       </CardContent>
-    </Card>
+    </FoldedCard>
   )
 }
 
 const logLevels = ['', 'error', 'warn', 'info', 'debug']
 
-function Logs({ device }: { device: string }) {
+function Logs({ device, name, canClear }: { device: string; name: string; canClear: boolean }) {
+  const [open, setOpen] = useState(false)
   const [level, setLevel] = useState('')
-  const logs = useDeviceLogs(device, level)
+  const logs = useDeviceLogs(device, level, open)
+  const clear = useClear('/api/devices/{deviceId}/logs', device, name, ['telemetry', 'logs', device])
   const rows = logs.data ?? []
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('device.logs')}</CardTitle>
+    <FoldedCard
+      title={t('device.logs')}
+      open={open}
+      onOpen={setOpen}
+      onClear={canClear ? () => void clear() : undefined}
+      clearLabel={t('device.clearLogs')}
+      extra={(
         <Select value={level} onChange={(e) => setLevel(e.target.value)} className="h-8 w-auto text-xs" aria-label={t('device.logLevel')}>
           {logLevels.map((l) => <option key={l} value={l}>{l === '' ? t('device.logAll') : l}</option>)}
         </Select>
-      </CardHeader>
+      )}
+    >
       <CardContent>
         {logs.isLoading && <Skeleton className="h-16" />}
         {!logs.isLoading && rows.length === 0 && <p className="text-sm text-neutral-500">{t('device.noLogs')}</p>}
@@ -138,7 +196,7 @@ function Logs({ device }: { device: string }) {
           ))}
         </ul>
       </CardContent>
-    </Card>
+    </FoldedCard>
   )
 }
 
@@ -211,7 +269,7 @@ export function DevicePage() {
       {back}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold">{device.name}</h1>
+          <DeviceName device={device} editable={isAdmin && device.status !== 'disabled'} />
           <p className="truncate text-xs text-neutral-500">{device.deviceId} · {device.type}</p>
         </div>
         <Badge tone={online ? 'ok' : device.status === 'disabled' || device.status === 'pending' ? 'neutral' : 'alarm'}>
@@ -340,8 +398,8 @@ export function DevicePage() {
 
       {canControl && commands.includes('ir') && <IrPanel deviceId={deviceId} state={device.state} online={online} canEdit={canControl} />}
 
-      {canControl && <CommandHistory device={deviceId} />}
-      <Logs device={deviceId} />
+      {canControl && <CommandHistory device={deviceId} name={device.name} />}
+      <Logs device={deviceId} name={device.name} canClear={canControl} />
 
       {device.status !== 'disabled' && device.driver === 'hornet' && device.type !== 'ble' && (
         <Card>

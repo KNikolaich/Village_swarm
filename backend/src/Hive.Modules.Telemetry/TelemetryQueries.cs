@@ -107,7 +107,9 @@ public sealed class TelemetryQueries(HiveDbContext db, TimeProvider time)
     /// <summary>Newest log lines of one device first; <paramref name="level"/> narrows to one level.</summary>
     public async Task<IReadOnlyList<DeviceLogDto>> LogsAsync(string device, string? level, int? limit, CancellationToken ct)
     {
-        var query = db.DeviceLogs.AsNoTracking().Where(l => l.DeviceId == device);
+        // Cleared on the device page: only what came after (the rows stay until the retention cleanup).
+        var since = await db.Devices.Where(d => d.DeviceId == device).Select(d => d.LogsClearedAt).FirstOrDefaultAsync(ct);
+        var query = db.DeviceLogs.AsNoTracking().Where(l => l.DeviceId == device && (since == null || l.Ts > since));
         if (!string.IsNullOrEmpty(level))
             query = query.Where(l => l.Level == level);
         var rows = await query.OrderByDescending(l => l.Ts).ThenByDescending(l => l.Id).Take(Math.Clamp(limit ?? 50, 1, 200)).ToListAsync(ct);

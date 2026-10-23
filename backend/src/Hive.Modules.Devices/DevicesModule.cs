@@ -135,6 +135,13 @@ public static class DevicesModule
         devices.MapGet("/{deviceId}/commands", async (string deviceId, int? limit, CommandService commands, CancellationToken ct) =>
             (await commands.ListAsync(deviceId, limit, ct)).Select(CommandDto.From).ToList())
             .RequireAuthorization(HiveRoles.CanControl);
+        // "Clear" on the device page: the history and the journal start afresh there, the rows go with the retention cleanup.
+        devices.MapDelete("/{deviceId}/commands", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, CommandService commands, CancellationToken ct) =>
+                await commands.ClearHistoryAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.CanControl);
+        devices.MapDelete("/{deviceId}/logs", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, CommandService commands, CancellationToken ct) =>
+                await commands.ClearLogsAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.CanControl);
         devices.MapGet("/{deviceId}/commands/{cid}", async Task<Results<Ok<CommandDto>, NotFound>> (string deviceId, string cid, CommandService commands, CancellationToken ct) =>
             await commands.GetAsync(deviceId, cid, ct) is { } c ? TypedResults.Ok(CommandDto.From(c)) : TypedResults.NotFound());
 

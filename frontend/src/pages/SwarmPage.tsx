@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, BatteryMedium, CloudDownload, Camera, Check, CircleHelp, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Pencil, Plus, Terminal, Thermometer, Usb, Wifi, WifiOff, X, type LucideIcon } from 'lucide-react'
-import { useMemo, useState, type FormEvent } from 'react'
+import { ArrowRightLeft, BatteryMedium, CloudDownload, Camera, CircleHelp, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Plus, Terminal, Thermometer, Usb, Wifi, WifiOff, type LucideIcon } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { FlashButton } from '@/components/FlashButton'
 import { OtaRolloutPanel } from '@/components/OtaRolloutPanel'
@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { api, call, type DeviceDto, type LatestValueDto, type Schemas } from '@/api/client'
 import { keys, useDevices, useLatestTelemetry, useMe, useOtaRollout, useSendCommand, useZones } from '@/api/queries'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
+import { Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
 import { formatAgo, formatValue } from '@/lib/format'
 import { thermometerSensors, usesPin } from '@/lib/features'
@@ -188,61 +188,6 @@ export function PinsPanel({ deviceId, editable, board, type, features }: { devic
   )
 }
 
-/** The hornet's name, with an inline editor for admins (a typo made when adding it is fixed here). */
-function DeviceName({ device, editable }: { device: DeviceDto; editable: boolean }) {
-  const qc = useQueryClient()
-  const [draft, setDraft] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-
-  async function save(e: FormEvent) {
-    e.preventDefault()
-    const name = (draft ?? '').trim()
-    if (!name || name === device.name) {
-      setDraft(null)
-      return
-    }
-    setBusy(true)
-    try {
-      await call(api.PUT('/api/devices/{deviceId}/name', { params: { path: { deviceId: device.deviceId } }, body: { name } }))
-      toast.success(t('swarm.renamed'))
-      setDraft(null)
-      await qc.invalidateQueries({ queryKey: keys.devices })
-    } catch {
-      toast.error(t('swarm.renameFailed'))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (draft === null)
-    return (
-      <div className="flex min-w-0 items-center gap-1">
-        <Link to={`/swarm/${encodeURIComponent(device.deviceId)}`} className="block truncate font-medium hover:text-amber-400">{device.name}</Link>
-        {editable && (
-          <Button variant="ghost" size="icon" className="size-7 shrink-0 text-neutral-500" title={t('swarm.rename')} aria-label={t('swarm.rename')} onClick={() => setDraft(device.name)}>
-            <Pencil className="size-3.5" />
-          </Button>
-        )}
-      </div>
-    )
-
-  return (
-    <form onSubmit={save} className="flex items-center gap-1">
-      <Input
-        autoFocus
-        value={draft}
-        maxLength={128}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Escape') setDraft(null) }}
-        className="h-8 min-w-0"
-        aria-label={t('swarm.rename')}
-      />
-      <Button type="submit" variant="ghost" size="icon" className="size-8 shrink-0 text-emerald-400" disabled={busy || !draft.trim()} title={t('common.save')} aria-label={t('common.save')}><Check /></Button>
-      <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => setDraft(null)} title={t('common.cancel')} aria-label={t('common.cancel')}><X /></Button>
-    </form>
-  )
-}
-
 /** A meteo or relay hornet may move to the heat firmware of its board, which does all they do (OtaService.CanBecome). */
 const canBecome = (type: string, role: string) => role === 'heat' && (type === 'meteo' || type === 'relay')
 
@@ -377,6 +322,35 @@ function Readings({ device, latest }: { device: DeviceDto; latest: LatestValueDt
         )
       })}
     </div>
+  )
+}
+
+/** Whether the hornet is on line, by one sign and its colour before the name; the word is in the tooltip. */
+function StatusIcon({ device }: { device: DeviceDto }) {
+  const sleeping = asleep(device)
+  const label = sleeping ? t('swarm.sleeping') : statusLabel(device.status)
+  const Icon = sleeping ? Moon : device.status === 'online' ? Wifi : WifiOff
+  const tone = sleeping ? 'text-sky-300' : device.status === 'online' ? 'text-emerald-400'
+    : device.status === 'disabled' || device.status === 'pending' ? 'text-neutral-500' : 'text-red-400'
+  return <span title={label} aria-label={label} role="img" className={cn('shrink-0', tone)}><Icon className="size-4" /></span>
+}
+
+/** "?" by the sleep controls: a tap opens what sleep, never sleeping, deep and light sleep mean (phones have no hover). */
+function SleepHelp() {
+  const [open, setOpen] = useState(false)
+  return (
+    <span className="relative">
+      <button type="button" aria-label={t('swarm.sleepHelpLabel')} aria-expanded={open} onClick={() => setOpen(!open)}
+        className={cn('inline-flex align-middle', open ? 'text-amber-400' : 'text-neutral-500 hover:text-neutral-300')}>
+        <CircleHelp className="size-3.5" />
+      </button>
+      {open && (
+        <span role="tooltip" className="fixed inset-x-4 top-24 z-50 block whitespace-pre-line rounded-lg border border-neutral-700 bg-neutral-900 p-3 text-xs text-neutral-300 shadow-xl sm:absolute sm:inset-x-auto sm:left-0 sm:top-6 sm:z-20 sm:w-96"
+          onClick={() => setOpen(false)}>
+          {t('swarm.sleepHelp')}
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -539,36 +513,41 @@ export function SwarmPage() {
             {group.devices.map((d) => (
           <Card key={d.deviceId} className={d.status === 'disabled' ? 'opacity-50' : undefined}>
             <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
-              <div className="min-w-0 flex-1 basis-48">
-                <DeviceName device={d} editable={isAdmin && d.status !== 'disabled'} />
-                <p className="truncate text-xs text-neutral-500">
-                  {d.deviceId} · {d.type} · {d.driver === 'tasmota' ? 'Tasmota' : d.driver === 'zigbee' ? 'Zigbee' : (d.fw ?? '—')} · {formatAgo(d.lastSeenAt)}
-                </p>
-                {canControl && d.type === 'meteo' && d.status !== 'disabled' && (
-                  <label className="mt-1 flex flex-wrap items-center gap-2 text-xs text-neutral-400" title={t('swarm.sleepHint')}>
-                    <span className="flex items-center gap-2 whitespace-nowrap"><Moon className="size-3" />{t('swarm.sleep')}</span>
-                    <Select
-                      value={d.sleepS ?? 0}
-                      onChange={(e) => void setSleep(d, { sleepS: Number(e.target.value) })}
-                      className="h-7 text-xs"
-                    >
-                      {sleepChoices.map((s) => (
-                        <option key={s} value={s}>{s === 0 ? t('swarm.sleepNever') : t('swarm.sleepMinutes').replace('{n}', String(s / 60))}</option>
-                      ))}
-                    </Select>
-                    {!!d.sleepS && (
+              <div className="flex min-w-0 flex-1 basis-48 items-start gap-2.5">
+                <div className="pt-0.5"><StatusIcon device={d} /></div>
+                <div className="min-w-0 flex-1">
+                  <Link to={`/swarm/${encodeURIComponent(d.deviceId)}`} className="block truncate font-medium hover:text-amber-400">{d.name}</Link>
+                  <p className="truncate text-xs text-neutral-500">
+                    {d.deviceId} · {d.type}{d.driver === 'tasmota' ? ' · Tasmota' : d.driver === 'zigbee' ? ' · Zigbee' : ''} · {formatAgo(d.lastSeenAt)}
+                  </p>
+                  {canControl && d.type === 'meteo' && d.status !== 'disabled' && (
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-neutral-400">
+                      <span className="flex items-center gap-2 whitespace-nowrap"><Moon className="size-3" />{t('swarm.sleep')}</span>
                       <Select
-                        value={d.sleepMode}
-                        onChange={(e) => void setSleep(d, { sleepMode: e.target.value as 'deep' | 'light' })}
-                        className="h-7 text-xs"
-                        aria-label={t('swarm.sleepMode')}
+                        value={d.sleepS ?? 0}
+                        onChange={(e) => void setSleep(d, { sleepS: Number(e.target.value) })}
+                        className="h-7 w-auto text-xs"
+                        aria-label={t('swarm.sleep')}
                       >
-                        <option value="deep">{t('swarm.sleepDeep')}</option>
-                        <option value="light">{t('swarm.sleepLight')}</option>
+                        {sleepChoices.map((s) => (
+                          <option key={s} value={s}>{s === 0 ? t('swarm.sleepNever') : t('swarm.sleepMinutes').replace('{n}', String(s / 60))}</option>
+                        ))}
                       </Select>
-                    )}
-                  </label>
-                )}
+                      {!!d.sleepS && (
+                        <Select
+                          value={d.sleepMode}
+                          onChange={(e) => void setSleep(d, { sleepMode: e.target.value as 'deep' | 'light' })}
+                          className="h-7 w-auto text-xs"
+                          aria-label={t('swarm.sleepMode')}
+                        >
+                          <option value="deep">{t('swarm.sleepDeep')}</option>
+                          <option value="light">{t('swarm.sleepLight')}</option>
+                        </Select>
+                      )}
+                      <SleepHelp />
+                    </div>
+                  )}
+                </div>
               </div>
               {d.status !== 'disabled' && <Readings device={d} latest={latest.data ?? []} />}
               <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -576,17 +555,10 @@ export function SwarmPage() {
                 {d.rssi != null && d.status === 'online' && d.rssi < -80 && (
                   <span className="text-xs tabular-nums text-amber-400" title={t('swarm.weakSignal')}>{d.rssi} dBm</span>
                 )}
-                {asleep(d) ? (
-                  <Badge tone="neutral"><Moon className="size-3" />{t('swarm.sleeping')}</Badge>
-                ) : (
-                  <Badge tone={d.status === 'online' ? 'ok' : d.status === 'disabled' || d.status === 'pending' ? 'neutral' : 'alarm'}>
-                    {d.status === 'online' ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
-                    {statusLabel(d.status)}
-                  </Badge>
-                )}
-                {isAdmin && d.status !== 'disabled' && d.driver === 'hornet' && d.type !== 'hive' && (
-                  <Button variant="ghost" size="icon" title={newerBuild(d) ? t('swarm.updateAvailable') : t('swarm.update')}
-                    className={newerBuild(d) ? 'text-amber-400' : undefined} onClick={() => setFwOpen(fwOpen === d.deviceId ? null : d.deviceId)}><Cpu /></Button>
+                {/* The chip only when there is a newer build for it; the version it runs is on its page. */}
+                {isAdmin && d.status !== 'disabled' && d.driver === 'hornet' && d.type !== 'hive' && newerBuild(d) && (
+                  <Button variant="ghost" size="icon" title={t('swarm.updateAvailable')} aria-label={t('swarm.updateAvailable')}
+                    className="text-amber-400 hover:text-amber-300" onClick={() => setFwOpen(fwOpen === d.deviceId ? null : d.deviceId)}><Cpu /></Button>
                 )}
                 {isAdmin && d.status === 'disabled' && d.driver !== 'zigbee' && (
                   <Button variant="outline" size="sm" title={t('swarm.reviveTitle')} onClick={() => replace(d.deviceId, true)}><ArrowRightLeft />{t('swarm.revive')}</Button>

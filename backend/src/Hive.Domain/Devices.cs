@@ -114,4 +114,12 @@ public class Device
     /// buttons (snapshot, light, relay). Null: the defaults of its kind, chosen by the UI.
     /// </summary>
     public List<string>? Dashboard { get; set; }
+
+    /// <summary>
+    /// "Cleared" on the hornet's page: its command history and its journal show only what came after. The rows stay
+    /// until the retention cleanup takes them (logs after a month, commands with the rest of the housekeeping).
+    /// </summary>
+    public DateTimeOffset? CommandsClearedAt { get; set; }
+
+    public DateTimeOffset? LogsClearedAt { get; set; }
 }
