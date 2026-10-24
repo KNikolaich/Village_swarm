@@ -46,6 +46,18 @@ public sealed class FakeNvr : IAsyncDisposable
     /// <summary>Set: the account is locked for so many seconds, every request with a login gets Dahua's 403 and its error.</summary>
     public volatile int LockedFor;
 
+    /// <summary>A channel listed here answers so many more snapshots, then none (a busy NVR in the middle of a burst).</summary>
+    public ConcurrentDictionary<int, int> SnapshotsLeft { get; } = new();
+
+    /// <summary>Counts down a channel's snapshots left (only for a channel listed); true once they are spent.</summary>
+    private bool SpentAll(int channel)
+    {
+        while (SnapshotsLeft.TryGetValue(channel, out var left))
+            if (SnapshotsLeft.TryUpdate(channel, left - 1, left))
+                return left <= 0;
+        return false;
+    }
+
     /// <summary>Channels whose snapshot.cgi answers like a Dahua NVR with a third-party ONVIF camera: 200, text, no JPEG.</summary>
     public ConcurrentDictionary<int, bool> NoSnapshot { get; } = new();
 
@@ -128,7 +140,8 @@ public sealed class FakeNvr : IAsyncDisposable
             case "LogicDeviceManager.cgi":
                 await ctx.Response.WriteAsync("states[0].channel=0\r\nstates[0].connectionState=Connected\r\nstates[1].channel=1\r\nstates[1].connectionState=Connected\r\nstates[2].channel=2\r\nstates[2].connectionState=Disconnected\r\n");
                 break;
-            case "snapshot.cgi" when int.TryParse(ctx.Request.Query["channel"], out var ch) && NoSnapshot.ContainsKey(ch):
+            case "snapshot.cgi" when int.TryParse(ctx.Request.Query["channel"], out var ch)
+                                     && (NoSnapshot.ContainsKey(ch) || SpentAll(ch)):
                 Interlocked.Increment(ref Snapshots);
                 ctx.Response.ContentType = "text/plain";
                 await ctx.Response.WriteAsync("Error\r\nInternal Error\r\n");

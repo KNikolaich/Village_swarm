@@ -133,8 +133,77 @@ public sealed class IpCamSnapshotTests
         var args = FfmpegFrameGrabber.Arguments("rtsp://u:p@h:554/x", 3, TimeSpan.FromMilliseconds(700)).ToList();
         Assert.DoesNotContain("-skip_frame", args); // the frames after the key frame are wanted, decoded against it
         var filter = args[args.IndexOf("-vf") + 1];
-        Assert.Equal("select='eq(pict_type\\,I)+not(isnan(prev_selected_n))',fps=1000/700", filter);
+        Assert.Equal("select='eq(pict_type\\,I)+not(isnan(prev_selected_n))',fps=1000/700,showinfo", filter);
+        Assert.Equal("info", args[args.IndexOf("-loglevel") + 1]); // showinfo speaks at info level
         Assert.True(args.IndexOf("-vf") > args.IndexOf("-i"), "the filter is an output option");
         Assert.Equal("3", args[args.IndexOf("-frames:v") + 1]);
+    }
+
+    [Fact]
+    public void Showinfo_lines_give_the_frames_time_in_the_stream()
+    {
+        Assert.Equal(0.7, FfmpegFrameGrabber.ShowInfoTime("[Parsed_showinfo_2 @ 0x5583] n:   1 pts:  63000 pts_time:0.7     duration:  6300 fmt:yuvj420p"));
+        Assert.Equal(12.5005, FfmpegFrameGrabber.ShowInfoTime("[Parsed_showinfo_2 @ 0x5583] n:   0 pts:1125045 pts_time:12.5005 duration:3600"));
+        Assert.Null(FfmpegFrameGrabber.ShowInfoTime("Input #0, rtsp, from 'rtsp://***':"));
+        Assert.Null(FfmpegFrameGrabber.ShowInfoTime("[Parsed_showinfo_2 @ 0x5583] config in time_base: 1/90000, frame_rate: 25/1"));
+    }
+
+    [Fact]
+    public void One_failure_does_not_move_the_preferred_way_three_do_and_a_faster_one_comes_back()
+    {
+        var t0 = DateTimeOffset.Parse("2026-10-24T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        string[] both = ["cgi", "rtsp"];
+        var chooser = new WayChooser("cgi");
+        Assert.Null(chooser.Record("cgi", true, 750, t0));
+        Assert.Equal(both, chooser.Order(both, t0));
+
+        // A busy NVR misses one snapshot: the stream gives the frame this time, cgi stays first.
+        Assert.Null(chooser.Record("cgi", false, 6000, t0.AddMinutes(1)));
+        Assert.Null(chooser.Record("rtsp", true, 3500, t0.AddMinutes(1)));
+        Assert.Equal("cgi", chooser.Preferred);
+        Assert.Null(chooser.Record("cgi", true, 760, t0.AddMinutes(2)));
+
+        // Three misses in a row: the stream goes first.
+        chooser.Record("cgi", false, 6000, t0.AddMinutes(3));
+        chooser.Record("rtsp", true, 3400, t0.AddMinutes(3));
+        chooser.Record("cgi", false, 6000, t0.AddMinutes(4));
+        chooser.Record("rtsp", true, 3300, t0.AddMinutes(4));
+        Assert.Equal("cgi", chooser.Preferred);
+        var change = chooser.Record("cgi", false, 6000, t0.AddMinutes(5));
+        Assert.Equal(new WaySwitch("cgi", "rtsp", "cgi failed 3 times in a row"), change);
+        Assert.Equal(["rtsp", "cgi"], chooser.Order(both, t0.AddMinutes(6)));
+
+        // Ten minutes on, cgi is tried first again; it works and is faster: back to cgi.
+        Assert.Equal(both, chooser.Order(both, t0.AddMinutes(16)));
+        var back = chooser.Record("cgi", true, 700, t0.AddMinutes(16));
+        Assert.Equal("cgi", back!.To);
+        Assert.Contains("first frame", back.Reason);
+    }
+
+    [Fact]
+    public void A_channel_stored_as_rtsp_tries_cgi_once_again()
+    {
+        var t0 = DateTimeOffset.Parse("2026-10-24T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        string[] both = ["cgi", "rtsp"];
+        var chooser = new WayChooser("rtsp");
+        Assert.Equal(both, chooser.Order(both, t0)); // cgi never tried in this run: it goes first once
+        chooser.Record("cgi", true, 750, t0);
+        chooser.Record("rtsp", true, 3600, t0.AddMinutes(1));
+        Assert.Equal(["rtsp", "cgi"], chooser.Order(both, t0.AddMinutes(2)));
+        Assert.Equal(both, chooser.Order(both, t0.AddMinutes(12))); // cgi was faster: retried after ten minutes
+        Assert.Equal("cgi", chooser.Record("cgi", true, 740, t0.AddMinutes(12))!.To);
+    }
+
+    [Fact]
+    public void A_slower_way_that_works_is_not_retried_for_nothing()
+    {
+        var t0 = DateTimeOffset.Parse("2026-10-24T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        string[] both = ["cgi", "rtsp"];
+        var chooser = new WayChooser("cgi");
+        chooser.Record("cgi", true, 700, t0);
+        chooser.Record("cgi", false, 6000, t0.AddMinutes(1));
+        chooser.Record("rtsp", true, 3500, t0.AddMinutes(1));
+        chooser.Record("cgi", true, 700, t0.AddMinutes(2));
+        Assert.Equal(both, chooser.Order(both, t0.AddHours(1))); // rtsp works but is slower: cgi stays first, no retry of rtsp
     }
 }

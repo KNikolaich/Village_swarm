@@ -8,7 +8,10 @@ namespace Hive.Modules.IpCams;
 /// <summary>A frame could not be taken; the message says why and never holds a password.</summary>
 public sealed class SnapshotFailedException(string message) : Exception(message);
 
-/// <summary>Key frames of an RTSP stream as JPEGs (ffmpeg on the hive; a fake in tests).</summary>
+/// <summary>A frame as JPEG, and its time in the stream (seconds) when ffmpeg said it; null when unknown.</summary>
+public sealed record GrabbedFrame(byte[] Jpeg, double? PtsS);
+
+/// <summary>Frames of an RTSP stream as JPEGs (ffmpeg on the hive; a fake in tests).</summary>
 public interface IFrameGrabber
 {
     /// <summary>
@@ -16,7 +19,7 @@ public interface IFrameGrabber
     /// then frames <paramref name="spacing"/> apart. The first must come within <paramref name="firstTimeout"/> (else
     /// <see cref="SnapshotFailedException"/>); later ones end the sequence when they are late.
     /// </summary>
-    IAsyncEnumerable<byte[]> GrabAsync(string rtspUrl, int count, TimeSpan spacing, TimeSpan firstTimeout, CancellationToken ct);
+    IAsyncEnumerable<GrabbedFrame> GrabAsync(string rtspUrl, int count, TimeSpan spacing, TimeSpan firstTimeout, CancellationToken ct);
 }
 
 /// <summary>
@@ -37,7 +40,8 @@ public sealed class FfmpegFrameGrabber : IFrameGrabber
     /// </summary>
     public static IReadOnlyList<string> Arguments(string rtspUrl, int count, TimeSpan spacing)
     {
-        var args = new List<string> { "-hide_banner", "-loglevel", "error" };
+        // A burst also has showinfo tell each frame's time in the stream (info level), so the spacing of the photos is known.
+        var args = new List<string> { "-hide_banner", "-nostats", "-loglevel", count > 1 ? "info" : "error" };
         if (count == 1)
             args.AddRange(["-skip_frame", "nokey"]);
         // Do not study the stream for seconds before the first frame.
@@ -46,7 +50,7 @@ public sealed class FfmpegFrameGrabber : IFrameGrabber
         {
             // Selected: the first I-frame, and every frame once one has been selected (prev_selected_n is NAN until then).
             var ms = Math.Max(100, (int)spacing.TotalMilliseconds).ToString(CultureInfo.InvariantCulture);
-            args.AddRange(["-vf", $"select='eq(pict_type\\,I)+not(isnan(prev_selected_n))',fps=1000/{ms}"]);
+            args.AddRange(["-vf", $"select='eq(pict_type\\,I)+not(isnan(prev_selected_n))',fps=1000/{ms},showinfo"]);
         }
         else
             args.AddRange(["-fps_mode", "passthrough"]); // each key frame once, as it comes (no frames repeated to fill a rate)
@@ -54,7 +58,7 @@ public sealed class FfmpegFrameGrabber : IFrameGrabber
         return args;
     }
 
-    public async IAsyncEnumerable<byte[]> GrabAsync(string rtspUrl, int count, TimeSpan spacing, TimeSpan firstTimeout, [EnumeratorCancellation] CancellationToken ct)
+    public async IAsyncEnumerable<GrabbedFrame> GrabAsync(string rtspUrl, int count, TimeSpan spacing, TimeSpan firstTimeout, [EnumeratorCancellation] CancellationToken ct)
     {
         var start = new ProcessStartInfo("ffmpeg")
         {
@@ -75,7 +79,26 @@ public sealed class FfmpegFrameGrabber : IFrameGrabber
             throw new SnapshotFailedException("rtsp: ffmpeg is not installed on the hive");
         }
 
-        var stderr = process.StandardError.ReadToEndAsync(CancellationToken.None);
+        // stderr read line by line as it comes: showinfo's frame times, and the last lines for a failure's reason.
+        var times = new System.Collections.Concurrent.ConcurrentQueue<double>();
+        var said = new Queue<string>();
+        var stderr = Task.Run(async () =>
+        {
+            while (await process.StandardError.ReadLineAsync() is { } line)
+            {
+                if (ShowInfoTime(line) is { } t)
+                {
+                    times.Enqueue(t);
+                    continue;
+                }
+                lock (said)
+                {
+                    said.Enqueue(line);
+                    while (said.Count > 6)
+                        said.Dequeue();
+                }
+            }
+        }, CancellationToken.None);
         var output = process.StandardOutput.BaseStream;
         var pending = new MemoryStream();
         var chunk = new byte[64 * 1024];
@@ -97,16 +120,20 @@ public sealed class FfmpegFrameGrabber : IFrameGrabber
                 foreach (var frame in JpegStream.TakeFrames(pending))
                 {
                     got++;
-                    yield return frame;
+                    // showinfo prints a frame before it is encoded: its time is normally there already.
+                    yield return new GrabbedFrame(frame, times.TryDequeue(out var pts) ? pts : null);
                     if (got >= count)
                         break;
                 }
             }
             if (got == 0)
             {
-                var said = await stderr.WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None).ContinueWith(t => t.IsCompletedSuccessfully ? t.Result : "", TaskScheduler.Default);
+                await stderr.WaitAsync(TimeSpan.FromSeconds(2), CancellationToken.None).ContinueWith(_ => { }, TaskScheduler.Default);
                 var exit = process.HasExited ? process.ExitCode.ToString(CultureInfo.InvariantCulture) : "?";
-                throw new SnapshotFailedException($"rtsp: ffmpeg exit {exit}: {Snapshots.Redact(said, rtspUrl).Trim()}");
+                string last;
+                lock (said)
+                    last = string.Join(" ", said.Where(l => !l.StartsWith("  ", StringComparison.Ordinal)).TakeLast(3));
+                throw new SnapshotFailedException($"rtsp: ffmpeg exit {exit}: {Snapshots.Redact(last, rtspUrl).Trim()}");
             }
         }
         finally
@@ -116,6 +143,12 @@ public sealed class FfmpegFrameGrabber : IFrameGrabber
     }
 
     private const int Timeout = -1;
+
+    private static readonly System.Text.RegularExpressions.Regex PtsTime = new(@"Parsed_showinfo.*\bpts_time:\s*(-?[0-9.]+)", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>The stream time of a showinfo line (<c>[Parsed_showinfo_2 @ …] n:   1 pts: 63000 pts_time:0.7 …</c>), else null.</summary>
+    public static double? ShowInfoTime(string line) =>
+        PtsTime.Match(line) is { Success: true } m && double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var t) ? t : null;
 
     /// <summary>One read from ffmpeg's output, or <see cref="Timeout"/> when nothing came in time.</summary>
     private static async Task<int> ReadAsync(Stream output, byte[] chunk, TimeSpan timeout, CancellationToken ct)
