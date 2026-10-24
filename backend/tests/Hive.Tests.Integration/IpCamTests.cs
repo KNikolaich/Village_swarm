@@ -385,4 +385,48 @@ public sealed class IpCamTests(HiveFixture hive) : IAsyncLifetime
         var failed = await hive.QueryAsync(db => db.Events.SingleAsync(e => e.DeviceId == cam && e.Type == "photo_failed"));
         Assert.Contains("Internal Error", failed.Payload.RootElement.GetProperty("reason").GetString());
     }
+
+    [Fact]
+    public async Task A_grey_frame_is_refused_and_the_other_stream_gives_the_photo()
+    {
+        hive.Grabber.Reset();
+        hive.Grabber.GreySubtypes["subtype=1"] = true; // the sub-stream decoded mid-GOP, as it was all night
+        using var admin = await hive.LoginAsync();
+        var nvr = await AddNvrAsync(admin, "Серый", new IpCamChannelRequest(1, "Ворота", SnapshotSource: SnapshotSources.Rtsp));
+        var cam = nvr.Channels[0].DeviceId;
+
+        using var sent = await admin.PostAsJsonAsync($"/api/devices/{cam}/commands", new { name = "snapshot" });
+        var cid = (await sent.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cid").GetString();
+        await hive.WaitForAsync(db => db.Commands.AnyAsync(c => c.Cid == cid && c.Status == CommandStatus.Ok), "snapshot from the main stream");
+        Assert.EndsWith("subtype=0", hive.Grabber.Urls.Last());
+        var photo = await hive.QueryAsync(db => db.Media.SingleAsync(m => m.DeviceId == cam && m.Kind == MediaKind.Snapshot));
+        var bytes = await File.ReadAllBytesAsync(Path.Combine(hive.MediaRoot, photo.Path));
+        Assert.False(Hive.Modules.Media.ImageTools.MeasureFlatness(bytes)!.Grey);
+
+        var shown = (await admin.GetFromJsonAsync<List<NvrDto>>("/api/ipcams"))!.Single(n => n.Id == nvr.Id);
+        Assert.Contains("grey frame", shown.Channels[0].LastSnapshot!.Error);
+
+        // Only grey from both streams: no photo stored at all, and the reason in the feed.
+        hive.Grabber.GreySubtypes["subtype=0"] = true;
+        using var again = await admin.PostAsJsonAsync($"/api/devices/{cam}/commands", new { name = "snapshot" });
+        var cid2 = (await again.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cid").GetString();
+        await hive.WaitForAsync(db => db.Commands.AnyAsync(c => c.Cid == cid2 && c.Status == CommandStatus.Error), "grey only: refused");
+        Assert.Equal(1, await hive.QueryAsync(db => db.Media.CountAsync(m => m.DeviceId == cam)));
+        await hive.WaitForAsync(db => db.Events.AnyAsync(e => e.DeviceId == cam && e.Type == "photo_failed"), "grey frames in the feed");
+    }
+
+    [Fact]
+    public async Task Alarm_photos_from_the_stream_come_from_one_ffmpeg_run()
+    {
+        hive.Grabber.Reset();
+        using var admin = await hive.LoginAsync();
+        var nvr = await AddNvrAsync(admin, "Залп", new IpCamChannelRequest(1, "Ворота", RecordWhenDisarmed: true, SnapshotSource: SnapshotSources.Rtsp));
+        var cam = nvr.Channels[0].DeviceId;
+
+        _nvr.Motion(0);
+        await hive.WaitForAsync(db => db.Events.AnyAsync(e => e.DeviceId == cam && e.Type == "motion"), "motion");
+        var id = await hive.QueryAsync(db => db.Events.Where(e => e.DeviceId == cam && e.Type == "motion").Select(e => e.Id).SingleAsync());
+        await hive.WaitForAsync(db => db.Media.CountAsync(m => m.EventId == id).ContinueWith(t => t.Result == 3), "three photos");
+        Assert.Single(hive.Grabber.Urls);
+    }
 }

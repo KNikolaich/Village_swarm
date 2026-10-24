@@ -55,12 +55,17 @@ The video stream for a later stage is `rtsp://{host}/cam/realmonitor?channel=N&s
     of a third-party ONVIF camera (it answers 200 with `Error` text). The way that worked is kept as `snapshotVia` and goes
     first next time.
   - `cgi`: only `snapshot.cgi`; `rtsp`: only the stream.
-  - RTSP: `ffmpeg -fflags nobuffer -analyzeduration 1000000 -probesize 1000000 -rtsp_transport tcp -i rtsp://{user}:{pass}@{host}:{rtspPort}/cam/realmonitor?channel=N&subtype=S -an -frames:v 1 -q:v 3 -f image2 -`,
-    12 s at most per stream. `snapshotQuality` `fast` (default) takes the light sub-stream (`subtype=1`) first, `detailed` the
-    main stream (`subtype=0`) first; the other one follows when the first gives nothing, for alarms and buttons alike.
-    ffmpeg is in the api image. The URL with the login is passed as one argument and cut out of ffmpeg's messages; it is
-    never logged or returned.
-  - One NVR is asked one frame at a time (a queue per NVR, 50 s at most per request with the wait); a request for a channel
+  - RTSP: `ffmpeg -skip_frame nokey -analyzeduration 1000000 -probesize 1000000 -rtsp_transport tcp -i rtsp://{user}:{pass}@{host}:{rtspPort}/cam/realmonitor?channel=N&subtype=S -an -fps_mode passthrough -frames:v K -q:v 3 -f image2pipe -c:v mjpeg -`.
+    Key frames only: decoding from whatever frame comes first (mid-GOP) gives grey pictures with fragments of what moved.
+    The first key frame within 12 s, the next ones within 10 s each. An alarm's photos are K = 3 successive key frames of one
+    run, each stored as it comes; a look is K = 1. `snapshotQuality` `fast` (default) takes the light sub-stream
+    (`subtype=1`) first, `detailed` the main stream (`subtype=0`) first; the other one follows when the first gives nothing,
+    for alarms and buttons alike. ffmpeg is in the api image. The URL with the login is passed as one argument and cut out
+    of ffmpeg's messages; it is never logged or returned.
+  - Every frame, from cgi or RTSP, is checked: a grey one (brightness mean 100–156 and nearly all pixels within ±4 of it, or
+    almost no spread) is refused (`snapshot rejected: grey frame` in the log, the reason in the diagnostics) and the next
+    stream or way is tried. Dark night pictures are flat but not grey, and stay.
+  - One NVR is asked one frame at a time (a queue per NVR, 60 s at most per request with the wait); a request for a channel
     that already has one under way joins it. The size and time of each frame are logged.
   - A failure is logged (NVR id, channel, HTTP status, content type, the start of a non-JPEG body, ffmpeg's error) and written
     to the camera's journal as `warn` `snapshot failed: …`; a press or a motion that got no frame also leaves an `info` event

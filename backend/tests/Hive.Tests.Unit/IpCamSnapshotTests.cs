@@ -1,5 +1,7 @@
 using System.Text;
 using Hive.Modules.IpCams;
+using Hive.Modules.Media;
+using SkiaSharp;
 
 namespace Hive.Tests.Unit;
 
@@ -51,5 +53,77 @@ public sealed class IpCamSnapshotTests
 
         Assert.False(NvrAuthError.Parse(401, "").Locked);
         Assert.False(NvrAuthError.Parse(403, "Error\r\nNo Authority!\r\n").Locked);
+    }
+
+    private static byte[] Jpeg(int width, int height, Action<SKBitmap> paint)
+    {
+        using var bitmap = new SKBitmap(width, height);
+        paint(bitmap);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Jpeg, 85);
+        return data.ToArray();
+    }
+
+    [Fact]
+    public void Grey_frames_of_a_broken_decode_are_told_from_real_pictures_dark_ones_included()
+    {
+        var grey = Jpeg(320, 240, b => b.Erase(new SKColor(128, 128, 128)));
+        var greyWithFragments = Jpeg(320, 240, b =>
+        {
+            b.Erase(new SKColor(127, 128, 129));
+            for (var x = 30; x < 38; x++)
+                for (var y = 10; y < 18; y++)
+                    b.SetPixel(x, y, new SKColor(190, 40, 200)); // a bit of someone walking by
+        });
+        var random = new Random(7);
+        var scene = Jpeg(320, 240, b =>
+        {
+            for (var x = 0; x < b.Width; x++)
+                for (var y = 0; y < b.Height; y++)
+                    b.SetPixel(x, y, new SKColor((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256)));
+        });
+        var night = Jpeg(320, 240, b => b.Erase(new SKColor(18, 20, 18)));
+
+        Assert.True(ImageTools.MeasureFlatness(grey)!.Grey);
+        Assert.True(ImageTools.MeasureFlatness(greyWithFragments)!.Grey);
+        Assert.False(ImageTools.MeasureFlatness(scene)!.Grey);
+        Assert.False(ImageTools.MeasureFlatness(night)!.Grey); // flat, but a dark yard at night is a real picture
+        Assert.Null(ImageTools.MeasureFlatness([1, 2, 3]));
+    }
+
+    [Fact]
+    public void Jpegs_are_cut_out_of_ffmpegs_pipe_whatever_the_chunks()
+    {
+        var a = Jpeg(64, 48, b => b.Erase(SKColors.Red));
+        var c = Jpeg(80, 60, b => b.Erase(SKColors.Blue));
+        var pipe = a.Concat(c).ToArray();
+
+        var buffer = new MemoryStream();
+        var frames = new List<byte[]>();
+        foreach (var piece in pipe.Chunk(37))
+        {
+            buffer.Write(piece);
+            frames.AddRange(JpegStream.TakeFrames(buffer));
+        }
+        Assert.Equal(2, frames.Count);
+        Assert.Equal(a, frames[0]);
+        Assert.Equal(c, frames[1]);
+        Assert.Equal(0, buffer.Length);
+
+        buffer.Write(a.AsSpan(0, a.Length - 1)); // the end has not come yet
+        Assert.Empty(JpegStream.TakeFrames(buffer));
+        Assert.Equal(a.Length - 1, buffer.Length);
+    }
+
+    [Fact]
+    public void Ffmpeg_decodes_key_frames_only_and_does_not_repeat_them()
+    {
+        var args = FfmpegFrameGrabber.Arguments("rtsp://u:p@h:554/x", 3);
+        var input = args.ToList().IndexOf("-i");
+        Assert.True(args.ToList().IndexOf("nokey") is var k && k > 0 && k < input, "-skip_frame nokey goes on the input");
+        Assert.Equal("-skip_frame", args[args.ToList().IndexOf("nokey") - 1]);
+        Assert.DoesNotContain("nobuffer", args);
+        Assert.Equal("passthrough", args[args.ToList().IndexOf("-fps_mode") + 1]);
+        Assert.Equal("3", args[args.ToList().IndexOf("-frames:v") + 1]);
     }
 }
