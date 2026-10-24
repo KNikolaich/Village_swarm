@@ -1,5 +1,6 @@
 using Hive.Domain;
 using Hive.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -78,6 +79,7 @@ public sealed class IngestPipeline(
         var unique = Deduplicate(batch);
         if (unique.Count == 0)
             return;
+        unique = await ArrivingAsync(unique, ct);
 
         while (true)
         {
@@ -111,6 +113,33 @@ public sealed class IngestPipeline(
                 logger.LogError(ex, "Ingest listener {Listener} failed", listener.GetType().Name);
             }
         }
+    }
+
+    /// <summary>
+    /// While the family is on its way (presence arriving), an alarm from an armed camera becomes a quiet warning with its photos
+    /// (<see cref="ArrivingMode"/>): stored so, and seen so by the rules, the feed and Telegram. Guard-cams report alarm whenever
+    /// they are armed; the mode is the hive's to know.
+    /// </summary>
+    private async Task<List<IngestItem>> ArrivingAsync(List<IngestItem> items, CancellationToken ct)
+    {
+        static bool Candidate(IngestItem i) => i is DeviceEventReceived { Severity: EventSeverity.Alarm } e && ArrivingMode.Concerns(e.Type);
+        if (!items.Any(Candidate))
+            return items;
+        string? presence;
+        try
+        {
+            using var scope = scopes.CreateScope();
+            presence = await scope.ServiceProvider.GetRequiredService<HiveDbContext>().Modes.AsNoTracking()
+                .Where(m => m.Key == Mode.Presence).Select(m => m.Value).FirstOrDefaultAsync(ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Guard mode not read; alarms stay alarms");
+            return items;
+        }
+        return presence == Mode.PresenceArriving
+            ? items.Select(i => Candidate(i) ? ArrivingMode.Quieten((DeviceEventReceived)i) : i).ToList()
+            : items;
     }
 
     private List<IngestItem> Deduplicate(List<IngestItem> batch)

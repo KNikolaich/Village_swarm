@@ -133,7 +133,7 @@ public sealed class FakeTelegram : IAsyncDisposable
                     ? int.Parse(form["message_id"]!, System.Globalization.CultureInfo.InvariantCulture)
                     : Interlocked.Increment(ref _messageId);
                 Outbox.Enqueue(new Sent(method.ToLowerInvariant(), chat, form.GetValueOrDefault("text"), id, 0,
-                    ReplyTo(form), form.GetValueOrDefault("disable_notification") == "true", form.GetValueOrDefault("reply_markup")));
+                    ReplyTo(form), string.Equals(form.GetValueOrDefault("disable_notification"), "true", StringComparison.OrdinalIgnoreCase), form.GetValueOrDefault("reply_markup")));
                 await Reply(ctx, true, Message(chat, id, form.GetValueOrDefault("text")));
                 break;
             case "sendmediagroup":
@@ -148,8 +148,14 @@ public sealed class FakeTelegram : IAsyncDisposable
                     messages.Add(Message(mediaChat, mid, null));
                 }
                 Outbox.Enqueue(new Sent("sendmediagroup", mediaChat, null, first, media.Count, ReplyTo(form),
-                    form.GetValueOrDefault("disable_notification") == "true", null));
+                    string.Equals(form.GetValueOrDefault("disable_notification"), "true", StringComparison.OrdinalIgnoreCase), null));
                 await Reply(ctx, true, messages);
+                break;
+            case "editmessagereplymarkup":
+                var editChat = long.Parse(form["chat_id"]!, System.Globalization.CultureInfo.InvariantCulture);
+                var editId = int.Parse(form["message_id"]!, System.Globalization.CultureInfo.InvariantCulture);
+                Outbox.Enqueue(new Sent("editmessagereplymarkup", editChat, null, editId, 0, null, false, form.GetValueOrDefault("reply_markup")));
+                await Reply(ctx, true, Message(editChat, editId, null));
                 break;
             case "sendchataction":
                 await Reply(ctx, true, true);

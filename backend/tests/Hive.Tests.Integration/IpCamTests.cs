@@ -121,13 +121,19 @@ public sealed class IpCamTests(HiveFixture hive) : IAsyncLifetime
         await Task.Delay(2500);
         Assert.Equal(1, await hive.QueryAsync(db => db.Events.CountAsync(e => e.DeviceId == gate && e.Type == "motion")));
 
-        // Arriving: a quiet warning, photos kept but not pushed.
+        // Arriving: quiet, but with its photos and the disarm / "not us" buttons.
         Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync("/api/modes/armed", new { armed = true, mode = "arriving" })).StatusCode);
         _nvr.Motion(2);
         var warn = await Tg.WaitForAsync(s => s.ChatId == chat && s.Method == "sendmessage" && s.Text?.Contains(garden) == true, "arriving warning");
         Assert.True(warn.Silent);
+        Assert.Contains("едут хозяева", warn.Text);
+        Assert.Contains("arr:disarm", warn.Buttons);
+        Assert.Contains("arr:arm", warn.Buttons);
+        var quietAlbum = await Tg.WaitForAsync(s => s.ChatId == chat && s.Method == "sendmediagroup" && s.ReplyTo == warn.MessageId, "arriving photos");
+        Assert.True(quietAlbum.Silent);
         var arriving = await hive.QueryAsync(db => db.Events.SingleAsync(e => e.DeviceId == garden && e.Type == "motion"));
         Assert.Equal(EventSeverity.Warn, arriving.Severity);
+        Assert.True(arriving.Payload.RootElement.GetProperty("arriving").GetBoolean());
         await hive.WaitForAsync(db => db.Media.CountAsync(m => m.EventId == arriving.Id).ContinueWith(t => t.Result == 3), "arriving photos stored");
 
         // Disarmed: the feed only, no photos, nothing in Telegram.

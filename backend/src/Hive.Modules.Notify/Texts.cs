@@ -58,7 +58,9 @@ public static class Texts
     /// <summary>"🚨 <b>Движение</b>: Ворота · 23:14:25", the place being the zone or the device name.</summary>
     public static string Event(DeviceEvent e, string place, DateTimeOffset localTs, int repeat = 1)
     {
-        var text = $"{Icon(e.Severity)} <b>{H(EventType(e.Type))}</b>: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}";
+        var text = Hive.Modules.Telemetry.Ingest.ArrivingMode.Is(e.Payload)
+            ? $"🚗 <b>{H(EventType(e.Type))}</b>, едут хозяева: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}\nЕсли это не вы — нажмите «Это не мы», охрана включится."
+            : $"{Icon(e.Severity)} <b>{H(EventType(e.Type))}</b>: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}";
         if (e.Type == "ota")
             text += OtaDetail(e.Payload.RootElement);
         if (e.Type == "ota_rollout")

@@ -40,7 +40,7 @@ The video stream for a later stage is `rtsp://{host}/cam/realmonitor?channel=N&s
 
 - **Motion**: `VideoMotion` `Start` of a channel → event `motion` of that device, through the same pipeline as MQTT events.
   Ignored for 20 s after the last one of the same channel (cooldown). `Stop` is ignored.
-  - guard armed → `alarm`, `armed: true`; guard "arriving" → `warn`; disarmed → `info` (feed only).
+  - guard armed → `alarm`, `armed: true`; guard "arriving" → `warn` with `"arriving": true` (see below); disarmed → `info` (feed only).
   - photos: 3 snapshots 0.7 s apart, stored as media of the event (`{event id}-1..3`), only when the guard is armed or
     arriving, or the channel has `recordWhenDisarmed`. The event payload lists them in `photos`, so Telegram sends them with
     the alarm (spec 9.5) as for a guard-cam: the album goes 3 s after the first photo is saved, with what has come by then;
@@ -115,3 +115,17 @@ ONVIF (SOAP 1.2, WS-UsernameToken with PasswordDigest = Base64(SHA1(nonce + crea
 - No event service: `motion: none`, the camera is online while it answers `GetSystemDateAndTime`, snapshots work, motion and
   alarms do not; the settings say so.
 - A refused login (`ter:NotAuthorized` or 401) counts in the same lockout guard as Dahua's.
+
+## "Едут хозяева" (guard mode arriving), for every camera
+
+The cameras stay armed while the family is on its way, so their motion is most likely the family. Such motion is a quiet
+message **with photos**:
+
+- The event is `warn` with `"arriving": true` in its payload. IP cameras make it so themselves; a guard-cam reports `alarm`
+  (its firmware knows only armed or not), and the hive turns its `motion`/`door_open` alarm into this when presence is
+  `arriving`, before it is stored (`ArrivingMode`, `IngestPipeline`). No firmware change.
+- Telegram: the text, silent, "🚗 Движение, едут хозяева: …", and its photos as a silent album (the same 3 s window, late
+  photos as replies). Buttons: **🔓 Снять охрану** (asks "Да, снять / Отмена" in place, then disarms) and **🚨 Это не мы**
+  (arms at once: guard armed, presence away). The message keeps its text and photos; its buttons say what was done.
+- Grouped apart from alarms (`{device}:{type}:arriving`), so a real alarm right after is never folded into it.
+- Other warnings stay text only, without photos.

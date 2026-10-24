@@ -183,6 +183,9 @@ public sealed class BotCommands(
                     await MuteAsync(caller, double.TryParse(arg, CultureInfo.InvariantCulture, out var h) ? h : 1, ct);
                     answer = "Предупреждения на паузе";
                     break;
+                case "arr" when Require(caller):
+                    answer = await ArrivingAsync(caller, chat, arg, callback.Message?.MessageId, ct);
+                    break;
                 case "disarm" when Require(caller):
                     if (arg == "yes")
                     {
@@ -202,6 +205,37 @@ public sealed class BotCommands(
             }
         }
         await telegram.CallAsync(bot => bot.AnswerCallbackQuery(callback.Id, answer, cancellationToken: ct), ct);
+    }
+
+    /// <summary>
+    /// The buttons under motion while the family is on its way: "Снять охрану" asks again in place, then disarms; "Это не мы"
+    /// arms at once (it is the safe way). The message keeps its text and photos; its buttons say what was done.
+    /// </summary>
+    private async Task<string> ArrivingAsync(Caller caller, long chat, string action, int? messageId, CancellationToken ct)
+    {
+        static InlineKeyboardMarkup Done(string text) => new([[InlineKeyboardButton.WithCallbackData(text, "arr:done")]]);
+        (string Answer, InlineKeyboardMarkup? Buttons) result = action switch
+        {
+            "disarm" => ("Точно снять охрану?", new InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton.WithCallbackData("Да, снять", "arr:disarm-yes"), InlineKeyboardButton.WithCallbackData("Отмена", "arr:back")],
+            ])),
+            "back" => ("Охрана не тронута", NotificationOutbox.ArrivingButtons()),
+            _ => ("Уже сделано", null),
+        };
+        if (action == "disarm-yes")
+        {
+            await arm.SetModeAsync(ArmService.Disarmed, caller.Actor, ct);
+            result = ("Охрана снята", Done("🔓 Охрана снята"));
+        }
+        else if (action == "arm")
+        {
+            await arm.SetModeAsync(ArmService.ArmedMode, caller.Actor, ct);
+            result = ("Охрана включена", Done("🛡 Охрана включена: это были не вы"));
+        }
+        if (messageId is { } m && result.Buttons is { } buttons)
+            await telegram.CallAsync(bot => bot.EditMessageReplyMarkup(chat, m, buttons, cancellationToken: ct), ct);
+        return result.Answer;
     }
 
     private async Task LinkAsync(Message message, string? code, CancellationToken ct)
