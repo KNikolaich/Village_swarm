@@ -17,6 +17,7 @@
 #include <HTTPClient.h>
 #include <HornetCore.h>
 #include <Outbox.h>
+#include <CameraRecovery.h>
 #include <PhotoArchive.h>
 #include <RelayTimer.h>
 #include <SD_MMC.h>
@@ -24,6 +25,7 @@
 #include <esp_camera.h>
 #include <esp_timer.h>
 
+#include <atomic>
 #include <cstdarg>
 #include <string>
 #include <vector>
@@ -45,6 +47,7 @@ constexpr int kNoWifi = -1001;
 constexpr int kBadUploadUrl = -1002;
 // Grabs per photo while the driver keeps handing out a frame started before the request.
 constexpr int kFreshFrameTries = 3;
+constexpr int kCameraPwdnPin = 32;
 
 // Pins the output must never take: camera, SD (1-bit), PSRAM, PIR, and the input-only 34..39.
 bool outputPinAllowed(int pin) {
@@ -60,7 +63,7 @@ bool outputPinAllowed(int pin) {
 // AI-Thinker camera pins.
 camera_config_t cameraConfig() {
     camera_config_t c = {};
-    c.pin_pwdn = 32;
+    c.pin_pwdn = kCameraPwdnPin;
     c.pin_reset = -1;
     c.pin_xclk = 0;
     c.pin_sccb_sda = 26;
@@ -132,7 +135,9 @@ public:
         cameraErr_ = esp_camera_init(&cameraConfigured());
         cameraOk_ = cameraErr_ == ESP_OK;
         if (!cameraOk_) Serial.printf("[guard-cam] camera init failed: 0x%x\n", static_cast<unsigned>(cameraErr_));
-        sdOk_ = SD_MMC.begin("/sdcard", true) && (SD_MMC.exists(kOutboxDir) || SD_MMC.mkdir(kOutboxDir)) &&
+        // 20 MHz, not the library's 40 MHz high speed: on this board a card in high-speed mode draws more and is
+        // noisier, and with a card in the camera stopped giving frames ("camera frame failed").
+        sdOk_ = SD_MMC.begin("/sdcard", true, false, SDMMC_FREQ_DEFAULT) && (SD_MMC.exists(kOutboxDir) || SD_MMC.mkdir(kOutboxDir)) &&
                 (SD_MMC.exists(kArchiveDir) || SD_MMC.mkdir(kArchiveDir));
         if (sdOk_) sdPending_ = tidyOutbox();
         setOutput(false);  // again after the SD driver set its pins up: the output starts off whatever the pin
@@ -174,11 +179,9 @@ public:
         if (!camera.isNull()) {
             burst_ = constrain(camera["burst"] | 3, 1, 10);
             burstIntervalMs_ = camera["burst_interval_ms"] | 700U;
-            if (cameraOk_) {
-                sensor_t* s = esp_camera_sensor_get();
-                s->set_framesize(s, frameSize(camera["frame"]));
-                s->set_quality(s, camera["quality"] | 12);
-            }
+            frame_ = frameSize(camera["frame"]);
+            quality_ = camera["quality"] | 12;
+            if (cameraOk_) applySensorSettings();
         }
         if (config["upload"]["primary"].is<const char*>()) uploadUrl_ = config["upload"]["primary"].as<String>();
     }
@@ -292,6 +295,7 @@ private:
     }
 
     void beginBurst(const String& eventId, const char* type, int count) {
+        capturing_ = true;
         burstEvent_ = eventId;
         burstType_ = type;
         burstLeft_ = count;
@@ -318,15 +322,28 @@ private:
 
     // One frame per burst interval, without blocking the loop.
     void captureStep(Core& core) {
-        if (burstLeft_ <= 0 || millis() < nextFrameMs_) return;
+        if (burstLeft_ <= 0) {
+            capturing_ = false;
+            return;
+        }
+        if (millis() < nextFrameMs_) return;
         nextFrameMs_ = millis() + burstIntervalMs_;
         --burstLeft_;
         const int64_t requestUs = esp_timer_get_time();
         camera_fb_t* fb = freshFrame(requestUs);
+        if (!fb && recovery_.failed(millis())) {
+            // A sensor that stopped answering often comes back after a power cycle and a fresh driver.
+            const esp_err_t err = restartCamera();
+            core.log(LogLevel::Warn, err == ESP_OK ? String("camera gave no frame, camera restarted")
+                                                   : "camera gave no frame, restart failed: 0x" + String(static_cast<unsigned>(err), HEX));
+            if (err == ESP_OK) fb = freshFrame(esp_timer_get_time());
+        }
         if (!fb) {
+            // The hive matches this exact text (EventsModule.CameraFrameFailedLog) to tell a missing frame from a lost upload.
             core.log(LogLevel::Warn, "camera frame failed");
             return;
         }
+        recovery_.succeeded();
         // The photo carries the time the frame was taken, so one that could not be refreshed shows its real age.
         const int64_t ageMs = (esp_timer_get_time() - frameStartUs(fb)) / 1000;
         if (frameStartUs(fb) < requestUs)
@@ -347,6 +364,24 @@ private:
         }
     }
 
+    void applySensorSettings() {
+        sensor_t* s = esp_camera_sensor_get();
+        if (!s) return;
+        s->set_framesize(s, frame_);
+        s->set_quality(s, quality_);
+    }
+
+    // Driver off, sensor powered down for a moment, then everything set up again with the current settings.
+    esp_err_t restartCamera() {
+        esp_camera_deinit();
+        pinMode(kCameraPwdnPin, OUTPUT);
+        digitalWrite(kCameraPwdnPin, HIGH);
+        delay(20);
+        const esp_err_t err = esp_camera_init(&cameraConfigured());
+        if (err == ESP_OK) applySensorSettings();
+        return err;
+    }
+
     String uploadUrl() const { return uploadUrl_.length() ? uploadUrl_ : core_->settings().uploadUrl; }
 
     static void uploadTask(void* arg) {
@@ -355,14 +390,22 @@ private:
         unsigned long nextSdFlush = 0;
         for (;;) {
             if (xQueueReceive(self->queue_, &p, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                self->waitForCamera();
                 self->deliver(p);
                 free(p.jpeg);
             }
             if (self->sdOk_ && millis() >= nextSdFlush && self->core_->online()) {
                 nextSdFlush = millis() + kSdRetryMs;
+                self->waitForCamera();
                 self->flushSd();
             }
         }
+    }
+
+    // The card is left alone while a burst is being taken: its writes (current peaks, PSRAM and bus traffic) next to
+    // the camera were what made frames fail. The photos wait in PSRAM meanwhile, a burst lasts a few seconds.
+    void waitForCamera() const {
+        for (int i = 0; sdOk_ && capturing_ && i < 300; ++i) vTaskDelay(pdMS_TO_TICKS(20));
     }
 
     // Card first, so a reboot cannot lose the photo; then the upload. Without a copy on the card the photo
@@ -638,6 +681,10 @@ private:
     int burstIndex_ = 0;
     unsigned long nextFrameMs_ = 0;
     volatile int sdPending_ = 0;
+    std::atomic<bool> capturing_{false};
+    CameraRecovery recovery_;
+    framesize_t frame_ = FRAMESIZE_SVGA;
+    int quality_ = 12;
     String channel_ = "relay";
     int outputPin_ = -1;
     bool activeLow_ = false;
