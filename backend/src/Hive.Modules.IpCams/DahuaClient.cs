@@ -4,19 +4,34 @@ using System.Net;
 namespace Hive.Modules.IpCams;
 
 /// <summary>Where an NVR is and how to log in (the password already decrypted).</summary>
-public sealed record NvrEndpoint(string Host, int Port, string Username, string Password, int RtspPort = 554)
+/// <summary>
+/// Where an NVR or a camera is and how to log in (the password already decrypted). SnapshotUrl, RtspMain and RtspSub are set for
+/// a camera that is not a Dahua (ONVIF, or typed in): they replace snapshot.cgi and the Dahua stream paths.
+/// </summary>
+public sealed record NvrEndpoint(
+    string Host, int Port, string Username, string Password, int RtspPort = 554,
+    string? SnapshotUrl = null, string? RtspMain = null, string? RtspSub = null)
 {
     public Uri BaseUri => new UriBuilder(Uri.UriSchemeHttp, Host, Port).Uri;
 
     private string RtspHost => RtspPort == 554 ? Host : $"{Host}:{RtspPort.ToString(CultureInfo.InvariantCulture)}";
 
+    /// <summary>Whether frames can come without the stream: Dahua's snapshot.cgi, or an ONVIF snapshot address.</summary>
+    public bool HasSnapshot => SnapshotUrl is not null || (RtspMain is null && RtspSub is null);
+
     /// <summary>The sub-stream of a channel, kept for the video stage (contracts/ipcam.md). No login in it: safe to show.</summary>
-    public string RtspUrl(int channel) => $"rtsp://{RtspHost}/cam/realmonitor?channel={channel}&subtype=1";
+    public string RtspUrl(int channel) =>
+        RtspSub ?? RtspMain ?? $"rtsp://{RtspHost}/cam/realmonitor?channel={channel}&subtype=1";
 
     /// <summary>The stream with the login in it, only for ffmpeg: never logged or sent to the browser.</summary>
-    public string RtspUrlWithLogin(int channel, int subtype) =>
-        $"rtsp://{Uri.EscapeDataString(Username)}:{Uri.EscapeDataString(Password)}@{Host}:{RtspPort.ToString(CultureInfo.InvariantCulture)}" +
-        $"/cam/realmonitor?channel={channel.ToString(CultureInfo.InvariantCulture)}&subtype={subtype.ToString(CultureInfo.InvariantCulture)}";
+    public string RtspUrlWithLogin(int channel, int subtype)
+    {
+        var given = subtype == 0 ? RtspMain ?? RtspSub : RtspSub ?? RtspMain;
+        if (given is not null && Uri.TryCreate(given, UriKind.Absolute, out var uri))
+            return new UriBuilder(uri) { UserName = Uri.EscapeDataString(Username), Password = Uri.EscapeDataString(Password) }.Uri.AbsoluteUri;
+        return $"rtsp://{Uri.EscapeDataString(Username)}:{Uri.EscapeDataString(Password)}@{Host}:{RtspPort.ToString(CultureInfo.InvariantCulture)}" +
+               $"/cam/realmonitor?channel={channel.ToString(CultureInfo.InvariantCulture)}&subtype={subtype.ToString(CultureInfo.InvariantCulture)}";
+    }
 }
 
 public sealed record ProbeChannelDto(int Channel, string? Title, bool? Connected, string RtspUrl);
@@ -25,7 +40,14 @@ public sealed record ProbeChannelDto(int Channel, string? Title, bool? Connected
 /// "Проверить": Ok, or Error = auth (wrong login), locked (the NVR locked the login after wrong ones), unreachable (no answer on
 /// host:port) or not_dahua (an answer, but not the Dahua API). Detail is the technical reason for the curious.
 /// </summary>
-public sealed record ProbeResultDto(bool Ok, string? Error, string? Detail, string? DeviceType, IReadOnlyList<ProbeChannelDto> Channels);
+/// <summary>
+/// For a camera on its own also: Vendor (dahua or onvif), Model, the addresses found (snapshot, streams, events) and Motion: how
+/// the camera tells motion (dahua, onvif) or "none" (snapshots only).
+/// </summary>
+public sealed record ProbeResultDto(
+    bool Ok, string? Error, string? Detail, string? DeviceType, IReadOnlyList<ProbeChannelDto> Channels,
+    string? Vendor = null, string? Model = null, string? SnapshotUrl = null, string? RtspMain = null, string? RtspSub = null,
+    string? EventsUrl = null, string? Motion = null);
 
 /// <summary>The NVR refused the login (<see cref="Error"/>), or the hive held the request back (<see cref="Block"/>).</summary>
 public sealed class NvrAuthException(string message, NvrAuthError? error = null, NvrBlock? block = null) : Exception(message)
@@ -80,7 +102,8 @@ public sealed class DahuaClient : IDisposable
         Guard();
         try
         {
-            using var response = await _http.GetAsync($"/cgi-bin/snapshot.cgi?channel={channel.ToString(CultureInfo.InvariantCulture)}", timeout.Token);
+            // An ONVIF camera's own snapshot address, else Dahua's.
+            using var response = await _http.GetAsync(Endpoint.SnapshotUrl ?? $"/cgi-bin/snapshot.cgi?channel={channel.ToString(CultureInfo.InvariantCulture)}", timeout.Token);
             await RefusedAsync(response, timeout.Token);
             var body = await response.Content.ReadAsByteArrayAsync(timeout.Token);
             var type = response.Content.Headers.ContentType?.MediaType ?? "no content type";

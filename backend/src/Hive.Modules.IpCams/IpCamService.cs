@@ -17,9 +17,16 @@ public sealed record IpCamChannelRequest(
     int Channel, string Name, int? ZoneId = null, bool RecordWhenDisarmed = false, string? SnapshotSource = null, string? SnapshotQuality = null);
 
 /// <summary>An empty Password on an update keeps the stored one.</summary>
-public sealed record NvrRequest(string Name, string Host, int? Port, string Username, string? Password, IReadOnlyList<IpCamChannelRequest> Channels, int? RtspPort = null);
+/// <summary>
+/// Kind camera: one camera on its own (one channel, 1). Vendor dahua or onvif, and for ONVIF the addresses "Проверить" found
+/// (SnapshotUrl, RtspMain, RtspSub, EventsUrl); RtspMain can also be typed in for a camera whose stream ONVIF does not give.
+/// </summary>
+public sealed record NvrRequest(
+    string Name, string Host, int? Port, string Username, string? Password, IReadOnlyList<IpCamChannelRequest> Channels, int? RtspPort = null,
+    string? Kind = null, string? Vendor = null, string? SnapshotUrl = null, string? RtspMain = null, string? RtspSub = null, string? EventsUrl = null);
 
-public sealed record NvrProbeRequest(string Host, int? Port, string Username, string Password);
+/// <summary>Kind camera: a camera on its own, tried as a Dahua and then as an ONVIF camera.</summary>
+public sealed record NvrProbeRequest(string Host, int? Port, string Username, string Password, string? Kind = null);
 
 /// <summary>SnapshotVia: how the last frame came (cgi or rtsp), null before the first one.</summary>
 public sealed record IpCamChannelDto(
@@ -29,9 +36,10 @@ public sealed record IpCamChannelDto(
 /// <summary>An NVR as the settings show it: never its password, only whether one is stored.</summary>
 /// <summary>Login: whether the hive may talk to the NVR now, or waits because it locked or refused the login (see NvrLogins).</summary>
 /// <summary>DeviceId: the NVR's own device in the swarm (nvr{id}), the parent of its channels' devices.</summary>
+/// <summary>Motion: how motion comes (dahua, onvif) or "none" (a camera that gives snapshots only).</summary>
 public sealed record NvrDto(
     int Id, string Name, string Host, int Port, string Username, bool PasswordSet, IReadOnlyList<IpCamChannelDto> Channels, int RtspPort, NvrLoginDto Login,
-    NvrStreamDto Stream, string DeviceId);
+    NvrStreamDto Stream, string DeviceId, string Kind, string Vendor, string Motion, string? SnapshotUrl, string? RtspMain, string? RtspSub);
 
 public enum NvrChange
 {
@@ -71,6 +79,16 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
     {
         var id = NvrDeviceId(nvr.Id);
         var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == id, ct);
+        if (nvr.Kind == NvrKinds.Camera)
+        {
+            // A camera on its own is a top-level device: no NVR row, no parent.
+            if (device is not null)
+                device.Status = DeviceStatus.Disabled;
+            var own = nvr.Channels.Select(c => c.DeviceId).ToList();
+            foreach (var child in await db.Devices.Where(d => own.Contains(d.DeviceId)).ToListAsync(ct))
+                child.ParentId = null;
+            return;
+        }
         if (device is null)
         {
             device = new Device { DeviceId = id, TypeCode = Cameras.Nvr, Name = nvr.Name, CreatedAt = now };
@@ -111,7 +129,7 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
     {
         try
         {
-            return logins.State(new NvrEndpoint(n.Host, n.Port, n.Username, _protector.Unprotect(n.PasswordProtected), n.RtspPort));
+            return logins.State(new NvrEndpoint(n.Host, n.Port, n.Username, _protector.Unprotect(n.PasswordProtected), n.RtspPort, n.SnapshotUrl, n.RtspMain, n.RtspSub));
         }
         catch (System.Security.Cryptography.CryptographicException)
         {
@@ -122,8 +140,11 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
     /// <summary>The stored login of an NVR, for "Проверить" and the live snapshot; null when there is no such NVR.</summary>
     public async Task<NvrEndpoint?> EndpointAsync(int id, CancellationToken ct) =>
         await db.Nvrs.AsNoTracking().FirstOrDefaultAsync(n => n.Id == id, ct) is { } n
-            ? new NvrEndpoint(n.Host, n.Port, n.Username, _protector.Unprotect(n.PasswordProtected), n.RtspPort)
+            ? new NvrEndpoint(n.Host, n.Port, n.Username, _protector.Unprotect(n.PasswordProtected), n.RtspPort, n.SnapshotUrl, n.RtspMain, n.RtspSub)
             : null;
+
+    public Task<bool> IsCameraAsync(int id, CancellationToken ct) =>
+        db.Nvrs.AnyAsync(n => n.Id == id && n.Kind == NvrKinds.Camera, ct);
 
     /// <summary>What the snapshot service needs of a channel: its device and settings when it is in the swarm, else auto.</summary>
     public async Task<SnapshotTarget> TargetAsync(int id, int channel, CancellationToken ct) =>
@@ -144,6 +165,12 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
             Host = Host(r.Host),
             Port = r.Port ?? 80,
             RtspPort = r.RtspPort ?? 554,
+            Kind = r.Kind ?? NvrKinds.Nvr,
+            Vendor = r.Vendor ?? CameraVendors.Dahua,
+            SnapshotUrl = Clean(r.SnapshotUrl),
+            RtspMain = Clean(r.RtspMain),
+            RtspSub = Clean(r.RtspSub),
+            EventsUrl = Clean(r.EventsUrl),
             Username = r.Username.Trim(),
             PasswordProtected = _protector.Protect(r.Password),
             CreatedAt = now,
@@ -172,6 +199,15 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
         nvr.Host = Host(r.Host);
         nvr.Port = r.Port ?? 80;
         nvr.RtspPort = r.RtspPort ?? nvr.RtspPort;
+        // A camera stays a camera; what "Проверить" found again replaces the old addresses.
+        nvr.Vendor = r.Vendor ?? nvr.Vendor;
+        if (r.Vendor is not null || r.RtspMain is not null || r.SnapshotUrl is not null || r.EventsUrl is not null)
+        {
+            nvr.SnapshotUrl = Clean(r.SnapshotUrl);
+            nvr.RtspMain = Clean(r.RtspMain);
+            nvr.RtspSub = Clean(r.RtspSub);
+            nvr.EventsUrl = Clean(r.EventsUrl);
+        }
         nvr.Username = r.Username.Trim();
         if (!string.IsNullOrEmpty(r.Password))
             nvr.PasswordProtected = _protector.Protect(r.Password);
@@ -275,6 +311,17 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
             return "channels: каналы повторяются";
         if (r.RtspPort is < 1 or > 65535)
             return "rtspPort: от 1 до 65535";
+        if (r.Kind is not null && !NvrKinds.IsKnown(r.Kind))
+            return "kind: nvr или camera";
+        if (r.Vendor is not null && !CameraVendors.IsKnown(r.Vendor))
+            return "vendor: dahua или onvif";
+        if (r.Kind == NvrKinds.Camera && (r.Channels.Count != 1 || r.Channels[0].Channel != 1))
+            return "channels: у отдельной камеры один канал, 1";
+        foreach (var (url, schemes) in new[] { (r.SnapshotUrl, "http https"), (r.RtspMain, "rtsp rtsps"), (r.RtspSub, "rtsp rtsps") })
+            if (!string.IsNullOrWhiteSpace(url) && !(Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u) && schemes.Split(' ').Contains(u.Scheme)))
+                return $"адрес «{url}» не подходит: нужен {schemes.Split(' ')[0]}://…";
+        if (r.Vendor == CameraVendors.Onvif && string.IsNullOrWhiteSpace(r.SnapshotUrl) && string.IsNullOrWhiteSpace(r.RtspMain) && string.IsNullOrWhiteSpace(r.RtspSub))
+            return "rtspMain: камера не дала ни снимка, ни видеопотока; впишите адрес RTSP";
         if (r.Channels.Any(c => c.SnapshotSource is not null && !SnapshotSources.IsKnown(c.SnapshotSource)))
             return "channels: снимок берётся auto, cgi или rtsp";
         if (r.Channels.Any(c => c.SnapshotQuality is not null && !SnapshotQualities.IsKnown(c.SnapshotQuality)))
@@ -296,6 +343,8 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
         return null;
     }
 
+    private static string? Clean(string? url) => string.IsNullOrWhiteSpace(url) ? null : url.Trim();
+
     /// <summary>People paste "http://192.168.10.245/": the bare host is kept.</summary>
     public static string Host(string host)
     {
@@ -310,12 +359,13 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
         var d = devices.GetValueOrDefault(c.DeviceId);
         return new IpCamChannelDto(c.Channel, c.DeviceId, d?.Name ?? c.DeviceId, d?.ZoneId,
             (d?.Status ?? DeviceStatus.Pending).ToString().ToLowerInvariant(), c.RecordWhenDisarmed,
-            new NvrEndpoint(n.Host, n.Port, n.Username, "", n.RtspPort).RtspUrl(c.Channel), c.SnapshotSource, diagnostics.Via(c.DeviceId) ?? c.SnapshotVia,
+            new NvrEndpoint(n.Host, n.Port, n.Username, "", n.RtspPort, n.SnapshotUrl, n.RtspMain, n.RtspSub).RtspUrl(c.Channel), c.SnapshotSource, diagnostics.Via(c.DeviceId) ?? c.SnapshotVia,
             c.SnapshotQuality, diagnostics.LastMotion(c.DeviceId), diagnostics.LastSnapshot(c.DeviceId));
     }
 
     private NvrDto ToDto(Nvr n, IReadOnlyDictionary<string, Device> devices, NvrLoginDto login) =>
         new(n.Id, n.Name, n.Host, n.Port, n.Username, n.PasswordProtected.Length > 0,
             n.Channels.OrderBy(c => c.Channel).Select(c => ToChannelDto(n, c, devices)).ToList(), n.RtspPort, login, watch.Stream(n.Id),
-            NvrDeviceId(n.Id));
+            NvrDeviceId(n.Id), n.Kind, n.Vendor, n.Vendor == CameraVendors.Dahua ? CameraVendors.Dahua : n.EventsUrl is null ? "none" : CameraVendors.Onvif,
+            n.SnapshotUrl, n.RtspMain, n.RtspSub);
 }

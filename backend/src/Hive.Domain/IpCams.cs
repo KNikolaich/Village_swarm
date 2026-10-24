@@ -13,6 +13,23 @@ public class Nvr
 
     /// <summary>RTSP port, for frames grabbed from the stream when snapshot.cgi gives none.</summary>
     public int RtspPort { get; set; } = 554;
+
+    /// <summary><see cref="NvrKinds"/>: an NVR with channels, or one camera on its own (a single channel 1, no parent device).</summary>
+    public string Kind { get; set; } = NvrKinds.Nvr;
+
+    /// <summary><see cref="CameraVendors"/>: Dahua's HTTP API, or ONVIF for any other camera.</summary>
+    public string Vendor { get; set; } = CameraVendors.Dahua;
+
+    /// <summary>ONVIF: the snapshot address (GetSnapshotUri); null: frames come from the stream only.</summary>
+    public string? SnapshotUrl { get; set; }
+
+    /// <summary>The streams when they are not Dahua's (ONVIF GetStreamUri, or typed in): main and sub, without the login.</summary>
+    public string? RtspMain { get; set; }
+
+    public string? RtspSub { get; set; }
+
+    /// <summary>ONVIF: the event service, when the camera can be subscribed to (PullPoint); null: snapshots only, no motion.</summary>
+    public string? EventsUrl { get; set; }
     public required string Username { get; set; }
 
     /// <summary>The password, encrypted with ASP.NET data protection; never sent to the browser.</summary>
@@ -47,6 +64,22 @@ public class NvrChannel
     /// detailed from the main stream (the sub-stream when it gives none in time, so an alarm never lacks a photo).
     /// </summary>
     public string SnapshotQuality { get; set; } = SnapshotQualities.Fast;
+}
+
+public static class NvrKinds
+{
+    public const string Nvr = "nvr";
+    public const string Camera = "camera";
+
+    public static bool IsKnown(string? s) => s is Nvr or Camera;
+}
+
+public static class CameraVendors
+{
+    public const string Dahua = "dahua";
+    public const string Onvif = "onvif";
+
+    public static bool IsKnown(string? s) => s is Dahua or Onvif;
 }
 
 public static class SnapshotQualities

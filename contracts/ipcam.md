@@ -82,3 +82,28 @@ The video stream for a later stage is `rtsp://{host}/cam/realmonitor?channel=N&s
   reconnects, lastError}`, per channel `lastMotionAt` and `lastSnapshot: {at, purpose, via, ok, ms, error, size}`.
 - **Commands**: only `snapshot` is accepted (one frame from the NVR, stored as a snapshot), so the Telegram `/photo`, "📷 Ещё фото"
   and a rule's `snapshot` action work. Anything else is refused with 400.
+
+## A camera on its own (no NVR)
+
+`POST /api/ipcams/probe` with `kind: "camera"` tries the address as a Dahua camera (its HTTP API, as above, channel 1) and then
+as an ONVIF camera; `POST /api/ipcams` with `kind: "camera"` and exactly one channel (1) saves it. It is one `ipcam` device with
+no parent (no `nvr` device). The answer of the probe also carries `vendor` (dahua, onvif), `model`, `snapshotUrl`, `rtspMain`,
+`rtspSub`, `eventsUrl` and `motion` (dahua, onvif, none); the form sends them back on save. Addresses the camera gives with its
+own idea of its host (NAT, another interface) get the host the hive reached it by.
+
+ONVIF (SOAP 1.2, WS-UsernameToken with PasswordDigest = Base64(SHA1(nonce + created + password)), plus HTTP digest when asked):
+
+| Request | Use |
+|---|---|
+| `GetDeviceInformation`, `GetCapabilities` (device service, `/onvif/device_service`) | maker, model, media and event service addresses |
+| `GetProfiles`, `GetSnapshotUri`, `GetStreamUri` (media service) | snapshot address of the first profile, streams of the first two (main, sub) |
+| `CreatePullPointSubscription` (event service), `PullMessages` (10 s, 20 messages), `Renew` (each minute), `Unsubscribe` | motion |
+| `GetSystemDateAndTime` (no login) | sign of life of a camera without events |
+
+- Motion: a notification whose topic speaks of motion (`tns1:RuleEngine/CellMotionDetector/Motion`, `tns1:VideoSource/MotionAlarm`…)
+  with `IsMotion`/`State`/`Motion` true is a motion of channel 1, handled as a Dahua VideoMotion (cooldown, severity, photos).
+- Snapshots: `snapshotUrl` in place of snapshot.cgi; RTSP from `rtspMain`/`rtspSub` (found, or `rtspMain` typed in) with the login
+  added. Without a snapshot address only the stream is used.
+- No event service: `motion: none`, the camera is online while it answers `GetSystemDateAndTime`, snapshots work, motion and
+  alarms do not; the settings say so.
+- A refused login (`ter:NotAuthorized` or 401) counts in the same lockout guard as Dahua's.

@@ -5765,6 +5765,12 @@ export interface components {
             login: components["schemas"]["NvrLoginDto"];
             stream: components["schemas"]["NvrStreamDto"];
             deviceId: string;
+            kind: string;
+            vendor: string;
+            motion: string;
+            snapshotUrl: null | string;
+            rtspMain: null | string;
+            rtspSub: null | string;
         };
         NvrLoginDto: {
             state: string;
@@ -5779,6 +5785,7 @@ export interface components {
             port: null | number;
             username: string;
             password: string;
+            kind?: null | string;
         };
         NvrRequest: {
             name: string;
@@ -5790,6 +5797,12 @@ export interface components {
             channels: components["schemas"]["IpCamChannelRequest"][];
             /** Format: int32 */
             rtspPort?: null | number;
+            kind?: null | string;
+            vendor?: null | string;
+            snapshotUrl?: null | string;
+            rtspMain?: null | string;
+            rtspSub?: null | string;
+            eventsUrl?: null | string;
         };
         NvrStreamDto: {
             state: string;
@@ -5907,6 +5920,13 @@ export interface components {
             detail: null | string;
             deviceType: null | string;
             channels: components["schemas"]["ProbeChannelDto"][];
+            vendor?: null | string;
+            model?: null | string;
+            snapshotUrl?: null | string;
+            rtspMain?: null | string;
+            rtspSub?: null | string;
+            eventsUrl?: null | string;
+            motion?: null | string;
         };
         QueueOtaRequest: {
             build: string;

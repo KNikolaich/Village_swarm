@@ -1299,7 +1299,8 @@
       "auth": "The NVR refused the login or password",
       "unreachable": "Nothing answers at this address and port",
       "not_dahua": "What answers here is not a Dahua NVR",
-      "locked": "The NVR locked the login after wrong passwords. Wait until it unlocks and check the password"
+      "locked": "The NVR locked the login after wrong passwords. Wait until it unlocks and check the password",
+      "not_camera": "What answers here is neither a Dahua nor an ONVIF camera"
     },
     "snapshot": "Snapshot",
     "snapshotFailed": "No snapshot",
@@ -1340,6 +1341,23 @@
     },
     "cameraSettings": "Camera",
     "adminOnly": "The NVR settings are for administrators.",
-    "nvrGone": "This NVR is no longer in the hive settings."
+    "nvrGone": "This NVR is no longer in the hive settings.",
+    "kindNvr": "NVR",
+    "kindCamera": "Camera on its own",
+    "cameraIntro": "An IP camera on its own, without an NVR. \"Check\" finds out whether it is a Dahua or an ONVIF camera, where its snapshots and stream are, and whether it can tell motion.",
+    "addCamera": "Add a camera",
+    "cameraHost": "Camera address, e.g. 192.168.10.60",
+    "cameraPassword": "Camera password",
+    "cameraFound": "The camera answers: {model} ({vendor})",
+    "motion": {
+      "dahua": "Motion: from the camera (Dahua)",
+      "onvif": "Motion: from the camera (ONVIF events)",
+      "none": "The camera does not tell motion: snapshots on a button or by rules only, no alarms from it."
+    },
+    "rtspUrl": "RTSP stream address (if the camera gave none or a wrong one)",
+    "rtspUrlHint": "Without the login: the hive adds it. Needed for snapshots when the camera has no HTTP snapshot.",
+    "connection": "Connection",
+    "deleteCameraConfirm": "Delete the camera \"{name}\"? It leaves the swarm, events and photos stay.",
+    "cameraDeleted": "Camera deleted"
   }
 }
