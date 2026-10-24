@@ -55,6 +55,9 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
   const canControl = (me.data?.roles.includes('admin') ?? false) || (me.data?.roles.includes('member') ?? false)
   const alarm = event.severity === 'alarm' || event.severity === 'critical'
   const expectedPhotos = (event.payload as { photos?: unknown[] } | null)?.photos?.length ?? 0
+  // The camera's journal says it got no frame (or it rebooted on a brownout): nothing was lost on the way, there was no photo.
+  const noFrame = event.photoProblem === 'no_frame'
+  const missingHint = noFrame ? 'events.noFrameHint' : 'events.photosMissingHint'
   // A rule's own message: what the rule said, and which rule it was.
   const said = event.type === 'rule' ? (event.payload as { rule?: string; text?: string } | null) : null
   const ota = event.type === 'ota' ? otaLine(event.payload) : event.type === 'ota_rollout' ? rolloutLine(event.payload) : null
@@ -130,7 +133,7 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
           </div>
         </>
       ) : (
-        expectedPhotos > 0 && (Date.now() - new Date(event.receivedAt).getTime() < 5 * 60_000 ? (
+        expectedPhotos > 0 && (Date.now() - new Date(event.receivedAt).getTime() < 5 * 60_000 && !noFrame ? (
           <p className="mt-2 flex items-center gap-1 text-xs text-neutral-500">
             <ImageOff className="size-3.5" />{t('events.photosPending')}
           </p>
@@ -138,8 +141,8 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
           // Hornets retry uploads from the SD card; after a few minutes it is worth saying so plainly, and offering another go.
           <div className="mt-2 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="flex items-center gap-1 text-xs text-neutral-500" title={t('events.photosMissingHint')}>
-                <ImageOff className="size-3.5" />{t('events.photosMissing')}
+              <p className="flex items-center gap-1 text-xs text-neutral-500" title={t(missingHint)}>
+                <ImageOff className="size-3.5" />{t(noFrame ? 'events.noFrame' : 'events.photosMissing')}
               </p>
               {canControl && (
                 <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => void send('snapshot', { count: 1 })}>
@@ -147,7 +150,7 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
                 </Button>
               )}
             </div>
-            {!compact && <p className="text-xs text-neutral-600">{t('events.photosMissingHint')}</p>}
+            {!compact && <p className="text-xs text-neutral-600">{t(missingHint)}</p>}
           </div>
         ))
       )}

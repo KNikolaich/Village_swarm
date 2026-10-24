@@ -428,7 +428,9 @@
       "stopped": "stopped by hand"
     },
     "retake": "Take again",
-    "photosMissingHint": "The camera could not send the photo (usually weak Wi-Fi). With an SD card it retries every 30 s and the photo may still come; without one the photo is lost, so take another."
+    "photosMissingHint": "The camera could not send the photo (usually weak Wi-Fi). With an SD card it retries every 30 s and the photo may still come; without one the photo is lost, so take another.",
+    "noFrame": "The camera took no frame (power?)",
+    "noFrameHint": "The camera got no frame from its sensor or rebooted on a power dip. Usually a weak supply or a long thin cable: use 5 V 2 A, a 470–1000 µF capacitor at the camera, and check the sensor ribbon."
   },
   "photos": {
     "device": "Camera",

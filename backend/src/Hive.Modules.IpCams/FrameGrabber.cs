@@ -73,6 +73,14 @@ public sealed class FfmpegFrameGrabber : IFrameGrabber
         try
         {
             process.Start();
+            try
+            {
+                // Below the api: a frame may wait a little, a hornet's upload and the MQTT traffic may not.
+                process.PriorityClass = ProcessPriorityClass.BelowNormal;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or Win32Exception or PlatformNotSupportedException)
+            {
+            }
         }
         catch (Win32Exception)
         {

@@ -5519,6 +5519,7 @@ export interface components {
             acknowledgedAt: null | string;
             payload: components["schemas"]["JsonElement"];
             photos: components["schemas"]["EventPhotoDto"][];
+            photoProblem?: null | string;
         };
         EventPhotoDto: {
             id: string;
