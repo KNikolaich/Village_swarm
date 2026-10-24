@@ -17,6 +17,7 @@ import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Skeleton } from
 import { metricLabel, statusLabel, t } from '@/i18n'
 import { bannerKind, shownKeys, zoneTiles } from '@/lib/dashboard'
 import { formatAgo, formatValue } from '@/lib/format'
+import { VideoWidget } from '@/components/VideoWidget'
 import { arrange, useWideScreen, type Available, type Screen, type Widget } from '@/lib/layout'
 import { cn } from '@/lib/utils'
 
@@ -75,6 +76,10 @@ export function OverviewPage() {
       ),
     },
     { id: 'weather', w: 12, title: t('layout.widgets.weather'), node: <WeatherCard /> },
+    // Live video when there are IP cameras: nothing is opened until someone picks a camera and presses play.
+    ...(list.some((d) => d.type === 'ipcam')
+      ? [{ id: 'video', w: 6, title: t('layout.widgets.video'), node: <VideoWidget events={recent} /> }]
+      : []),
     ...zoneViews(list, zones.data ?? [], values),
     ...list.flatMap((d) => {
       const kind = bannerKind(d, values)

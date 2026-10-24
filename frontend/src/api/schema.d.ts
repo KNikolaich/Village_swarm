@@ -3850,6 +3850,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/video/streams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VideoStreamsDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ipcams": {
         parameters: {
             query?: never;
@@ -6253,6 +6288,24 @@ export interface components {
         };
         VersionDto: {
             version: string;
+        };
+        VideoCameraDto: {
+            deviceId: string;
+            name: string;
+            /** Format: int32 */
+            zoneId: null | number;
+            zone: null | string;
+            /** Format: int32 */
+            nvrId: number;
+            /** Format: int32 */
+            channel: number;
+            sub: string;
+            main: string;
+            status: string;
+        };
+        VideoStreamsDto: {
+            enabled: boolean;
+            cameras: components["schemas"]["VideoCameraDto"][];
         };
         WeatherCurrentDto: {
             /** Format: date-time */

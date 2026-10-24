@@ -129,3 +129,27 @@ message **with photos**:
   (arms at once: guard armed, presence away). The message keeps its text and photos; its buttons say what was done.
 - Grouped apart from alarms (`{device}:{type}:arriving`), so a real alarm right after is never folded into it.
 - Other warnings stay text only, without photos.
+
+## Live video
+
+go2rtc (`alexxit/go2rtc`, version pinned in `deploy/compose.yaml`, 128 MB) runs as its own container, reachable only inside
+the docker network; no port is published and it has no RTSP or WebRTC server of its own. Its image goes in the deploy bundle.
+
+- The hive owns go2rtc's streams (`VideoStreams`): two per IP camera, `{device}-sub` and `{device}-main`, whose sources are
+  the RTSP addresses with the login (the same as for snapshots). They are pushed through go2rtc's API (`PUT/DELETE
+  /api/streams`) on start, on every change of the NVRs and cameras, and checked every minute (go2rtc forgets them when it
+  restarts). go2rtc keeps them in a config file in RAM (tmpfs): no camera password on the disk. A camera is opened only
+  while someone watches.
+- The browser reaches go2rtc only through Caddy: `/streams/ws?src={stream}` (MSE over WebSocket, go2rtc's video-rtc
+  protocol) and `/streams/frame.jpeg?src={stream}`. Before each, Caddy asks the api (`forward_auth` → `GET
+  /api/video/authorize`, `X-Forwarded-Uri`): 204 for a signed-in user and a stream of the list, 403 otherwise (an unknown
+  name, an address given as src, two src), 401 when not signed in. Every other `/streams/*` is 404; go2rtc's API and page
+  are never reachable.
+- `GET /api/video/streams`: `{enabled, cameras: [{deviceId, name, zoneId, zone, nvrId, channel, sub, main, status}]}`, no
+  addresses, no logins. `enabled` is false when `Video:Go2RtcUrl` is empty.
+- The overview widget «Видео»: «Нет камеры» by default (no connection at all); a camera picked by zone; «Снимки» (a frame
+  every 5 s through `GET /api/ipcams/{id}/snapshot`, the same way as photos), «Видео SD» (sub), «Видео HD» (main, chosen
+  for the full screen). The choice is kept per browser. Playback starts only on «Смотреть» and stops when the tab is
+  hidden, the widget is off screen, or after 5 minutes without a touch («Продолжить просмотр?»). It shows the codec and
+  bitrate, and says so plainly when the browser cannot play the stream's codec (H.265: switch the sub-stream to H.264 or
+  use «Снимки»). An unacknowledged alarm of a camera offers «Показать …», which never starts by itself.

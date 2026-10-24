@@ -80,11 +80,15 @@ public sealed class HiveFixture : IAsyncLifetime
     /// <summary>Stands in for ffmpeg: IP camera frames taken from the RTSP stream (IpCamTests).</summary>
     public FakeFrameGrabber Grabber { get; } = new();
 
+    /// <summary>go2rtc's stream API (VideoTests).</summary>
+    public FakeGo2Rtc Go2Rtc { get; private set; } = null!;
+
     public async Task InitializeAsync()
     {
         await Task.WhenAll(_postgres.StartAsync(), _mosquitto.StartAsync());
         Telegram = await FakeTelegram.StartAsync();
         Llm = await FakeLlm.StartAsync();
+        Go2Rtc = await FakeGo2Rtc.StartAsync();
 
         App = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
@@ -114,6 +118,8 @@ public sealed class HiveFixture : IAsyncLifetime
             // IpCamTests: a cut NVR takes its cameras offline in seconds, not a minute.
             b.UseSetting("IpCams:OfflineAfterS", "3");
             b.UseSetting("IpCams:AuthRetryS", "2");
+            b.UseSetting("Video:Go2RtcUrl", Go2Rtc.BaseUrl);
+            b.UseSetting("Video:SyncEveryS", "2");
             b.ConfigureTestServices(s => s.AddSingleton<Hive.Modules.IpCams.IFrameGrabber>(Grabber));
         });
         _ = App.Server; // start the host: migrations, MQTT gateway, ingest pipeline
@@ -124,6 +130,7 @@ public sealed class HiveFixture : IAsyncLifetime
         await App.DisposeAsync();
         await Telegram.DisposeAsync();
         await Llm.DisposeAsync();
+        await Go2Rtc.DisposeAsync();
         await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _mosquitto.DisposeAsync().AsTask());
         if (Directory.Exists(MediaRoot))
             Directory.Delete(MediaRoot, recursive: true);

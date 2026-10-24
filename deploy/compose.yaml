@@ -24,6 +24,23 @@ services:
     depends_on: [api]
     mem_limit: 96m
 
+  # Live video for the overview (contracts/ipcam.md "Live video"). Only inside the network: browsers reach it through
+  # Caddy (/streams/*) after the api has said yes. The api pushes the cameras' streams (logins included); go2rtc keeps
+  # them in a config file in RAM (tmpfs), so no camera password lands on the disk, and opens a camera only while
+  # someone watches. No RTSP or WebRTC server of its own. The image goes with the deploy bundle (build-images.sh).
+  go2rtc:
+    <<: *common
+    image: alexxit/go2rtc:1.9.4
+    command:
+      - go2rtc
+      - -config
+      - /config/go2rtc.yaml
+      - -config
+      - "{api: {listen: ':1984', origin: '*'}, rtsp: {listen: ''}, webrtc: {listen: ''}, log: {level: warn}}"
+    tmpfs:
+      - /config
+    mem_limit: 128m
+
   mosquitto:
     <<: *common
     image: eclipse-mosquitto:2
@@ -115,6 +132,7 @@ services:
       Database__MigrateOnStartup: "true"
       ForwardedHeaders__Enabled: "true"
       DataProtection__KeysPath: /srv/hive/keys
+      Video__Go2RtcUrl: http://go2rtc:1984
       Hive__TimeZone: ${HIVE_TIMEZONE:-Europe/Moscow}
       # Every SQL statement at Information would flood the log on the RPi's disk.
       Logging__LogLevel__Microsoft.EntityFrameworkCore: Warning

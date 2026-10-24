@@ -3153,6 +3153,25 @@
         }
       }
     },
+    "/api/video/streams": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoStreamsDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ipcams": {
       "get": {
         "tags": [
@@ -8340,6 +8359,76 @@
           }
         }
       },
+      "VideoCameraDto": {
+        "required": [
+          "deviceId",
+          "name",
+          "zoneId",
+          "zone",
+          "nvrId",
+          "channel",
+          "sub",
+          "main",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "zoneId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "zone": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "nvrId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "channel": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "sub": {
+            "type": "string"
+          },
+          "main": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "VideoStreamsDto": {
+        "required": [
+          "enabled",
+          "cameras"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "cameras": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VideoCameraDto"
+            }
+          }
+        }
+      },
       "WeatherCurrentDto": {
         "required": [
           "time",
@@ -8896,6 +8985,9 @@
     },
     {
       "name": "media"
+    },
+    {
+      "name": "video"
     },
     {
       "name": "ipcams"

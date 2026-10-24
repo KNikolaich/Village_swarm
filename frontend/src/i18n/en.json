@@ -221,7 +221,8 @@
     },
     "widgets": {
       "guard": "Guard",
-      "weather": "Weather"
+      "weather": "Weather",
+      "video": "Video"
     }
   },
   "rules": {
@@ -1359,5 +1360,30 @@
     "connection": "Connection",
     "deleteCameraConfirm": "Delete the camera \"{name}\"? It leaves the swarm, events and photos stay.",
     "cameraDeleted": "Camera deleted"
+  },
+  "video": {
+    "title": "Video",
+    "camera": "Camera",
+    "noCamera": "No camera",
+    "noZone": "No group",
+    "quality": "How to show it",
+    "qualities": {
+      "snapshots": "Snapshots",
+      "sd": "Video SD",
+      "hd": "Video HD"
+    },
+    "pick": "Pick a camera: until one is picked the hive does not connect to it.",
+    "play": "Watch",
+    "continue": "Continue",
+    "stillWatching": "Still watching?",
+    "stop": "Stop",
+    "fullscreen": "Full screen (video HD)",
+    "showAlarm": "Show \"{camera}\"",
+    "snapshotFailed": "No snapshot",
+    "noMse": "This browser cannot show live video (no MSE). Choose \"Snapshots\".",
+    "codecUnsupported": "The browser cannot play this stream's codec (most likely H.265).",
+    "codecHint": "Switch the camera's sub-stream to H.264 in the NVR settings, or choose \"Snapshots\".",
+    "connectionFailed": "Could not connect to the video",
+    "connectionClosed": "The video stopped. Press \"Stop\" and \"Watch\" again."
   }
 }
