@@ -156,21 +156,58 @@ public sealed class NotificationOutbox(
             return;
         }
 
-        var photos = await db.Media.AsNoTracking().Where(m => m.EventId == n.EventId).OrderBy(m => m.Id).Take(3).ToListAsync(ct);
-        if (photos.Count < Math.Min(3, n.ExpectedPhotos) && now < n.WaitUntil)
+        // A follow-up carries the id of the last photo already sent ("after:…"): it sends the ones that came later.
+        var after = n.Text.StartsWith(AfterPrefix, StringComparison.Ordinal) ? n.Text[AfterPrefix.Length..] : null;
+        var wanted = Math.Min(3, n.ExpectedPhotos);
+        var photos = await db.Media.AsNoTracking()
+            .Where(m => m.EventId == n.EventId && (after == null || string.Compare(m.Id, after) > 0))
+            .OrderBy(m => m.Id).Take(wanted).ToListAsync(ct);
+        if (photos.Count == 0)
+        {
+            if (now < n.WaitUntil)
+            {
+                n.NextAttemptAt = now.AddSeconds(1);
+                return;
+            }
+            n.Status = NotificationStatus.Skipped;
+            n.Error = after is null ? "no photos arrived" : "no more photos arrived";
+            return;
+        }
+        // The first photo goes out soon after it is saved, with whatever came with it; the rest do not hold it back
+        // (an IP camera's burst can take longer than the wait for an album).
+        var firstSaved = photos.Min(m => m.ReceivedAt);
+        if (photos.Count < wanted && now < n.WaitUntil && now < firstSaved + AlbumGrace)
         {
             n.NextAttemptAt = now.AddSeconds(1);
             return;
         }
-        if (photos.Count == 0)
-        {
-            n.Status = NotificationStatus.Skipped;
-            n.Error = "no photos arrived";
-            return;
-        }
         var messages = await SendAlbumAsync(store, chat, photos, (int)parent.MessageId, silent: true, ct);
         MarkSent(n, messages[0].MessageId, now);
+        if (photos.Count < wanted)
+        {
+            // Photos still on their way: sent as a reply when they come, never dropped.
+            db.Notifications.Add(new Notification
+            {
+                Target = n.Target,
+                Kind = NotificationKind.EventPhotos,
+                EventId = n.EventId,
+                DeviceIds = n.DeviceIds,
+                Text = AfterPrefix + photos[^1].Id,
+                ExpectedPhotos = wanted - photos.Count,
+                CreatedAt = now,
+                NextAttemptAt = now.AddSeconds(1),
+                WaitUntil = now + LatePhotosWait,
+            });
+        }
     }
+
+    private const string AfterPrefix = "after:";
+
+    /// <summary>How long the album waits for more photos once the first one is saved (a guard-cam's three come within it).</summary>
+    internal static readonly TimeSpan AlbumGrace = TimeSpan.FromSeconds(3);
+
+    /// <summary>How long photos that missed the album are still waited for, to be sent as a reply.</summary>
+    internal static readonly TimeSpan LatePhotosWait = TimeSpan.FromSeconds(60);
 
     private async Task SendSnapshotAsync(HiveDbContext db, MediaStore store, Notification n, long chat, DateTimeOffset now, CancellationToken ct)
     {

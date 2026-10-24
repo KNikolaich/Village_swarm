@@ -135,6 +135,9 @@ public sealed class Snapshots(
         async Task Deliver(byte[] jpeg, string way)
         {
             size ??= ImageTools.Identify(jpeg) is { } wh ? $"{wh.Width}x{wh.Height}" : "?";
+            if (count > 1)
+                logger.LogInformation("NVR {Nvr} channel {Channel}: frame {Frame} of {Count} via {Via} at {Ms} ms",
+                    target.NvrId, target.Channel, delivered + 1, count, way, (int)time.GetElapsedTime(started).TotalMilliseconds);
             await onFrame(new SnapshotTaken(jpeg, way), delivered++);
         }
 
@@ -146,7 +149,7 @@ public sealed class Snapshots(
                 if (way == SnapshotSources.Cgi)
                     await CgiAsync(client, target, count, interval, Deliver, ct);
                 else
-                    await RtspAsync(nvr, target, count, Deliver, reasons, ct);
+                    await RtspAsync(nvr, target, count, interval, Deliver, reasons, ct);
             }
             catch (SnapshotFailedException ex)
             {
@@ -204,7 +207,7 @@ public sealed class Snapshots(
     /// slow on the Pi), detailed the main stream. The other one follows when the first gives nothing, so a frame comes whenever
     /// either can give one. A grey frame is not passed on; one that comes after good frames just ends the burst.
     /// </summary>
-    private async Task RtspAsync(NvrEndpoint nvr, SnapshotTarget target, int count, Func<byte[], string, Task> deliver, List<string> notes, CancellationToken ct)
+    private async Task RtspAsync(NvrEndpoint nvr, SnapshotTarget target, int count, TimeSpan spacing, Func<byte[], string, Task> deliver, List<string> notes, CancellationToken ct)
     {
         var errors = new List<string>();
         foreach (var subtype in target.Quality == SnapshotQualities.Detailed ? new[] { 0, 1 } : [1, 0])
@@ -215,7 +218,7 @@ public sealed class Snapshots(
             var got = 0;
             try
             {
-                await foreach (var jpeg in grabber.GrabAsync(nvr.RtspUrlWithLogin(target.Channel, subtype), count, RtspTimeout, ct))
+                await foreach (var jpeg in grabber.GrabAsync(nvr.RtspUrlWithLogin(target.Channel, subtype), count, spacing, RtspTimeout, ct))
                 {
                     if (!PhotoIngestService.IsJpeg(jpeg))
                         throw new SnapshotFailedException("rtsp: ffmpeg gave no JPEG");

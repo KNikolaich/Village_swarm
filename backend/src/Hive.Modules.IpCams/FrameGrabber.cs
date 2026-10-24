@@ -12,10 +12,11 @@ public sealed class SnapshotFailedException(string message) : Exception(message)
 public interface IFrameGrabber
 {
     /// <summary>
-    /// Up to <paramref name="count"/> key frames, each as soon as it is decoded. The first must come within
-    /// <paramref name="firstTimeout"/> (else <see cref="SnapshotFailedException"/>); later ones end the sequence when they are late.
+    /// Up to <paramref name="count"/> frames, each as soon as it is decoded: a key frame first (never a grey half-decoded picture),
+    /// then frames <paramref name="spacing"/> apart. The first must come within <paramref name="firstTimeout"/> (else
+    /// <see cref="SnapshotFailedException"/>); later ones end the sequence when they are late.
     /// </summary>
-    IAsyncEnumerable<byte[]> GrabAsync(string rtspUrl, int count, TimeSpan firstTimeout, CancellationToken ct);
+    IAsyncEnumerable<byte[]> GrabAsync(string rtspUrl, int count, TimeSpan spacing, TimeSpan firstTimeout, CancellationToken ct);
 }
 
 /// <summary>
@@ -29,18 +30,31 @@ public sealed class FfmpegFrameGrabber : IFrameGrabber
     /// <summary>Key frames come once per GOP: up to a few seconds apart on a camera at night.</summary>
     public static readonly TimeSpan NextFrameTimeout = TimeSpan.FromSeconds(10);
 
-    public static IReadOnlyList<string> Arguments(string rtspUrl, int count) =>
-    [
-        "-hide_banner", "-loglevel", "error",
-        // Decode key frames only, and do not study the stream for seconds first.
-        "-skip_frame", "nokey", "-analyzeduration", "1000000", "-probesize", "1000000",
-        "-rtsp_transport", "tcp", "-i", rtspUrl,
-        // Each key frame once, as it comes (no frames repeated to fill a frame rate).
-        "-an", "-fps_mode", "passthrough", "-frames:v", count.ToString(CultureInfo.InvariantCulture),
-        "-q:v", "3", "-f", "image2pipe", "-c:v", "mjpeg", "-",
-    ];
+    /// <summary>
+    /// One frame: key frames only (-skip_frame nokey). Several (an alarm's photos): everything is decoded but nothing is kept
+    /// before the first key frame, so the frames after it, decoded against it, are whole; then one every
+    /// <paramref name="spacing"/>. A burst so takes the first key frame plus the spacing, not one key frame per photo.
+    /// </summary>
+    public static IReadOnlyList<string> Arguments(string rtspUrl, int count, TimeSpan spacing)
+    {
+        var args = new List<string> { "-hide_banner", "-loglevel", "error" };
+        if (count == 1)
+            args.AddRange(["-skip_frame", "nokey"]);
+        // Do not study the stream for seconds before the first frame.
+        args.AddRange(["-analyzeduration", "1000000", "-probesize", "1000000", "-rtsp_transport", "tcp", "-i", rtspUrl, "-an"]);
+        if (count > 1)
+        {
+            // Selected: the first I-frame, and every frame once one has been selected (prev_selected_n is NAN until then).
+            var ms = Math.Max(100, (int)spacing.TotalMilliseconds).ToString(CultureInfo.InvariantCulture);
+            args.AddRange(["-vf", $"select='eq(pict_type\\,I)+not(isnan(prev_selected_n))',fps=1000/{ms}"]);
+        }
+        else
+            args.AddRange(["-fps_mode", "passthrough"]); // each key frame once, as it comes (no frames repeated to fill a rate)
+        args.AddRange(["-frames:v", count.ToString(CultureInfo.InvariantCulture), "-q:v", "3", "-f", "image2pipe", "-c:v", "mjpeg", "-"]);
+        return args;
+    }
 
-    public async IAsyncEnumerable<byte[]> GrabAsync(string rtspUrl, int count, TimeSpan firstTimeout, [EnumeratorCancellation] CancellationToken ct)
+    public async IAsyncEnumerable<byte[]> GrabAsync(string rtspUrl, int count, TimeSpan spacing, TimeSpan firstTimeout, [EnumeratorCancellation] CancellationToken ct)
     {
         var start = new ProcessStartInfo("ffmpeg")
         {
@@ -48,7 +62,7 @@ public sealed class FfmpegFrameGrabber : IFrameGrabber
             RedirectStandardError = true,
             UseShellExecute = false,
         };
-        foreach (var a in Arguments(rtspUrl, count))
+        foreach (var a in Arguments(rtspUrl, count, spacing))
             start.ArgumentList.Add(a);
 
         using var process = new Process { StartInfo = start };

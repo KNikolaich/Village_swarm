@@ -116,14 +116,25 @@ public sealed class IpCamSnapshotTests
     }
 
     [Fact]
-    public void Ffmpeg_decodes_key_frames_only_and_does_not_repeat_them()
+    public void A_single_snapshot_decodes_key_frames_only()
     {
-        var args = FfmpegFrameGrabber.Arguments("rtsp://u:p@h:554/x", 3);
-        var input = args.ToList().IndexOf("-i");
-        Assert.True(args.ToList().IndexOf("nokey") is var k && k > 0 && k < input, "-skip_frame nokey goes on the input");
-        Assert.Equal("-skip_frame", args[args.ToList().IndexOf("nokey") - 1]);
+        var args = FfmpegFrameGrabber.Arguments("rtsp://u:p@h:554/x", 1, TimeSpan.FromMilliseconds(700)).ToList();
+        var input = args.IndexOf("-i");
+        Assert.True(args.IndexOf("nokey") is var k && k > 0 && k < input, "-skip_frame nokey goes on the input");
+        Assert.Equal("-skip_frame", args[args.IndexOf("nokey") - 1]);
         Assert.DoesNotContain("nobuffer", args);
-        Assert.Equal("passthrough", args[args.ToList().IndexOf("-fps_mode") + 1]);
-        Assert.Equal("3", args[args.ToList().IndexOf("-frames:v") + 1]);
+        Assert.Equal("passthrough", args[args.IndexOf("-fps_mode") + 1]);
+        Assert.Equal("1", args[args.IndexOf("-frames:v") + 1]);
+    }
+
+    [Fact]
+    public void An_alarm_burst_waits_for_one_key_frame_then_takes_frames_apart()
+    {
+        var args = FfmpegFrameGrabber.Arguments("rtsp://u:p@h:554/x", 3, TimeSpan.FromMilliseconds(700)).ToList();
+        Assert.DoesNotContain("-skip_frame", args); // the frames after the key frame are wanted, decoded against it
+        var filter = args[args.IndexOf("-vf") + 1];
+        Assert.Equal("select='eq(pict_type\\,I)+not(isnan(prev_selected_n))',fps=1000/700", filter);
+        Assert.True(args.IndexOf("-vf") > args.IndexOf("-i"), "the filter is an output option");
+        Assert.Equal("3", args[args.IndexOf("-frames:v") + 1]);
     }
 }

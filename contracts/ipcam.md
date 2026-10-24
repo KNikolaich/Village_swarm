@@ -42,8 +42,9 @@ The video stream for a later stage is `rtsp://{host}/cam/realmonitor?channel=N&s
   Ignored for 20 s after the last one of the same channel (cooldown). `Stop` is ignored.
   - guard armed → `alarm`, `armed: true`; guard "arriving" → `warn`; disarmed → `info` (feed only).
   - photos: 3 snapshots 0.7 s apart, stored as media of the event (`{event id}-1..3`), only when the guard is armed or
-    arriving, or the channel has `recordWhenDisarmed`. The event payload lists them in `photos`, so Telegram waits for them
-    and sends them with the alarm (spec 9.5) exactly as for a guard-cam.
+    arriving, or the channel has `recordWhenDisarmed`. The event payload lists them in `photos`, so Telegram sends them with
+    the alarm (spec 9.5) as for a guard-cam: the album goes 3 s after the first photo is saved, with what has come by then;
+    photos that come later are sent as replies to the alarm (waited for up to 60 s), never dropped.
   - payload: `{"source": "camera", "channel": 2, "photos": ["…-1", "…-2", "…-3"], "via": "nvr"}`.
 - **Time**: the NVR clock is not trusted; every event and photo has the hive's time of arrival.
 - **Online**: the channels of an NVR are online while its event stream is up (a heartbeat or event at least every 30 s).
@@ -56,9 +57,11 @@ The video stream for a later stage is `rtsp://{host}/cam/realmonitor?channel=N&s
     first next time.
   - `cgi`: only `snapshot.cgi`; `rtsp`: only the stream.
   - RTSP: `ffmpeg -skip_frame nokey -analyzeduration 1000000 -probesize 1000000 -rtsp_transport tcp -i rtsp://{user}:{pass}@{host}:{rtspPort}/cam/realmonitor?channel=N&subtype=S -an -fps_mode passthrough -frames:v K -q:v 3 -f image2pipe -c:v mjpeg -`.
-    Key frames only: decoding from whatever frame comes first (mid-GOP) gives grey pictures with fragments of what moved.
-    The first key frame within 12 s, the next ones within 10 s each. An alarm's photos are K = 3 successive key frames of one
-    run, each stored as it comes; a look is K = 1. `snapshotQuality` `fast` (default) takes the light sub-stream
+    A look (K = 1) decodes key frames only (`-skip_frame nokey`): decoding from whatever frame comes first (mid-GOP) gives grey
+    pictures with fragments of what moved. An alarm's photos (K = 3) come from one run that keeps nothing before the first key
+    frame and then one frame every 0.7 s (`-vf select='eq(pict_type\,I)+not(isnan(prev_selected_n))',fps=1000/700`, no
+    `-skip_frame`): the frames after the key frame are decoded against it, so the burst takes the first key frame plus 1.4 s,
+    not one key frame per photo. The first frame within 12 s, the next ones within 10 s each; each is stored as it comes. `snapshotQuality` `fast` (default) takes the light sub-stream
     (`subtype=1`) first, `detailed` the main stream (`subtype=0`) first; the other one follows when the first gives nothing,
     for alarms and buttons alike. ffmpeg is in the api image. The URL with the login is passed as one argument and cut out
     of ffmpeg's messages; it is never logged or returned.
