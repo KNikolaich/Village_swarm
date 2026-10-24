@@ -96,6 +96,7 @@ public static class DevicesModule
         services.AddScoped<DeviceConfigService>();
         services.AddScoped<OtaService>();
         services.AddScoped<DisplayFeedService>();
+        services.AddScoped<ValueRangeStore>();
         services.AddHostedService<DisplayFeed>();
         services.AddScoped<OtaPendingStore>();
         services.AddSingleton<OtaWakeDelivery>();
@@ -248,6 +249,7 @@ public static class DevicesModule
         app.MapProvisioningEndpoints();
         app.MapOtaEndpoints();
         app.MapOtaPendingEndpoints();
+        app.MapValueRangeEndpoints();
         app.MapOtaRolloutEndpoints();
 
         var modes = app.MapGroup("/api/modes").WithTags("modes");

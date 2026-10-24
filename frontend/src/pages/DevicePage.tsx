@@ -2,6 +2,9 @@ import { IpCamChannelSettings, NvrDeviceView } from '@/components/IpCamPanel'
 import { FeaturesPanel } from '@/components/FeaturesPanel'
 import { BlePanel } from '@/components/BlePanel'
 import { DisplayPanel } from '@/components/DisplayPanel'
+import { RangeEditor } from '@/components/RangeEditor'
+import { cn } from '@/lib/utils'
+import { rangeClass, rangeKey, rangeState } from '@/lib/valueRange'
 import { IrPanel } from '@/components/IrPanel'
 import { TasmotaConsole } from '@/components/TasmotaConsole'
 import { useQueryClient } from '@tanstack/react-query'
@@ -10,7 +13,7 @@ import { useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
-import { chartWindow, keys, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useMonitoring, useSendCommand, useSeries, useSnapshot, useTimelapse } from '@/api/queries'
+import { chartWindow, keys, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useMonitoring, useRanges, useSendCommand, useSeries, useSnapshot, useTimelapse } from '@/api/queries'
 import { Chart, TimeAxis, type ChartPoint } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
@@ -220,6 +223,7 @@ export function DevicePage() {
   const devices = useDevices(true)
   const zones = useZones()
   const latest = useLatestTelemetry()
+  const valueRanges = useRanges().data
   const monitoring = useMonitoring()
   const timelapse = useTimelapse()
   const me = useMe()
@@ -334,11 +338,12 @@ export function DevicePage() {
             {readings.map((v) => (
               <div key={v.metric} className="rounded-lg bg-neutral-800/50 p-3">
                 <p className="truncate text-xs text-neutral-400">{metricLabel(v.metric)}</p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">{formatValue(v.metric, v.value)}</p>
+                <p className={cn('mt-1 text-2xl font-semibold tabular-nums', rangeClass(rangeState(v.value, valueRanges?.get(rangeKey(deviceId, v.metric)))))}>{formatValue(v.metric, v.value)}</p>
                 <p className="text-xs text-neutral-500">{formatAgo(v.ts)}</p>
               </div>
             ))}
           </div>
+          <RangeEditor deviceId={deviceId} metrics={readings.map((v) => v.metric)} editable={canControl} />
         </CardContent>
       </Card>}
 

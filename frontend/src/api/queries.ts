@@ -1,3 +1,4 @@
+import { rangesByKey } from '@/lib/valueRange'
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { t } from '@/i18n'
@@ -392,3 +393,12 @@ export function useDeleteNoteAttachment(noteId: number) {
     onSuccess: () => qc.invalidateQueries({ queryKey: noteKeys.note(noteId) }),
   })
 }
+
+/** The normal range of readings (colour of the number: light blue below, pink above, white inside). */
+export const useRanges = () =>
+  useQuery({
+    queryKey: ['ranges'] as const,
+    queryFn: () => call(api.GET('/api/ranges')),
+    refetchInterval: 5 * 60_000,
+    select: (list) => rangesByKey(list),
+  })

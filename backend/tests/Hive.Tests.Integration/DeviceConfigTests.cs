@@ -229,4 +229,33 @@ public sealed class DeviceConfigTests(HiveFixture hive)
             await Task.Delay(100);
         Assert.Equal(0, Last().GetProperty("items").GetArrayLength());
     }
+    /// <summary>The normal range of a reading is kept per device and metric; the screens colour the number by it.</summary>
+    [Fact]
+    public async Task The_normal_range_of_a_reading_is_kept_listed_and_removed()
+    {
+        await RegisterAsync("meteo-range1");
+        var admin = await hive.LoginAsync();
+
+        using var bad = await admin.PutAsJsonAsync("/api/ranges/meteo-range1/temperature", new { min = 26, max = 18 });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        using var stranger = await admin.PutAsJsonAsync("/api/ranges/nobody-here/temperature", new { min = 18, max = 26 });
+        Assert.Equal(HttpStatusCode.NotFound, stranger.StatusCode);
+
+        using var saved = await admin.PutAsJsonAsync("/api/ranges/meteo-range1/temperature", new { min = 18.5, max = 26 });
+        Assert.Equal(HttpStatusCode.NoContent, saved.StatusCode);
+        using var onlyMax = await admin.PutAsJsonAsync("/api/ranges/meteo-range1/humidity", new { max = 70 });
+        Assert.Equal(HttpStatusCode.NoContent, onlyMax.StatusCode);
+
+        var list = await admin.GetFromJsonAsync<JsonElement>("/api/ranges");
+        var mine = list.EnumerateArray().Where(r => r.GetProperty("deviceId").GetString() == "meteo-range1").ToList();
+        Assert.Equal(["humidity", "temperature"], mine.Select(r => r.GetProperty("metric").GetString()!).ToArray());
+        Assert.Equal(18.5, mine[1].GetProperty("min").GetDouble());
+        Assert.Equal(26, mine[1].GetProperty("max").GetDouble());
+        Assert.Equal(JsonValueKind.Null, mine[0].GetProperty("min").ValueKind);
+
+        using var gone = await admin.DeleteAsync("/api/ranges/meteo-range1/temperature");
+        Assert.Equal(HttpStatusCode.NoContent, gone.StatusCode);
+        list = await admin.GetFromJsonAsync<JsonElement>("/api/ranges");
+        Assert.DoesNotContain(list.EnumerateArray(), r => r.GetProperty("deviceId").GetString() == "meteo-range1" && r.GetProperty("metric").GetString() == "temperature");
+    }
 }

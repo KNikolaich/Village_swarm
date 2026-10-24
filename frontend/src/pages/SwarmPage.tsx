@@ -6,7 +6,7 @@ import { FlashButton } from '@/components/FlashButton'
 import { OtaRolloutPanel } from '@/components/OtaRolloutPanel'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto, type LatestValueDto, type Schemas } from '@/api/client'
-import { keys, useDevices, useLatestTelemetry, useMe, useOtaRollout, useSendCommand, useSnapshot, useZones } from '@/api/queries'
+import { keys, useDevices, useLatestTelemetry, useMe, useOtaRollout, useRanges, useSendCommand, useSnapshot, useZones } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
@@ -15,6 +15,7 @@ import { thermometerSensors, usesPin } from '@/lib/features'
 import { candidates, newerBuild as newerBuildFor } from '@/lib/otaRollout'
 import { groupDevices, groupings, mainReadings, quickControls, type Grouping, splitChildren } from '@/lib/swarm'
 import { cn } from '@/lib/utils'
+import { rangeClass, rangeKey, rangeState } from '@/lib/valueRange'
 
 /** Battery intervals offered in the UI; the contract allows 60..86400 s. 0 = always awake. */
 const sleepChoices = [0, 300, 600, 900, 1800, 3600]
@@ -305,6 +306,7 @@ const staleAfterMs = 3 * 3600_000
 /** The hornet's main readings as large numbers; the label and age are in the tooltip. */
 function Readings({ device, latest }: { device: DeviceDto; latest: LatestValueDto[] }) {
   const readings = mainReadings(device, latest)
+  const ranges = useRanges().data
   if (readings.length === 0) return null
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
@@ -315,7 +317,9 @@ function Readings({ device, latest }: { device: DeviceDto; latest: LatestValueDt
           <span key={v.metric} title={`${metricLabel(v.metric)} · ${formatAgo(v.ts)}`}
             className={cn('flex items-center gap-1', stale && 'opacity-50')}>
             {Icon && <Icon className="size-4 text-neutral-500" />}
-            <span className={cn('text-xl font-semibold tabular-nums', v.metric.startsWith('temperature') && v.value < 0 && 'text-sky-300')}>
+            <span className={cn('text-xl font-semibold tabular-nums', ranges?.has(rangeKey(device.deviceId, v.metric))
+              ? rangeClass(rangeState(v.value, ranges.get(rangeKey(device.deviceId, v.metric))))
+              : v.metric.startsWith('temperature') && v.value < 0 && 'text-sky-300')}>
               {formatValue(v.metric, v.value)}
             </span>
           </span>
