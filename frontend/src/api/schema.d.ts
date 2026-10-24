@@ -5396,6 +5396,7 @@ export interface components {
             sort: number;
             thermometer?: null | string;
             dashboard?: null | string[];
+            parent?: null | string;
         };
         DeviceLogDto: {
             /** Format: int64 */
@@ -5763,6 +5764,7 @@ export interface components {
             rtspPort: number;
             login: components["schemas"]["NvrLoginDto"];
             stream: components["schemas"]["NvrStreamDto"];
+            deviceId: string;
         };
         NvrLoginDto: {
             state: string;

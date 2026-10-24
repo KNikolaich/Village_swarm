@@ -5,6 +5,7 @@ using Hive.Domain;
 using Hive.Modules.IpCams;
 using Hive.Modules.Notify;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hive.Tests.Integration;
 
@@ -428,5 +429,45 @@ public sealed class IpCamTests(HiveFixture hive) : IAsyncLifetime
         var id = await hive.QueryAsync(db => db.Events.Where(e => e.DeviceId == cam && e.Type == "motion").Select(e => e.Id).SingleAsync());
         await hive.WaitForAsync(db => db.Media.CountAsync(m => m.EventId == id).ContinueWith(t => t.Result == 3), "three photos");
         Assert.Single(hive.Grabber.Urls);
+    }
+
+    [Fact]
+    public async Task The_nvr_is_a_device_of_its_own_with_its_cameras_under_it()
+    {
+        using var admin = await hive.LoginAsync();
+        var nvr = await AddNvrAsync(admin, "Регистратор дома", new IpCamChannelRequest(1, "Ворота"), new IpCamChannelRequest(2, "Двор"));
+        Assert.Equal($"nvr{nvr.Id}", nvr.DeviceId);
+        await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == nvr.DeviceId && d.Status == DeviceStatus.Online), "the NVR online with its stream");
+
+        var devices = (await admin.GetFromJsonAsync<List<JsonElement>>("/api/devices"))!;
+        var own = devices.Single(d => d.GetProperty("deviceId").GetString() == nvr.DeviceId);
+        Assert.Equal("nvr", own.GetProperty("type").GetString());
+        Assert.Equal("Регистратор дома", own.GetProperty("name").GetString());
+        Assert.Equal(nvr.Id, own.GetProperty("info").GetProperty("nvrId").GetInt32());
+        foreach (var c in nvr.Channels)
+            Assert.Equal(nvr.DeviceId, devices.Single(d => d.GetProperty("deviceId").GetString() == c.DeviceId).GetProperty("parent").GetString());
+
+        using var removed = await admin.DeleteAsync($"/api/ipcams/{nvr.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+        Assert.Equal(DeviceStatus.Disabled, await hive.QueryAsync(db => db.Devices.Where(d => d.DeviceId == nvr.DeviceId).Select(d => d.Status).SingleAsync()));
+    }
+
+    [Fact]
+    public async Task An_nvr_saved_before_it_was_a_device_gets_one()
+    {
+        // As the first version left it: the NVR and its channel's device, no NVR device, no parent.
+        var id = await hive.QueryAsync(async db =>
+        {
+            var old = new Nvr { Name = "Старый", Host = "127.0.0.1", Port = _nvr.Port, Username = FakeNvr.User, PasswordProtected = "x", CreatedAt = DateTimeOffset.UtcNow };
+            db.Nvrs.Add(old);
+            await db.SaveChangesAsync();
+            db.NvrChannels.Add(new NvrChannel { NvrId = old.Id, Channel = 1, DeviceId = $"ipcam{old.Id}-ch1" });
+            db.Devices.Add(new Device { DeviceId = $"ipcam{old.Id}-ch1", TypeCode = "ipcam", Name = "Ворота", Driver = Drivers.IpCam, CreatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+            return old.Id;
+        });
+        hive.App.Services.GetRequiredService<IpCamWatch>().Reload();
+        await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == $"nvr{id}" && d.TypeCode == "nvr"), "the NVR device made");
+        Assert.Equal($"nvr{id}", await hive.QueryAsync(db => db.Devices.Where(d => d.DeviceId == $"ipcam{id}-ch1").Select(d => d.ParentId).SingleAsync()));
     }
 }

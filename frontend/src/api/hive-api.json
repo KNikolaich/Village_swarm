@@ -5044,6 +5044,12 @@
             "items": {
               "type": "string"
             }
+          },
+          "parent": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -6387,7 +6393,8 @@
           "channels",
           "rtspPort",
           "login",
-          "stream"
+          "stream",
+          "deviceId"
         ],
         "type": "object",
         "properties": {
@@ -6426,6 +6433,9 @@
           },
           "stream": {
             "$ref": "#/components/schemas/NvrStreamDto"
+          },
+          "deviceId": {
+            "type": "string"
           }
         }
       },

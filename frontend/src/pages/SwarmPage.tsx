@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, BatteryMedium, CloudDownload, Camera, CircleHelp, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Plus, Terminal, Thermometer, Usb, Wifi, WifiOff, type LucideIcon } from 'lucide-react'
+import { ArrowRightLeft, BatteryMedium, Camera, ChevronDown, ChevronRight, CircleHelp, CloudDownload, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Plus, Terminal, Thermometer, Usb, Wifi, WifiOff, type LucideIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { FlashButton } from '@/components/FlashButton'
@@ -13,7 +13,7 @@ import { metricLabel, statusLabel, t } from '@/i18n'
 import { formatAgo, formatValue } from '@/lib/format'
 import { thermometerSensors, usesPin } from '@/lib/features'
 import { candidates, newerBuild as newerBuildFor } from '@/lib/otaRollout'
-import { groupDevices, groupings, mainReadings, quickControls, type Grouping } from '@/lib/swarm'
+import { groupDevices, groupings, mainReadings, quickControls, type Grouping, splitChildren } from '@/lib/swarm'
 import { cn } from '@/lib/utils'
 
 /** Battery intervals offered in the UI; the contract allows 60..86400 s. 0 = always awake. */
@@ -433,13 +433,22 @@ export function SwarmPage() {
   const deceasedCount = (devices.data ?? []).filter((d) => d.status === 'disabled').length
   const outdated = useMemo(() => candidates(devices.data ?? [], firmware.data ?? []).length, [devices.data, firmware.data])
   const list = useMemo(() => (devices.data ?? []).filter((d) => showDeceased || d.status !== 'disabled'), [devices.data, showDeceased])
+  // An NVR's cameras are listed under it, not in the groups.
+  const { top, children } = useMemo(() => splitChildren(list), [list])
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleFolded = (id: string) => setFolded((f) => {
+    const next = new Set(f)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
   const groups = useMemo(
-    () => groupDevices(list, zones.data ?? [], grouping, {
+    () => groupDevices(top, zones.data ?? [], grouping, {
       hives: t('swarm.groupHives'),
       noZone: t('swarm.noZone'),
       type: (type) => t(`deviceTypes.${type}`, type),
     }),
-    [list, zones.data, grouping],
+    [top, zones.data, grouping],
   )
 
   /** The wizard opens on the flashing step: the hornet's type and name are known, and the code is issued there. */
@@ -519,8 +528,9 @@ export function SwarmPage() {
                 <div className="min-w-0 flex-1">
                   <Link to={`/swarm/${encodeURIComponent(d.deviceId)}`} className="block truncate font-medium hover:text-amber-400">{d.name}</Link>
                   <p className="truncate text-xs text-neutral-500">
-                    {d.deviceId} · {d.type}{d.driver === 'tasmota' ? ' · Tasmota' : d.driver === 'zigbee' ? ' · Zigbee' : ''} · {formatAgo(d.lastSeenAt)}
+                    {d.deviceId} · {d.type === 'nvr' ? t('deviceTypes.nvr') : d.type}{d.driver === 'tasmota' ? ' · Tasmota' : d.driver === 'zigbee' ? ' · Zigbee' : ''}{d.type === 'nvr' && d.ip ? ` · ${d.ip}` : ''} · {formatAgo(d.lastSeenAt)}
                   </p>
+                  {d.type === 'nvr' && loginTrouble(d) && <p className="text-xs text-red-400">{t(`ipcam.login.short.${loginTrouble(d)}`)}</p>}
                   {canControl && d.type === 'meteo' && d.status !== 'disabled' && (
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-neutral-400">
                       <span className="flex items-center gap-2 whitespace-nowrap"><Moon className="size-3" />{t('swarm.sleep')}</span>
@@ -561,10 +571,10 @@ export function SwarmPage() {
                   <Button variant="ghost" size="icon" title={t('swarm.updateAvailable')} aria-label={t('swarm.updateAvailable')}
                     className="text-amber-400 hover:text-amber-300" onClick={() => setFwOpen(fwOpen === d.deviceId ? null : d.deviceId)}><Cpu /></Button>
                 )}
-                {isAdmin && d.status === 'disabled' && d.driver !== 'zigbee' && (
+                {isAdmin && d.status === 'disabled' && replaceable(d) && (
                   <Button variant="outline" size="sm" title={t('swarm.reviveTitle')} onClick={() => replace(d.deviceId, true)}><ArrowRightLeft />{t('swarm.revive')}</Button>
                 )}
-                {isAdmin && d.status !== 'disabled' && d.type !== 'hive' && d.driver !== 'zigbee' && (
+                {isAdmin && d.status !== 'disabled' && d.type !== 'hive' && replaceable(d) && (
                   <Button variant="ghost" size="icon" title={t('swarm.replaceTitle')} onClick={() => replace(d.deviceId)}><ArrowRightLeft /></Button>
                 )}
               </div>
@@ -574,11 +584,55 @@ export function SwarmPage() {
                 <FirmwarePanel device={d} builds={firmware.data ?? []} onDone={() => setFwOpen(null)} />
               </CardContent>
             )}
+            {children.has(d.deviceId) && (
+              <ChildDevices
+                devices={children.get(d.deviceId)!}
+                open={!folded.has(d.deviceId)}
+                onToggle={() => toggleFolded(d.deviceId)}
+                canControl={canControl}
+              />
+            )}
           </Card>
             ))}
           </section>
         ))}
       </div>
     </div>
+  )
+}
+
+/** Only boards can be replaced (a new board takes over the hornet): not Zigbee devices or cameras behind an NVR. */
+const replaceable = (d: DeviceDto) => d.driver === 'hornet' || d.driver === 'tasmota'
+
+/** An NVR whose login is locked or refused says so on its row (its device state "login", contracts/ipcam.md). */
+function loginTrouble(d: DeviceDto): string | null {
+  const login = (d.state as { login?: unknown } | null)?.login
+  return typeof login === 'string' && login !== 'ok' ? login : null
+}
+
+/** The devices that belong to a parent (an NVR's cameras), under its row; folded on a tap, open by default. */
+function ChildDevices({ devices, open, onToggle, canControl }: { devices: DeviceDto[]; open: boolean; onToggle: () => void; canControl: boolean }) {
+  return (
+    <CardContent className="border-t border-neutral-800 py-2">
+      <button type="button" onClick={onToggle} aria-expanded={open}
+        className="flex w-full items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200">
+        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        {t('swarm.children').replace('{n}', String(devices.length))}
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-2 border-l border-neutral-800 pl-3">
+          {devices.map((c) => (
+            <li key={c.deviceId} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1', c.status === 'disabled' && 'opacity-50')}>
+              <StatusIcon device={c} />
+              <div className="min-w-0 flex-1">
+                <Link to={`/swarm/${encodeURIComponent(c.deviceId)}`} className="block truncate text-sm hover:text-amber-400">{c.name}</Link>
+                <p className="truncate text-xs text-neutral-500">{c.deviceId}{c.zone ? ` · ${c.zone}` : ''} · {formatAgo(c.lastSeenAt)}</p>
+              </div>
+              {canControl && c.status === 'online' && <QuickControls device={c} />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </CardContent>
   )
 }

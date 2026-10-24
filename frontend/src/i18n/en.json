@@ -870,7 +870,8 @@
     "waitQueued": "The update waits for the hornet to wake up",
     "waitPending": "waiting for wake-up, tries: {n}",
     "sleepHelpLabel": "How sleep works",
-    "sleepHelp": "Sleep: how long the hornet sleeps between readings. It wakes, sends a reading and sleeps again, and applies a change at its next wake-up.\n\nNever sleeps: for mains power. Always connected, commands arrive at once.\n\nDeep: the board almost switches off, a battery lasts long. Needs a GPIO16–RST jumper (docs/hornet-esp01-battery.md). Commands do not reach it while it sleeps; a firmware update waits for the wake-up.\n\nLight: stays on Wi‑Fi, commands arrive at once, no jumper, but it saves less."
+    "sleepHelp": "Sleep: how long the hornet sleeps between readings. It wakes, sends a reading and sleeps again, and applies a change at its next wake-up.\n\nNever sleeps: for mains power. Always connected, commands arrive at once.\n\nDeep: the board almost switches off, a battery lasts long. Needs a GPIO16–RST jumper (docs/hornet-esp01-battery.md). Commands do not reach it while it sleeps; a firmware update waits for the wake-up.\n\nLight: stays on Wi‑Fi, commands arrive at once, no jumper, but it saves less.",
+    "children": "Cameras ({n})"
   },
   "add": {
     "step1": "Hornet and code",
@@ -959,7 +960,8 @@
     "plant": "Plants",
     "ble": "Bluetooth bridge (kitchen thermometer)",
     "sensor": "Sensor (motion, door, leak)",
-    "ipcam": "IP camera (via NVR)"
+    "ipcam": "IP camera (via NVR)",
+    "nvr": "NVR"
   },
   "boards": {
     "esp32cam-aithinker": "ESP32-CAM AI-Thinker",
@@ -1312,7 +1314,12 @@
     "login": {
       "locked": "The NVR locked the login, {n} min left. The hive leaves it alone meanwhile so the lock is not extended.",
       "paused": "The NVR refused the password twice. The hive stopped asking it to avoid a lockout: check the login and save it again.",
-      "wait": "The NVR refused the password ({n} attempts left). Next try in a minute."
+      "wait": "The NVR refused the password ({n} attempts left). Next try in a minute.",
+      "short": {
+        "locked": "The NVR locked the login",
+        "paused": "The NVR refused the password",
+        "wait": "The NVR refused the password"
+      }
     },
     "snapshotQuality": "Snapshot quality",
     "qualities": {
@@ -1330,6 +1337,9 @@
       "never": "none since the hive started",
       "snapshotOk": "Snapshot {at}: {via}, {size}, {s} s",
       "snapshotFailed": "Snapshot {at} failed ({s} s)"
-    }
+    },
+    "cameraSettings": "Camera",
+    "adminOnly": "The NVR settings are for administrators.",
+    "nvrGone": "This NVR is no longer in the hive settings."
   }
 }

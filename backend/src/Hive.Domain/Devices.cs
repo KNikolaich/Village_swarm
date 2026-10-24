@@ -70,6 +70,9 @@ public static class Cameras
     public const string GuardCam = "guard-cam";
     public const string IpCam = "ipcam";
 
+    /// <summary>A Dahua NVR as a device of its own: the parent of its camera channels in the swarm (not a camera itself).</summary>
+    public const string Nvr = "nvr";
+
     /// <summary>For queries: <c>Cameras.Types.Contains(d.TypeCode)</c> translates to SQL.</summary>
     public static readonly string[] Types = [GuardCam, IpCam];
 }
@@ -112,6 +115,11 @@ public class Device
     public JsonDocument? Timelapse { get; set; }
 
     public string? MqttUser { get; set; }
+
+    /// <summary>
+    /// The device this one belongs to (an NVR for its camera channels): the swarm lists it under that one. Null: on its own.
+    /// </summary>
+    public string? ParentId { get; set; }
 
     /// <summary>Who speaks for the device on the broker: our own firmware or a Tasmota/OpenBeken one (see <see cref="Drivers"/>).</summary>
     public string Driver { get; set; } = Drivers.Hornet;

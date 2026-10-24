@@ -113,6 +113,7 @@ public sealed class IpCamWatch(
             return;
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<HiveDbContext>();
+        await scope.ServiceProvider.GetRequiredService<IpCamService>().EnsureDevicesAsync(ct);
         var nvrs = await db.Nvrs.AsNoTracking().Include(n => n.Channels).ToListAsync(ct);
         var protector = protection.CreateProtector(ProtectorPurpose);
         var runs = new List<NvrRun>();
@@ -352,8 +353,17 @@ public sealed class IpCamWatch(
         var now = time.GetUtcNow();
         foreach (var run in runs)
         {
+            var login = logins.State(run.Client.Endpoint).State;
+            if (login != run.LoginShown)
+            {
+                // "locked" on the NVR's row in the swarm without opening its page
+                run.LoginShown = login;
+                ingest.Enqueue(new DeviceStateReceived(run.DeviceId, Ulid.New(now), now, now,
+                    JsonSerializer.SerializeToDocument(new { login }), Merge: true));
+            }
             if (run.Connected && (run.Online != true || now - run.Refreshed >= Refresh))
             {
+                ingest.Enqueue(new DeviceStatusChanged(run.DeviceId, true, now));
                 foreach (var c in run.Channels.Values.Where(c => !run.IsLost(c.Channel)))
                     ingest.Enqueue(new DeviceStatusChanged(c.DeviceId, true, now));
                 run.Online = true;
@@ -362,6 +372,7 @@ public sealed class IpCamWatch(
             else if (!run.Connected && run.Online != false && now - run.LastAlive > TimeSpan.FromSeconds(options.Value.OfflineAfterS))
             {
                 logger.LogWarning("NVR {Nvr}: no events for {Seconds} s, its cameras are offline", run.Name, options.Value.OfflineAfterS);
+                ingest.Enqueue(new DeviceStatusChanged(run.DeviceId, false, run.LastAlive));
                 foreach (var c in run.Channels.Values)
                     ingest.Enqueue(new DeviceStatusChanged(c.DeviceId, false, run.LastAlive));
                 run.Online = false;
@@ -488,6 +499,12 @@ public sealed class IpCamWatch(
     {
         public int Id { get; } = id;
         public string Name { get; } = name;
+
+        /// <summary>The NVR's own device in the swarm.</summary>
+        public string DeviceId { get; } = IpCamService.NvrDeviceId(id);
+
+        /// <summary>The login state last put in the NVR device's state (see NvrLogins).</summary>
+        public string? LoginShown { get; set; }
         public DahuaClient Client { get; } = client;
         public Dictionary<int, ChannelInfo> Channels { get; } = channels;
         public CancellationTokenSource Stop { get; } = new();
