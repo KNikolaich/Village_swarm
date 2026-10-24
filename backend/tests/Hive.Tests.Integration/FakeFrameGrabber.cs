@@ -15,6 +15,8 @@ public sealed class FakeFrameGrabber : IFrameGrabber
 
     public ConcurrentQueue<string> Urls { get; } = new();
 
+    public ConcurrentQueue<TimeSpan> Spacings { get; } = new();
+
     /// <summary>"subtype=0" here makes the main stream fail like a camera that gives the NVR only its sub-stream.</summary>
     public ConcurrentDictionary<string, bool> FailSubtypes { get; } = new();
 
@@ -23,13 +25,15 @@ public sealed class FakeFrameGrabber : IFrameGrabber
     public void Reset()
     {
         Urls.Clear();
+        Spacings.Clear();
         FailSubtypes.Clear();
         GreySubtypes.Clear();
     }
 
-    public async IAsyncEnumerable<byte[]> GrabAsync(string rtspUrl, int count, TimeSpan firstTimeout, [EnumeratorCancellation] CancellationToken ct)
+    public async IAsyncEnumerable<byte[]> GrabAsync(string rtspUrl, int count, TimeSpan spacing, TimeSpan firstTimeout, [EnumeratorCancellation] CancellationToken ct)
     {
         Urls.Enqueue(rtspUrl);
+        Spacings.Enqueue(spacing);
         if (FailSubtypes.Keys.Any(rtspUrl.EndsWith))
             throw new SnapshotFailedException("rtsp: ffmpeg exit 1: method DESCRIBE failed: 404 Stream Not Found");
         var grey = GreySubtypes.Keys.Any(rtspUrl.EndsWith);

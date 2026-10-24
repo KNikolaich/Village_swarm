@@ -470,4 +470,25 @@ public sealed class IpCamTests(HiveFixture hive) : IAsyncLifetime
         await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == $"nvr{id}" && d.TypeCode == "nvr"), "the NVR device made");
         Assert.Equal($"nvr{id}", await hive.QueryAsync(db => db.Devices.Where(d => d.DeviceId == $"ipcam{id}-ch1").Select(d => d.ParentId).SingleAsync()));
     }
+
+    [Fact]
+    public async Task A_slow_burst_sends_the_first_photo_at_once_and_the_late_ones_as_replies()
+    {
+        const long chat = 900_560;
+        await LinkAsync(chat);
+        _nvr.SnapshotDelayMs = 5000; // each frame takes its time, as a key frame of an 8 MP camera does
+        using var admin = await hive.LoginAsync();
+        var nvr = await AddNvrAsync(admin, "Неспешный", new IpCamChannelRequest(1, "Ворота"));
+        var gate = nvr.Channels[0].DeviceId;
+        Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync("/api/modes/armed", new { armed = true })).StatusCode);
+
+        _nvr.Motion(0);
+        var alarm = await Tg.WaitForAsync(s => s.ChatId == chat && s.Method == "sendmessage" && s.Text?.Contains(gate) == true, "alarm text");
+        var first = await Tg.WaitForAsync(s => s.ChatId == chat && s.Method == "sendmediagroup" && s.ReplyTo == alarm.MessageId, "the first photo");
+        Assert.True(first.Photos < 3, "the first photo is not held back until the album is full");
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (Tg.Outbox.Where(s => s.ChatId == chat && s.Method == "sendmediagroup" && s.ReplyTo == alarm.MessageId).Sum(s => s.Photos) < 3 && DateTime.UtcNow < deadline)
+            await Task.Delay(250);
+        Assert.Equal(3, Tg.Outbox.Where(s => s.ChatId == chat && s.Method == "sendmediagroup" && s.ReplyTo == alarm.MessageId).Sum(s => s.Photos));
+    }
 }
