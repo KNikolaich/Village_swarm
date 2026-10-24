@@ -434,7 +434,7 @@ private:
 
     void logSdStatus(Core& core) {
         if (!sdOk_) {
-            core.log(LogLevel::Warn, "no SD card: a photo is lost after " + String(kUploadAttemptsWithoutSd) + " failed upload attempts");
+            core.log(LogLevel::Warn, "SD card not found or not mounted: photos are not archived, each gets " + String(kUploadAttemptsWithoutSd) + " upload attempts from memory");
             return;
         }
         const uint64_t total = SD_MMC.totalBytes();

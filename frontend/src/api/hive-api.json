@@ -5425,6 +5425,12 @@
             "items": {
               "$ref": "#/components/schemas/EventPhotoDto"
             }
+          },
+          "photoProblem": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

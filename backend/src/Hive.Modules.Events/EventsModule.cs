@@ -19,7 +19,8 @@ public sealed record EventPhotoDto(string Id, string Url, string ThumbUrl, DateT
 public sealed record EventDto(
     string Id, string DeviceId, string? DeviceName, string? Zone, string Type, string Severity,
     DateTimeOffset Ts, DateTimeOffset ReceivedAt, bool? Armed,
-    string? AcknowledgedBy, DateTimeOffset? AcknowledgedAt, JsonElement Payload, IReadOnlyList<EventPhotoDto> Photos);
+    string? AcknowledgedBy, DateTimeOffset? AcknowledgedAt, JsonElement Payload, IReadOnlyList<EventPhotoDto> Photos,
+    string? PhotoProblem = null);
 
 public sealed record EventFilter(
     string? Type, string? Device, int? Zone, string? Severity, DateTimeOffset? From, DateTimeOffset? To, string? Cursor, int? Limit);
@@ -103,13 +104,52 @@ public sealed class EventQueries(HiveDbContext db, TimeProvider time)
             .Select(d => new { d.DeviceId, d.Name, Zone = d.Zone == null ? null : d.Zone.Name })
             .ToDictionaryAsync(d => d.DeviceId, ct);
 
+        var noFrame = await NoFrameAsync(events.Where(e => !photos.ContainsKey(e.Id)).ToList(), ct);
+
         return events.Select(e =>
         {
             devices.TryGetValue(e.DeviceId, out var d);
             return new EventDto(e.Id, e.DeviceId, d?.Name, d?.Zone, e.Type, e.Severity.ToString().ToLowerInvariant(),
                 e.Ts, e.ReceivedAt, e.Armed, e.AcknowledgedBy, e.AcknowledgedAt, e.Payload.RootElement.Clone(),
-                photos.GetValueOrDefault(e.Id) ?? []);
+                photos.GetValueOrDefault(e.Id) ?? [], noFrame.Contains(e.Id) ? NoFramePhotoProblem : null);
         }).ToList();
+    }
+
+    /// <summary>PhotoProblem of an event whose camera reported it could take no frame: a power problem far more often than Wi-Fi.</summary>
+    public const string NoFramePhotoProblem = "no_frame";
+
+    /// <summary>Message a guard camera logs when the sensor gives no frame (firmware guard_cam.cpp).</summary>
+    public const string CameraFrameFailedLog = "camera frame failed";
+
+    /// <summary>
+    /// Events without photos whose camera, around the event, logged that it got no frame or came back from a brownout
+    /// reset: the photo was never taken, so the card should not blame the upload.
+    /// </summary>
+    private async Task<HashSet<string>> NoFrameAsync(List<DeviceEvent> events, CancellationToken ct)
+    {
+        var result = new HashSet<string>();
+        if (events.Count == 0)
+            return result;
+        var before = TimeSpan.FromSeconds(10);
+        var after = TimeSpan.FromMinutes(3);
+        var deviceIds = events.Select(e => e.DeviceId).Distinct().ToList();
+        var from = events.Min(e => e.Ts) - before;
+        var to = events.Max(e => e.Ts) + after;
+        var marks = await db.DeviceLogs.AsNoTracking()
+            .Where(l => deviceIds.Contains(l.DeviceId) && l.Ts >= from && l.Ts <= to && l.Msg == CameraFrameFailedLog)
+            .Select(l => new { l.DeviceId, l.Ts })
+            .ToListAsync(ct);
+        // Health repeats the reset reason of its boot for the whole uptime: the reboot itself is what counts.
+        marks.AddRange((await db.DeviceHealth.AsNoTracking()
+                .Where(h => deviceIds.Contains(h.DeviceId) && h.Ts >= from && h.ResetReason == "brownout")
+                .Select(h => new { h.DeviceId, h.Ts, h.UptimeS })
+                .ToListAsync(ct))
+            .Select(h => new { h.DeviceId, Ts = h.Ts - TimeSpan.FromSeconds(h.UptimeS) })
+            .Where(h => h.Ts >= from && h.Ts <= to));
+        foreach (var e in events)
+            if (marks.Any(m => m.DeviceId == e.DeviceId && m.Ts >= e.Ts - before && m.Ts <= e.Ts + after))
+                result.Add(e.Id);
+        return result;
     }
 }
 
