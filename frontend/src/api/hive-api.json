@@ -6394,7 +6394,13 @@
           "rtspPort",
           "login",
           "stream",
-          "deviceId"
+          "deviceId",
+          "kind",
+          "vendor",
+          "motion",
+          "snapshotUrl",
+          "rtspMain",
+          "rtspSub"
         ],
         "type": "object",
         "properties": {
@@ -6436,6 +6442,33 @@
           },
           "deviceId": {
             "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "vendor": {
+            "type": "string"
+          },
+          "motion": {
+            "type": "string"
+          },
+          "snapshotUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rtspMain": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rtspSub": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -6490,6 +6523,12 @@
           },
           "password": {
             "type": "string"
+          },
+          "kind": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -6538,6 +6577,42 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "kind": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "vendor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "snapshotUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rtspMain": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rtspSub": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "eventsUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -7023,6 +7098,48 @@
             "items": {
               "$ref": "#/components/schemas/ProbeChannelDto"
             }
+          },
+          "vendor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "model": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "snapshotUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rtspMain": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rtspSub": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "eventsUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "motion": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

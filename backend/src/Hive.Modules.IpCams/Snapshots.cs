@@ -121,7 +121,7 @@ public sealed class Snapshots(
     {
         // The way that worked last time, as known now: another request may have learned it while this one queued.
         var via = target.DeviceId is null ? target.Via : diagnostics.Via(target.DeviceId) ?? target.Via;
-        var ways = target.Source switch
+        var ways = !nvr.HasSnapshot ? [SnapshotSources.Rtsp] : target.Source switch
         {
             SnapshotSources.Cgi => [SnapshotSources.Cgi],
             SnapshotSources.Rtsp => [SnapshotSources.Rtsp],

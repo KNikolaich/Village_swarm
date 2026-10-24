@@ -130,8 +130,15 @@ public sealed class IpCamWatch(
                 logger.LogError(ex, "Password of NVR {Nvr} cannot be decrypted (data protection keys lost?); enter it again", nvr.Name);
                 continue;
             }
-            var run = new NvrRun(nvr.Id, nvr.Name, new DahuaClient(new NvrEndpoint(nvr.Host, nvr.Port, nvr.Username, password, nvr.RtspPort), logins),
-                nvr.Channels.ToDictionary(c => c.Channel, c => new ChannelInfo(c.DeviceId, c.Channel, c.RecordWhenDisarmed, c.SnapshotSource, c.SnapshotVia, c.SnapshotQuality)), now);
+            var endpoint = new NvrEndpoint(nvr.Host, nvr.Port, nvr.Username, password, nvr.RtspPort, nvr.SnapshotUrl, nvr.RtspMain, nvr.RtspSub);
+            var run = new NvrRun(nvr.Id, nvr.Name, new DahuaClient(endpoint, logins),
+                nvr.Channels.ToDictionary(c => c.Channel, c => new ChannelInfo(c.DeviceId, c.Channel, c.RecordWhenDisarmed, c.SnapshotSource, c.SnapshotVia, c.SnapshotQuality)), now)
+            {
+                // A camera on its own has no device of the NVR kind; an ONVIF one is watched its own way.
+                DeviceId = nvr.Kind == NvrKinds.Camera ? null : IpCamService.NvrDeviceId(nvr.Id),
+                Vendor = nvr.Vendor,
+                EventsUrl = nvr.EventsUrl,
+            };
             run.Task = Task.Run(() => RunStreamAsync(run, run.Stop.Token), CancellationToken.None);
             runs.Add(run);
         }
@@ -165,6 +172,11 @@ public sealed class IpCamWatch(
     /// <summary>One NVR: open the stream, read it until it breaks, wait (2, 4 … 60 s), again.</summary>
     private async Task RunStreamAsync(NvrRun run, CancellationToken ct)
     {
+        if (run.Vendor == CameraVendors.Onvif)
+        {
+            await RunOnvifAsync(run, ct);
+            return;
+        }
         var backoff = TimeSpan.FromSeconds(2);
         var stale = TimeSpan.FromSeconds(Math.Max(5, options.Value.StaleStreamS));
         while (!ct.IsCancellationRequested)
@@ -231,6 +243,100 @@ public sealed class IpCamWatch(
             {
                 run.LastError = ex.Message;
                 logger.LogWarning("NVR {Nvr}: event stream failed: {Error}", run.Name, ex.Message);
+            }
+            run.Connected = false;
+            try
+            {
+                await Task.Delay(backoff, time, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            backoff = TimeSpan.FromSeconds(Math.Min(60, backoff.TotalSeconds * 2));
+        }
+    }
+
+    /// <summary>
+    /// An ONVIF camera: a PullPoint subscription pulled every 10 s (each answer is a sign of life), renewed every minute; motion
+    /// is handled as a Dahua VideoMotion of channel 1. Without an event service the camera is only checked for life (snapshots
+    /// work, motion does not: the settings page says so).
+    /// </summary>
+    private async Task RunOnvifAsync(NvrRun run, CancellationToken ct)
+    {
+        var backoff = TimeSpan.FromSeconds(2);
+        var firstMotion = new DahuaEvent(DahuaEvent.VideoMotion, "Start", 0);
+        while (!ct.IsCancellationRequested)
+        {
+            if (logins.Blocked(run.Client.Endpoint) is { } block)
+            {
+                run.Connected = false;
+                var wait = block.Until is { } until ? until - time.GetUtcNow() : TimeSpan.FromSeconds(30);
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(wait.TotalSeconds, 1, 30)), time, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                continue;
+            }
+            using var onvif = new OnvifClient(run.Client.Endpoint, logins, time);
+            string? subscription = null;
+            try
+            {
+                if (run.EventsUrl is null)
+                {
+                    await onvif.AliveAsync(ct);
+                    if (!run.Connected)
+                        run.Opened(time.GetUtcNow());
+                    run.Alive(time.GetUtcNow(), connected: true);
+                    await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, options.Value.StaleStreamS)), time, ct);
+                    continue;
+                }
+                subscription = await onvif.SubscribeAsync(run.EventsUrl, ct);
+                run.Alive(time.GetUtcNow(), connected: true);
+                run.Opened(time.GetUtcNow());
+                logger.LogInformation("Camera {Nvr}: ONVIF events subscribed", run.Name);
+                backoff = TimeSpan.FromSeconds(2);
+                var renewAt = time.GetUtcNow().AddSeconds(60);
+                while (!ct.IsCancellationRequested)
+                {
+                    var events = await onvif.PullAsync(subscription, ct);
+                    run.Alive(time.GetUtcNow(), connected: true);
+                    if (events.Any(e => e.Motion == true))
+                        Handle(run, firstMotion, ct);
+                    if (time.GetUtcNow() >= renewAt)
+                    {
+                        await onvif.RenewAsync(subscription, ct);
+                        renewAt = time.GetUtcNow().AddSeconds(60);
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                if (subscription is not null)
+                {
+                    try
+                    {
+                        using var bye = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                        await onvif.UnsubscribeAsync(subscription, bye.Token);
+                    }
+                    catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or OnvifFaultException or NvrAuthException)
+                    {
+                    }
+                }
+                return;
+            }
+            catch (NvrAuthException ex) when (ex.Block is not null || ex.Error is { Locked: true } or { Status: 401 })
+            {
+                run.LastError = ex.Message; // NvrLogins has logged it once; the loop waits above
+            }
+            catch (Exception ex)
+            {
+                run.LastError = ex.Message;
+                logger.LogWarning("Camera {Nvr}: ONVIF {What} failed: {Error}", run.Name, run.EventsUrl is null ? "check" : "events", ex.Message);
             }
             run.Connected = false;
             try
@@ -354,7 +460,7 @@ public sealed class IpCamWatch(
         foreach (var run in runs)
         {
             var login = logins.State(run.Client.Endpoint).State;
-            if (login != run.LoginShown)
+            if (login != run.LoginShown && run.DeviceId is not null)
             {
                 // "locked" on the NVR's row in the swarm without opening its page
                 run.LoginShown = login;
@@ -363,7 +469,8 @@ public sealed class IpCamWatch(
             }
             if (run.Connected && (run.Online != true || now - run.Refreshed >= Refresh))
             {
-                ingest.Enqueue(new DeviceStatusChanged(run.DeviceId, true, now));
+                if (run.DeviceId is not null)
+                    ingest.Enqueue(new DeviceStatusChanged(run.DeviceId, true, now));
                 foreach (var c in run.Channels.Values.Where(c => !run.IsLost(c.Channel)))
                     ingest.Enqueue(new DeviceStatusChanged(c.DeviceId, true, now));
                 run.Online = true;
@@ -372,7 +479,8 @@ public sealed class IpCamWatch(
             else if (!run.Connected && run.Online != false && now - run.LastAlive > TimeSpan.FromSeconds(options.Value.OfflineAfterS))
             {
                 logger.LogWarning("NVR {Nvr}: no events for {Seconds} s, its cameras are offline", run.Name, options.Value.OfflineAfterS);
-                ingest.Enqueue(new DeviceStatusChanged(run.DeviceId, false, run.LastAlive));
+                if (run.DeviceId is not null)
+                    ingest.Enqueue(new DeviceStatusChanged(run.DeviceId, false, run.LastAlive));
                 foreach (var c in run.Channels.Values)
                     ingest.Enqueue(new DeviceStatusChanged(c.DeviceId, false, run.LastAlive));
                 run.Online = false;
@@ -500,8 +608,13 @@ public sealed class IpCamWatch(
         public int Id { get; } = id;
         public string Name { get; } = name;
 
-        /// <summary>The NVR's own device in the swarm.</summary>
-        public string DeviceId { get; } = IpCamService.NvrDeviceId(id);
+        /// <summary>The NVR's own device in the swarm; null for a camera on its own.</summary>
+        public string? DeviceId { get; init; }
+
+        public string Vendor { get; init; } = CameraVendors.Dahua;
+
+        /// <summary>ONVIF: where to subscribe for motion; null: the camera is only checked for life.</summary>
+        public string? EventsUrl { get; init; }
 
         /// <summary>The login state last put in the NVR device's state (see NvrLogins).</summary>
         public string? LoginShown { get; set; }

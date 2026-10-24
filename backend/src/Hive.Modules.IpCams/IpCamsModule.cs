@@ -1,3 +1,4 @@
+using Hive.Domain;
 using System.Security.Claims;
 using Hive.Infrastructure.Identity;
 using Hive.Modules.Devices;
@@ -41,12 +42,14 @@ public static class IpCamsModule
             .RequireAuthorization(HiveRoles.AdminOnly);
 
         // Before saving: the add form checks the address and the login it was given.
+        // Before saving: the add form checks the address and the login it was given. A camera on its own is tried as a Dahua,
+        // then as an ONVIF camera.
         ipcams.MapPost("/probe", async Task<Results<Ok<ProbeResultDto>, ValidationProblem>> (NvrProbeRequest r, NvrLogins logins, CancellationToken ct) =>
             {
                 if (IpCamService.HostError(r.Host, r.Port) is { } error)
                     return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["request"] = [error] });
-                using var client = new DahuaClient(new NvrEndpoint(IpCamService.Host(r.Host), r.Port ?? 80, r.Username.Trim(), r.Password), logins);
-                return TypedResults.Ok(await client.ProbeAsync(ct));
+                var endpoint = new NvrEndpoint(IpCamService.Host(r.Host), r.Port ?? 80, r.Username.Trim(), r.Password);
+                return TypedResults.Ok(r.Kind == NvrKinds.Camera ? await CameraProbe.ProbeAsync(endpoint, logins, ct) : await ProbeNvrAsync(endpoint, logins, ct));
             })
             .RequireAuthorization(HiveRoles.AdminOnly);
 
@@ -80,8 +83,7 @@ public static class IpCamsModule
             {
                 if (await s.EndpointAsync(id, ct) is not { } endpoint)
                     return TypedResults.NotFound();
-                using var client = new DahuaClient(endpoint, logins);
-                return TypedResults.Ok(await client.ProbeAsync(ct));
+                return TypedResults.Ok(await s.IsCameraAsync(id, ct) ? await CameraProbe.ProbeAsync(endpoint, logins, ct) : await ProbeNvrAsync(endpoint, logins, ct));
             })
             .RequireAuthorization(HiveRoles.AdminOnly);
 
@@ -107,5 +109,11 @@ public static class IpCamsModule
             })
             .Produces(StatusCodes.Status200OK, contentType: "image/jpeg");
         return app;
+    }
+
+    private static async Task<ProbeResultDto> ProbeNvrAsync(NvrEndpoint endpoint, NvrLogins logins, CancellationToken ct)
+    {
+        using var client = new DahuaClient(endpoint, logins);
+        return await client.ProbeAsync(ct);
     }
 }

@@ -1058,11 +1058,24 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("EventsUrl")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("events_url");
+
                     b.Property<string>("Host")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("host");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasDefaultValue("nvr")
+                        .HasColumnName("kind");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -1080,17 +1093,40 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("port");
 
+                    b.Property<string>("RtspMain")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("rtsp_main");
+
                     b.Property<int>("RtspPort")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
                         .HasDefaultValue(554)
                         .HasColumnName("rtsp_port");
 
+                    b.Property<string>("RtspSub")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("rtsp_sub");
+
+                    b.Property<string>("SnapshotUrl")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("snapshot_url");
+
                     b.Property<string>("Username")
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("username");
+
+                    b.Property<string>("Vendor")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasDefaultValue("dahua")
+                        .HasColumnName("vendor");
 
                     b.HasKey("Id")
                         .HasName("pk_nvrs");
