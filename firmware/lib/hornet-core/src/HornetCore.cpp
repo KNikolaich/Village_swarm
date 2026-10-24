@@ -51,6 +51,8 @@ String macString() { return WiFi.macAddress(); }
 
 void Core::begin() {
     Serial.begin(115200);
+    // Before the first settings read: an ESP-01 flashed by USB from an older layout keeps its settings (LegacyFs.h).
+    if (platform::adoptOldSettings()) Serial.println("\n[hornet] settings moved from the old file system place");
     settings_.load();
     settings_.boot++;
     // Counted as a failed boot until the broker is reached (onMqttConnected clears it): the main and the spare Wi-Fi
