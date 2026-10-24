@@ -306,24 +306,31 @@ public sealed class IpCamWatch(
 
             var media = scope.ServiceProvider.GetRequiredService<PhotoIngestService>();
             string? failed = null;
-            var missing = 0;
-            for (var i = 0; i < photos.Count; i++)
+            var delivered = 0;
+            if (photos.Count > 0)
             {
-                if (i > 0)
-                    await Task.Delay(TimeSpan.FromMilliseconds(options.Value.PhotoIntervalMs), time, ct);
                 try
                 {
-                    var jpeg = await SnapshotAsync(run, info, SnapshotPurpose.Alarm, ct);
-                    var stored = await media.StoreFetchedAsync(info.DeviceId, photos[i], eventId, "motion", jpeg.Jpeg, "nvr", ct);
-                    if (stored.Status is not (PhotoIngestStatus.Created or PhotoIngestStatus.Duplicate))
-                        logger.LogWarning("NVR {Nvr} channel {Channel}: snapshot not stored: {Error}", run.Id, info.Channel, stored.Error);
+                    // One ffmpeg run gives the key frames one after another; each photo is stored as it comes, so Telegram
+                    // can send the first without waiting for the rest.
+                    delivered = await snapshots.BurstAsync(run.Client.Endpoint,
+                        new SnapshotTarget(run.Id, info.DeviceId, info.Channel, info.Source, info.Via, info.Quality), photos.Count,
+                        TimeSpan.FromMilliseconds(options.Value.PhotoIntervalMs), async (taken, i) =>
+                        {
+                            info.Via = taken.Via;
+                            var stored = await media.StoreFetchedAsync(info.DeviceId, photos[i], eventId, "motion", taken.Jpeg, "nvr", ct);
+                            if (stored.Status is not (PhotoIngestStatus.Created or PhotoIngestStatus.Duplicate))
+                                logger.LogWarning("NVR {Nvr} channel {Channel}: snapshot not stored: {Error}", run.Id, info.Channel, stored.Error);
+                        }, ct);
+                    if (delivered < photos.Count)
+                        failed = $"{delivered} of {photos.Count} frames";
                 }
                 catch (SnapshotFailedException ex)
                 {
                     failed = ex.Message; // the details are in the log and the camera's journal already
-                    missing++;
                 }
             }
+            var missing = photos.Count - delivered;
             if (failed is not null)
                 PhotoFailed(info.DeviceId, failed, eventId, missing);
         }
