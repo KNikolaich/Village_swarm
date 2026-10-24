@@ -53,8 +53,13 @@ The video stream for a later stage is `rtsp://{host}/cam/realmonitor?channel=N&s
   The stream reconnects with backoff 2, 4, 8 … 60 s.
 - **Snapshots**: per channel `snapshotSource` and `snapshotQuality`:
   - `auto` (default): `snapshot.cgi`, and when it gives no JPEG a frame of the RTSP stream. A Dahua NVR often has no snapshot
-    of a third-party ONVIF camera (it answers 200 with `Error` text). The way that worked is kept as `snapshotVia` and goes
-    first next time.
+    of a third-party ONVIF camera (it answers 200 with `Error` text). Which way goes first (`snapshotVia`) changes only after
+    three failures of it in a row, or when the other way gives its first frame clearly faster (median of the last five, 20 %
+    less); a way left because it failed, or one that was faster, is tried first again every ten minutes (snapshot.cgi once
+    at start if a channel was stored as rtsp). Each change is logged with its reason.
+  - A burst cut short (a snapshot that does not come in time after the first ones) is finished by the next way for the frames
+    still missing, not given up; the cut is logged with its reason. Each frame of a burst is logged with its delay and, from
+    the stream, its time in the stream relative to the first (ffmpeg `showinfo`).
   - `cgi`: only `snapshot.cgi`; `rtsp`: only the stream.
   - RTSP: `ffmpeg -skip_frame nokey -analyzeduration 1000000 -probesize 1000000 -rtsp_transport tcp -i rtsp://{user}:{pass}@{host}:{rtspPort}/cam/realmonitor?channel=N&subtype=S -an -fps_mode passthrough -frames:v K -q:v 3 -f image2pipe -c:v mjpeg -`.
     A look (K = 1) decodes key frames only (`-skip_frame nokey`): decoding from whatever frame comes first (mid-GOP) gives grey

@@ -20,6 +20,10 @@ public sealed class IpCamDiagnostics
     private readonly ConcurrentDictionary<string, SnapshotAttemptDto> _snapshots = new();
     private readonly ConcurrentDictionary<string, DateTimeOffset> _motion = new();
     private readonly ConcurrentDictionary<string, string> _via = new();
+    private readonly ConcurrentDictionary<string, WayChooser> _choosers = new();
+
+    /// <summary>Which way a channel's frames are tried first (see <see cref="WayChooser"/>), starting from the way stored with it.</summary>
+    public WayChooser Chooser(string key, string? stored) => _choosers.GetOrAdd(key, _ => new WayChooser(stored));
 
     private static string Key(SnapshotTarget t) => t.DeviceId ?? $"nvr{t.NvrId}/ch{t.Channel}";
 
@@ -37,5 +41,9 @@ public sealed class IpCamDiagnostics
     public string? Via(string deviceId) => _via.GetValueOrDefault(deviceId);
 
     /// <summary>Settings saved: what was learned under the old ones no longer holds.</summary>
-    public void Forget(string deviceId) => _via.TryRemove(deviceId, out _);
+    public void Forget(string deviceId)
+    {
+        _via.TryRemove(deviceId, out _);
+        _choosers.TryRemove(deviceId, out _);
+    }
 }

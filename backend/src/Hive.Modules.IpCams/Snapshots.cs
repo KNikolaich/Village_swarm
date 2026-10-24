@@ -119,37 +119,49 @@ public sealed class Snapshots(
     private async Task<int> CollectAsync(NvrEndpoint nvr, SnapshotTarget target, SnapshotPurpose purpose, int count, TimeSpan interval,
         Func<SnapshotTaken, int, Task> onFrame, CancellationToken ct)
     {
-        // The way that worked last time, as known now: another request may have learned it while this one queued.
-        var via = target.DeviceId is null ? target.Via : diagnostics.Via(target.DeviceId) ?? target.Via;
-        var ways = !nvr.HasSnapshot ? [SnapshotSources.Rtsp] : target.Source switch
-        {
-            SnapshotSources.Cgi => [SnapshotSources.Cgi],
-            SnapshotSources.Rtsp => [SnapshotSources.Rtsp],
-            _ when via == SnapshotSources.Rtsp => new[] { SnapshotSources.Rtsp, SnapshotSources.Cgi },
-            _ => [SnapshotSources.Cgi, SnapshotSources.Rtsp],
-        };
+        var key = target.DeviceId ?? $"nvr{target.NvrId}/ch{target.Channel}";
+        var auto = nvr.HasSnapshot && target.Source is not (SnapshotSources.Cgi or SnapshotSources.Rtsp);
+        // Nothing learned yet: snapshot.cgi first, so one early miss does not make the slower stream stick.
+        var chooser = diagnostics.Chooser(key, target.Via ?? (auto ? SnapshotSources.Cgi : null));
+        var ways = !nvr.HasSnapshot ? [SnapshotSources.Rtsp]
+            : target.Source == SnapshotSources.Cgi ? [SnapshotSources.Cgi]
+            : target.Source == SnapshotSources.Rtsp ? [SnapshotSources.Rtsp]
+            : chooser.Order([SnapshotSources.Cgi, SnapshotSources.Rtsp], time.GetUtcNow());
         var started = time.GetTimestamp();
         var reasons = new List<string>();
         var delivered = 0;
-        string? size = null;
-        async Task Deliver(byte[] jpeg, string way)
+        string? size = null, firstWay = null;
+        long wayStarted = 0;
+        int? firstMs = null;
+        double? firstPts = null;
+        async Task Deliver(GrabbedFrame frame, string way)
         {
-            size ??= ImageTools.Identify(jpeg) is { } wh ? $"{wh.Width}x{wh.Height}" : "?";
+            size ??= ImageTools.Identify(frame.Jpeg) is { } wh ? $"{wh.Width}x{wh.Height}" : "?";
+            firstWay ??= way;
+            firstMs ??= (int)time.GetElapsedTime(wayStarted).TotalMilliseconds;
             if (count > 1)
-                logger.LogInformation("NVR {Nvr} channel {Channel}: frame {Frame} of {Count} via {Via} at {Ms} ms",
-                    target.NvrId, target.Channel, delivered + 1, count, way, (int)time.GetElapsedTime(started).TotalMilliseconds);
-            await onFrame(new SnapshotTaken(jpeg, way), delivered++);
+            {
+                // The time in the stream says how far apart the photos really are (an NVR may hand over buffered frames at once).
+                firstPts ??= frame.PtsS;
+                var inStream = frame.PtsS is { } pts && firstPts is { } p0 ? $", +{pts - p0:0.00} s in the stream" : "";
+                logger.LogInformation("NVR {Nvr} channel {Channel}: frame {Frame} of {Count} via {Via} at {Ms} ms{InStream}",
+                    target.NvrId, target.Channel, delivered + 1, count, way, (int)time.GetElapsedTime(started).TotalMilliseconds, inStream);
+            }
+            await onFrame(new SnapshotTaken(frame.Jpeg, way), delivered++);
         }
 
         using var client = new DahuaClient(nvr, logins);
         foreach (var way in ways)
         {
+            var before = delivered;
+            wayStarted = time.GetTimestamp();
+            firstMs = null;
+            string? cut = null;
             try
             {
-                if (way == SnapshotSources.Cgi)
-                    await CgiAsync(client, target, count, interval, Deliver, ct);
-                else
-                    await RtspAsync(nvr, target, count, interval, Deliver, reasons, ct);
+                cut = way == SnapshotSources.Cgi
+                    ? await CgiAsync(client, target, count - delivered, interval, Deliver, ct)
+                    : await RtspAsync(nvr, target, count - delivered, interval, Deliver, reasons, ct);
             }
             catch (SnapshotFailedException ex)
             {
@@ -164,26 +176,48 @@ public sealed class Snapshots(
             catch (OperationCanceledException)
             {
                 reasons.Add($"{way}: out of time ({MaxTime.TotalSeconds:0} s for the whole snapshot)");
-                if (delivered == 0)
-                    break; // frames that came before the time ran out still count
+                break; // frames that came before the time ran out still count
             }
-            if (delivered == 0)
-                continue;
-
-            var ms = (int)time.GetElapsedTime(started).TotalMilliseconds;
-            logger.LogInformation("NVR {Nvr} channel {Channel}: {Frames} snapshot(s) {Size} via {Via} in {Ms} ms ({Purpose}, {Quality})",
-                target.NvrId, target.Channel, delivered, size, way, ms, purpose, target.Quality);
-            diagnostics.Snapshot(target, new SnapshotAttemptDto(time.GetUtcNow(), purpose.ToString().ToLowerInvariant(), way, true, ms,
-                reasons.Count > 0 ? string.Join("; ", reasons) : null, size));
-            if (way != via)
-                await RememberAsync(target, way, ct);
-            return delivered;
+            if (auto)
+                await ChooseAsync(chooser, target, way, delivered > before, firstMs ?? (int)time.GetElapsedTime(wayStarted).TotalMilliseconds, ct);
+            if (delivered >= count)
+                break;
+            if (cut is not null)
+            {
+                // A burst cut short (a snapshot that did not come in time) is finished by the next way, not given up.
+                reasons.Add($"{way}: {cut} after {delivered - before} frame(s)");
+                logger.LogWarning("NVR {Nvr} channel {Channel}: burst cut after {Got} of {Count} frame(s) via {Via}: {Reason}",
+                    target.NvrId, target.Channel, delivered, count, way, cut);
+            }
         }
-        throw Fail(target, purpose, (int)time.GetElapsedTime(started).TotalMilliseconds, string.Join("; ", reasons));
+        if (delivered == 0)
+            throw Fail(target, purpose, (int)time.GetElapsedTime(started).TotalMilliseconds, string.Join("; ", reasons));
+
+        var ms = (int)time.GetElapsedTime(started).TotalMilliseconds;
+        logger.LogInformation("NVR {Nvr} channel {Channel}: {Frames} snapshot(s) {Size} via {Via} in {Ms} ms ({Purpose}, {Quality})",
+            target.NvrId, target.Channel, delivered, size, firstWay, ms, purpose, target.Quality);
+        diagnostics.Snapshot(target, new SnapshotAttemptDto(time.GetUtcNow(), purpose.ToString().ToLowerInvariant(), firstWay, true, ms,
+            reasons.Count > 0 ? string.Join("; ", reasons) : null, size));
+        return delivered;
     }
 
-    /// <summary>snapshot.cgi, <paramref name="interval"/> apart. A miss before the first frame fails the way; a later one ends the burst.</summary>
-    private async Task CgiAsync(DahuaClient client, SnapshotTarget target, int count, TimeSpan interval, Func<byte[], string, Task> deliver, CancellationToken ct)
+    /// <summary>The outcome of a way told to the chooser; a change of the preferred way is logged with its reason and stored.</summary>
+    private async Task ChooseAsync(WayChooser chooser, SnapshotTarget target, string way, bool ok, int ms, CancellationToken ct)
+    {
+        var was = chooser.Preferred;
+        var change = chooser.Record(way, ok, ms, time.GetUtcNow());
+        if (change is not null)
+            logger.LogInformation("NVR {Nvr} channel {Channel}: snapshots now come via {To} first (was {From}): {Reason}",
+                target.NvrId, target.Channel, change.To, change.From, change.Reason);
+        if (chooser.Preferred is { } now && now != was)
+            await RememberAsync(target, now, ct);
+    }
+
+    /// <summary>
+    /// snapshot.cgi, <paramref name="interval"/> apart. A miss before the first frame fails the way; a later one cuts the burst
+    /// (its reason returned, the rest left to the next way).
+    /// </summary>
+    private async Task<string?> CgiAsync(DahuaClient client, SnapshotTarget target, int count, TimeSpan interval, Func<GrabbedFrame, string, Task> deliver, CancellationToken ct)
     {
         for (var i = 0; i < count; i++)
         {
@@ -193,21 +227,23 @@ public sealed class Snapshots(
             {
                 var jpeg = await client.SnapshotAsync(target.Channel, ct);
                 Refuse(target, "cgi", jpeg);
-                await deliver(jpeg, SnapshotSources.Cgi);
+                await deliver(new GrabbedFrame(jpeg, null), SnapshotSources.Cgi);
             }
-            catch (SnapshotFailedException) when (i > 0)
+            catch (SnapshotFailedException ex) when (i > 0)
             {
-                return;
+                return ex.Message;
             }
         }
+        return null;
     }
 
     /// <summary>
-    /// Key frames of the streams, the channel's quality saying which first: fast the light sub-stream (an 8 MP main stream is
-    /// slow on the Pi), detailed the main stream. The other one follows when the first gives nothing, so a frame comes whenever
-    /// either can give one. A grey frame is not passed on; one that comes after good frames just ends the burst.
+    /// Frames of the streams, the channel's quality saying which first: fast the light sub-stream (an 8 MP main stream is slow on
+    /// the Pi), detailed the main stream. The other one follows when the first gives nothing, so a frame comes whenever either can
+    /// give one. A grey frame is not passed on; one that comes after good frames cuts the burst (its reason returned).
     /// </summary>
-    private async Task RtspAsync(NvrEndpoint nvr, SnapshotTarget target, int count, TimeSpan spacing, Func<byte[], string, Task> deliver, List<string> notes, CancellationToken ct)
+    private async Task<string?> RtspAsync(NvrEndpoint nvr, SnapshotTarget target, int count, TimeSpan spacing, Func<GrabbedFrame, string, Task> deliver,
+        List<string> notes, CancellationToken ct)
     {
         var errors = new List<string>();
         foreach (var subtype in target.Quality == SnapshotQualities.Detailed ? new[] { 0, 1 } : [1, 0])
@@ -218,26 +254,25 @@ public sealed class Snapshots(
             var got = 0;
             try
             {
-                await foreach (var jpeg in grabber.GrabAsync(nvr.RtspUrlWithLogin(target.Channel, subtype), count, spacing, RtspTimeout, ct))
+                await foreach (var frame in grabber.GrabAsync(nvr.RtspUrlWithLogin(target.Channel, subtype), count, spacing, RtspTimeout, ct))
                 {
-                    if (!PhotoIngestService.IsJpeg(jpeg))
+                    if (!PhotoIngestService.IsJpeg(frame.Jpeg))
                         throw new SnapshotFailedException("rtsp: ffmpeg gave no JPEG");
-                    Refuse(target, stream, jpeg);
-                    await deliver(jpeg, SnapshotSources.Rtsp);
+                    Refuse(target, stream, frame.Jpeg);
+                    await deliver(frame, SnapshotSources.Rtsp);
                     got++;
                 }
                 if (got > 0)
                 {
                     notes.AddRange(errors); // what the other stream did wrong stays visible
-                    return;
+                    return got < count ? $"{stream}: the stream ended" : null;
                 }
                 errors.Add($"{stream}: no frame");
             }
             catch (SnapshotFailedException ex) when (got > 0)
             {
-                logger.LogWarning("NVR {Nvr} channel {Channel}: burst ended after {Got} frame(s): {Reason}", target.NvrId, target.Channel, got, ex.Message);
                 notes.AddRange(errors);
-                return;
+                return ex.Message;
             }
             catch (SnapshotFailedException ex)
             {

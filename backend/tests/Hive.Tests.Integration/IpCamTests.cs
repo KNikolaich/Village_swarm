@@ -204,6 +204,14 @@ public sealed class IpCamTests(HiveFixture hive) : IAsyncLifetime
         Assert.Equal(
             ["rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=3&subtype=1", "rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=3&subtype=0"],
             hive.Grabber.Urls);
+        // One miss of snapshot.cgi is not enough to leave it; three in a row are.
+        Assert.NotEqual(SnapshotSources.Rtsp, await hive.QueryAsync(db => db.NvrChannels.Where(c => c.DeviceId == cam).Select(c => c.SnapshotVia).SingleAsync()));
+        for (var i = 0; i < 2; i++)
+        {
+            using var more = await admin.PostAsJsonAsync($"/api/devices/{cam}/commands", new { name = "snapshot" });
+            var c = (await more.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cid").GetString();
+            await hive.WaitForAsync(db => db.Commands.AnyAsync(x => x.Cid == c && x.Status == CommandStatus.Ok), "snapshot via RTSP again");
+        }
         Assert.Equal(SnapshotSources.Rtsp, await hive.QueryAsync(db => db.NvrChannels.Where(c => c.DeviceId == cam).Select(c => c.SnapshotVia).SingleAsync()));
 
         // Remembered: the next photo goes to the stream first and does not wait for snapshot.cgi.
@@ -490,5 +498,47 @@ public sealed class IpCamTests(HiveFixture hive) : IAsyncLifetime
         while (Tg.Outbox.Where(s => s.ChatId == chat && s.Method == "sendmediagroup" && s.ReplyTo == alarm.MessageId).Sum(s => s.Photos) < 3 && DateTime.UtcNow < deadline)
             await Task.Delay(250);
         Assert.Equal(3, Tg.Outbox.Where(s => s.ChatId == chat && s.Method == "sendmediagroup" && s.ReplyTo == alarm.MessageId).Sum(s => s.Photos));
+    }
+
+    [Fact]
+    public async Task A_burst_cut_short_by_the_nvr_is_finished_from_the_stream()
+    {
+        hive.Grabber.Reset();
+        _nvr.SnapshotsLeft[1] = 1; // the first snapshot comes, then the NVR stops answering them (busy)
+        using var admin = await hive.LoginAsync();
+        var nvr = await AddNvrAsync(admin, "Обрыв", new IpCamChannelRequest(1, "Ворота", RecordWhenDisarmed: true));
+        var gate = nvr.Channels[0].DeviceId;
+
+        _nvr.Motion(0);
+        await hive.WaitForAsync(db => db.Events.AnyAsync(e => e.DeviceId == gate && e.Type == "motion"), "motion");
+        var id = await hive.QueryAsync(db => db.Events.Where(e => e.DeviceId == gate && e.Type == "motion").Select(e => e.Id).SingleAsync());
+        await hive.WaitForAsync(db => db.Media.CountAsync(m => m.EventId == id).ContinueWith(t => t.Result == 3), "all three photos", timeoutS: 30);
+        Assert.Equal([2], hive.Grabber.Counts); // the stream was asked only for the two still missing
+        Assert.False(await hive.QueryAsync(db => db.Events.AnyAsync(e => e.DeviceId == gate && e.Type == "photo_failed")));
+    }
+
+    [Fact]
+    public async Task One_missed_snapshot_does_not_leave_the_nvrs_own_snapshots()
+    {
+        hive.Grabber.Reset();
+        _nvr.NoSnapshot[1] = true;
+        using var admin = await hive.LoginAsync();
+        var nvr = await AddNvrAsync(admin, "Разок", new IpCamChannelRequest(1, "Ворота"));
+        var gate = nvr.Channels[0].DeviceId;
+
+        async Task SnapAsync()
+        {
+            using var sent = await admin.PostAsJsonAsync($"/api/devices/{gate}/commands", new { name = "snapshot" });
+            var cid = (await sent.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cid").GetString();
+            await hive.WaitForAsync(db => db.Commands.AnyAsync(c => c.Cid == cid && c.Status == CommandStatus.Ok), "snapshot");
+        }
+
+        await SnapAsync(); // the NVR misses it, the stream gives it
+        Assert.Single(hive.Grabber.Urls);
+        _nvr.NoSnapshot.TryRemove(1, out _);
+        var cgiBefore = _nvr.Snapshots;
+        await SnapAsync(); // the NVR is back: its snapshot first again, the stream not asked
+        Assert.Equal(cgiBefore + 1, _nvr.Snapshots);
+        Assert.Single(hive.Grabber.Urls);
     }
 }

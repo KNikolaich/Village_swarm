@@ -17,6 +17,9 @@ public sealed class FakeFrameGrabber : IFrameGrabber
 
     public ConcurrentQueue<TimeSpan> Spacings { get; } = new();
 
+    /// <summary>How many frames each run was asked for (a burst finished by the stream asks for the ones still missing).</summary>
+    public ConcurrentQueue<int> Counts { get; } = new();
+
     /// <summary>"subtype=0" here makes the main stream fail like a camera that gives the NVR only its sub-stream.</summary>
     public ConcurrentDictionary<string, bool> FailSubtypes { get; } = new();
 
@@ -26,21 +29,23 @@ public sealed class FakeFrameGrabber : IFrameGrabber
     {
         Urls.Clear();
         Spacings.Clear();
+        Counts.Clear();
         FailSubtypes.Clear();
         GreySubtypes.Clear();
     }
 
-    public async IAsyncEnumerable<byte[]> GrabAsync(string rtspUrl, int count, TimeSpan spacing, TimeSpan firstTimeout, [EnumeratorCancellation] CancellationToken ct)
+    public async IAsyncEnumerable<GrabbedFrame> GrabAsync(string rtspUrl, int count, TimeSpan spacing, TimeSpan firstTimeout, [EnumeratorCancellation] CancellationToken ct)
     {
         Urls.Enqueue(rtspUrl);
         Spacings.Enqueue(spacing);
+        Counts.Enqueue(count);
         if (FailSubtypes.Keys.Any(rtspUrl.EndsWith))
             throw new SnapshotFailedException("rtsp: ffmpeg exit 1: method DESCRIBE failed: 404 Stream Not Found");
         var grey = GreySubtypes.Keys.Any(rtspUrl.EndsWith);
         for (var i = 0; i < count; i++)
         {
             await Task.Delay(50, ct);
-            yield return grey ? Grey() : _jpeg.Value;
+            yield return new GrabbedFrame(grey ? Grey() : _jpeg.Value, i * spacing.TotalSeconds);
         }
     }
 
