@@ -14,7 +14,10 @@ public sealed record IrCode(string Protocol, int Bits, string Data);
 /// <summary>The remote's buttons learned for one Tasmota IR device, by the name the family gave them.</summary>
 public sealed record IrButtonsDto(IReadOnlyDictionary<string, IrCode> Buttons);
 
-/// <summary>Buttons are kept in the device's config under "ir" (a Tasmota device has no retained config of ours).</summary>
+/// <summary>
+/// Buttons are kept in the device's config under "ir": a Tasmota device has no retained config of ours, and an irtx hornet's
+/// firmware does not read them (the hive sends the code with each command).
+/// </summary>
 public sealed class IrButtonService(HiveDbContext db, TimeProvider time)
 {
     public const int MaxButtons = 40;
@@ -54,17 +57,20 @@ public sealed class IrButtonService(HiveDbContext db, TimeProvider time)
             ? new JsonObject { ["button"] = button, ["protocol"] = c.Protocol, ["bits"] = c.Bits, ["data"] = c.Data }
             : null;
 
+    /// <summary>Devices whose remote can be learned: Tasmota ones with infrared, and our infrared transmitters.</summary>
+    private static bool HasButtons(Device d) => d.Driver == Drivers.Tasmota || d.TypeCode == "irtx";
+
     public async Task<IrButtonsDto?> GetAsync(string deviceId, CancellationToken ct)
     {
-        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Driver == Drivers.Tasmota, ct);
+        var device = (await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct)) is { } found && HasButtons(found) ? found : null;
         return device is null ? null : new IrButtonsDto(Read(device.Config));
     }
 
     /// <summary>False when there is no such Tasmota device.</summary>
     public async Task<bool> SetAsync(string deviceId, IReadOnlyDictionary<string, IrCode> buttons, string by, CancellationToken ct)
     {
-        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Driver == Drivers.Tasmota, ct);
-        if (device is null)
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null || !HasButtons(device))
             return false;
         var config = device.Config is null ? new JsonObject() : JsonNode.Parse(device.Config.RootElement.GetRawText())!.AsObject();
         var stored = new JsonObject();

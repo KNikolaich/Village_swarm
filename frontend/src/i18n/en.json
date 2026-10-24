@@ -964,7 +964,9 @@
     "ble": "Bluetooth bridge (kitchen thermometer)",
     "sensor": "Sensor (motion, door, leak)",
     "ipcam": "IP camera (via NVR)",
-    "nvr": "NVR"
+    "nvr": "NVR",
+    "irrx": "IR receiver (learns remote buttons)",
+    "irtx": "IR transmitter (controls an appliance)"
   },
   "boards": {
     "esp32cam-aithinker": "ESP32-CAM AI-Thinker",
@@ -1147,7 +1149,13 @@
     "unknownProtocol": "The protocol was not recognised: this code cannot be sent. Try closer to the board or another button.",
     "alreadySaved": "This button is already saved as '{name}'.",
     "namePlaceholder": "Button name (for example Power)",
-    "save": "Save the button"
+    "save": "Save the button",
+    "receiver": "Learn buttons from the receiver",
+    "noReceiver": "There is no infrared receiver in the house. Add an \"IR receiver\" hornet or a Tasmota device with a receiver to record buttons from a remote.",
+    "waitingReceiver": "Waiting for a code: point the remote at the chosen receiver and press a button.",
+    "receiverTitle": "IR receiver",
+    "receiverHint": "Point a remote at the receiver and press a button: the code appears here. Save it under a name on the page of the IR transmitter (the \"Remote\" block).",
+    "receiverNone": "No code yet"
   },
   "ble": {
     "title": "Bluetooth thermometer",

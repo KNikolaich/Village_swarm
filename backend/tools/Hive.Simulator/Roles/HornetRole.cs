@@ -37,6 +37,8 @@ public abstract class HornetRole
         "guard-cam" => new GuardCamRole(spec.Motion, PhotoLibrary.Load(photosDir)),
         "meteo" => new MeteoRole(spec.Temperature, spec.TeleIntervalS),
         "heat" => new HeatRole(spec.Heater, spec.TeleIntervalS),
+        "irrx" => new IrRole(emitter: false),
+        "irtx" => new IrRole(emitter: true),
         _ => throw new ArgumentException($"Unknown hornet type '{spec.Type}' for {spec.Id}"),
     };
 }

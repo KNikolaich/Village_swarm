@@ -608,6 +608,18 @@ namespace Hive.Infrastructure.Data.Migrations
                         },
                         new
                         {
+                            Code = "irrx",
+                            OfflineAfterS = 180,
+                            Title = "ИК-приёмник (учит кнопки пульта)"
+                        },
+                        new
+                        {
+                            Code = "irtx",
+                            OfflineAfterS = 180,
+                            Title = "ИК-передатчик (управляет прибором)"
+                        },
+                        new
+                        {
                             Code = "sensor",
                             OfflineAfterS = 1800,
                             Title = "Датчик (движение, дверь, протечка, температура)"

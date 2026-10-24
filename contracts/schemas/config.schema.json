@@ -199,6 +199,12 @@
           "minimum": 0,
           "maximum": 48
         },
+        "ir_pin": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 48,
+          "description": "Roles irrx and irtx: the pin of the infrared receiver or emitter (GPIO2 on the ESP-01 with the WS2812 connector)"
+        },
         "relay_active_low": {
           "type": "boolean"
         },
@@ -270,6 +276,27 @@
               "device": { "$ref": "common.schema.json#/$defs/deviceId", "description": "Absent: this hornet" },
               "metric": { "$ref": "common.schema.json#/$defs/segment" },
               "label": { "type": "string", "maxLength": 16 }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ir": {
+      "description": "Roles irrx and irtx: the remote's buttons learned and named by the family. The hive keeps them and sends the code with each cmd/ir; the hornet does not read them",
+      "type": "object",
+      "properties": {
+        "buttons": {
+          "type": "object",
+          "maxProperties": 40,
+          "additionalProperties": {
+            "type": "object",
+            "required": ["protocol", "bits", "data"],
+            "properties": {
+              "protocol": { "type": "string", "pattern": "^[A-Za-z0-9_]{2,24}$" },
+              "bits": { "type": "integer", "minimum": 1, "maximum": 64 },
+              "data": { "type": "string", "pattern": "^0[xX][0-9A-Fa-f]{1,16}$" }
             },
             "additionalProperties": false
           }

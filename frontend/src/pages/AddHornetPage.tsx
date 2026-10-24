@@ -14,7 +14,7 @@ import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select } from '
 import { getLanguage, t } from '@/i18n'
 import { HornetSerial, serialSupported } from '@/lib/serial'
 
-const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant', 'ble']
+const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant', 'ble', 'irrx', 'irtx']
 const types = typeCodes.map((code) => ({ code, get title() { return t(`deviceTypes.${code}`) } }))
 
 const idPattern = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/

@@ -41,6 +41,12 @@ A hornet with a screen (config `display`) may show readings of other devices: th
 `metric`, `label`) and publishes the ready texts to `vs/v1/hive/display/{id}` (retained, on change; the hornet reads `vs/v1/hive/#` already). An empty `items` list
 makes the hornet show its own readings again. The hornet does not read `display.items` itself.
 
+Infrared (roles `irrx` and `irtx`, ESP-01 on the WS2812 connector, GPIO2; `hw.ir_pin`): the **receiver** keeps the last code it saw in its retained state
+`ir_last` = `"NEC 32 0x02FD807F"` (protocol, bits, data as hex; repeats and codes it cannot name are ignored), so a remote's button can be learned from the hive.
+The **transmitter** does `cmd/ir` (`cmd-ir`: `protocol`, `bits`, `data`, `repeat`) and answers with an ack; infrared is one way, so `ok` means the code was sent, not that the device obeyed.
+The buttons the family named are kept by the hive in config `ir.buttons`; `cmd/ir` from the API with `{button}` is turned into the code before it is sent. The same
+code format and command are used for Tasmota devices (`contracts/tasmota.md`).
+
 Rules:
 - device_id matches `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`, max 32 chars (`guard-gate1`, `meteo-out1`).
 - Topic segments (`metric`, `type`, `name`) are lowercase `[a-z0-9_]+`. No spaces, no Cyrillic.

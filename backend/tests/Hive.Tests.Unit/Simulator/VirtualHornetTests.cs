@@ -227,4 +227,33 @@ public class VirtualHornetTests
             AssertMatchesContract(all);
         }
     }
+    [Fact]
+    public void An_infrared_receiver_keeps_the_last_code_and_an_emitter_sends_the_code_it_is_told()
+    {
+        var rxSpec = new HornetSpec { Id = "irrx-hall", Type = "irrx" };
+        var rxRole = new IrRole(emitter: false);
+        var rxHornet = new VirtualHornet(rxSpec, rxRole, random: new Random(1));
+        rxHornet.Start(T0);
+        rxRole.Press("NEC 32 0x02FD807F", T0.AddSeconds(5));
+        var seen = rxHornet.TakePending(connected: true);
+        Assert.Contains("ir_last", seen.Single(m => m.Topic.EndsWith("/state", StringComparison.Ordinal)).Payload);
+        AssertMatchesContract(seen);
+
+        var txSpec = new HornetSpec { Id = "irtx-hall", Type = "irtx" };
+        var txRole = new IrRole(emitter: true);
+        var tx = new VirtualHornet(txSpec, txRole, random: new Random(1));
+        tx.Start(T0);
+        Assert.Contains("ir.tx", string.Join(' ', tx.OnConnected(T0).Select(m => m.Payload)));
+        tx.Receive(Topics.Cmd("irtx-hall", "ir"), Cmd(T0.AddSeconds(1), extra: ""","protocol":"NEC","bits":32,"data":"0x02FD807F","repeat":1"""));
+        tx.Step(T0.AddSeconds(2));
+        var messages = tx.TakePending(connected: true);
+        Assert.Equal("ok", Ack(messages, "ir").GetProperty("status").GetString());
+        Assert.Equal(["NEC 32 0x02FD807F"], txRole.Sent);
+        AssertMatchesContract(messages);
+
+        tx.Receive(Topics.Cmd("irtx-hall", "ir"), Cmd(T0.AddSeconds(3), extra: ""","protocol":"NEC","bits":0,"data":"0x1" """.Trim()));
+        tx.Step(T0.AddSeconds(4));
+        Assert.Equal("error", Ack(tx.TakePending(connected: true), "ir").GetProperty("status").GetString());
+        Assert.Single(txRole.Sent);
+    }
 }

@@ -68,9 +68,13 @@ public sealed class CommandService(
         if (found is null)
             return (SendStatus.UnknownDevice, null);
         var driver = found.Driver;
-        // "ir" with a button name: the code comes from the buttons learned for this device
-        if (driver == Drivers.Tasmota && name == "ir" && payload?["button"]?.GetValue<string>() is { } button)
+        // "ir" with a button name: the code comes from the buttons learned for this device (a Tasmota one, or a hornet of type irtx)
+        if (name == "ir" && payload?["button"]?.GetValue<string>() is { } button)
             payload = IrButtonService.Resolve(found.Config, button);
+        // An infrared hornet gets the same code as Tasmota's IRSend: a named protocol, bits and hex data, or it is refused here.
+        if (driver == Drivers.Hornet && name == "ir"
+            && !TasmotaCommands.IsValidIr(payload?["protocol"]?.GetValue<string>(), payload?["bits"] is { } nb && nb.GetValueKind() == System.Text.Json.JsonValueKind.Number ? nb.GetValue<int>() : 0, payload?["data"]?.GetValue<string>()))
+            return (SendStatus.BadRequest, null);
         // A Tasmota device speaks its own commands: only the ones that map to them (relay, reboot) are accepted.
         var plan = driver == Drivers.Tasmota ? TasmotaCommands.Plan(name, payload) : null;
         if (driver == Drivers.Tasmota && plan is null)
@@ -126,7 +130,9 @@ public sealed class CommandService(
         }
         if (plan is null)
         {
-            await mqtt.PublishAsync(Topics.Cmd(deviceId, name), message.ToJsonString(), retain: false, ct);
+            // The name of a button is for the history; the hornet is sent the code (contracts/schemas/cmd-ir.schema.json).
+            var onWire = name == "ir" && message.ContainsKey("button") ? new JsonObject(message.Where(p => p.Key != "button").Select(p => KeyValuePair.Create(p.Key, p.Value?.DeepClone()))) : message;
+            await mqtt.PublishAsync(Topics.Cmd(deviceId, name), onWire.ToJsonString(), retain: false, ct);
             return (SendStatus.Sent, command);
         }
         tasmota.Expect(deviceId, plan.Confirms, cid);

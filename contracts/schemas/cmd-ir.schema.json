@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/cmd-ir.schema.json",
+  "title": "vs/v1/dev/{id}/cmd/ir (role irtx): send one infrared code",
+  "type": "object",
+  "allOf": [{ "$ref": "cmd.schema.json" }],
+  "required": ["protocol", "bits", "data"],
+  "properties": {
+    "protocol": { "type": "string", "pattern": "^[A-Za-z0-9_]{2,24}$", "description": "NEC, SONY, RC5, SAMSUNG... (the names of IRremoteESP8266, the same as Tasmota's)" },
+    "bits": { "type": "integer", "minimum": 1, "maximum": 64 },
+    "data": { "type": "string", "pattern": "^0[xX][0-9A-Fa-f]{1,16}$", "description": "The code as hex: 0x02FD807F" },
+    "repeat": { "type": "integer", "minimum": 0, "maximum": 10, "description": "How many times the code is sent again after the first" }
+  },
+  "unevaluatedProperties": false
+}

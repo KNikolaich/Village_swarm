@@ -5,7 +5,7 @@ import { DisplayPanel } from '@/components/DisplayPanel'
 import { RangeEditor } from '@/components/RangeEditor'
 import { cn } from '@/lib/utils'
 import { rangeClass, rangeKey, rangeState } from '@/lib/valueRange'
-import { IrPanel } from '@/components/IrPanel'
+import { IrPanel, type IrReceiver } from '@/components/IrPanel'
 import { TasmotaConsole } from '@/components/TasmotaConsole'
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Camera, ChevronDown, ChevronUp, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
@@ -230,6 +230,10 @@ export function DevicePage() {
   const canControl = (me.data?.roles.includes('admin') ?? false) || (me.data?.roles.includes('member') ?? false)
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const device = (devices.data ?? []).find((d) => d.deviceId === deviceId)
+  // Infrared receivers of the house (our irrx, or a Tasmota device that keeps the last code): what a transmitter learns buttons from.
+  const irReceivers: IrReceiver[] = (devices.data ?? [])
+    .filter((d) => d.deviceId !== deviceId && (d.type === 'irrx' || (d.state as Record<string, unknown> | null)?.ir_last !== undefined))
+    .map((d) => ({ deviceId: d.deviceId, name: d.name, state: d.state }))
   // Only what the hornet is used for: a relay that once sent a temperature does not keep showing it.
   const readings = (latest.data ?? [])
     .filter((v) => v.deviceId === deviceId && showsMetric(device?.features, v.metric, device?.thermometer))
@@ -437,7 +441,19 @@ export function DevicePage() {
 
       {isAdmin && device.driver === 'tasmota' && <TasmotaConsole deviceId={deviceId} online={online} />}
 
-      {canControl && commands.includes('ir') && <IrPanel deviceId={deviceId} state={device.state} online={online} canEdit={canControl} />}
+      {canControl && commands.includes('ir') && (
+        <IrPanel deviceId={deviceId} state={device.state} online={online} canEdit={canControl}
+          receivers={device.type === 'irtx' ? irReceivers : undefined} />
+      )}
+      {device.type === 'irrx' && (
+        <Card>
+          <CardHeader><CardTitle>{t('ir.receiverTitle')}</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="text-xs text-neutral-500">{t('ir.receiverHint')}</p>
+            <p className="font-mono text-amber-200">{String((device.state as Record<string, unknown> | null)?.ir_last ?? t('ir.receiverNone'))}</p>
+          </CardContent>
+        </Card>
+      )}
 
       {canControl && <CommandHistory device={deviceId} name={device.name} />}
       <Logs device={deviceId} name={device.name} canClear={canControl} />

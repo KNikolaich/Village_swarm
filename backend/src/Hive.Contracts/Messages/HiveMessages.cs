@@ -28,6 +28,15 @@ public sealed record RelayCommand : Command
     public int? ForS { get; init; }
 }
 
+/// <summary>vs/v1/dev/{id}/cmd/ir (role irtx): one infrared code, as Tasmota's IRSend takes it.</summary>
+public sealed record IrCommand : Command
+{
+    public required string Protocol { get; init; }
+    public required int Bits { get; init; }
+    public required string Data { get; init; }
+    public int? Repeat { get; init; }
+}
+
 /// <summary>vs/v1/dev/{id}/cmd/arm</summary>
 public sealed record ArmCommand : Command
 {
@@ -101,6 +110,20 @@ public sealed record DeviceConfig
     public RelayConfig? Relay { get; init; }
     public DisplayConfig? Display { get; init; }
     public BleConfig? Ble { get; init; }
+    public IrConfig? Ir { get; init; }
+}
+
+/// <summary>Roles irrx and irtx: the buttons of a remote, kept by the hive; the hornet does not read them.</summary>
+public sealed record IrConfig
+{
+    public IReadOnlyDictionary<string, IrButton>? Buttons { get; init; }
+}
+
+public sealed record IrButton
+{
+    public required string Protocol { get; init; }
+    public required int Bits { get; init; }
+    public required string Data { get; init; }
 }
 
 /// <summary>Board wiring; omitted pins keep the firmware defaults for the board.</summary>
@@ -114,6 +137,10 @@ public sealed record HwConfig
     public int? SdaPin { get; init; }
     public int? SclPin { get; init; }
     public int? RelayPin { get; init; }
+
+    /// <summary>Roles irrx and irtx: the pin of the infrared receiver or emitter.</summary>
+    public int? IrPin { get; init; }
+
     public bool? RelayActiveLow { get; init; }
     public int? ButtonPin { get; init; }
     public int? LedPin { get; init; }
