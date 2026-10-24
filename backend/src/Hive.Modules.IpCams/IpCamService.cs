@@ -28,9 +28,10 @@ public sealed record IpCamChannelDto(
 
 /// <summary>An NVR as the settings show it: never its password, only whether one is stored.</summary>
 /// <summary>Login: whether the hive may talk to the NVR now, or waits because it locked or refused the login (see NvrLogins).</summary>
+/// <summary>DeviceId: the NVR's own device in the swarm (nvr{id}), the parent of its channels' devices.</summary>
 public sealed record NvrDto(
     int Id, string Name, string Host, int Port, string Username, bool PasswordSet, IReadOnlyList<IpCamChannelDto> Channels, int RtspPort, NvrLoginDto Login,
-    NvrStreamDto Stream);
+    NvrStreamDto Stream, string DeviceId);
 
 public enum NvrChange
 {
@@ -47,6 +48,53 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
 
     public static string DeviceIdFor(int nvrId, int channel) =>
         string.Create(CultureInfo.InvariantCulture, $"ipcam{nvrId}-ch{channel}");
+
+    /// <summary>The NVR's own device: nvr1, nvr2…</summary>
+    public static string NvrDeviceId(int nvrId) => string.Create(CultureInfo.InvariantCulture, $"nvr{nvrId}");
+
+    /// <summary>
+    /// NVRs saved before they were devices of their own get one, and their channels are put under it. Run when the watch starts.
+    /// </summary>
+    public async Task EnsureDevicesAsync(CancellationToken ct)
+    {
+        var nvrs = await db.Nvrs.Include(n => n.Channels).ToListAsync(ct);
+        if (nvrs.Count == 0)
+            return;
+        var now = time.GetUtcNow();
+        foreach (var nvr in nvrs)
+            await SyncNvrDeviceAsync(nvr, now, ct);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>The NVR as a device (type nvr) and its channels' devices pointing at it.</summary>
+    private async Task SyncNvrDeviceAsync(Nvr nvr, DateTimeOffset now, CancellationToken ct)
+    {
+        var id = NvrDeviceId(nvr.Id);
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == id, ct);
+        if (device is null)
+        {
+            device = new Device { DeviceId = id, TypeCode = Cameras.Nvr, Name = nvr.Name, CreatedAt = now };
+            db.Devices.Add(device);
+        }
+        if (device.Status == DeviceStatus.Disabled)
+            device.Status = DeviceStatus.Pending; // online once the stream is up
+        device.TypeCode = Cameras.Nvr;
+        device.Driver = Drivers.IpCam;
+        device.Name = nvr.Name;
+        device.Hw = "dahua-nvr";
+        device.Ip = nvr.Host;
+        device.Info = JsonSerializer.SerializeToDocument(new
+        {
+            caps = Array.Empty<string>(),
+            metrics = Array.Empty<string>(),
+            commands = Array.Empty<string>(),
+            nvrId = nvr.Id,
+            channels = nvr.Channels.Count,
+        });
+        var children = nvr.Channels.Select(c => c.DeviceId).ToList();
+        foreach (var child in await db.Devices.Where(d => children.Contains(d.DeviceId)).ToListAsync(ct))
+            child.ParentId = id;
+    }
 
     public async Task<IReadOnlyList<NvrDto>> ListAsync(CancellationToken ct)
     {
@@ -103,6 +151,8 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
         db.Nvrs.Add(nvr);
         await db.SaveChangesAsync(ct); // the id names the devices
         await SetChannelsAsync(nvr, r.Channels, now, ct);
+        await db.SaveChangesAsync(ct);
+        await SyncNvrDeviceAsync(nvr, now, ct);
         Audit.Record(db, now, by, "nvr_add", nvr.Name, new { nvr.Host, nvr.Port, channels = r.Channels.Select(c => c.Channel) });
         await db.SaveChangesAsync(ct);
         logins.Forget(nvr.Host, nvr.Port);
@@ -126,6 +176,8 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
         if (!string.IsNullOrEmpty(r.Password))
             nvr.PasswordProtected = _protector.Protect(r.Password);
         await SetChannelsAsync(nvr, r.Channels, now, ct);
+        await db.SaveChangesAsync(ct);
+        await SyncNvrDeviceAsync(nvr, now, ct);
         Audit.Record(db, now, by, "nvr_update", nvr.Name,
             new { nvr.Host, nvr.Port, channels = r.Channels.Select(c => c.Channel), passwordChanged = !string.IsNullOrEmpty(r.Password) });
         await db.SaveChangesAsync(ct);
@@ -141,6 +193,9 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
         if (nvr is null)
             return false;
         await SetChannelsAsync(nvr, [], time.GetUtcNow(), ct);
+        var own = NvrDeviceId(nvr.Id);
+        if (await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == own, ct) is { } nvrDevice)
+            nvrDevice.Status = DeviceStatus.Disabled;
         db.Nvrs.Remove(nvr);
         Audit.Record(db, time.GetUtcNow(), by, "nvr_delete", nvr.Name);
         await db.SaveChangesAsync(ct);
@@ -198,6 +253,7 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
                 metrics = Array.Empty<string>(),
                 commands = new[] { "snapshot" },
                 nvr = nvr.Name,
+                nvrId = nvr.Id,
                 channel = w.Channel,
             });
         }
@@ -260,5 +316,6 @@ public sealed class IpCamService(HiveDbContext db, IDataProtectionProvider prote
 
     private NvrDto ToDto(Nvr n, IReadOnlyDictionary<string, Device> devices, NvrLoginDto login) =>
         new(n.Id, n.Name, n.Host, n.Port, n.Username, n.PasswordProtected.Length > 0,
-            n.Channels.OrderBy(c => c.Channel).Select(c => ToChannelDto(n, c, devices)).ToList(), n.RtspPort, login, watch.Stream(n.Id));
+            n.Channels.OrderBy(c => c.Channel).Select(c => ToChannelDto(n, c, devices)).ToList(), n.RtspPort, login, watch.Stream(n.Id),
+            NvrDeviceId(n.Id));
 }

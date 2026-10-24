@@ -26,7 +26,7 @@ export function compareDevices(a: DeviceDto, b: DeviceDto): number {
 }
 
 /** Kinds in the order they are listed when grouped by kind; kinds not named here follow by code. */
-const typeOrder = ['meteo', 'heat', 'relay', 'guard-cam', 'ipcam', 'leak', 'plant']
+const typeOrder = ['meteo', 'heat', 'relay', 'guard-cam', 'nvr', 'ipcam', 'leak', 'plant']
 
 function typeRank(type: string): number {
   const i = typeOrder.indexOf(type)
@@ -67,6 +67,22 @@ export function groupDevices(
   const types = [...new Set(hornets.map((d) => d.type))].sort((a, b) => typeRank(a) - typeRank(b) || a.localeCompare(b))
   for (const type of types) groups.push({ key: `type-${type}`, title: labels.type(type), devices: hornets.filter((d) => d.type === type) })
   return groups
+}
+
+/**
+ * Devices that belong to another one in the list (an NVR's cameras) go under it instead of into the groups. A child whose
+ * parent is not in the list (removed, or hidden with the deceased) stays on its own.
+ */
+export function splitChildren(devices: readonly DeviceDto[]): { top: DeviceDto[]; children: Map<string, DeviceDto[]> } {
+  const present = new Set(devices.map((d) => d.deviceId))
+  const children = new Map<string, DeviceDto[]>()
+  const top: DeviceDto[] = []
+  for (const d of devices) {
+    if (d.parent && d.parent !== d.deviceId && present.has(d.parent)) children.set(d.parent, [...(children.get(d.parent) ?? []), d])
+    else top.push(d)
+  }
+  for (const list of children.values()) list.sort(compareDevices)
+  return { top, children }
 }
 
 /** Readings shown in a swarm row, in this order; anything else the hornet reports follows by name. */

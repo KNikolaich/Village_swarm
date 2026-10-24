@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DeviceDto, LatestValueDto, ZoneDto } from '@/api/client'
-import { groupDevices, mainReadings, quickControls } from './swarm'
+import { groupDevices, mainReadings, quickControls, splitChildren } from './swarm'
 
 const device = (deviceId: string, type: string, extra: Partial<DeviceDto> = {}) =>
   ({ deviceId, type, name: deviceId, status: 'online', rssi: -50, zoneId: null, sort: 0, ...extra }) as DeviceDto
@@ -66,5 +66,18 @@ describe('quickControls', () => {
   it('offer no relay for a hornet not used as one', () => {
     const meteo = device('heat-2', 'heat', { info: { commands: ['relay'] }, features: ['thermometer'] })
     expect(quickControls(meteo).relays).toEqual([])
+  })
+})
+
+describe('splitChildren', () => {
+  it('puts an NVR\'s cameras under it and keeps orphans on their own', () => {
+    const nvr = device('nvr1', 'nvr')
+    const ch1 = device('ipcam1-ch1', 'ipcam', { parent: 'nvr1' })
+    const ch2 = device('ipcam1-ch2', 'ipcam', { parent: 'nvr1' })
+    const orphan = device('ipcam2-ch1', 'ipcam', { parent: 'nvr2' })
+    const meteo = device('meteo-1', 'meteo')
+    const { top, children } = splitChildren([ch2, nvr, orphan, meteo, ch1])
+    expect(top.map((d) => d.deviceId)).toEqual(['nvr1', 'ipcam2-ch1', 'meteo-1'])
+    expect(children.get('nvr1')?.map((d) => d.deviceId)).toEqual(['ipcam1-ch1', 'ipcam1-ch2'])
   })
 })

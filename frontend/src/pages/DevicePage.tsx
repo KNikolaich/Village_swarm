@@ -1,3 +1,4 @@
+import { IpCamChannelSettings, NvrDeviceView } from '@/components/IpCamPanel'
 import { FeaturesPanel } from '@/components/FeaturesPanel'
 import { BlePanel } from '@/components/BlePanel'
 import { DisplayPanel } from '@/components/DisplayPanel'
@@ -260,14 +261,33 @@ export function DevicePage() {
 
   // A relay the hornet is not used as gets no buttons, even if its firmware could switch one.
   const commands = announcedCommands(device).filter((c) => c !== 'relay' || hasRelay(device.features))
-  const sensing = device.features == null || device.features.some((f) => f === 'thermometer' || f === 'bme280') || readings.length > 0
+  const sensing = device.driver !== 'ipcam' && (device.features == null || device.features.some((f) => f === 'thermometer' || f === 'bme280') || readings.length > 0)
   const online = device.status === 'online'
   const configPending = device.configRev !== device.configAppliedRev
   const monitored = (monitoring.data ?? []).some((m) => m.deviceId === deviceId)
   const timelapsing = (timelapse.data ?? []).some((x) => x.deviceId === deviceId)
   const camera = device.driver === 'hornet' && device.type === 'guard-cam' && device.status !== 'disabled'
+  const nvrId = (device.info as { nvrId?: unknown } | null)?.nvrId
   // The spare Wi-Fi network (Settings → Wi-Fi for hornets) is the administrator's: so is dropping it.
   const forgetSpare = isAdmin && hasCap(device, 'wifi.forget')
+
+  if (device.type === 'nvr')
+    return (
+      <div className="space-y-4">
+        {back}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <DeviceName device={device} editable={false} />
+            <p className="truncate text-xs text-neutral-500">{device.deviceId} · {t('deviceTypes.nvr')} · {device.ip}</p>
+          </div>
+          <Badge tone={online ? 'ok' : device.status === 'disabled' || device.status === 'pending' ? 'neutral' : 'alarm'}>
+            {online ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
+            {statusLabel(device.status)}
+          </Badge>
+        </div>
+        <NvrDeviceView deviceId={device.deviceId} isAdmin={isAdmin} />
+      </div>
+    )
 
   return (
     <div className="space-y-4">
@@ -302,6 +322,8 @@ export function DevicePage() {
           </dl>
         </CardContent>
       </Card>
+
+      {device.type === 'ipcam' && typeof nvrId === 'number' && <IpCamChannelSettings deviceId={device.deviceId} nvrId={nvrId} isAdmin={isAdmin} />}
 
       {sensing && <Card>
         <CardHeader><CardTitle>{t('device.readings')}</CardTitle></CardHeader>

@@ -106,7 +106,8 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
                 new DeviceType { Code = "plant", Title = "Растения", OfflineAfterS = 600 },
                 new DeviceType { Code = "ble", Title = "Мост Bluetooth (кухонный термометр)", OfflineAfterS = 180 },
                 new DeviceType { Code = "sensor", Title = "Датчик (движение, дверь, протечка, температура)", OfflineAfterS = 1800 },
-                new DeviceType { Code = "ipcam", Title = "IP-камера (через видеорегистратор)", OfflineAfterS = 180 });
+                new DeviceType { Code = "ipcam", Title = "IP-камера (через видеорегистратор)", OfflineAfterS = 180 },
+                new DeviceType { Code = "nvr", Title = "Видеорегистратор", OfflineAfterS = 180 });
         });
 
         b.Entity<Device>(e =>
@@ -123,6 +124,8 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
             e.Property(x => x.UploadTokenHash).HasMaxLength(64);
             e.Property(x => x.Driver).HasMaxLength(16).HasDefaultValue(Drivers.Hornet);
+            e.Property(x => x.ParentId).HasMaxLength(32);
+            e.HasIndex(x => x.ParentId);
         });
 
         b.Entity<DeviceCommand>(e =>

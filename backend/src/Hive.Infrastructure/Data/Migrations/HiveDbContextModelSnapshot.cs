@@ -243,6 +243,11 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("offline_reported_at");
 
+                    b.Property<string>("ParentId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("parent_id");
+
                     b.Property<int?>("Rssi")
                         .HasColumnType("integer")
                         .HasColumnName("rssi");
@@ -286,6 +291,9 @@ namespace Hive.Infrastructure.Data.Migrations
                     b.HasIndex("DeviceId")
                         .IsUnique()
                         .HasDatabaseName("ix_devices_device_id");
+
+                    b.HasIndex("ParentId")
+                        .HasDatabaseName("ix_devices_parent_id");
 
                     b.HasIndex("TypeCode")
                         .HasDatabaseName("ix_devices_type_code");
@@ -609,6 +617,12 @@ namespace Hive.Infrastructure.Data.Migrations
                             Code = "ipcam",
                             OfflineAfterS = 180,
                             Title = "IP-камера (через видеорегистратор)"
+                        },
+                        new
+                        {
+                            Code = "nvr",
+                            OfflineAfterS = 180,
+                            Title = "Видеорегистратор"
                         });
                 });
 
