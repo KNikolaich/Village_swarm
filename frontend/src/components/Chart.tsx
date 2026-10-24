@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { t } from '@/i18n'
 import { formatFixed, formatTick, formatWhen } from '@/lib/format'
+import { pickAt } from '@/lib/chartPick'
 import { seriesColors } from '@/lib/seriesColors'
 import { niceTicks, tickDecimals, timeTicks } from '@/lib/ticks'
 
@@ -75,13 +76,6 @@ export function MultiChart({ series, from, to, format, axisFormat }: {
   )
 }
 
-function nearest(points: ChartPoint[], ms: number): number {
-  let best = 0
-  for (let i = 1; i < points.length; i++)
-    if (Math.abs(new Date(points[i].ts).getTime() - ms) < Math.abs(new Date(points[best].ts).getTime() - ms)) best = i
-  return best
-}
-
 function ChartBody({ series, from, to, width, format, axisFormat }: {
   series: ChartSeries[]
   from: Date
@@ -111,25 +105,31 @@ function ChartBody({ series, from, to, width, format, axisFormat }: {
     setHoverMs(x0 + ((at - PLOT.left) / plotW) * span)
   }
 
-  // What the readout and the marker show: per series, the point nearest the pointer (or the newest one).
-  const picks = series.map((s) => s.points[hoverMs == null ? s.points.length - 1 : nearest(s.points, hoverMs)])
-  const markerMs = hoverMs == null ? null : new Date(picks[0].ts).getTime()
+  // What the readout and the marker show: per series, the point under the pointer (or the newest one). A series that has no
+  // reading there (a sensor that went quiet) shows a dash; the time shown is the pointer's own, not that of one series.
+  const picks = series.map((s) => pickAt(s.points, hoverMs))
+  const newest = Math.max(...series.map((s) => new Date(s.points[s.points.length - 1].ts).getTime()))
+  // One line: the time of the very point shown. Several: the pointer's time, which every line is read at.
+  const shownAt = hoverMs == null ? new Date(newest).toISOString()
+    : single && picks[0] ? picks[0].ts
+      : new Date(Math.min(Math.max(hoverMs, x0), to.getTime())).toISOString()
+  const markerMs = hoverMs == null ? null : Math.min(Math.max(hoverMs, x0), to.getTime())
 
   return (
     <div>
       {!legend ? (
         <p className="text-right text-xs text-neutral-500">
-          <span className="tabular-nums text-neutral-200">{format(picks[0].avg)}</span> · {formatWhen(picks[0].ts)}
+          <span className="tabular-nums text-neutral-200">{picks[0] ? format(picks[0].avg) : '—'}</span> · {formatWhen(shownAt)}
         </p>
       ) : (
         <div className="flex flex-wrap justify-end gap-x-3 gap-y-0.5 text-xs text-neutral-500">
           {series.map((s, i) => (
             <span key={s.name ?? i} className="flex items-center gap-1">
               <span className={`size-2 rounded-full ${(s.color ?? seriesColors[i % seriesColors.length]).bg}`} />
-              {s.name} <span className="tabular-nums text-neutral-200">{format(picks[i].avg)}</span>
+              {s.name} <span className="tabular-nums text-neutral-200">{picks[i] ? format(picks[i].avg) : '—'}</span>
             </span>
           ))}
-          <span>{formatWhen(picks[0].ts)}</span>
+          <span className="tabular-nums">{formatWhen(shownAt)}</span>
         </div>
       )}
       <svg width={width} height={H} viewBox={`0 0 ${width} ${H}`} className="mt-1 block touch-pan-y" role="img" onPointerMove={onMove} onPointerLeave={() => setHoverMs(null)}>
@@ -157,7 +157,7 @@ function ChartBody({ series, from, to, width, format, axisFormat }: {
               {single && <polygon points={band} className={color.band ?? 'fill-amber-400/15'} />}
               <path d={line} fill="none" className={color.stroke} strokeWidth="2" strokeLinejoin="round" strokeDasharray={s.dashed ? '4 3' : undefined} />
               {s.points.length === 1 && <circle cx={x(times[0])} cy={y(s.points[0].avg)} r="4" className={color.fill} />}
-              {markerMs != null && <circle cx={x(new Date(picks[i].ts).getTime())} cy={y(picks[i].avg)} r="4" className={color.fill} />}
+              {markerMs != null && picks[i] && <circle cx={x(new Date(picks[i].ts).getTime())} cy={y(picks[i].avg)} r="4" className={color.fill} />}
             </g>
           )
         })}
