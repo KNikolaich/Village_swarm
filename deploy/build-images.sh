@@ -19,7 +19,12 @@ for part in api web backup; do
 		-f "deploy/docker/$part.Dockerfile" -t "$prefix-$part:$version" --load .
 done
 
+# go2rtc (live video) goes in the bundle too, for the target's processor: the hive need not reach Docker Hub over 4G.
+# The version is the one compose.yaml names.
+go2rtc="$(grep -o 'alexxit/go2rtc:[^" ]*' deploy/compose.yaml | head -n 1)"
+echo "==> $go2rtc ($platform)"
+docker pull --platform "$platform" "$go2rtc"
 out="deploy/dist/hive-images-$version-$arch.tar.gz"
-docker save "$prefix-api:$version" "$prefix-web:$version" "$prefix-backup:$version" | gzip -1 >"$out"
+docker save "$prefix-api:$version" "$prefix-web:$version" "$prefix-backup:$version" "$go2rtc" | gzip -1 >"$out"
 echo "$version" >deploy/dist/VERSION
 echo "==> $out ($(du -h "$out" | cut -f1))"

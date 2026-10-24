@@ -27,12 +27,30 @@ public static class IpCamsModule
         services.AddSingleton<Snapshots>();
         services.AddSingleton<NvrLogins>();
         services.AddSingleton<IpCamDiagnostics>();
+        services.Configure<VideoOptions>(configuration.GetSection(VideoOptions.Section));
+        services.AddHttpClient(nameof(VideoStreams), (sp, c) =>
+        {
+            var url = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<VideoOptions>>().Value.Go2RtcUrl;
+            if (!string.IsNullOrWhiteSpace(url))
+                c.BaseAddress = new Uri(url.TrimEnd('/') + "/");
+            c.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddSingleton<VideoStreams>();
+        services.AddHostedService(sp => sp.GetRequiredService<VideoStreams>());
         services.TryAddSingleton<IFrameGrabber, FfmpegFrameGrabber>();
         return services;
     }
 
     public static IEndpointRouteBuilder MapIpCamEndpoints(this IEndpointRouteBuilder app)
     {
+        // Live video (contracts/ipcam.md "Live video"): the cameras and their go2rtc streams for the widget, and the check
+        // Caddy makes before it lets a browser through to go2rtc (forward_auth): signed in, and a stream of the list.
+        var video = app.MapGroup("/api/video").WithTags("video");
+        video.MapGet("/streams", async Task<Ok<VideoStreamsDto>> (VideoStreams v, CancellationToken ct) => TypedResults.Ok(await v.ListAsync(ct)));
+        video.MapGet("/authorize", (HttpRequest request, VideoStreams v) =>
+                v.Allows(VideoStreams.SourceOf(request.Headers["X-Forwarded-Uri"])) ? Results.NoContent() : Results.StatusCode(StatusCodes.Status403Forbidden))
+            .ExcludeFromDescription();
+
         var ipcams = app.MapGroup("/api/ipcams").WithTags("ipcams");
 
         ipcams.MapGet("", async Task<Ok<IReadOnlyList<NvrDto>>> (IpCamService s, CancellationToken ct) => TypedResults.Ok(await s.ListAsync(ct)))

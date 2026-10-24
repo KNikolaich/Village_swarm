@@ -51,6 +51,7 @@ public sealed class IpCamWatch(
     Snapshots snapshots,
     NvrLogins logins,
     IpCamDiagnostics diagnostics,
+    VideoStreams video,
     NodeState node,
     TimeProvider time,
     ILogger<IpCamWatch> logger) : BackgroundService, IDirectDriver
@@ -69,7 +70,11 @@ public sealed class IpCamWatch(
     public bool Accepts(string command) => command == "snapshot";
 
     /// <summary>The NVRs or their channels changed: streams are reopened with the new settings.</summary>
-    public void Reload() => _reload.Writer.TryWrite(true);
+    public void Reload()
+    {
+        _reload.Writer.TryWrite(true);
+        video.Changed(); // the live streams follow the cameras
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {

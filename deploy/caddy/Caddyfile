@@ -64,6 +64,23 @@
 	import security_headers
 	encode zstd gzip
 
+	# Live video (contracts/ipcam.md "Live video"): go2rtc's player socket and frames only, each after the api has said
+	# the user is signed in and the stream is one of the cameras'. Nothing else of go2rtc (its API, its page) is reachable.
+	@video path /streams/ws /streams/frame.jpeg
+	handle @video {
+		route {
+			forward_auth api:8080 {
+				uri /api/video/authorize
+				header_up -X-Hive-External
+			}
+			rewrite /streams/ws /api/ws
+			rewrite /streams/frame.jpeg /api/frame.jpeg
+			reverse_proxy go2rtc:1984
+		}
+	}
+	handle /streams/* {
+		respond 404
+	}
 	handle /api/* {
 		import api
 	}
@@ -104,6 +121,25 @@ http://:8088 {
 		respond 404
 	}
 
+	# Live video (contracts/ipcam.md "Live video"): go2rtc's player socket and frames only, each after the api has said
+	# the user is signed in and the stream is one of the cameras'. Nothing else of go2rtc (its API, its page) is reachable.
+	@video path /streams/ws /streams/frame.jpeg
+	handle @video {
+		route {
+			forward_auth api:8080 {
+				uri /api/video/authorize
+				header_up X-Hive-External 1
+				header_up X-Forwarded-Proto https
+				header_up X-Forwarded-For {client_ip}
+			}
+			rewrite /streams/ws /api/ws
+			rewrite /streams/frame.jpeg /api/frame.jpeg
+			reverse_proxy go2rtc:1984
+		}
+	}
+	handle /streams/* {
+		respond 404
+	}
 	@api path /api/* /hubs/*
 	handle @api {
 		reverse_proxy api:8080 {
