@@ -409,6 +409,8 @@ public sealed class IpCamWatch(
             var eventId = Ulid.New(now);
             var photos = withPhotos ? Enumerable.Range(1, Math.Max(1, options.Value.Photos)).Select(i => $"{eventId}-{i}").ToList() : [];
             var payload = JsonSerializer.SerializeToDocument(new { source = "camera", channel = info.Channel, photos, via = "nvr" });
+            if (arriving)
+                payload = ArrivingMode.Mark(payload);
             ingest.Enqueue(new DeviceEventReceived(info.DeviceId, eventId, now, now, "motion", severity, armed, payload));
 
             var media = scope.ServiceProvider.GetRequiredService<PhotoIngestService>();

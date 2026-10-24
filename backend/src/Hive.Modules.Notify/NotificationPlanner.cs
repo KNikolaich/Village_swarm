@@ -44,7 +44,9 @@ public sealed class NotificationPlanner(IServiceScopeFactory scopes, IOptions<Te
         var device = await db.Devices.AsNoTracking().Include(d => d.Zone).FirstOrDefaultAsync(d => d.DeviceId == e.DeviceId, ct);
         var place = device?.Zone?.Name ?? device?.Name ?? e.DeviceId;
         var text = Texts.Event(e, place, hive.Value.ToLocal(e.Ts));
-        var dedupeKey = $"{e.DeviceId}:{e.Type}";
+        // Motion while the family is on its way: quiet, but with photos and buttons; never grouped with a real alarm.
+        var arriving = ArrivingMode.Is(e.Payload);
+        var dedupeKey = arriving ? $"{e.DeviceId}:{e.Type}:{ArrivingMode.Flag}" : $"{e.DeviceId}:{e.Type}";
         var windowStart = now.AddSeconds(-options.Value.GroupWindowS);
         var expectedPhotos = e.Payload.RootElement.TryGetProperty("photos", out var p) && p.ValueKind == System.Text.Json.JsonValueKind.Array
             ? p.GetArrayLength()
@@ -79,10 +81,11 @@ public sealed class NotificationPlanner(IServiceScopeFactory scopes, IOptions<Te
                 Text = text,
                 Silent = e.Severity == EventSeverity.Warn,
                 DedupeKey = dedupeKey,
+                Arriving = arriving,
                 CreatedAt = now,
                 NextAttemptAt = now,
             });
-            if (expectedPhotos > 0 && e.Severity >= EventSeverity.Alarm)
+            if (expectedPhotos > 0 && (e.Severity >= EventSeverity.Alarm || arriving))
             {
                 db.Notifications.Add(new Notification
                 {

@@ -129,7 +129,16 @@ public sealed class NotificationOutbox(
         }
     }
 
-    private static InlineKeyboardMarkup EventButtons(Notification n) => new(
+    /// <summary>Under motion while the family is on its way: disarm (asked again before it is done), or arm as it is not them.</summary>
+    public static InlineKeyboardMarkup ArrivingButtons() => new(
+    [
+        [
+            InlineKeyboardButton.WithCallbackData("🔓 Снять охрану", "arr:disarm"),
+            InlineKeyboardButton.WithCallbackData("🚨 Это не мы", "arr:arm"),
+        ],
+    ]);
+
+    private static InlineKeyboardMarkup EventButtons(Notification n) => n.Arriving ? ArrivingButtons() : new(
     [
         [
             InlineKeyboardButton.WithCallbackData("✅ Принял", $"ack:{n.EventId}"),

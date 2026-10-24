@@ -938,6 +938,10 @@ namespace Hive.Infrastructure.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<bool>("Arriving")
+                        .HasColumnType("boolean")
+                        .HasColumnName("arriving");
+
                     b.Property<int>("Attempts")
                         .HasColumnType("integer")
                         .HasColumnName("attempts");
