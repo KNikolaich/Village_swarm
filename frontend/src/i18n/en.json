@@ -1295,6 +1295,28 @@
     "alignCenter": "center",
     "alignRight": "right"
   },
+  "screenAccess": {
+    "title": "Access from outside",
+    "hint": "A token a screen at another place (an e-ink panel in town, say) reads the same lines with as this monitor shows. Read only: it controls nothing in the hive.",
+    "help": "How it works:\n1. Press \"Issue a token\" and copy it: it is shown once, the hive keeps only its fingerprint.\n2. Give the panel the hive's internet address (KeenDNS, e.g. https://home.<name>.keenetic.pro) with the path /api/monitor/v1/frame, and the token in the header Authorization: Bearer <token>.\n3. The panel gets the screen's lines as JSON. When nothing changed the answer is empty (304), which saves the battery.\nThe token opens only this monitor's screen: no commands, no device list, no history. At most 12 reads a minute from one address. A new token cancels the old one at once, \"Close access\" cancels it for good.",
+    "state": "Now",
+    "open": "open, token issued {when}",
+    "closed": "closed",
+    "lastRead": "Last read",
+    "never": "none yet",
+    "fromInternet": "from the internet",
+    "fromHome": "from home",
+    "issue": "Issue a token",
+    "reissue": "Issue a new token",
+    "replaceConfirm": "Issue a new token? The old one stops working at once; a panel with it shows \"no connection\" until you enter the new one.",
+    "revoke": "Close access",
+    "revokeConfirm": "Close access from outside? A panel with this token stops getting data.",
+    "revoked": "Access closed",
+    "once": "Copy the token now: it is not shown again. Lost it? Issue a new one.",
+    "how": "The panel asks like this (from outside, at the KeenDNS address instead):",
+    "copyToken": "Copy the token",
+    "copyUrl": "Copy the address"
+  },
   "ipcam": {
     "intro": "Third-party IP cameras recorded by a Dahua NVR. The hive talks to the NVR, not to each camera: it takes motion and snapshots from it. Every channel picked becomes a camera of the swarm that can go into a group and into rules.",
     "add": "Add an NVR",

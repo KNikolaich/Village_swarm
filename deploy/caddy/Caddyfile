@@ -110,7 +110,8 @@
 
 # The internet through a Keenetic router (docs/keenetic-access.md). KeenDNS keeps the HTTPS certificate (Let's Encrypt)
 # and forwards here over the local network or the WireGuard tunnel. Only the UI and its api: no hornet endpoints,
-# no CA certificate, no API docs. Sign-in from here always asks a new device for the Telegram code.
+# no CA certificate, no API docs. Sign-in from here always asks a new device for the Telegram code. Monitors far away
+# read their screen here too (/api/monitor/v1/frame, read-only token; contracts/monitor-http.md).
 http://:8088 {
 	import security_headers
 	header Strict-Transport-Security "max-age=31536000"

@@ -96,6 +96,7 @@ public static class DevicesModule
         services.AddScoped<DeviceConfigService>();
         services.AddScoped<OtaService>();
         services.AddScoped<DisplayFeedService>();
+        services.AddScreenAccess();
         services.AddScoped<ValueRangeStore>();
         services.AddHostedService<DisplayFeed>();
         services.AddScoped<OtaPendingStore>();
@@ -114,6 +115,7 @@ public static class DevicesModule
     public static IEndpointRouteBuilder MapDevicesEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapZigbeeEndpoints();
+        app.MapScreenAccessEndpoints();
         var devices = app.MapGroup("/api/devices").WithTags("devices");
         devices.MapGet("", (int? zone, string? type, string? status, DeviceQueries q, CancellationToken ct) =>
             q.ListAsync(zone, type, status, ct));

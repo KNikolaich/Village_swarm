@@ -2,6 +2,7 @@ import { IpCamChannelSettings, NvrDeviceView } from '@/components/IpCamPanel'
 import { FeaturesPanel } from '@/components/FeaturesPanel'
 import { BlePanel } from '@/components/BlePanel'
 import { DisplayPanel } from '@/components/DisplayPanel'
+import { ScreenAccessPanel } from '@/components/ScreenAccessPanel'
 import { RangeEditor } from '@/components/RangeEditor'
 import { cn } from '@/lib/utils'
 import { rangeClass, rangeKey, rangeState } from '@/lib/valueRange'
@@ -429,6 +430,13 @@ export function DevicePage() {
         <Card>
           <CardHeader><CardTitle>{t('display.title')}</CardTitle></CardHeader>
           <CardContent><DisplayPanel deviceId={deviceId} editable={isAdmin} /></CardContent>
+        </Card>
+      )}
+
+      {device.type === 'monitor' && isAdmin && (
+        <Card>
+          <CardHeader><CardTitle>{t('screenAccess.title')}</CardTitle></CardHeader>
+          <CardContent><ScreenAccessPanel deviceId={deviceId} /></CardContent>
         </Card>
       )}
 

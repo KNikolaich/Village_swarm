@@ -252,6 +252,28 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("rssi");
 
+                    b.Property<DateTimeOffset?>("ScreenReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("screen_read_at");
+
+                    b.Property<bool>("ScreenReadExternal")
+                        .HasColumnType("boolean")
+                        .HasColumnName("screen_read_external");
+
+                    b.Property<string>("ScreenReadFrom")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("screen_read_from");
+
+                    b.Property<string>("ScreenTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("screen_token_hash");
+
+                    b.Property<DateTimeOffset?>("ScreenTokenIssuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("screen_token_issued_at");
+
                     b.Property<int>("Sort")
                         .HasColumnType("integer")
                         .HasColumnName("sort");
@@ -294,6 +316,10 @@ namespace Hive.Infrastructure.Data.Migrations
 
                     b.HasIndex("ParentId")
                         .HasDatabaseName("ix_devices_parent_id");
+
+                    b.HasIndex("ScreenTokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_devices_screen_token_hash");
 
                     b.HasIndex("TypeCode")
                         .HasDatabaseName("ix_devices_type_code");

@@ -127,6 +127,9 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.HasOne<DeviceType>().WithMany().HasForeignKey(x => x.TypeCode).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
             e.Property(x => x.UploadTokenHash).HasMaxLength(64);
+            e.Property(x => x.ScreenTokenHash).HasMaxLength(64);
+            e.HasIndex(x => x.ScreenTokenHash).IsUnique();
+            e.Property(x => x.ScreenReadFrom).HasMaxLength(64);
             e.Property(x => x.Driver).HasMaxLength(16).HasDefaultValue(Drivers.Hornet);
             e.Property(x => x.ParentId).HasMaxLength(32);
             e.HasIndex(x => x.ParentId);

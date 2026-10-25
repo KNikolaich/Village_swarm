@@ -127,6 +127,20 @@ public class Device
     /// <summary>SHA-256 (hex) of the bearer token the hornet uses for photo uploads; issued at provisioning.</summary>
     public string? UploadTokenHash { get; set; }
 
+    /// <summary>
+    /// SHA-256 (hex) of the token a monitor reads its screen with from anywhere (GET /api/monitor/v1/frame, ScreenAccess).
+    /// Read only: it opens nothing but the texts of this device's own screen. Null: no access from outside.
+    /// </summary>
+    public string? ScreenTokenHash { get; set; }
+
+    public DateTimeOffset? ScreenTokenIssuedAt { get; set; }
+
+    /// <summary>The last read with the screen token: when, from which address, and whether it came from the internet.</summary>
+    public DateTimeOffset? ScreenReadAt { get; set; }
+
+    public string? ScreenReadFrom { get; set; }
+    public bool ScreenReadExternal { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public string? Notes { get; set; }
 
