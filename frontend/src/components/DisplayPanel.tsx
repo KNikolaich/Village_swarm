@@ -1,14 +1,14 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CircleHelp, Plus, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { useDevices, useLatestTelemetry } from '@/api/queries'
+import { HelpTip } from '@/components/HelpTip'
 import { Button } from '@/components/ui/button'
 import { Input, Select } from '@/components/ui/primitives'
 import { metricLabel, t } from '@/i18n'
 import { type Align, clampToScreen, labelHeight, maxAuto, maxPlaced, pixelHeight, type Screen, screenText, stackedPlaces, textAnchor } from '@/lib/display'
-import { cn } from '@/lib/utils'
 
 interface Row {
   /** The device whose reading is shown; '' is this hornet. */
@@ -24,27 +24,8 @@ interface Row {
 /** A board the hive does not know the screen of: the 0.42" OLED, the only one so far. */
 const fallbackScreen: Screen = { width: 72, height: 40 }
 
-/** A (?) next to a field: tap to read how to set it, tap the text to close it. */
-function Help({ text }: { text: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <span className="relative inline-flex">
-      <button type="button" title={text} aria-label={t('display.helpLabel')} aria-expanded={open} onClick={() => setOpen(!open)}
-        className={cn('inline-flex align-middle', open ? 'text-amber-400' : 'text-neutral-500 hover:text-neutral-300')}>
-        <CircleHelp className="size-3.5" />
-      </button>
-      {open && (
-        <span role="tooltip" onClick={() => setOpen(false)}
-          className="fixed inset-x-4 top-24 z-50 block whitespace-pre-line rounded-lg border border-neutral-700 bg-neutral-900 p-3 text-xs font-normal text-neutral-300 shadow-xl sm:absolute sm:inset-x-auto sm:left-0 sm:top-6 sm:z-20 sm:w-80">
-          {text}
-        </span>
-      )}
-    </span>
-  )
-}
-
 function FieldLabel({ text, help }: { text: string; help: string }) {
-  return <span className="flex items-center gap-1 text-xs text-neutral-400">{text}<Help text={help} /></span>
+  return <span className="flex items-center gap-1 text-xs text-neutral-400">{text}<HelpTip text={help} /></span>
 }
 
 /**
@@ -179,7 +160,7 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
       <label className="flex items-center gap-2 text-xs text-neutral-300">
         <input type="checkbox" checked={placed} disabled={!editable} onChange={(e) => togglePlaced(e.target.checked)} />
         {t('display.placed')}
-        <Help text={t('display.placedHelp').replace('{w}', String(screen.width)).replace('{h}', String(screen.height))} />
+        <HelpTip text={t('display.placedHelp').replace('{w}', String(screen.width)).replace('{h}', String(screen.height))} />
       </label>
       {placed && rows.length > 0 && (
         <div className="space-y-1">
