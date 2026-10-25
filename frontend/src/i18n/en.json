@@ -966,7 +966,8 @@
     "ipcam": "IP camera (via NVR)",
     "nvr": "NVR",
     "irrx": "IR receiver (learns remote buttons)",
-    "irtx": "IR transmitter (controls an appliance)"
+    "irtx": "IR transmitter (controls an appliance)",
+    "monitor": "Monitor (a screen with readings)"
   },
   "boards": {
     "esp32cam-aithinker": "ESP32-CAM AI-Thinker",

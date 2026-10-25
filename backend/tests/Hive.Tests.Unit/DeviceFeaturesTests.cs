@@ -50,6 +50,9 @@ public class DeviceFeaturesTests
     [InlineData("relay", "heat", true)]
     [InlineData("meteo", "relay", false)]
     [InlineData("heat", "meteo", false)]
-    public void Only_meteo_and_relay_hornets_move_to_the_heat_firmware(string type, string role, bool ok) =>
+    [InlineData("meteo", "monitor", true)]
+    [InlineData("relay", "monitor", false)]
+    [InlineData("monitor", "meteo", false)]
+    public void Only_meteo_and_relay_hornets_move_to_the_heat_firmware_and_meteo_to_the_monitor_one(string type, string role, bool ok) =>
         Assert.Equal(ok, OtaService.CanBecome(type, role));
 }

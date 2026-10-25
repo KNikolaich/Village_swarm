@@ -18,7 +18,7 @@ In VS Code the PlatformIO toolbar does the same (✓ build, → upload, plug ico
 |---|---|---|
 | `guard-cam` | ESP32-CAM AI-Thinker | ESP32 |
 | `meteo-c3`, `relay-c3` | ESP32-C3 mini (SuperMini) | ESP32-C3 |
-| `meteo-c3oled` | ESP32-C3 with the 0.42" OLED (72×40) | ESP32-C3 |
+| `monitor-c3oled` | ESP32-C3 with the 0.42" OLED (72×40): a monitor, see **monitor** below | ESP32-C3 |
 | `meteo-d1mini`, `relay-d1mini` | Wemos D1 mini | ESP8266 |
 | `meteo-nodemcu`, `relay-nodemcu` | NodeMCU v3 | ESP8266 |
 | `meteo-esp01`, `relay-esp01` | ESP-01 / ESP-01S (1 MB), incl. "ESP-01 Relay v1.0" and DS18B20 modules | ESP8266 |
@@ -59,9 +59,10 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
   have the ADC). ESP8266 has one ADC, A0: set `vbat_pin` to 17 (any number turns the reading on, A0 is read).
   The NodeMCU / D1 mini A0 divider is in parallel with R2, so calibrate: new ratio = ratio × multimeter / reading.
   Published as `battery_voltage` (V) every `tele_interval_s`.
-- **Screen** (`meteo-c3oled`): two values in large digits, `display.lines` in the config, e.g.
-  `["temperature", "battery_voltage"]`; by default the first two of temperature, humidity, temperature_2,
-  battery_voltage. A dot in the corner means the hornet is online.
+- **monitor** (`monitor-c3oled`): a screen that measures nothing itself. It draws the texts the hive publishes to
+  `vs/v1/hive/display/{id}` for the readings chosen on the device page, "Экран" (config `display.items`, up to four
+  lines from any device; docs/display.md). A dot in the corner means it is online. A hornet on the old
+  `meteo-c3oled` build moves to it by an update over the air (the swarm screen offers the monitor build).
 - **relay**: `cmd/relay {channel, set: on|off, for_s}`, channel `relay` unless config `relay.channel` says
   otherwise (e.g. `light`). Off at every boot; switches off by itself after `for_s` or `relay.max_on_s`,
   whichever is shorter. The optional button toggles it locally.

@@ -30,6 +30,7 @@ public static class BoardPins
         ["relay"] = ["relay", "button", "vbat"],
         ["heat"] = ["onewire", "sda", "scl", "relay", "button", "vbat", "dht"],
         ["guard-cam"] = ["relay"],
+        ["monitor"] = ["sda", "scl", "vbat"],  // the screen on I2C
     };
 
     /// <summary>

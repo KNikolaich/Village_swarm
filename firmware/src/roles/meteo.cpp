@@ -12,9 +12,6 @@
 // The thermometer is DS18B20s on 1-Wire or one DHT11/DHT22 on hw.dht_pin, as config hw.thermometer says; a DHT also
 // gives humidity (humidity_2 next to a BME280). Builds with HW_DHT_PIN/HW_DHT_TYPE (meteo-esp01dht: the "ESP-01S
 // DHT11" module) take that DHT as the default; elsewhere the default is DS18B20s.
-//
-// Builds with HORNET_DISPLAY (meteo-c3oled) also drive the 0.42" SSD1306 OLED (72x40): two metrics in large
-// digits, chosen by config display.lines, and a dot in the corner while the hornet is online.
 
 #include <Adafruit_BME280.h>
 #include <Battery.h>
@@ -24,16 +21,6 @@
 #include <HornetCore.h>
 #include <OneWire.h>
 #include <Wire.h>
-
-#include <map>
-
-#ifndef HORNET_DISPLAY
-#define HORNET_DISPLAY 0
-#endif
-
-#if HORNET_DISPLAY
-#include <U8g2lib.h>
-#endif
 
 #ifndef HW_DHT_PIN
 #define HW_DHT_PIN -1
@@ -85,8 +72,6 @@ public:
         const int dhtPin = hw["dht_pin"] | HW_DHT_PIN;
         const TempSensor sensor = parseTempSensor(hw["thermometer"].as<const char*>(), kDefaultSensor);
         battery_.configure(hw);
-        lines_.clear();
-        for (JsonVariantConst line : config["display"]["lines"].as<JsonArrayConst>()) lines_.push_back(line.as<String>());
         Features features{kThermometer | kBme280};
         if (config["features"].is<JsonArrayConst>()) {
             features.bits = 0;
@@ -153,18 +138,8 @@ private:
 
         bmeOk_ = false;
         const bool i2c = sdaPin_ >= 0 && sclPin_ >= 0;
-        if (i2c && (features_.has(kBme280) || HORNET_DISPLAY)) Wire.begin(sdaPin_, sclPin_);  // the OLED shares the I2C bus
+        if (i2c && features_.has(kBme280)) Wire.begin(sdaPin_, sclPin_);
         if (i2c && features_.has(kBme280)) bmeOk_ = bme_.begin(0x76, &Wire) || bme_.begin(0x77, &Wire);
-#if HORNET_DISPLAY
-        displayOk_ = oled_.begin();
-        if (displayOk_) {
-            oled_.clearBuffer();
-            oled_.setFont(u8g2_font_6x10_tf);
-            oled_.drawStr(0, 12, "Village");
-            oled_.drawStr(0, 26, "Swarm");
-            oled_.sendBuffer();
-        }
-#endif
 
         // temperature, temperature_2, temperature_3... in order: BME280 first, then the DHT or the DS18B20s on the bus.
         names_.clear();
@@ -186,7 +161,6 @@ private:
         if (!bmeOk_ && dsCount_ == 0 && !dhtOk_) {
             if (!warned_ && !battery_.enabled() && features_.bits != 0) core.log(LogLevel::Warn, "no sensor found (DS18B20, DHT or BME280)");
             warned_ = true;
-            draw(core);
             return;
         }
         size_t name = 0;
@@ -208,7 +182,6 @@ private:
             }
             report(core, names_[name].c_str(), t, "C");
         }
-        draw(core);
     }
 
     // One read takes about 25 ms (start pulse + 40 bits); the DHT11 must not be read more often than once a second,
@@ -226,92 +199,6 @@ private:
 
     void report(Core& core, const char* metric, float value, const char* unit) {
         core.publishTele(metric, value, unit);
-        values_[metric] = value;
-    }
-
-    bool wantsDisplay() const override { return HORNET_DISPLAY != 0; }
-
-    // The hive's ready texts (another device's readings, say). Empty: back to this hornet's own readings.
-    void applyDisplay(Core&, JsonObjectConst message) override {
-        fed_.clear();
-        for (JsonObjectConst item : message["items"].as<JsonArrayConst>()) {
-            if (fed_.size() >= 4) break;
-            fed_.push_back({String(item["label"] | ""), String(item["text"] | "--")});
-        }
-    }
-
-    // What goes on the screen when the config does not say: the first two of these that exist.
-    std::vector<String> displayLines() const {
-        if (!lines_.empty()) return lines_;
-        std::vector<String> out;
-        for (const char* m : {"temperature", "humidity", "temperature_2", "battery_voltage", "pressure"})
-            if (values_.count(m) && out.size() < 2) out.push_back(m);
-        return out;
-    }
-
-#if HORNET_DISPLAY
-    // 72x40: one line is a small label above a large text; two are two large texts; three or four are small rows, label on the left and text on the right.
-    void drawFed() {
-        const size_t n = fed_.size();
-        if (n <= 2) {
-            int y = n == 1 ? 38 : 18;
-            for (const auto& row : fed_) {
-                if (n == 1 && row.label.length()) {
-                    oled_.setFont(u8g2_font_5x8_t_cyrillic);
-                    oled_.drawUTF8(0, 8, row.label.c_str());
-                }
-                oled_.setFont(u8g2_font_logisoso16_tf);
-                oled_.drawUTF8(0, y, row.text.c_str());
-                y += 20;
-            }
-            return;
-        }
-        oled_.setFont(u8g2_font_5x8_t_cyrillic);
-        int y = 9;
-        for (const auto& row : fed_) {
-            String label = row.label;
-            // 14 characters of 5 px across: the text keeps its place, the label gives way
-            const int room = 14 - static_cast<int>(row.text.length()) - 1;
-            if (room <= 0) label = "";
-            else if (static_cast<int>(label.length()) > room) label = label.substring(0, room);
-            oled_.drawUTF8(0, y, label.c_str());
-            oled_.drawUTF8(72 - oled_.getUTF8Width(row.text.c_str()), y, row.text.c_str());
-            y += 10;
-        }
-    }
-#endif
-
-    static String format(const String& metric, float v) {
-        if (metric.startsWith("temperature")) return String(v, 1) + "°";
-        if (metric == "humidity") return String(v, 0) + "%";
-        if (metric == "battery_voltage") return String(v, 1) + "V";
-        if (metric == "pressure") return String(v, 0);
-        return String(v, 1);
-    }
-
-    void draw(Core& core) {
-#if HORNET_DISPLAY
-        if (!displayOk_) return;
-        oled_.clearBuffer();
-        if (!fed_.empty()) {
-            drawFed();
-            if (core.online()) oled_.drawDisc(69, 2, 2);
-            oled_.sendBuffer();
-            return;
-        }
-        oled_.setFont(u8g2_font_logisoso16_tf);
-        int y = 18;
-        for (const auto& line : displayLines()) {
-            const auto it = values_.find(line);
-            const String text = it == values_.end() ? String("--") : format(line, it->second);
-            oled_.drawUTF8(0, y, text.c_str());
-            y += 20;
-        }
-        if (core.online()) oled_.drawDisc(69, 2, 2);
-        oled_.sendBuffer();
-#else
-        (void)core;
-#endif
     }
 
     Features features_{kThermometer | kBme280};
@@ -332,19 +219,7 @@ private:
     String dhtHumidity_ = "humidity";
     bool warned_ = false;
     std::vector<String> names_;
-    std::vector<String> lines_;
-    struct FedRow {
-        String label;
-        String text;
-    };
-    std::vector<FedRow> fed_;  // the hive's display message; empty: this hornet's own readings
-    std::map<String, float> values_;
     Battery battery_;
-#if HORNET_DISPLAY
-    // SSD1306 72x40 on the ESP32-C3 0.42" board, hardware I2C on the shared bus.
-    U8G2_SSD1306_72X40_ER_F_HW_I2C oled_{U8G2_R0, U8X8_PIN_NONE};
-    bool displayOk_ = false;
-#endif
     uint32_t teleIntervalMs_ = 60000;
     uint32_t lastReadMs_ = 0;
     uint32_t conversionStartMs_ = 0;
