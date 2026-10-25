@@ -83,7 +83,7 @@ public sealed class ScreenAccessTests(HiveFixture hive)
         Assert.Equal(("Дача", "21.5°", 6), (item.GetProperty("label").GetString(), item.GetProperty("text").GetString(), item.GetProperty("size").GetInt32()));
 
         // nothing changed: a sleeping panel gets 304 and no body
-        using (var same = await anonymous.SendAsync(Frame(token, etag)))
+        using (var same = await anonymous.SendAsync(Frame(token, etag, external: true)))
             Assert.Equal(HttpStatusCode.NotModified, same.StatusCode);
 
         var access = await admin.GetFromJsonAsync<JsonElement>("/api/devices/monitor-far1/screen-access");

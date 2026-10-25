@@ -7993,6 +7993,63 @@
           }
         }
       },
+      "ScreenAccessDto": {
+        "required": [
+          "enabled",
+          "issuedAt",
+          "lastReadAt",
+          "lastReadFrom",
+          "lastReadExternal",
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "issuedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "lastReadAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "lastReadFrom": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "lastReadExternal": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "ScreenTokenDto": {
+        "required": [
+          "token",
+          "access"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "access": {
+            "$ref": "#/components/schemas/ScreenAccessDto"
+          }
+        }
+      },
       "SendCommandRequest": {
         "required": [
           "name"
@@ -9240,63 +9297,6 @@
           "garden",
           "tech"
         ]
-      },
-      "ScreenAccessDto": {
-        "required": [
-          "enabled",
-          "issuedAt",
-          "lastReadAt",
-          "lastReadFrom",
-          "lastReadExternal",
-          "path"
-        ],
-        "type": "object",
-        "properties": {
-          "enabled": {
-            "type": "boolean"
-          },
-          "issuedAt": {
-            "type": [
-              "null",
-              "string"
-            ],
-            "format": "date-time"
-          },
-          "lastReadAt": {
-            "type": [
-              "null",
-              "string"
-            ],
-            "format": "date-time"
-          },
-          "lastReadFrom": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "lastReadExternal": {
-            "type": "boolean"
-          },
-          "path": {
-            "type": "string"
-          }
-        }
-      },
-      "ScreenTokenDto": {
-        "required": [
-          "token",
-          "access"
-        ],
-        "type": "object",
-        "properties": {
-          "token": {
-            "type": "string"
-          },
-          "access": {
-            "$ref": "#/components/schemas/ScreenAccessDto"
-          }
-        }
       }
     }
   },

@@ -6355,6 +6355,20 @@ export interface components {
             /** Format: int32 */
             sort?: null | number;
         };
+        ScreenAccessDto: {
+            enabled: boolean;
+            /** Format: date-time */
+            issuedAt: null | string;
+            /** Format: date-time */
+            lastReadAt: null | string;
+            lastReadFrom: null | string;
+            lastReadExternal: boolean;
+            path: string;
+        };
+        ScreenTokenDto: {
+            token: string;
+            access: components["schemas"]["ScreenAccessDto"];
+        };
         SendCommandRequest: {
             name: string;
             payload?: null | components["schemas"]["JsonObject"];
@@ -6683,20 +6697,6 @@ export interface components {
         };
         /** @enum {unknown} */
         ZoneKind: "perimeter" | "house" | "garden" | "tech";
-        ScreenAccessDto: {
-            enabled: boolean;
-            /** Format: date-time */
-            issuedAt: null | string;
-            /** Format: date-time */
-            lastReadAt: null | string;
-            lastReadFrom: null | string;
-            lastReadExternal: boolean;
-            path: string;
-        };
-        ScreenTokenDto: {
-            token: string;
-            access: components["schemas"]["ScreenAccessDto"];
-        };
     };
     responses: never;
     parameters: never;
