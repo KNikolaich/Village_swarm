@@ -107,6 +107,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
                 new DeviceType { Code = "ble", Title = "Мост Bluetooth (кухонный термометр)", OfflineAfterS = 180 },
                 new DeviceType { Code = "irrx", Title = "ИК-приёмник (учит кнопки пульта)", OfflineAfterS = 180 },
                 new DeviceType { Code = "irtx", Title = "ИК-передатчик (управляет прибором)", OfflineAfterS = 180 },
+                new DeviceType { Code = "monitor", Title = "Монитор (экран с показаниями)", OfflineAfterS = 180 },
                 new DeviceType { Code = "sensor", Title = "Датчик (движение, дверь, протечка, температура)", OfflineAfterS = 1800 },
                 new DeviceType { Code = "ipcam", Title = "IP-камера (через видеорегистратор)", OfflineAfterS = 180 },
                 new DeviceType { Code = "nvr", Title = "Видеорегистратор", OfflineAfterS = 180 });

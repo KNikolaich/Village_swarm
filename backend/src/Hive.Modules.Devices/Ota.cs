@@ -45,9 +45,12 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
     /// <summary>
     /// A meteo or relay hornet may move to the heat firmware of its board: heat does all they do (thermometer, BME280,
     /// relay) and keeps the same pins, so a board with both a sensor and a relay needs no unsoldering to get both.
+    /// A meteo hornet with a screen (the 0.42" OLED board was a meteo build before) may move to the monitor firmware:
+    /// monitor builds exist only for boards with a screen, and the board check below still applies.
     /// The hornet reports its new type in info after the restart.
     /// </summary>
-    public static bool CanBecome(string type, string role) => role == "heat" && type is ("meteo" or "relay");
+    public static bool CanBecome(string type, string role) =>
+        (role == "heat" && type is ("meteo" or "relay")) || (role == "monitor" && type == "meteo");
 
     /// <summary>
     /// <paramref name="needOnline"/> false: a deep sleeper that has just woken (its status may not have caught up yet).

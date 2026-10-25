@@ -33,6 +33,7 @@ const roleFunctions: Record<string, readonly string[]> = {
   relay: ['relay', 'button', 'vbat'],
   heat: ['onewire', 'dht', 'sda', 'scl', 'relay', 'button', 'vbat'],
   'guard-cam': ['relay'],
+  monitor: ['sda', 'scl', 'vbat'],
 }
 
 /** ESP8266 boards: one ADC (A0 = GPIO17) and D-labels on the silkscreen. */
@@ -189,8 +190,12 @@ export function PinsPanel({ deviceId, editable, board, type, features }: { devic
   )
 }
 
-/** A meteo or relay hornet may move to the heat firmware of its board, which does all they do (OtaService.CanBecome). */
-const canBecome = (type: string, role: string) => role === 'heat' && (type === 'meteo' || type === 'relay')
+/**
+ * A meteo or relay hornet may move to the heat firmware of its board, which does all they do; a meteo hornet with a screen
+ * to the monitor firmware (OtaService.CanBecome).
+ */
+const canBecome = (type: string, role: string) =>
+  (role === 'heat' && (type === 'meteo' || type === 'relay')) || (role === 'monitor' && type === 'meteo')
 
 /** Over-the-air update of one hornet: the builds the hive has for its role and board, the running one marked. */
 function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: Schemas['FirmwareBuildDto'][]; onDone: () => void }) {

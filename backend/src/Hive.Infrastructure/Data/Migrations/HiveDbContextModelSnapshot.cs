@@ -620,6 +620,12 @@ namespace Hive.Infrastructure.Data.Migrations
                         },
                         new
                         {
+                            Code = "monitor",
+                            OfflineAfterS = 180,
+                            Title = "Монитор (экран с показаниями)"
+                        },
+                        new
+                        {
                             Code = "sensor",
                             OfflineAfterS = 1800,
                             Title = "Датчик (движение, дверь, протечка, температура)"
