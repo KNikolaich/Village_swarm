@@ -550,6 +550,45 @@
         }
       }
     },
+    "/api/devices/remote-monitors": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddRemoteMonitorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/devices/{deviceId}/replace": {
       "post": {
         "tags": [
@@ -1938,6 +1977,28 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/devices/{deviceId}/display/preview.png": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
           }
         }
       }
@@ -4529,6 +4590,25 @@
           }
         }
       },
+      "AddRemoteMonitorRequest": {
+        "required": [
+          "deviceId",
+          "name",
+          "board"
+        ],
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "board": {
+            "type": "string"
+          }
+        }
+      },
       "AddZigbeeDeviceRequest": {
         "required": [
           "ieee",
@@ -5396,6 +5476,10 @@
           "height": {
             "type": "integer",
             "format": "int32"
+          },
+          "rendered": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

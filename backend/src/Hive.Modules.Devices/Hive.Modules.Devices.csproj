@@ -1,6 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The hive draws the frames of e-ink monitors (DisplayRender): DejaVu Sans Condensed Bold, Cyrillic included (Fonts/DejaVu-LICENSE.txt). -->
+    <EmbeddedResource Include="Fonts/DejaVuSansCondensed-Bold.ttf" LogicalName="Hive.Modules.Devices.Fonts.DejaVuSansCondensed-Bold.ttf" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Hive.Domain/Hive.Domain.csproj" />

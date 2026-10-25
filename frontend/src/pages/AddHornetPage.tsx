@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { FlashButton } from '@/components/FlashButton'
 import { IpCamPanel } from '@/components/IpCamPanel'
+import { RemoteMonitorPanel } from '@/components/RemoteMonitorPanel'
 import { TasmotaPanel } from '@/components/TasmotaPanel'
 import { ZigbeePanel } from '@/components/ZigbeePanel'
 import { toast } from 'sonner'
@@ -49,7 +50,7 @@ function defaultHiveUrl() {
 export function AddHornetPage() {
   const [params] = useSearchParams()
   const presetTasmota = params.get('tasmota')
-  const [mode, setMode] = useState<'one' | 'batch' | 'tasmota' | 'zigbee' | 'ipcam'>(presetTasmota ? 'tasmota' : params.get('ipcam') ? 'ipcam' : 'one')
+  const [mode, setMode] = useState<'one' | 'batch' | 'tasmota' | 'zigbee' | 'ipcam' | 'remote'>(presetTasmota ? 'tasmota' : params.get('ipcam') ? 'ipcam' : 'one')
   const preset = useQuery({
     queryKey: ['device', presetTasmota],
     queryFn: async () => (await api.GET('/api/devices/{deviceId}', { params: { path: { deviceId: presetTasmota! } } })).data ?? null,
@@ -67,11 +68,13 @@ export function AddHornetPage() {
         <Button variant={mode === 'tasmota' ? 'default' : 'secondary'} onClick={() => setMode('tasmota')}>{t('add.modeTasmota')}</Button>
         <Button variant={mode === 'zigbee' ? 'default' : 'secondary'} onClick={() => setMode('zigbee')}>{t('add.modeZigbee')}</Button>
         <Button variant={mode === 'ipcam' ? 'default' : 'secondary'} onClick={() => setMode('ipcam')}>{t('add.modeIpcam')}</Button>
+        <Button variant={mode === 'remote' ? 'default' : 'secondary'} onClick={() => setMode('remote')}>{t('add.modeRemote')}</Button>
       </div>
       {mode === 'one' && <OneHornet />}
       {mode === 'batch' && <BatchPanel />}
       {mode === 'zigbee' && <ZigbeePanel />}
       {mode === 'ipcam' && <IpCamPanel />}
+      {mode === 'remote' && <RemoteMonitorPanel />}
       {mode === 'tasmota' && (presetTasmota && !preset.data
         ? null
         : <TasmotaPanel presetId={preset.data?.deviceId} presetName={preset.data?.name} presetType={preset.data?.type} />)}

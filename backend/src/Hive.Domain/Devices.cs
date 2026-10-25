@@ -62,6 +62,12 @@ public static class Drivers
 
     /// <summary>A channel of a Dahua NVR: the hive itself reads its events and snapshots over HTTP (contracts/ipcam.md).</summary>
     public const string IpCam = "ipcam";
+
+    /// <summary>
+    /// A monitor far away that only reads its screen over HTTPS with its token (contracts/monitor-http.md): no MQTT, no
+    /// enrollment. Added by hand in the UI; seen when it last read.
+    /// </summary>
+    public const string Http = "http";
 }
 
 /// <summary>Device types that take photos: our guard-cams and IP cameras behind an NVR.</summary>

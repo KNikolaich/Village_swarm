@@ -924,7 +924,8 @@
     "flashLoadFailed": "The Flash button did not load. Usually the page was opened before the hive was updated: reload it. You can still download the firmware file below.",
     "reloadPage": "Reload the page",
     "modeZigbee": "Zigbee",
-    "modeIpcam": "IP cameras (NVR)"
+    "modeIpcam": "IP cameras (NVR)",
+    "modeRemote": "Remote monitor"
   },
   "time": {
     "justNow": "just now",
@@ -976,7 +977,8 @@
     "wemos-d1-mini": "Wemos D1 mini",
     "nodemcu-v3": "NodeMCU v3",
     "esp-01": "ESP-01 / ESP-01S (1 MB)",
-    "esp-01-dht11": "ESP-01S with a DHT11 sensor (the “ESP-01S DHT11” module)"
+    "esp-01-dht11": "ESP-01S with a DHT11 sensor (the “ESP-01S DHT11” module)",
+    "waveshare-s3-epaper-154": "Waveshare ESP32-S3 1.54\" e-ink (200×200)"
   },
   "weekdays": {
     "mon": "Mon",
@@ -1293,7 +1295,9 @@
     "alignHelp": "Which edge of the text sits on X: left, the middle or right. Right suits numbers in a column: \"9.5°\" and \"21.5°\" end at the same place.",
     "alignLeft": "left",
     "alignCenter": "center",
-    "alignRight": "right"
+    "alignRight": "right",
+    "rendered": "How the hive will draw the screen (saved rows)",
+    "renderedHelp": "This screen does not draw itself: the hive makes the picture and the panel only shows it. This is exactly the picture the panel gets on its next read, with the current readings. The rows above change at once, the picture after Save."
   },
   "screenAccess": {
     "title": "Access from outside",
@@ -1441,5 +1445,18 @@
     "to": "Above (pink)",
     "order": "The lower end must be below the upper one",
     "saved": "Range saved"
+  },
+  "remoteMonitor": {
+    "title": "Remote monitor",
+    "hint": "A panel far from home (an e-ink screen at the city flat, say). It does not join the hive over MQTT but reads its own picture over the internet with a token, so there is no enrollment code: add it here.",
+    "help": "How to connect:\n1. Pick the board, an id and a name, press Add.\n2. On the monitor's page choose the screen rows and issue a token under \"Access from outside\".\n3. Flash the panel with the button below (USB, Chrome or Edge).\n4. The panel opens a Wi-Fi point \"VillageSwarm-xxxx\": join it from a phone, open 192.168.4.1 and enter the Wi-Fi of that place, the hive's internet address (KeenDNS) and the token.\nThen the panel wakes every 10 minutes (set there too), takes the picture and sleeps again. Holding BOOT for 2 seconds opens the settings again, a short press refreshes at once.\nThe monitor goes online with its first read.",
+    "board": "Board",
+    "id": "Id (latin letters, digits, dash)",
+    "name": "Name",
+    "namePlaceholder": "For example \"City screen\"",
+    "add": "Add",
+    "added": "Monitor added: choose its rows and issue a token",
+    "flash": "Panel firmware:",
+    "noBuild": "The hive has no {build} build: build it (firmware, pio run -e {build}) and update the hive."
   }
 }
