@@ -5233,6 +5233,33 @@
               "null",
               "string"
             ]
+          },
+          "x": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "y": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "size": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "align": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -5247,6 +5274,33 @@
             "items": {
               "$ref": "#/components/schemas/DisplayItemDto"
             }
+          },
+          "screen": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DisplayScreenDto"
+              }
+            ]
+          }
+        }
+      },
+      "DisplayScreenDto": {
+        "required": [
+          "width",
+          "height"
+        ],
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },

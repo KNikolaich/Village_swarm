@@ -25,4 +25,31 @@ public class DisplayTextTests
         Assert.NotNull(DisplayText.Validate([new DisplayItemDto("Bad Id", "temperature", null)]));
         Assert.NotNull(DisplayText.Validate([new DisplayItemDto(null, "temperature", new string('x', 17))]));
     }
+
+    [Fact]
+    public void Placed_items_may_be_up_to_eight_and_must_fit_the_screen()
+    {
+        var oled = new DisplayScreenDto(72, 40);
+        DisplayItemDto At(int x, int y, int size = 3, string? align = null) => new(null, "temperature", null, x, y, size, align);
+        Assert.Null(DisplayText.Validate(Enumerable.Range(0, 8).Select(i => At(0, i * 5)).ToList(), oled));
+        Assert.NotNull(DisplayText.Validate(Enumerable.Range(0, 9).Select(i => At(0, i * 4)).ToList(), oled));
+        Assert.Null(DisplayText.Validate([At(71, 39, 10, "right")], oled));
+        Assert.NotNull(DisplayText.Validate([At(72, 0)], oled));
+        Assert.NotNull(DisplayText.Validate([At(0, 40)], oled));
+        Assert.Null(DisplayText.Validate([At(500, 0)]));  // a board without a known screen: only the general limits
+        Assert.NotNull(DisplayText.Validate([At(0, 0, 0)]));
+        Assert.NotNull(DisplayText.Validate([At(0, 0, 11)]));
+        Assert.NotNull(DisplayText.Validate([At(0, 0, 3, "middle")]));
+        Assert.NotNull(DisplayText.Validate([At(-1, 0)]));
+    }
+
+    [Theory]
+    [InlineData(1, 40, 6)]    // never below the smallest font
+    [InlineData(3, 40, 12)]
+    [InlineData(5, 40, 20)]
+    [InlineData(10, 40, 40)]
+    [InlineData(5, 480, 240)]  // the same size reads the same on a large panel
+    [InlineData(1, 200, 20)]
+    public void A_size_is_a_share_of_the_screen_height(int size, int height, int pixels) =>
+        Assert.Equal(pixels, DisplayText.PixelHeight(size, height));
 }

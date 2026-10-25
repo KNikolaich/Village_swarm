@@ -5557,9 +5557,23 @@ export interface components {
             device: null | string;
             metric: string;
             label: null | string;
+            /** Format: int32 */
+            x?: null | number;
+            /** Format: int32 */
+            y?: null | number;
+            /** Format: int32 */
+            size?: null | number;
+            align?: null | string;
         };
         DisplayItemsDto: {
             items: components["schemas"]["DisplayItemDto"][];
+            screen?: null | components["schemas"]["DisplayScreenDto"];
+        };
+        DisplayScreenDto: {
+            /** Format: int32 */
+            width: number;
+            /** Format: int32 */
+            height: number;
         };
         DryRunHit: {
             /** Format: date-time */
