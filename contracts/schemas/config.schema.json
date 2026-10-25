@@ -256,7 +256,7 @@
     },
     "display": {
       "type": "object",
-      "description": "Small local screen (0.42\" OLED): up to two of its own metrics, large; or, with items, what the hive feeds it (vs/v1/hive/display/{id})",
+      "description": "Screen of a hornet or a monitor: what the hive feeds it (items, vs/v1/hive/display/{id}); lines: up to two of its own metrics on the old meteo-c3oled build",
       "properties": {
         "lines": {
           "type": "array",
@@ -267,15 +267,19 @@
         },
         "items": {
           "type": "array",
-          "maxItems": 4,
-          "description": "What the screen shows, kept by the hive: a reading of this hornet or of another device. The hornet does not read it: the hive turns it into the display message",
+          "maxItems": 8,
+          "description": "What the screen shows, kept by the hive: a reading of this hornet or of another device. Up to 4 in the automatic layout, up to 8 when placed (size set). The hornet does not read it: the hive turns it into the display message",
           "items": {
             "type": "object",
             "required": ["metric"],
             "properties": {
               "device": { "$ref": "common.schema.json#/$defs/deviceId", "description": "Absent: this hornet" },
               "metric": { "$ref": "common.schema.json#/$defs/segment" },
-              "label": { "type": "string", "maxLength": 16 }
+              "label": { "type": "string", "maxLength": 16 },
+              "x": { "type": "integer", "minimum": 0, "maximum": 1023, "description": "Placed layout: pixels from the left edge to the anchor of the text (align says which edge of the text). Absent: 0" },
+              "y": { "type": "integer", "minimum": 0, "maximum": 1023, "description": "Placed layout: pixels from the top edge to the top of the text (of the label when there is one). Absent: 0" },
+              "size": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Relative text height: size/10 of the screen height, at least 6 px; the screen takes its largest font not taller than that. Set on any item: the whole screen is placed by x, y, size" },
+              "align": { "enum": ["left", "center", "right"], "description": "Placed layout: which edge of the text x is. Absent: left" }
             },
             "additionalProperties": false
           }

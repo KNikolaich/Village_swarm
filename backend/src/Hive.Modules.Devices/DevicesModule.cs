@@ -179,15 +179,17 @@ public static class DevicesModule
 
         // What a hornet's screen shows: its own readings or those of other devices (contracts/mqtt-topics.md, vs/v1/hive/display/{id}).
         devices.MapGet("/{deviceId}/display", async Task<Results<Ok<DisplayItemsDto>, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
-            await feed.GetAsync(deviceId, ct) is { } items ? TypedResults.Ok(new DisplayItemsDto(items)) : TypedResults.NotFound());
+            await feed.GetAsync(deviceId, ct) is { } display ? TypedResults.Ok(display) : TypedResults.NotFound());
         devices.MapPut("/{deviceId}/display", async Task<Results<Ok<DisplayItemsDto>, NotFound, ValidationProblem>> (
                 string deviceId, DisplayItemsDto request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
             {
-                if (DisplayText.Validate(request.Items) is { } error)
-                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["items"] = [error] });
-                return await feed.SaveAsync(deviceId, request.Items, $"user:{user.Identity?.Name}", ct) == ConfigUpdateStatus.NotFound
-                    ? TypedResults.NotFound()
-                    : TypedResults.Ok(new DisplayItemsDto((await feed.GetAsync(deviceId, ct))!));
+                var (status, error) = await feed.SaveAsync(deviceId, request.Items, $"user:{user.Identity?.Name}", ct);
+                return status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["items"] = [error ?? "refused"] }),
+                    _ => TypedResults.Ok((await feed.GetAsync(deviceId, ct))!),
+                };
             })
             .RequireAuthorization(HiveRoles.CanControl);
 

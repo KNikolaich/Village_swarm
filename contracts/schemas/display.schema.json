@@ -9,14 +9,18 @@
     "ts": { "$ref": "common.schema.json#/$defs/unixMs" },
     "items": {
       "type": "array",
-      "maxItems": 4,
-      "description": "Empty: the hornet shows its own readings again (config display.lines or the defaults)",
+      "maxItems": 8,
+      "description": "Empty: nothing chosen (a monitor says so; the old meteo-c3oled build shows its own readings). Without size on any item: the automatic layout of up to 4 lines. With size: every item is drawn where x, y say, at that size",
       "items": {
         "type": "object",
         "required": ["text"],
         "properties": {
           "label": { "type": "string", "maxLength": 16, "description": "What it is (a zone, a device); may be absent" },
-          "text": { "type": "string", "maxLength": 12, "description": "The value, ready to show: 21.5°, 63%, 3.9V, --" }
+          "text": { "type": "string", "maxLength": 12, "description": "The value, ready to show: 21.5°, 63%, 3.9V, --" },
+          "x": { "type": "integer", "minimum": 0, "maximum": 1023, "description": "Placed layout: pixels from the left edge to the anchor of the text (align says which edge of the text). Absent: 0" },
+          "y": { "type": "integer", "minimum": 0, "maximum": 1023, "description": "Placed layout: pixels from the top edge to the top of the text (of the label when there is one; the label is drawn in the smallest font above the value). Absent: 0" },
+          "size": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Relative text height: size/10 of the screen height, at least 6 px; the screen takes its largest font not taller than that. Set on any item: the whole screen is placed by x, y, size" },
+          "align": { "enum": ["left", "center", "right"], "description": "Placed layout: which edge of the text x is. Absent: left" }
         },
         "additionalProperties": false
       }

@@ -39,7 +39,10 @@ behaves like any other hornet: LWT, commands and config work as usual.
 
 A hornet with a screen (config `display`) may show readings of other devices: the hive keeps the choice in config `display.items` (`device` absent = the hornet itself,
 `metric`, `label`) and publishes the ready texts to `vs/v1/hive/display/{id}` (retained, on change; the hornet reads `vs/v1/hive/#` already). An empty `items` list
-makes the hornet show its own readings again. The hornet does not read `display.items` itself.
+means nothing is chosen. The hornet does not read `display.items` itself. Layout: without `size` on any item the screen lays out up to 4 lines itself; with
+`size` (1-10) every item carries `x`, `y` (pixels, top of the text) and `align` (`left` | `center` | `right`: which edge of the text `x` is), up to 8 items.
+Text height = max(6, round(screen height × size / 10)) px; the screen takes its largest font not taller than that. A placed item's label is drawn in the smallest
+font at `y`, the value right under it; the hive sends a placed label only when the person typed one.
 
 Infrared (roles `irrx` and `irtx`, ESP-01 on the WS2812 connector, GPIO2; `hw.ir_pin`): the **receiver** keeps the last code it saw in its retained state
 `ir_last` = `"NEC 32 0x02FD807F"` (protocol, bits, data as hex; repeats and codes it cannot name are ignored), so a remote's button can be learned from the hive.

@@ -3,10 +3,15 @@
 // vs/v1/hive/display/{id}; this role only draws them. With hw.vbat_pin set, a battery behind a voltage divider is
 // measured as battery_voltage (V).
 //
+// Layout: without "size" on any item the role lays out up to four lines itself; with it every item is drawn where x, y
+// say, in the largest font not taller than size/10 of the screen height (DisplayLayout.h), its label in the smallest font
+// above it.
+//
 // Board: ESP32-C3 with the 0.42" SSD1306 OLED (72x40) on I2C (monitor-c3oled, GPIO5/GPIO6). A dot in the top right
 // corner shows that the monitor is online.
 
 #include <Battery.h>
+#include <DisplayLayout.h>
 #include <HornetCore.h>
 #include <U8g2lib.h>
 #include <Wire.h>
@@ -14,6 +19,17 @@
 namespace {
 
 using namespace hornet;
+
+constexpr int kWidth = 72;
+constexpr int kHeight = 40;
+
+// Fonts for placed items, smallest first: Cyrillic for small texts and labels, Logisoso digits from 16 px up.
+const uint8_t* const kFonts[] = {
+    u8g2_font_5x8_t_cyrillic,  u8g2_font_6x12_t_cyrillic, u8g2_font_9x15_t_cyrillic, u8g2_font_10x20_t_cyrillic,
+    u8g2_font_logisoso16_tf,   u8g2_font_logisoso20_tf,   u8g2_font_logisoso24_tf,   u8g2_font_logisoso28_tf,
+    u8g2_font_logisoso32_tf,   u8g2_font_logisoso38_tf,
+};
+constexpr int kFontCount = sizeof(kFonts) / sizeof(kFonts[0]);
 
 class Monitor : public Role {
 public:
@@ -64,9 +80,13 @@ public:
 
     void applyDisplay(Core&, JsonObjectConst message) override {
         rows_.clear();
+        placed_ = false;
+        for (JsonObjectConst item : message["items"].as<JsonArrayConst>())
+            if (!item["size"].isNull()) placed_ = true;
         for (JsonObjectConst item : message["items"].as<JsonArrayConst>()) {
-            if (rows_.size() >= 4) break;
-            rows_.push_back({String(item["label"] | ""), String(item["text"] | "--")});
+            if (rows_.size() >= (placed_ ? 8U : 4U)) break;
+            rows_.push_back({String(item["label"] | ""), String(item["text"] | "--"), item["x"] | 0, item["y"] | 0,
+                             item["size"] | 3, display::parseAlign(item["align"] | "left")});
         }
         received_ = true;
         dirty_ = true;
@@ -81,7 +101,29 @@ private:
         Wire.begin(sdaPin_, sclPin_);
         screenOk_ = oled_.begin();
         if (!screenOk_) Serial.printf("[monitor] no screen on i2c %d/%d\n", sdaPin_, sclPin_);
+        // The height of each font is what its digits take from the top: measured, not guessed.
+        for (int i = 0; i < kFontCount; ++i) {
+            oled_.setFont(kFonts[i]);
+            fontHeights_[i] = oled_.getAscent();
+        }
         dirty_ = true;
+    }
+
+    // Each item where the hive placed it: the label small at y, the value right under it.
+    void drawPlaced() {
+        oled_.setFontPosTop();
+        for (const auto& row : rows_) {
+            int y = row.y;
+            if (row.label.length()) {
+                oled_.setFont(kFonts[0]);
+                oled_.drawUTF8(display::leftEdge(row.x, oled_.getUTF8Width(row.label.c_str()), row.align), y, row.label.c_str());
+                y += fontHeights_[0] + 2;
+            }
+            const int font = display::pickFont(fontHeights_, kFontCount, display::pixelHeight(row.size, kHeight));
+            oled_.setFont(kFonts[font]);
+            oled_.drawUTF8(display::leftEdge(row.x, oled_.getUTF8Width(row.text.c_str()), row.align), y, row.text.c_str());
+        }
+        oled_.setFontPosBaseline();
     }
 
     // 72x40: one line is a small label above a large text; two are two large texts; three or four are small rows, label on
@@ -90,7 +132,9 @@ private:
         if (!screenOk_) return;
         oled_.clearBuffer();
         const size_t n = rows_.size();
-        if (n == 0) {
+        if (placed_ && n > 0) {
+            drawPlaced();
+        } else if (n == 0) {
             oled_.setFont(u8g2_font_5x8_t_cyrillic);
             if (received_) {
                 oled_.drawUTF8(0, 16, "Нет строк:");
@@ -121,19 +165,25 @@ private:
                 if (room <= 0) label = "";
                 else if (static_cast<int>(label.length()) > room) label = label.substring(0, room);
                 oled_.drawUTF8(0, y, label.c_str());
-                oled_.drawUTF8(72 - oled_.getUTF8Width(row.text.c_str()), y, row.text.c_str());
+                oled_.drawUTF8(kWidth - oled_.getUTF8Width(row.text.c_str()), y, row.text.c_str());
                 y += 10;
             }
         }
-        if (online) oled_.drawDisc(69, 2, 2);
+        if (online) oled_.drawDisc(kWidth - 3, 2, 2);
         oled_.sendBuffer();
     }
 
     struct Row {
         String label;
         String text;
+        int x;
+        int y;
+        int size;
+        display::Align align;
     };
     std::vector<Row> rows_;  // the hive's display message
+    bool placed_ = false;    // the items carry x, y, size
+    int fontHeights_[kFontCount] = {};
     bool received_ = false;  // the hive has sent a message since boot (retained: right after the connection)
     bool dirty_ = true;
     bool drawnOnline_ = false;

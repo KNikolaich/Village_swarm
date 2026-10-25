@@ -171,9 +171,20 @@ public sealed record DisplayConfigItem
 
     public required string Metric { get; init; }
     public string? Label { get; init; }
+    /// <summary>Placed layout: pixels from the left edge to the anchor of the text (<see cref="Align"/> says which edge).</summary>
+    public int? X { get; init; }
+
+    /// <summary>Placed layout: pixels from the top edge to the top of the text (of its label when there is one).</summary>
+    public int? Y { get; init; }
+
+    /// <summary>Relative text height 1-10 (size/10 of the screen height). Set on any item: the whole screen is placed.</summary>
+    public int? Size { get; init; }
+
+    /// <summary>left (absent), center or right.</summary>
+    public string? Align { get; init; }
 }
 
-/// <summary>vs/v1/hive/display/{id} (retained): ready texts for the hornet's screen. No items: it shows its own readings.</summary>
+/// <summary>vs/v1/hive/display/{id} (retained): ready texts for the screen, in the automatic layout or placed (x, y, size). No items: nothing chosen.</summary>
 public sealed record DisplayMessage
 {
     public int V { get; init; } = 1;
@@ -185,6 +196,17 @@ public sealed record DisplayItem
 {
     public string? Label { get; init; }
     public required string Text { get; init; }
+    /// <summary>Placed layout: pixels from the left edge to the anchor of the text (<see cref="Align"/> says which edge).</summary>
+    public int? X { get; init; }
+
+    /// <summary>Placed layout: pixels from the top edge to the top of the text (of its label when there is one).</summary>
+    public int? Y { get; init; }
+
+    /// <summary>Relative text height 1-10 (size/10 of the screen height). Set on any item: the whole screen is placed.</summary>
+    public int? Size { get; init; }
+
+    /// <summary>left (absent), center or right.</summary>
+    public string? Align { get; init; }
 }
 
 /// <summary>Role ble: the Bluetooth LE thermometer the hornet is a bridge for.</summary>

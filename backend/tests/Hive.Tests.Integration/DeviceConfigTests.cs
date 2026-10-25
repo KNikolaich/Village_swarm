@@ -221,6 +221,24 @@ public sealed class DeviceConfigTests(HiveFixture hive)
         var config = await hive.QueryAsync(db => db.Devices.AsNoTracking().SingleAsync(d => d.DeviceId == "meteo-disp-a"));
         Assert.Equal("meteo-disp-b", config.Config!.RootElement.GetProperty("display").GetProperty("items")[0].GetProperty("device").GetString());
 
+        // placed by hand: x, y, size go to the config and the screen; only a typed label is drawn, the name of the device is not
+        var beforePlaced = texts.Count;
+        using var badSize = await admin.PutAsJsonAsync("/api/devices/meteo-disp-a/display",
+            new { items = new object[] { new { metric = "temperature", x = 0, y = 0, size = 11 } } });
+        Assert.Equal(HttpStatusCode.BadRequest, badSize.StatusCode);
+        using var placed = await admin.PutAsJsonAsync("/api/devices/meteo-disp-a/display",
+            new { items = new object[] { new { device = "meteo-disp-b", metric = "temperature", x = 2, y = 4, size = 6 }, new { metric = "humidity", x = 71, y = 30, size = 2, align = "right" } } });
+        Assert.Equal(HttpStatusCode.OK, placed.StatusCode);
+        for (var i = 0; i < 50 && texts.Count == beforePlaced; i++)
+            await Task.Delay(100);
+        var placedItems = Last().GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal((2, 4, 6), (placedItems[0].GetProperty("x").GetInt32(), placedItems[0].GetProperty("y").GetInt32(), placedItems[0].GetProperty("size").GetInt32()));
+        Assert.False(placedItems[0].TryGetProperty("label", out _));
+        Assert.False(placedItems[0].TryGetProperty("align", out _));
+        Assert.Equal("right", placedItems[1].GetProperty("align").GetString());
+        var placedBack = await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-disp-a/display");
+        Assert.Equal(6, placedBack.GetProperty("items")[0].GetProperty("size").GetInt32());
+
         // no choice any more: an empty list goes out, so the hornet shows its own readings again
         var before = texts.Count;
         using var cleared = await admin.PutAsJsonAsync("/api/devices/meteo-disp-a/display", new { items = Array.Empty<object>() });

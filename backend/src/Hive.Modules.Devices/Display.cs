@@ -17,16 +17,38 @@ using Microsoft.Extensions.Logging;
 
 namespace Hive.Modules.Devices;
 
-/// <summary>One line of a hornet's screen: a reading of this hornet (<see cref="Device"/> absent) or of another device.</summary>
-public sealed record DisplayItemDto(string? Device, string Metric, string? Label);
+/// <summary>
+/// One item of a screen: a reading of this hornet (<see cref="Device"/> absent) or of another device. With <see cref="Size"/>
+/// the item is placed: <see cref="X"/>, <see cref="Y"/> in pixels, <see cref="Align"/> left (absent), center or right.
+/// </summary>
+public sealed record DisplayItemDto(string? Device, string Metric, string? Label, int? X = null, int? Y = null, int? Size = null, string? Align = null);
 
-public sealed record DisplayItemsDto(IReadOnlyList<DisplayItemDto> Items);
+/// <summary>Size of a screen in pixels: where items can be placed.</summary>
+public sealed record DisplayScreenDto(int Width, int Height);
+
+/// <summary>What the screen shows; <see cref="Screen"/> is filled by the hive for a board it knows (ignored when saving).</summary>
+public sealed record DisplayItemsDto(IReadOnlyList<DisplayItemDto> Items, DisplayScreenDto? Screen = null);
+
+/// <summary>Screens of the boards the hive knows, by board (info hw).</summary>
+public static class DisplayScreens
+{
+    private static readonly Dictionary<string, DisplayScreenDto> Boards = new()
+    {
+        ["esp32c3-oled-042"] = new(72, 40),
+    };
+
+    public static DisplayScreenDto? For(string? board) => board is not null && Boards.TryGetValue(board, out var s) ? s : null;
+}
 
 /// <summary>How a reading reads on a tiny screen, the same way the firmware writes its own (meteo role).</summary>
 public static class DisplayText
 {
+    /// <summary>Items the screen lays out itself; placed items (with a size) may be more.</summary>
     public const int MaxItems = 4;
+    public const int MaxPlaced = 8;
     public const int MaxLabel = 16;
+    public const int MaxCoordinate = 1023;
+    public static readonly string[] Aligns = ["left", "center", "right"];
 
     /// <summary>A reading older than this is shown as "--": better no number than a wrong one.</summary>
     public static readonly TimeSpan Stale = TimeSpan.FromMinutes(30);
@@ -48,12 +70,33 @@ public static class DisplayText
         };
     }
 
-    public static string? Validate(IReadOnlyList<DisplayItemDto> items)
+    /// <summary>
+    /// Text height in pixels for a relative size 1-10: size/10 of the screen height, at least 6 px (the smallest font).
+    /// The firmware takes its largest font not taller than this (contracts/mqtt-topics.md).
+    /// </summary>
+    public static int PixelHeight(int size, int screenHeight) =>
+        Math.Max(6, (int)Math.Round(screenHeight * Math.Clamp(size, 1, 10) / 10.0, MidpointRounding.AwayFromZero));
+
+    /// <summary>Whether the screen is placed by x, y, size: any item has a size.</summary>
+    public static bool Placed(IReadOnlyList<DisplayItemDto> items) => items.Any(i => i.Size is not null);
+
+    public static string? Validate(IReadOnlyList<DisplayItemDto> items, DisplayScreenDto? screen = null)
     {
-        if (items.Count > MaxItems)
-            return $"не больше {MaxItems} строк";
+        var placed = Placed(items);
+        if (!placed && items.Count > MaxItems)
+            return $"не больше {MaxItems} строк (или расставьте их вручную: тогда до {MaxPlaced})";
+        if (items.Count > MaxPlaced)
+            return $"не больше {MaxPlaced} строк";
         foreach (var item in items)
         {
+            if (item.Size is { } size && size is < 1 or > 10)
+                return "size: от 1 до 10";
+            if (item.X is < 0 or > MaxCoordinate || item.Y is < 0 or > MaxCoordinate)
+                return $"x, y: от 0 до {MaxCoordinate}";
+            if (screen is not null && (item.X >= screen.Width || item.Y >= screen.Height))
+                return $"x, y: экран {screen.Width}×{screen.Height}, x до {screen.Width - 1}, y до {screen.Height - 1}";
+            if (item.Align is { } align && !Aligns.Contains(align))
+                return "align: left, center или right";
             if (!Segment.IsMatch(item.Metric ?? ""))
                 return "metric: латиница, цифры и «_»";
             if (item.Device is { Length: > 0 } d && (d.Length > 32 || !DeviceId.IsMatch(d)))
@@ -71,10 +114,10 @@ public static class DisplayText
 /// </summary>
 public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries telemetry, MqttGateway mqtt, TimeProvider time)
 {
-    public async Task<IReadOnlyList<DisplayItemDto>?> GetAsync(string deviceId, CancellationToken ct)
+    public async Task<DisplayItemsDto?> GetAsync(string deviceId, CancellationToken ct)
     {
         var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Driver == Drivers.Hornet, ct);
-        return device is null ? null : ItemsOf(device);
+        return device is null ? null : new DisplayItemsDto(ItemsOf(device), DisplayScreens.For(device.Hw));
     }
 
     public static IReadOnlyList<DisplayItemDto> ItemsOf(Device device)
@@ -86,18 +129,28 @@ public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries teleme
             .Select(i => new DisplayItemDto(
                 i.TryGetProperty("device", out var d) ? d.GetString() : null,
                 i.TryGetProperty("metric", out var m) ? m.GetString() ?? "" : "",
-                i.TryGetProperty("label", out var l) ? l.GetString() : null))
+                i.TryGetProperty("label", out var l) ? l.GetString() : null,
+                Int(i, "x"), Int(i, "y"), Int(i, "size"),
+                i.TryGetProperty("align", out var a) ? a.GetString() : null))
             .ToList();
     }
 
-    /// <summary>Stores the choice in the config (bumping its revision), sends the config, then the screen text.</summary>
-    public async Task<ConfigUpdateStatus> SaveAsync(string deviceId, IReadOnlyList<DisplayItemDto> items, string by, CancellationToken ct)
+    private static int? Int(JsonElement item, string name) =>
+        item.TryGetProperty(name, out var v) && v.TryGetInt32(out var n) ? n : null;
+
+    /// <summary>
+    /// Stores the choice in the config (bumping its revision), sends the config, then the screen text. A refusal comes
+    /// with its reason (checked against the screen of the board too).
+    /// </summary>
+    public async Task<(ConfigUpdateStatus Status, string? Error)> SaveAsync(string deviceId, IReadOnlyList<DisplayItemDto> items, string by, CancellationToken ct)
     {
-        if (DisplayText.Validate(items) is not null)
-            return ConfigUpdateStatus.BadRequest;
         var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Driver == Drivers.Hornet, ct);
         if (device is null)
-            return ConfigUpdateStatus.NotFound;
+            return (ConfigUpdateStatus.NotFound, null);
+        if (DisplayText.Validate(items, DisplayScreens.For(device.Hw)) is { } error)
+            return (ConfigUpdateStatus.BadRequest, error);
+        // A placed screen keeps every item placed; the automatic one drops the placement fields.
+        var placed = DisplayText.Placed(items);
         var config = device.Config is { } current
             ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
             : new JsonObject { ["v"] = 1, ["name"] = device.Name, ["health_interval_s"] = 60 };
@@ -112,6 +165,14 @@ public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries teleme
                     o["device"] = i.Device;
                 if (!string.IsNullOrWhiteSpace(i.Label))
                     o["label"] = i.Label.Trim();
+                if (placed)
+                {
+                    o["x"] = i.X ?? 0;
+                    o["y"] = i.Y ?? 0;
+                    o["size"] = i.Size ?? 3;
+                    if (i.Align is { } align && align != "left")
+                        o["align"] = align;
+                }
                 return (JsonNode)o;
             }).ToArray());
         if (display.Count == 0)
@@ -128,7 +189,7 @@ public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries teleme
             await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
             await PublishAsync(device, ct);
         }
-        return ConfigUpdateStatus.Updated;
+        return (ConfigUpdateStatus.Updated, null);
     }
 
     /// <summary>The message the screen of <paramref name="device"/> should get now.</summary>
@@ -138,6 +199,7 @@ public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries teleme
         var now = time.GetUtcNow();
         var values = items.Count == 0 ? [] : await telemetry.LatestAsync(null, ct);
         var names = await db.Devices.AsNoTracking().Select(d => new { d.DeviceId, d.Name }).ToDictionaryAsync(d => d.DeviceId, d => d.Name, ct);
+        var placed = DisplayText.Placed(items);
         var lines = new List<DisplayItem>();
         foreach (var item in items)
         {
@@ -145,9 +207,18 @@ public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries teleme
             var value = values.FirstOrDefault(v => v.DeviceId == source && v.Metric == item.Metric);
             var text = value is null || now - value.Ts > DisplayText.Stale ? "--" : DisplayText.Format(item.Metric, value.Value);
             // Another device is named by its own name unless the person chose a label; the hornet's own readings need none.
+            // A placed screen has its own place for names (a background, say): only a typed label goes there.
             var label = !string.IsNullOrWhiteSpace(item.Label) ? item.Label.Trim()
-                : source != device.DeviceId && names.TryGetValue(source, out var name) ? name : null;
-            lines.Add(new DisplayItem { Label = label is { Length: > DisplayText.MaxLabel } l ? l[..DisplayText.MaxLabel] : label, Text = text });
+                : !placed && source != device.DeviceId && names.TryGetValue(source, out var name) ? name : null;
+            lines.Add(new DisplayItem
+            {
+                Label = label is { Length: > DisplayText.MaxLabel } l ? l[..DisplayText.MaxLabel] : label,
+                Text = text,
+                X = placed ? item.X ?? 0 : null,
+                Y = placed ? item.Y ?? 0 : null,
+                Size = placed ? item.Size ?? 3 : null,
+                Align = placed && item.Align is { } align && align != "left" ? align : null,
+            });
         }
         return new DisplayMessage { Ts = now.ToUnixTimeMilliseconds(), Items = lines };
     }
