@@ -426,7 +426,7 @@ export function DevicePage() {
         </Card>
       )}
 
-      {device.driver === 'hornet' && (device.hw ?? '').includes('oled') && (
+      {(device.type === 'monitor' || (device.driver === 'hornet' && (device.hw ?? '').includes('oled'))) && (
         <Card>
           <CardHeader><CardTitle>{t('display.title')}</CardTitle></CardHeader>
           <CardContent><DisplayPanel deviceId={deviceId} editable={isAdmin} /></CardContent>

@@ -168,6 +168,17 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
           <p className="text-xs text-neutral-500">{t('display.previewHint').replace('{w}', String(screen.width)).replace('{h}', String(screen.height))}</p>
         </div>
       )}
+      {current.data?.screen?.rendered && (
+        <div className="space-y-1">
+          <p className="flex items-center gap-1 text-xs text-neutral-400">
+            {t('display.rendered')}
+            <HelpTip text={t('display.renderedHelp')} />
+          </p>
+          <img src={`/api/devices/${encodeURIComponent(deviceId)}/display/preview.png?v=${current.dataUpdatedAt}`}
+            alt={t('display.rendered')} width={screen.width} height={screen.height}
+            className="w-full max-w-80 rounded border border-neutral-700 bg-white" style={{ imageRendering: 'pixelated' }} />
+        </div>
+      )}
       {rows.length === 0 && <p className="text-xs text-neutral-400">{t('display.own')}</p>}
       {rows.map((row, i) => {
         const metrics = metricsOf(row.device || deviceId)

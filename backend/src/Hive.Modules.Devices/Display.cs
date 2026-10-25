@@ -23,8 +23,11 @@ namespace Hive.Modules.Devices;
 /// </summary>
 public sealed record DisplayItemDto(string? Device, string Metric, string? Label, int? X = null, int? Y = null, int? Size = null, string? Align = null);
 
-/// <summary>Size of a screen in pixels: where items can be placed.</summary>
-public sealed record DisplayScreenDto(int Width, int Height);
+/// <summary>
+/// Size of a screen in pixels: where items can be placed. <see cref="Rendered"/>: the hive draws the whole frame (e-ink
+/// panels), so a preview from the hive is exactly what the screen shows.
+/// </summary>
+public sealed record DisplayScreenDto(int Width, int Height, bool Rendered = false);
 
 /// <summary>What the screen shows; <see cref="Screen"/> is filled by the hive for a board it knows (ignored when saving).</summary>
 public sealed record DisplayItemsDto(IReadOnlyList<DisplayItemDto> Items, DisplayScreenDto? Screen = null);
@@ -35,9 +38,14 @@ public static class DisplayScreens
     private static readonly Dictionary<string, DisplayScreenDto> Boards = new()
     {
         ["esp32c3-oled-042"] = new(72, 40),
+        // Waveshare ESP32-S3-ePaper-1.54 (V2): 200x200 black and white, firmware monitor-epd154
+        ["waveshare-s3-epaper-154"] = new(200, 200, Rendered: true),
     };
 
     public static DisplayScreenDto? For(string? board) => board is not null && Boards.TryGetValue(board, out var s) ? s : null;
+
+    /// <summary>Boards whose frame the hive draws: what a monitor far away can be.</summary>
+    public static IReadOnlyList<string> RenderedBoards => Boards.Where(b => b.Value.Rendered).Select(b => b.Key).ToList();
 }
 
 /// <summary>How a reading reads on a tiny screen, the same way the firmware writes its own (meteo role).</summary>
@@ -114,9 +122,12 @@ public static class DisplayText
 /// </summary>
 public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries telemetry, MqttGateway mqtt, TimeProvider time)
 {
+    /// <summary>Devices with a screen the hive feeds: hornets (over MQTT) and monitors far away (over HTTP).</summary>
+    private static bool HasScreen(Device d) => d.Driver == Drivers.Hornet || d.Driver == Drivers.Http;
+
     public async Task<DisplayItemsDto?> GetAsync(string deviceId, CancellationToken ct)
     {
-        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Driver == Drivers.Hornet, ct);
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId && (d.Driver == Drivers.Hornet || d.Driver == Drivers.Http), ct);
         return device is null ? null : new DisplayItemsDto(ItemsOf(device), DisplayScreens.For(device.Hw));
     }
 
@@ -144,7 +155,7 @@ public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries teleme
     /// </summary>
     public async Task<(ConfigUpdateStatus Status, string? Error)> SaveAsync(string deviceId, IReadOnlyList<DisplayItemDto> items, string by, CancellationToken ct)
     {
-        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Driver == Drivers.Hornet, ct);
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && (d.Driver == Drivers.Hornet || d.Driver == Drivers.Http), ct);
         if (device is null)
             return (ConfigUpdateStatus.NotFound, null);
         if (DisplayText.Validate(items, DisplayScreens.For(device.Hw)) is { } error)
@@ -184,7 +195,8 @@ public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries teleme
         device.Config = JsonDocument.Parse(config.ToJsonString());
         Audit.Record(db, time.GetUtcNow(), by, "device_display", deviceId, new { items });
         await db.SaveChangesAsync(ct);
-        if (mqtt.IsConnected)
+        // A monitor far away has no MQTT: it reads the frame over HTTP when it wakes.
+        if (mqtt.IsConnected && device.Driver == Drivers.Hornet)
         {
             await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
             await PublishAsync(device, ct);
@@ -221,6 +233,16 @@ public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries teleme
             });
         }
         return new DisplayMessage { Ts = now.ToUnixTimeMilliseconds(), Items = lines };
+    }
+
+    /// <summary>The frame the hive draws for this device's screen, as PNG (the preview in the UI); null without a known screen.</summary>
+    public async Task<byte[]?> PreviewAsync(string deviceId, CancellationToken ct)
+    {
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null || !HasScreen(device) || DisplayScreens.For(device.Hw) is not { } screen)
+            return null;
+        using var bitmap = DisplayRender.Render(await BuildAsync(device, ct), screen);
+        return DisplayRender.Png(bitmap);
     }
 
     public async Task<string> PublishAsync(Device device, CancellationToken ct)

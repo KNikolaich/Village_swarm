@@ -48,7 +48,7 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
         new(d.ScreenTokenHash is not null, d.ScreenTokenIssuedAt, d.ScreenReadAt, d.ScreenReadFrom, d.ScreenReadExternal, FramePath);
 
     private Task<Device?> FindAsync(string deviceId, CancellationToken ct) =>
-        db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Driver == Drivers.Hornet && d.Status != DeviceStatus.Disabled, ct);
+        db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && (d.Driver == Drivers.Hornet || d.Driver == Drivers.Http) && d.Status != DeviceStatus.Disabled, ct);
 
     public async Task<ScreenAccessDto?> GetAsync(string deviceId, CancellationToken ct) =>
         await FindAsync(deviceId, ct) is { } d ? Dto(d) : null;
@@ -89,34 +89,81 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
     }
 
     /// <summary>
-    /// The frame for a bearer token: the display message as JSON and its ETag (the items only, not the time), or null for
-    /// a token that opens nothing. The read is noted on the device.
+    /// The frame for a bearer token, or null for a token that opens nothing. JSON: the display message; bitmap: the picture
+    /// the hive draws, one bit a pixel (only for a screen the hive draws). The ETag follows the items only, not the time.
+    /// The read is noted on the device; a monitor far away is seen by its reads.
     /// </summary>
-    public async Task<(string Json, string ETag)?> FrameAsync(string? bearer, string? from, bool external, CancellationToken ct)
+    public async Task<ScreenFrame?> FrameAsync(string? bearer, bool bitmap, string? from, bool external, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(bearer))
             return null;
         var hash = Hash(bearer);
-        var device = await db.Devices.FirstOrDefaultAsync(d => d.ScreenTokenHash == hash && d.Driver == Drivers.Hornet
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.ScreenTokenHash == hash && (d.Driver == Drivers.Hornet || d.Driver == Drivers.Http)
             && d.Status != DeviceStatus.Disabled && d.TypeCode == MonitorType, ct);
         if (device is null)
             return null;
+        var screen = DisplayScreens.For(device.Hw);
+        if (bitmap && screen is not { Rendered: true })
+            return new ScreenFrame([], "", "", NoPicture: true);
         var message = await feed.BuildAsync(device, ct);
         var items = JsonSerializer.Serialize(message.Items, ContractJson.Options);
-        var etag = "\"" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(items)))[..16] + "\"";
+        var etag = "\"" + (bitmap ? "b" : "j") + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(items)))[..16] + "\"";
 
         // The city only watches (its copy of the database is not written): it answers but does not note the read.
         var now = time.GetUtcNow();
-        if (!node.ReadOnly && (device.ScreenReadAt is not { } last || now - last >= NoteEvery || device.ScreenReadFrom != from || device.ScreenReadExternal != external))
+        if (!node.ReadOnly && (device.ScreenReadAt is not { } last || now - last >= NoteEvery || device.ScreenReadFrom != from || device.ScreenReadExternal != external
+            || (device.Driver == Drivers.Http && device.Status != DeviceStatus.Online)))
         {
             device.ScreenReadAt = now;
             device.ScreenReadFrom = from is { Length: > 64 } f ? f[..64] : from;
             device.ScreenReadExternal = external;
+            if (device.Driver == Drivers.Http)
+            {
+                device.LastSeenAt = now;
+                device.Status = DeviceStatus.Online;
+            }
             await db.SaveChangesAsync(ct);
         }
-        return (JsonSerializer.Serialize(message, ContractJson.Options), etag);
+        if (!bitmap)
+            return new ScreenFrame(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message, ContractJson.Options)), "application/json", etag);
+        using var picture = DisplayRender.Render(message, screen!);
+        return new ScreenFrame(DisplayRender.Pack(picture), "application/octet-stream", etag, screen!.Width, screen.Height);
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex DeviceIdPattern = new("^[a-z][a-z0-9]*(-[a-z0-9]+)*$");
+
+    /// <summary>
+    /// A monitor far away that speaks only HTTP (an e-ink panel at another place): added by hand, it gets its screen token on
+    /// its page and is seen when it reads. Its board says the screen the hive draws for it.
+    /// </summary>
+    public async Task<(Device? Device, string? Error)> AddRemoteAsync(string deviceId, string name, string board, string by, CancellationToken ct)
+    {
+        deviceId = deviceId.Trim();
+        if (deviceId.Length is 0 or > 32 || !DeviceIdPattern.IsMatch(deviceId))
+            return (null, "id: латиница в нижнем регистре, цифры и дефис, до 32 знаков, например monitor-city1");
+        if (string.IsNullOrWhiteSpace(name) || name.Trim().Length > 128)
+            return (null, "имя: от 1 до 128 знаков");
+        if (!DisplayScreens.RenderedBoards.Contains(board))
+            return (null, "плата: " + string.Join(", ", DisplayScreens.RenderedBoards));
+        if (await db.Devices.AnyAsync(d => d.DeviceId == deviceId, ct))
+            return (null, "устройство с таким id уже есть");
+        var now = time.GetUtcNow();
+        var device = new Device
+        {
+            DeviceId = deviceId, TypeCode = MonitorType, Name = name.Trim(), Hw = board, Driver = Drivers.Http,
+            Status = DeviceStatus.Pending, CreatedAt = now,
+        };
+        db.Devices.Add(device);
+        Audit.Record(db, now, by, "remote_monitor_added", deviceId, new { board });
+        await db.SaveChangesAsync(ct);
+        return (device, null);
     }
 }
+
+/// <summary>A frame for a monitor: the body, its type and ETag; the size for a bitmap. NoPicture: the hive does not draw this screen.</summary>
+public sealed record ScreenFrame(byte[] Body, string ContentType, string ETag, int Width = 0, int Height = 0, bool NoPicture = false);
+
+public sealed record AddRemoteMonitorRequest(string DeviceId, string Name, string Board);
 
 public static class ScreenAccessEndpoints
 {
@@ -156,24 +203,50 @@ public static class ScreenAccessEndpoints
         devices.MapDelete("", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, ScreenAccessService access, CancellationToken ct) =>
             await access.RevokeAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound());
 
-        // The monitor itself, from anywhere: its bearer token, no session (contracts/monitor-http.md).
-        app.MapGet(ScreenAccessService.FramePath, async (HttpContext http, ScreenAccessService access, CancellationToken ct) =>
+        app.MapPost("/api/devices/remote-monitors", async Task<Results<Created<DeviceDto>, ValidationProblem>> (
+                AddRemoteMonitorRequest request, ClaimsPrincipal user, ScreenAccessService access, DeviceQueries q, CancellationToken ct) =>
             {
-                var header = http.Request.Headers.Authorization.ToString();
-                var token = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header["Bearer ".Length..].Trim() : null;
-                var frame = await access.FrameAsync(token, http.Connection.RemoteIpAddress?.ToString(), http.Request.Headers.ContainsKey(ExternalHeader), ct);
-                http.Response.Headers.CacheControl = "no-store";
-                if (frame is not { } f)
-                    return Results.Unauthorized();
-                http.Response.Headers.ETag = f.ETag;
-                if (http.Request.Headers.IfNoneMatch.ToString() == f.ETag)
-                    return Results.StatusCode(StatusCodes.Status304NotModified);
-                return Results.Content(f.Json, "application/json", Encoding.UTF8);
+                var (device, error) = await access.AddRemoteAsync(request.DeviceId, request.Name, request.Board, $"user:{user.Identity?.Name}", ct);
+                return device is null
+                    ? TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["deviceId"] = [error!] })
+                    : TypedResults.Created($"/api/devices/{device.DeviceId}", (await q.GetAsync(device.DeviceId, ct))!);
             })
+            .WithTags("devices")
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
+        // The monitor itself, from anywhere: its bearer token, no session (contracts/monitor-http.md). frame: the texts as
+        // JSON; frame.bin: the picture the hive draws, for e-ink panels.
+        app.MapGet(ScreenAccessService.FramePath, (HttpContext http, ScreenAccessService access, CancellationToken ct) => Frame(http, access, false, ct))
+            .AllowAnonymous()
+            .RequireRateLimiting(RateLimit)
+            .WithTags("monitor")
+            .ExcludeFromDescription();
+        app.MapGet(ScreenAccessService.FramePath + ".bin", (HttpContext http, ScreenAccessService access, CancellationToken ct) => Frame(http, access, true, ct))
             .AllowAnonymous()
             .RequireRateLimiting(RateLimit)
             .WithTags("monitor")
             .ExcludeFromDescription();
         return app;
+    }
+
+    private static async Task<IResult> Frame(HttpContext http, ScreenAccessService access, bool bitmap, CancellationToken ct)
+    {
+        var header = http.Request.Headers.Authorization.ToString();
+        var token = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header["Bearer ".Length..].Trim() : null;
+        var frame = await access.FrameAsync(token, bitmap, http.Connection.RemoteIpAddress?.ToString(), http.Request.Headers.ContainsKey(ExternalHeader), ct);
+        http.Response.Headers.CacheControl = "no-store";
+        if (frame is null)
+            return Results.Unauthorized();
+        if (frame.NoPicture)
+            return Results.NotFound();
+        http.Response.Headers.ETag = frame.ETag;
+        if (bitmap)
+        {
+            http.Response.Headers["X-Frame-Width"] = frame.Width.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            http.Response.Headers["X-Frame-Height"] = frame.Height.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        if (http.Request.Headers.IfNoneMatch.ToString() == frame.ETag)
+            return Results.StatusCode(StatusCodes.Status304NotModified);
+        return Results.Bytes(frame.Body, frame.ContentType);
     }
 }

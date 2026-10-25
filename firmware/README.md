@@ -19,6 +19,7 @@ In VS Code the PlatformIO toolbar does the same (✓ build, → upload, plug ico
 | `guard-cam` | ESP32-CAM AI-Thinker | ESP32 |
 | `meteo-c3`, `relay-c3` | ESP32-C3 mini (SuperMini) | ESP32-C3 |
 | `monitor-c3oled` | ESP32-C3 with the 0.42" OLED (72×40): a monitor, see **monitor** below | ESP32-C3 |
+| `monitor-epd154` | Waveshare ESP32-S3-ePaper-1.54 (200×200 e-ink): a remote monitor, not a hornet, see **monitor** below | ESP32-S3 |
 | `meteo-d1mini`, `relay-d1mini` | Wemos D1 mini | ESP8266 |
 | `meteo-nodemcu`, `relay-nodemcu` | NodeMCU v3 | ESP8266 |
 | `meteo-esp01`, `relay-esp01` | ESP-01 / ESP-01S (1 MB), incl. "ESP-01 Relay v1.0" and DS18B20 modules | ESP8266 |
@@ -63,6 +64,11 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
   `vs/v1/hive/display/{id}` for the readings chosen on the device page, "Экран" (config `display.items`, up to four
   lines from any device; docs/display.md). A dot in the corner means it is online. A hornet on the old
   `meteo-c3oled` build moves to it by an update over the air (the swarm screen offers the monitor build).
+  `monitor-epd154` is not a hornet: no MQTT, no enrollment, no updates over the air (flash it over USB). Added by hand
+  in the UI, it wakes on a timer, reads `GET /api/monitor/v1/frame.bin` with its screen token and the last ETag over
+  HTTPS (Let's Encrypt roots built in), draws the picture the hive made and deep-sleeps (contracts/monitor-http.md).
+  Settings come from its own Wi-Fi point "VillageSwarm-xxxx" (192.168.4.1): at first start, or hold BOOT for 2 s.
+  Pins are those of the Waveshare examples for the V2 board (EPD on GPIO8-13, EPD power GPIO6, battery hold GPIO17).
 - **relay**: `cmd/relay {channel, set: on|off, for_s}`, channel `relay` unless config `relay.channel` says
   otherwise (e.g. `light`). Off at every boot; switches off by itself after `for_s` or `relay.max_on_s`,
   whichever is shorter. The optional button toggles it locally.

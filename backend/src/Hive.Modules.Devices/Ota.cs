@@ -61,6 +61,8 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
         var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Status != DeviceStatus.Disabled, ct);
         if (device is null)
             return new OtaResult(OtaStatus.UnknownDevice);
+        if (device.Driver != Drivers.Hornet)  // a remote monitor reads HTTP only: no MQTT to send the order over
+            return new OtaResult(OtaStatus.Refused, "this device is not a hornet: flash it over USB");
         if (ProvisioningEndpoints.ReadBuild(build, options.Value, env) is not { } b)
             return new OtaResult(OtaStatus.UnknownBuild);
         if (b.Role != device.TypeCode && !CanBecome(device.TypeCode, b.Role))
