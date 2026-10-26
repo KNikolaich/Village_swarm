@@ -8,10 +8,10 @@ import { TasmotaPanel } from '@/components/TasmotaPanel'
 import { ZigbeePanel } from '@/components/ZigbeePanel'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
-import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui/primitives'
 import { getLanguage, t } from '@/i18n'
+import { SetupStages } from '@/components/SetupStages'
 import { SetupError, type SetupStage, setupHornet, setupStages } from '@/lib/hornetSetup'
 import { type SerialPortLike, serialSupported } from '@/lib/serial'
 
@@ -50,7 +50,7 @@ function defaultHiveUrl() {
 export function AddHornetPage() {
   const [params] = useSearchParams()
   const presetTasmota = params.get('tasmota')
-  const [mode, setMode] = useState<'one' | 'batch' | 'tasmota' | 'zigbee' | 'ipcam' | 'remote'>(presetTasmota ? 'tasmota' : params.get('ipcam') ? 'ipcam' : 'one')
+  const [mode, setMode] = useState<'one' | 'batch' | 'tasmota' | 'zigbee' | 'ipcam' | 'remote'>(presetTasmota ? 'tasmota' : params.get('ipcam') ? 'ipcam' : params.get('remote') ? 'remote' : 'one')
   const preset = useQuery({
     queryKey: ['device', presetTasmota],
     queryFn: async () => (await api.GET('/api/devices/{deviceId}', { params: { path: { deviceId: presetTasmota! } } })).data ?? null,
@@ -74,7 +74,7 @@ export function AddHornetPage() {
       {mode === 'batch' && <BatchPanel />}
       {mode === 'zigbee' && <ZigbeePanel />}
       {mode === 'ipcam' && <IpCamPanel />}
-      {mode === 'remote' && <RemoteMonitorPanel />}
+      {mode === 'remote' && <RemoteMonitorPanel existingId={params.get('remote') ?? undefined} />}
       {mode === 'tasmota' && (presetTasmota && !preset.data
         ? null
         : <TasmotaPanel presetId={preset.data?.deviceId} presetName={preset.data?.name} presetType={preset.data?.type} />)}
@@ -399,7 +399,7 @@ function SetupStep({ type, build, code, deviceId, onDone, doneLabel }: {
         commands,
         onStage,
         onProgress: setProgress,
-        onLog: (line) => setLog((l) => [...l.slice(-60), line.replace(/^(set pass ).*/, '$1***')]),
+        onLog: (line) => setLog((l) => [...l.slice(-60), line]),
         isOnline: async () => {
           const d = (await api.GET('/api/devices/{deviceId}', { params: { path: { deviceId } } })).data
           return d?.status === 'online' && !!d.lastSeenAt && new Date(d.lastSeenAt).getTime() >= startedAt.current - 5000
@@ -440,7 +440,7 @@ function SetupStep({ type, build, code, deviceId, onDone, doneLabel }: {
         {!build && <p className="text-amber-300">{t('add.noFirmware').replace('{type}', type)}</p>}
         {saved && <p className="text-xs text-emerald-400">{t('add.wifiFromHive')}</p>}
         <Input placeholder={t('add.ssid')} value={ssid} disabled={running} onChange={(e) => setSsid(e.target.value)} />
-        <PasswordInput placeholder={t('add.pass')} value={pass} disabled={running} onChange={(e) => setPass(e.target.value)} />
+        <Input placeholder={t('add.pass')} value={pass} disabled={running} autoComplete="off" onChange={(e) => setPass(e.target.value)} />
         <Input placeholder="http://192.168.1.10:5080" value={hive} disabled={running} onChange={(e) => setHive(e.target.value)} />
         <p className="text-xs text-neutral-500">{t('add.hiveHint')}</p>
         <label className="flex items-center gap-2 text-xs text-neutral-300">
@@ -457,21 +457,7 @@ function SetupStep({ type, build, code, deviceId, onDone, doneLabel }: {
         ) : (
           <p className="text-amber-300">{t('add.noSerial')}</p>
         )}
-        {stage && (
-          <ol className="space-y-1 text-xs">
-            {stages.map((s) => {
-              const index = stages.indexOf(s)
-              const current = stages.indexOf(stage)
-              const state = failed && s === failed.stage ? 'failed' : index < current || (s === stage && !running && !failed) ? 'done' : s === stage ? 'now' : 'later'
-              return (
-                <li key={s} className={state === 'failed' ? 'text-red-400' : state === 'done' ? 'text-emerald-400' : state === 'now' ? 'text-amber-300' : 'text-neutral-500'}>
-                  {state === 'done' ? '✓' : state === 'failed' ? '✗' : state === 'now' ? '…' : '○'} {t(`add.stage.${s}`)}
-                  {s === 'flash' && state === 'now' && ` ${progress}%`}
-                </li>
-              )
-            })}
-          </ol>
-        )}
+        {stage && <SetupStages stages={stages} stage={stage} running={running} failed={failed} progress={progress} />}
         {failed && (
           <div className="space-y-2 rounded-lg border border-red-900/60 bg-red-950/20 p-2">
             <p className="text-red-300">{t(`add.why.${failed.reason}`, t('add.why.other'))}</p>
@@ -497,7 +483,7 @@ function SetupStep({ type, build, code, deviceId, onDone, doneLabel }: {
             )}
             <p>{t('add.downloadHint')}</p>
             <p>{t('add.manual')}:</p>
-            <pre className="whitespace-pre-wrap rounded bg-neutral-950 p-2">{commands.map((c) => c.replace(/^(set pass ).*/, '$1***')).join('\n')}</pre>
+            <pre className="whitespace-pre-wrap rounded bg-neutral-950 p-2">{commands.join('\n')}</pre>
           </div>
         </details>
       </CardContent>

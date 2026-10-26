@@ -54,6 +54,8 @@ public sealed record TasmotaSetup(string DeviceId, EnrollMqtt Mqtt, IReadOnlyLis
 
 public enum EnrollStatus { Ok, BadCode, BadRequest }
 
+public enum PurgeStatus { Purged, NotFound, WasSeen }
+
 /// <summary>Adding a hornet (spec 5.3): one-time code in the UI, the board trades it for its credentials.</summary>
 public sealed class ProvisioningService(
     HiveDbContext db,
@@ -256,6 +258,29 @@ public sealed class ProvisioningService(
         if (mqtt.IsConnected)
             await mqtt.PublishAsync(Topics.Config(deviceId), "", retain: true, ct); // clear retained config
         return true;
+    }
+
+    /// <summary>
+    /// Removes a device that never reached the hive (a flash that failed half way, a wrong id) for good, so its id is free
+    /// again. One that has been seen has history and stays in the archive (<see cref="DisableAsync"/>).
+    /// </summary>
+    public async Task<PurgeStatus> PurgeAsync(string deviceId, string by, CancellationToken ct)
+    {
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null)
+            return PurgeStatus.NotFound;
+        if (device.LastSeenAt is not null)
+            return PurgeStatus.WasSeen;
+        db.EnrollmentCodes.RemoveRange(db.EnrollmentCodes.Where(c => c.DeviceId == deviceId));
+        db.Devices.Remove(device);
+        Audit.Record(db, time.GetUtcNow(), by, "device_purged", deviceId);
+        var hornet = device.Driver == Drivers.Hornet;
+        if (hornet)
+            await dynsec.RevokeHornetAsync(deviceId, ct);
+        await db.SaveChangesAsync(ct);
+        if (hornet && mqtt.IsConnected)
+            await mqtt.PublishAsync(Topics.Config(deviceId), "", retain: true, ct);
+        return PurgeStatus.Purged;
     }
 
     /// <summary>Type defaults (device_types.default_config) plus what every hornet needs (spec 4.4 config).</summary>
