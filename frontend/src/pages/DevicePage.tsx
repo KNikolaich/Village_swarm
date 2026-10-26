@@ -9,7 +9,7 @@ import { rangeClass, rangeKey, rangeState } from '@/lib/valueRange'
 import { IrPanel, type IrReceiver } from '@/components/IrPanel'
 import { TasmotaConsole } from '@/components/TasmotaConsole'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Camera, ChevronDown, ChevronUp, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronDown, ChevronUp, Cpu, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -258,6 +258,15 @@ export function DevicePage() {
     navigate('/swarm')
   }
 
+  /** For good, when the board never reached the hive: a flash that failed, a wrong id. The id is free again. */
+  async function purge() {
+    if (!device || !window.confirm(t('swarm.purgeConfirm').replace('{name}', device.name))) return
+    await call(api.DELETE('/api/devices/{deviceId}', { params: { path: { deviceId }, query: { purge: true } } }))
+    toast.success(t('swarm.purged'))
+    await qc.invalidateQueries({ queryKey: keys.devices })
+    navigate('/swarm')
+  }
+
   const zone = (zones.data ?? []).find((z) => String(z.id) === fromZone)
   const back = (
     <Link to={zone ? `/climate?edit=${zone.id}` : '/swarm'} className="flex items-center gap-1 text-sm text-amber-400">
@@ -433,6 +442,18 @@ export function DevicePage() {
         </Card>
       )}
 
+      {device.type === 'monitor' && device.driver === 'http' && isAdmin && (
+        <Card>
+          <CardHeader><CardTitle>{t('remoteMonitor.reflashTitle')}</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="text-xs text-neutral-500">{t('remoteMonitor.reflashHint')}</p>
+            <Link to={`/swarm/add?remote=${encodeURIComponent(deviceId)}`}>
+              <Button variant="outline"><Cpu />{t('remoteMonitor.flashAgain')}</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
       {device.type === 'monitor' && isAdmin && (
         <Card>
           <CardHeader><CardTitle>{t('screenAccess.title')}</CardTitle></CardHeader>
@@ -476,9 +497,14 @@ export function DevicePage() {
         </Card>
       )}
 
-      {isAdmin && device.status !== 'disabled' && device.type !== 'hive' && (
-        <div className="flex justify-end">
-          <Button variant="outline" className="border-red-900 text-red-400 hover:bg-red-950" onClick={() => void remove()}><Trash2 />{t('swarm.removeHornet')}</Button>
+      {isAdmin && device.type !== 'hive' && (device.status !== 'disabled' || !device.lastSeenAt) && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {!device.lastSeenAt && (
+            <Button variant="outline" title={t('swarm.purgeHint')} className="border-red-900 text-red-400 hover:bg-red-950" onClick={() => void purge()}><Trash2 />{t('swarm.purge')}</Button>
+          )}
+          {device.status !== 'disabled' && (
+            <Button variant="outline" className="border-red-900 text-red-400 hover:bg-red-950" onClick={() => void remove()}><Trash2 />{t('swarm.removeHornet')}</Button>
+          )}
         </div>
       )}
     </div>

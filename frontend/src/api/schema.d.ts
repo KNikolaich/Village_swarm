@@ -953,7 +953,9 @@ export interface paths {
         post?: never;
         delete: {
             parameters: {
-                query?: never;
+                query?: {
+                    purge?: boolean;
+                };
                 header?: never;
                 path: {
                     deviceId: string;
@@ -968,6 +970,15 @@ export interface paths {
                         [name: string]: unknown;
                     };
                     content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
                 };
                 /** @description Not Found */
                 404: {

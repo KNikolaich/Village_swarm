@@ -66,7 +66,8 @@ public sealed class ScreenAccessTests(HiveFixture hive)
         using var issued = await admin.PostAsync("/api/devices/monitor-far1/screen-access", null);
         Assert.Equal(HttpStatusCode.OK, issued.StatusCode);
         var token = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
-        Assert.True(token.Length >= 40);
+        // short enough to type: 5 groups of 4 letters and digits that look different
+        Assert.Matches("^[2-9a-hjkmnp-z]{4}(-[2-9a-hjkmnp-z]{4}){4}$", token);
         var stored = await hive.QueryAsync(db => db.Devices.AsNoTracking().SingleAsync(d => d.DeviceId == "monitor-far1"));
         Assert.NotEqual(token, stored.ScreenTokenHash);  // only the hash is kept
 
@@ -74,6 +75,12 @@ public sealed class ScreenAccessTests(HiveFixture hive)
             Assert.Equal(HttpStatusCode.Unauthorized, none.StatusCode);
         using (var wrong = await anonymous.SendAsync(Frame("not-a-token")))
             Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+
+        // as it is read off a screen or typed on a phone: no dashes, any case
+        using (var typed = await anonymous.SendAsync(Frame(token.Replace("-", "").ToUpperInvariant())))
+            Assert.Equal(HttpStatusCode.OK, typed.StatusCode);
+        using (var wrongOne = await anonymous.SendAsync(Frame(token[..^1] + (token[^1] == 'z' ? 'y' : 'z'))))
+            Assert.Equal(HttpStatusCode.Unauthorized, wrongOne.StatusCode);
 
         using var frame = await anonymous.SendAsync(Frame(token, external: true));
         Assert.Equal(HttpStatusCode.OK, frame.StatusCode);
@@ -110,6 +117,33 @@ public sealed class ScreenAccessTests(HiveFixture hive)
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         request.Headers.Add("X-Hive-External", "1");
         return request;
+    }
+
+    [Fact]
+    public async Task A_monitor_that_never_read_can_be_removed_for_good_and_a_seen_one_cannot()
+    {
+        var admin = await hive.LoginAsync();
+        using var added = await admin.PostAsJsonAsync("/api/devices/remote-monitors", new { deviceId = "monitor-lost1", name = "Неудачник", board = "waveshare-s3-epaper-154" });
+        Assert.Equal(HttpStatusCode.Created, added.StatusCode);
+
+        using var purged = await admin.DeleteAsync("/api/devices/monitor-lost1?purge=true");
+        Assert.Equal(HttpStatusCode.NoContent, purged.StatusCode);
+        Assert.False(await hive.QueryAsync(db => db.Devices.AnyAsync(d => d.DeviceId == "monitor-lost1")));
+        using var again = await admin.DeleteAsync("/api/devices/monitor-lost1?purge=true");
+        Assert.Equal(HttpStatusCode.NotFound, again.StatusCode);
+
+        // the id is free again
+        using var reused = await admin.PostAsJsonAsync("/api/devices/remote-monitors", new { deviceId = "monitor-lost1", name = "Второй", board = "waveshare-s3-epaper-154" });
+        Assert.Equal(HttpStatusCode.Created, reused.StatusCode);
+
+        // one the hive has seen keeps its history: only the archive
+        using var token = await admin.PostAsync("/api/devices/monitor-lost1/screen-access", null);
+        var secret = (await token.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+        using (var read = await hive.App.CreateClient().SendAsync(Bitmap(secret)))
+            Assert.Equal(HttpStatusCode.OK, read.StatusCode);
+        using var refused = await admin.DeleteAsync("/api/devices/monitor-lost1?purge=true");
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.True(await hive.QueryAsync(db => db.Devices.AnyAsync(d => d.DeviceId == "monitor-lost1")));
     }
 
     [Fact]

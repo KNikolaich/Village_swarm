@@ -2,7 +2,7 @@
 // code, wait for "enrolled", then for the hornet to come online. One port pick for all of it (Web Serial, Chrome/Edge).
 import { HornetSerial, type SerialPortLike } from '@/lib/serial'
 
-export type SetupStage = 'port' | 'flash' | 'restart' | 'settings' | 'enroll' | 'online'
+export type SetupStage = 'port' | 'flash' | 'restart' | 'settings' | 'enroll' | 'online' | 'read'
 
 export const setupStages: SetupStage[] = ['port', 'flash', 'restart', 'settings', 'enroll', 'online']
 
@@ -36,7 +36,7 @@ export function binaryString(bytes: Uint8Array) {
 
 type Manifest = { builds: { chipFamily: string; parts: { path: string; offset: number }[] }[] }
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export type SetupOptions = {
   port: SerialPortLike
@@ -50,7 +50,8 @@ export type SetupOptions = {
   isOnline: () => Promise<boolean>
 }
 
-async function flash(port: SerialPortLike, build: { build: string; chipFamily: string }, o: SetupOptions) {
+/** Writes a firmware build of the hive to the board on this port and restarts it. */
+export async function flashBoard(port: SerialPortLike, build: { build: string; chipFamily: string }, o: Pick<SetupOptions, 'onLog' | 'onProgress'>) {
   const manifest = (await (await fetch(`/api/firmware/${build.build}/manifest.json`)).json()) as Manifest
   const parts = manifest.builds[0]?.parts ?? []
   const files = await Promise.all(parts.map(async (p) => {
@@ -89,7 +90,7 @@ async function flash(port: SerialPortLike, build: { build: string; chipFamily: s
  * The port again after the board restarted. A board with its own USB (ESP32-C3/S3) leaves and comes back as a new port:
  * the browser hands it over without asking, since the user allowed that device already.
  */
-async function reopen(port: SerialPortLike, onLine: (line: string) => void): Promise<HornetSerial> {
+export async function reopenConsole(port: SerialPortLike, onLine: (line: string) => void): Promise<HornetSerial> {
   const serial = (navigator as unknown as { serial: { getPorts(): Promise<SerialPort[]> } }).serial
   const info = (port as unknown as SerialPort).getInfo?.() ?? {}
   for (let attempt = 0; attempt < 20; attempt++) {
@@ -113,10 +114,10 @@ export async function setupHornet(o: SetupOptions) {
   try {
     if (o.build) {
       o.onStage('flash')
-      await flash(o.port, o.build, o)
+      await flashBoard(o.port, o.build, o)
     }
     o.onStage('restart')
-    board = await reopen(o.port, o.onLog)
+    board = await reopenConsole(o.port, o.onLog)
     // The banner of the firmware; a board that booted before the port opened says nothing, so do not wait forever.
     const booted = board.waitForLine((l) => lineMeaning(l) === 'booted', 8000)
     for (let i = 0; i < 16 && !(await Promise.race([booted, sleep(500).then(() => false)])); i++)

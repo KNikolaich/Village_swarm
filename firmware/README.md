@@ -67,7 +67,11 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
   `monitor-epd154` is not a hornet: no MQTT, no enrollment, no updates over the air (flash it over USB). Added by hand
   in the UI, it wakes on a timer, reads `GET /api/monitor/v1/frame.bin` with its screen token and the last ETag over
   HTTPS (Let's Encrypt roots built in), draws the picture the hive made and deep-sleeps (contracts/monitor-http.md).
-  Settings come from its own Wi-Fi point "VillageSwarm-xxxx" (192.168.4.1): at first start, or hold BOOT for 2 s.
+  Settings come over USB from the hive's page right after flashing (console, 115200: `set ssid|pass|ssid2|pass2|url|token|interval|rot|insecure <value>`,
+  `show`, `go` = save and read now, answering `[monitor] frame <http code>` or `[monitor] wifi failed`, `save` = save and sleep;
+  after a reset it says `[monitor] ready` for 12 s and waits), or from its own Wi-Fi point "VillageSwarm-xxxx" (192.168.4.1; the
+  form takes `?ssid=&pass=&url=&token=&interval=` from the QR code on the hive's page): at first start, or hold BOOT for 2 s.
+  The whole 4 MB goes to one app slot (`huge_app.csv`): no updates over the air for this board.
   Pins are those of the Waveshare examples for the V2 board (EPD on GPIO8-13, EPD power GPIO6, battery hold GPIO17).
 - **relay**: `cmd/relay {channel, set: on|off, for_s}`, channel `relay` unless config `relay.channel` says
   otherwise (e.g. `light`). Off at every boot; switches off by itself after `for_s` or `relay.max_on_s`,

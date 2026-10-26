@@ -874,7 +874,11 @@
     "waitPending": "waiting for wake-up, tries: {n}",
     "sleepHelpLabel": "How sleep works",
     "sleepHelp": "Sleep: how long the hornet sleeps between readings. It wakes, sends a reading and sleeps again, and applies a change at its next wake-up.\n\nNever sleeps: for mains power. Always connected, commands arrive at once.\n\nDeep: the board almost switches off, a battery lasts long. Needs a GPIO16–RST jumper (docs/hornet-esp01-battery.md). Commands do not reach it while it sleeps; a firmware update waits for the wake-up.\n\nLight: stays on Wi‑Fi, commands arrive at once, no jumper, but it saves less.",
-    "children": "Cameras ({n})"
+    "children": "Cameras ({n})",
+    "purge": "Delete for good",
+    "purgeHint": "The board never came online and has no history: remove it entirely so its id is free",
+    "purgeConfirm": "Delete \"{name}\" for good? The board was never online, so nothing is lost, and its id becomes free again.",
+    "purged": "Deleted for good"
   },
   "add": {
     "step1": "Hornet and code",
@@ -1472,15 +1476,51 @@
   },
   "remoteMonitor": {
     "title": "Remote monitor",
-    "hint": "A panel far from home (an e-ink screen at the city flat, say). It does not join the hive over MQTT but reads its own picture over the internet with a token, so there is no enrollment code: add it here.",
-    "help": "How to connect:\n1. Pick the board, an id and a name, press Add.\n2. On the monitor's page choose the screen rows and issue a token under \"Access from outside\".\n3. Flash the panel with the button below (USB, Chrome or Edge).\n4. The panel opens a Wi-Fi point \"VillageSwarm-xxxx\": join it from a phone, open 192.168.4.1 and enter the Wi-Fi of that place, the hive's internet address (KeenDNS) and the token.\nThen the panel wakes every 10 minutes (set there too), takes the picture and sleeps again. Holding BOOT for 2 seconds opens the settings again, a short press refreshes at once.\nThe monitor goes online with its first read.",
+    "hint": "A panel far from home (an e-ink screen at the city flat, say) reads its own picture over the internet. One button adds the monitor to the swarm, gives it a token, flashes the board over USB and hands it the Wi-Fi, the hive's address and the token: nothing to copy by hand.",
+    "help": "What you need:\n1. The board on USB and Chrome or Edge.\n2. The hive's address from the internet (KeenDNS): the panel will use it from anywhere. It is filled in when you opened the hive at that address.\n3. The Wi-Fi the panel will stand at. If you are next to it now, keep \"check the link\" ticked: the panel reads its picture at once and the wizard says what works. If you take it there, untick it: the settings are saved and the first read happens at that network.\nThe password and the token are shown in the open: only you see them, and a token is too important to copy blind.\nThen choose the screen rows on the monitor's page. Flashing again or changing the Wi-Fi is there too.",
     "board": "Board",
     "id": "Id (latin letters, digits, dash)",
     "name": "Name",
     "namePlaceholder": "For example \"City screen\"",
-    "add": "Add",
-    "added": "Monitor added: choose its rows and issue a token",
-    "flash": "Panel firmware:",
-    "noBuild": "The hive has no {build} build: build it (firmware, pio run -e {build}) and update the hive."
+    "noBuild": "The hive has no {build} build: build it (firmware, pio run -e {build}) and update the hive.",
+    "reflashTitle": "Panel firmware and connection",
+    "reflashHint": "Flash the board again, join it to another Wi-Fi or issue a new token. The old token stops working, so the panel gets its settings together with the new one.",
+    "hive": "The hive's address from the internet",
+    "hiveHelp": "The one you open the hive with outside the house, for example https://home.name.keenetic.pro. An address inside the house (192.168…) is not visible to a panel in another city.",
+    "ssid": "Wi-Fi the panel will stand at",
+    "pass": "Wi-Fi password",
+    "interval": "How often to refresh the screen",
+    "every": "every {n} min",
+    "here": "The panel is next to this network now: check the link and read the first picture",
+    "send": "Send the settings over USB",
+    "flashAgain": "Flash and connect again",
+    "addAndFlash": "Add and flash",
+    "choose": "Choose the screen rows",
+    "doneHere": "Done: the panel reads its picture from the hive!",
+    "doneHereHint": "The link over the Wi-Fi \"{ssid}\" and the hive's address is checked. Choose what the screen shows.",
+    "doneAway": "The settings are saved on the panel",
+    "doneAwayHint": "The first read happens when the panel is at the Wi-Fi \"{ssid}\". Choose what to show, then switch it on there.",
+    "stage": {
+      "port": "Picking the board's port",
+      "flash": "Flashing",
+      "restart": "Starting the board",
+      "settings": "Sending the settings",
+      "read": "Check: reading the picture from the hive"
+    },
+    "why": {
+      "tokenRejected": "The hive did not accept the token. Press Retry: a new one is issued and written to the panel.",
+      "notDrawn": "The hive does not draw this screen: the wrong board is chosen.",
+      "tooMany": "The hive asks not to read so often. Wait a minute and retry.",
+      "noHive": "The panel joined the Wi-Fi, but the hive did not answer at this address. Check the address from the internet (KeenDNS) and that the hive is on. To test at your place you need an address that opens from this network.",
+      "wifiFailed": "The panel could not join the Wi-Fi: name and password right? If the network is far from here, untick \"check the link\": the settings are saved without a check.",
+      "noAnswer": "The panel did not answer over USB. Press RST or replug the cable and retry."
+    }
+  },
+  "phoneSetup": {
+    "title": "Set up from a phone on the spot (QR code)",
+    "qr": "QR code with the panel's settings",
+    "steps": "Switch the panel on holding BOOT (2 seconds), join the phone to the Wi-Fi \"VillageSwarm-…\" it shows and point the camera at this code: the form opens with the hive's address, the token and the Wi-Fi, press Save.",
+    "help": "The code holds the address of the panel's page 192.168.4.1 with your settings. It works only while the phone is joined to the panel and is sent nowhere else. The token can be typed too: it is short, with no look-alike characters, and case does not matter.",
+    "token": "Token"
   }
 }

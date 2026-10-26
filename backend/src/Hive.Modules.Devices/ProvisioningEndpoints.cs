@@ -86,9 +86,20 @@ public static class ProvisioningEndpoints
             .WithTags("devices")
             .RequireAuthorization(HiveRoles.AdminOnly);
 
-        app.MapDelete("/api/devices/{deviceId}", async Task<Results<NoContent, NotFound>> (
-                string deviceId, ClaimsPrincipal user, ProvisioningService service, CancellationToken ct) =>
-                await service.DisableAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+        // ?purge=true: for a device that never reached the hive, remove it entirely (its id is free again). Others only go to the archive.
+        app.MapDelete("/api/devices/{deviceId}", async Task<Results<NoContent, NotFound, ValidationProblem>> (
+                string deviceId, bool? purge, ClaimsPrincipal user, ProvisioningService service, CancellationToken ct) =>
+            {
+                var by = $"user:{user.Identity?.Name}";
+                if (purge == true)
+                    return await service.PurgeAsync(deviceId, by, ct) switch
+                    {
+                        PurgeStatus.Purged => TypedResults.NoContent(),
+                        PurgeStatus.NotFound => TypedResults.NotFound(),
+                        _ => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["purge"] = ["the device has been seen: it stays in the archive with its history"] }),
+                    };
+                return await service.DisableAsync(deviceId, by, ct) ? TypedResults.NoContent() : TypedResults.NotFound();
+            })
             .WithTags("devices")
             .RequireAuthorization(HiveRoles.AdminOnly);
 

@@ -466,6 +466,11 @@ export function SwarmPage() {
       if (window.confirm(t('swarm.replaceTasmotaConfirm').replace('{id}', deviceId))) navigate(`/swarm/add?tasmota=${encodeURIComponent(deviceId)}`)
       return
     }
+    if ((devices.data ?? []).find((d) => d.deviceId === deviceId)?.driver === 'http') {
+      // a remote monitor has no enrollment: the same setup as for a new one, for the monitor that exists
+      navigate(`/swarm/add?remote=${encodeURIComponent(deviceId)}`)
+      return
+    }
     if (!window.confirm(t(revive ? 'swarm.reviveConfirm' : 'swarm.replaceConfirm').replace('{id}', deviceId))) return
     navigate(`/swarm/add?replace=${encodeURIComponent(deviceId)}`)
   }
@@ -611,7 +616,7 @@ export function SwarmPage() {
 }
 
 /** Only boards can be replaced (a new board takes over the hornet): not Zigbee devices or cameras behind an NVR. */
-const replaceable = (d: DeviceDto) => d.driver === 'hornet' || d.driver === 'tasmota'
+const replaceable = (d: DeviceDto) => d.driver === 'hornet' || d.driver === 'tasmota' || d.driver === 'http'
 
 /** An NVR whose login is locked or refused says so on its row (its device state "login", contracts/ipcam.md). */
 function loginTrouble(d: DeviceDto): string | null {

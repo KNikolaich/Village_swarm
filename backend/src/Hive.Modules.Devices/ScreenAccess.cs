@@ -42,7 +42,32 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
     /// <summary>A read is noted at most this often (an e-ink panel may ask every minute; the RPi's card need not hear about each).</summary>
     private static readonly TimeSpan NoteEvery = TimeSpan.FromMinutes(5);
 
-    public static string Hash(string token) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+    public static string Hash(string token) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Normalize(token))));
+
+    // Letters and digits that cannot be mistaken for each other (no 0/o, 1/l/i): a token read off a screen or typed on a phone.
+    private const string TokenAlphabet = "23456789abcdefghjkmnpqrstuvwxyz";
+    private const int TokenLength = 20;
+
+    /// <summary>
+    /// A token as people write it ("abcd-efgh-...", any case, spaces) is the same token. Only the short kind is touched:
+    /// the long URL-safe tokens issued before are case-sensitive and kept as they are.
+    /// </summary>
+    public static string Normalize(string token)
+    {
+        var t = token.Trim();
+        return t.Length <= 29 ? t.Replace("-", "").Replace(" ", "").ToLowerInvariant() : t;
+    }
+
+    /// <summary>20 random characters (about 99 bits), shown in groups of four: short enough to type, far beyond guessing at 12 reads a minute.</summary>
+    public static string NewToken()
+    {
+        var raw = string.Create(TokenLength, 0, static (span, _) =>
+        {
+            for (var i = 0; i < span.Length; i++)
+                span[i] = TokenAlphabet[RandomNumberGenerator.GetInt32(TokenAlphabet.Length)];
+        });
+        return string.Join('-', Enumerable.Range(0, TokenLength / 4).Select(g => raw.Substring(g * 4, 4)));
+    }
 
     private static ScreenAccessDto Dto(Device d) =>
         new(d.ScreenTokenHash is not null, d.ScreenTokenIssuedAt, d.ScreenReadAt, d.ScreenReadFrom, d.ScreenReadExternal, FramePath);
@@ -61,8 +86,7 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
             return (ScreenAccessStatus.NotFound, null);
         if (device.TypeCode != MonitorType)
             return (ScreenAccessStatus.NotMonitor, null);
-        // 32 random bytes, URL-safe: easy to paste into a panel's settings, impossible to guess.
-        var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var token = NewToken();
         device.ScreenTokenHash = Hash(token);
         device.ScreenTokenIssuedAt = time.GetUtcNow();
         device.ScreenReadAt = null;

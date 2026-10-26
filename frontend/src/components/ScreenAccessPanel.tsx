@@ -4,9 +4,11 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { HelpTip } from '@/components/HelpTip'
+import { PhoneSetup } from '@/components/PhoneSetup'
 import { Button } from '@/components/ui/button'
 import { t } from '@/i18n'
 import { formatAgo } from '@/lib/format'
+import { publicHiveUrl } from '@/lib/publicUrl'
 
 /**
  * Access of a monitor to its own screen from anywhere (contracts/monitor-http.md): a read-only token issued here and shown
@@ -79,6 +81,7 @@ export function ScreenAccessPanel({ deviceId }: { deviceId: string }) {
             <code className="min-w-0 flex-1 break-all rounded bg-neutral-900 px-2 py-1 text-neutral-200">{token}</code>
             <Button variant="secondary" size="icon" title={t('screenAccess.copyToken')} aria-label={t('screenAccess.copyToken')} onClick={() => copy(token)}><Copy /></Button>
           </div>
+          {publicHiveUrl() && <PhoneSetup url={publicHiveUrl()} token={token} />}
           <p className="text-neutral-400">{t('screenAccess.how')}</p>
           <div className="flex items-center gap-2">
             <code className="min-w-0 flex-1 break-all rounded bg-neutral-900 px-2 py-1 text-neutral-300">GET {url}{'\n'}Authorization: Bearer …</code>

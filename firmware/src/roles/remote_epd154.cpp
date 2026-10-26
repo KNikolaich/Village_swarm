@@ -7,9 +7,17 @@
 // When the hive cannot be reached for half an hour, the last picture gets a "нет связи" banner, so an old number is never
 // taken for a fresh one.
 //
-// Settings (two Wi-Fi networks, the hive's address, the token, how often to read) are entered on the panel's own Wi-Fi
-// point: hold BOOT for 2 s (or start it with nothing set), join "VillageSwarm-xxxx", open 192.168.4.1. A short press of BOOT
-// reads the picture now; PWR turns the panel off (on battery).
+// Settings (two Wi-Fi networks, the hive's address, the token, how often to read) come in two ways:
+//  - over USB, from the hive's page right after flashing: the console commands below. Nothing is typed by hand;
+//  - on the panel's own Wi-Fi point: hold BOOT for 2 s (or start it with nothing set), join "VillageSwarm-xxxx", open
+//    192.168.4.1. The hive's page shows a QR code with the address and the token: scan it with the phone's camera once
+//    joined and the form opens filled in.
+// A short press of BOOT reads the picture now; PWR turns the panel off (on battery).
+//
+// Console (115200, lines): set ssid|pass|ssid2|pass2|url|token|interval|rot|insecure <value>, show, go, save. "go" saves
+// and reads the picture at once, answering "[monitor] frame <http code>" (200 new, 304 same) or "[monitor] wifi failed".
+// "save" only saves (the panel is to stand at another Wi-Fi) and sleeps until its first read.
+// After a power-on or a reset the panel waits 12 s for the console before it reads, repeating "[monitor] ready".
 //
 // Pins from the Waveshare examples for the V2 board (github.com/waveshareteam/ESP32-S3-ePaper-1.54).
 
@@ -150,6 +158,75 @@ struct Settings {
     }
 } settings;
 
+[[noreturn]] void readAndSleep();
+
+// ------------------------------------------------------------------ console over USB
+
+String consoleLine;
+
+enum class Order { None, Go, Save };
+
+/// Applies one console line; Go = save and read now, Save = save and sleep.
+Order runCommand(String line) {
+    line.trim();
+    if (line.isEmpty()) return Order::None;
+    if (line == "go" || line == "save") {
+        if (!settings.ready()) {
+            Serial.println("[monitor] error: need ssid, url (https://...) and token first");
+            return Order::None;
+        }
+        settings.save();
+        lastEtag[0] = '\0';
+        Serial.println("[monitor] saved");
+        return line == "go" ? Order::Go : Order::Save;
+    }
+    if (line == "show") {
+        Serial.printf("[monitor] ssid=%s ssid2=%s url=%s token=%s interval=%d rot=%d insecure=%d\n", settings.ssid[0].c_str(),
+                      settings.ssid[1].c_str(), settings.url.c_str(), settings.token.isEmpty() ? "-" : "set", settings.intervalMin,
+                      settings.rotation, settings.insecure);
+        return Order::None;
+    }
+    if (!line.startsWith("set ")) {
+        Serial.println("[monitor] error: commands are set <key> <value>, show, go");
+        return Order::None;
+    }
+    const int space = line.indexOf(' ', 4);
+    const String key = space < 0 ? line.substring(4) : line.substring(4, space);
+    String value = space < 0 ? "" : line.substring(space + 1);  // the value may hold spaces (Wi-Fi names)
+    if (key == "ssid") settings.ssid[0] = value;
+    else if (key == "pass") settings.pass[0] = value;
+    else if (key == "ssid2") settings.ssid[1] = value;
+    else if (key == "pass2") settings.pass[1] = value;
+    else if (key == "url") settings.url = value;
+    else if (key == "token") settings.token = value;
+    else if (key == "interval") settings.intervalMin = clampInterval(value.toInt());
+    else if (key == "rot") settings.rotation = value.toInt() & 3;
+    else if (key == "insecure") settings.insecure = value == "1";
+    else {
+        Serial.printf("[monitor] error: unknown key %s\n", key.c_str());
+        return Order::None;
+    }
+    Serial.println("[monitor] ok");
+    return Order::None;
+}
+
+/// Reads what came over USB; Go or Save when that order arrived. Any input says somebody is at the console.
+Order pollConsole(bool& activity) {
+    while (Serial.available()) {
+        const char c = static_cast<char>(Serial.read());
+        activity = true;
+        if (c == '\n') {
+            const String line = consoleLine;
+            consoleLine = "";
+            const Order order = runCommand(line);
+            if (order != Order::None) return order;
+        } else if (c != '\r' && consoleLine.length() < 300) {
+            consoleLine += c;
+        }
+    }
+    return Order::None;
+}
+
 // ------------------------------------------------------------------ power
 
 void powerOn() {
@@ -286,13 +363,12 @@ String pageHtml(const char* note) {
     for (int i = 0; i < 2; i++) {
         h += String("<label>Wi-Fi ") + (i + 1) + (i ? " (запасная, можно пусто)" : "") + "<input name=ssid" + (i + 1) +
              " list=nets value=\"" + escapeHtml(settings.ssid[i]) + "\"></label>";
-        h += String("<label>Пароль Wi-Fi ") + (i + 1) + "<input type=password name=pass" + (i + 1) +
-             " placeholder='" + (settings.pass[i].length() ? "не менять" : "") + "'></label>";
+        h += String("<label>Пароль Wi-Fi ") + (i + 1) + "<input name=pass" + (i + 1) + " value=\"" + escapeHtml(settings.pass[i]) + "\"></label>";
     }
     h += "<label>Адрес Улья<input name=url placeholder='https://hive.имя.keenetic.pro' value=\"" + escapeHtml(settings.url) +
          "\"><small>Адрес, по которому Улей открывается из интернета.</small></label>";
-    h += String("<label>Токен экрана<input name=token placeholder='") + (settings.token.length() ? "не менять" : "") +
-         "'><small>Выдаётся на странице монитора в Улье: «Доступ снаружи».</small></label>";
+    h += "<label>Токен экрана<input name=token autocapitalize=off placeholder='xxxx-xxxx-xxxx-xxxx-xxxx' value=\"" + escapeHtml(settings.token) +
+         "\"><small>Выдаётся на странице монитора в Улье; там же QR-код, который заполняет эту форму.</small></label>";
     h += F("<label>Как часто обновлять<select name=interval>");
     for (int m : {5, 10, 15, 30, 60, 120}) {
         h += String("<option value=") + m + (m == settings.intervalMin ? " selected>" : ">") + m + " мин</option>";
@@ -312,14 +388,12 @@ void handleSave() {
         const String n = String(i + 1);
         settings.ssid[i] = server.arg("ssid" + n);
         settings.ssid[i].trim();
-        const String pass = server.arg("pass" + n);
-        if (pass.length() || settings.ssid[i].isEmpty()) settings.pass[i] = pass;
+        settings.pass[i] = server.arg("pass" + n);
     }
     settings.url = server.arg("url");
     settings.url.trim();
-    String token = server.arg("token");
-    token.trim();
-    if (token.length()) settings.token = token;
+    settings.token = server.arg("token");
+    settings.token.trim();
     settings.intervalMin = clampInterval(server.arg("interval").toInt());
     settings.rotation = server.arg("rot").toInt() & 3;
     settings.insecure = server.hasArg("insecure");
@@ -347,7 +421,19 @@ void startPortal() {
     WiFi.scanDelete();
     WiFi.softAP(apName.c_str());
     dns.start(53, "*", WiFi.softAPIP());
-    server.on("/", HTTP_GET, [] { server.send(200, "text/html; charset=utf-8", pageHtml(nullptr)); });
+    server.on("/", HTTP_GET, [] {
+        // The hive's page shows a QR code with these in the address: the phone's camera opens the form filled in.
+        const char* note = nullptr;
+        if (server.hasArg("url") || server.hasArg("token") || server.hasArg("ssid")) {
+            if (server.hasArg("ssid")) settings.ssid[0] = server.arg("ssid");
+            if (server.hasArg("pass")) settings.pass[0] = server.arg("pass");
+            if (server.hasArg("url")) settings.url = server.arg("url");
+            if (server.hasArg("token")) settings.token = server.arg("token");
+            if (server.hasArg("interval")) settings.intervalMin = clampInterval(server.arg("interval").toInt());
+            note = "Поля заполнены из QR-кода. Проверьте Wi-Fi и нажмите «Сохранить».";
+        }
+        server.send(200, "text/html; charset=utf-8", pageHtml(note));
+    });
     server.on("/save", HTTP_POST, handleSave);
     server.onNotFound([] {  // phones probe some page to find a captive portal: send them to the form
         server.sendHeader("Location", "http://192.168.4.1/", true);
@@ -447,6 +533,7 @@ Reply fetchFrame() {
 [[noreturn]] void readAndSleep() {
     const String battery = batteryNote();
     if (!joinWifi()) {
+        Serial.println("[monitor] wifi failed");
         offlineMin += settings.intervalMin;
         if (!haveFrame) {
             showMessage("Нет Wi-Fi", {"Сеть " + settings.ssid[0], "не отвечает.", "", "Повтор через " + String(settings.intervalMin) + " мин.", "BOOT 2 с — настройка"});
@@ -458,6 +545,7 @@ Reply fetchFrame() {
     }
 
     const Reply reply = fetchFrame();
+    Serial.printf("[monitor] frame %d\n", reply.code);  // the hive's page waits for this line after flashing
     switch (reply.answer) {
         case Answer::Draw:
             memcpy(lastFrame, incoming, kFrameBytes);
@@ -501,15 +589,44 @@ bool bootHeld() {
     return true;
 }
 
+[[noreturn]] void saveAndSleep() {
+    showMessage("Настроено", {"Wi-Fi: " + settings.ssid[0], "Первое чтение через", String(settings.intervalMin) + " мин у этой сети", "", "BOOT 2 с — настройка"});
+    sleepFor(settings.intervalMin);
+}
+
+/// A moment for the console after a power-on or a reset (not after a timer or a button): the hive's page flashes the
+/// board and sends the settings over USB. Says "ready" twice a second until somebody types, then waits for "go".
+Order consoleWindow() {
+    constexpr uint32_t kWaitMs = 12000, kMaxMs = 120000;
+    const uint32_t started = millis();
+    uint32_t until = kWaitMs, lastBanner = 0;
+    for (;;) {
+        bool activity = false;
+        const Order order = pollConsole(activity);
+        if (order != Order::None) return order;
+        const uint32_t now = millis() - started;
+        if (activity) until = now + kWaitMs < kMaxMs ? now + kWaitMs : kMaxMs;
+        if (now >= until) return Order::None;
+        if (now - lastBanner >= 500 || lastBanner == 0) {
+            lastBanner = now;
+            Serial.println("[monitor] ready");
+        }
+        delay(20);
+    }
+}
+
 }  // namespace
 
 void setup() {
     powerOn();
     Serial.begin(115200);
     settings.load();
-    initScreen();
 
     const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    const Order order = cause == ESP_SLEEP_WAKEUP_UNDEFINED ? consoleWindow() : Order::None;
+    initScreen();
+    if (order == Order::Save) saveAndSleep();
+
     const uint64_t buttons = cause == ESP_SLEEP_WAKEUP_EXT1 ? esp_sleep_get_ext1_wakeup_status() : 0;
     if (buttons & (1ULL << kPinPwr)) {
         showMessage("Выключено", {"Включение — кнопкой PWR"});
@@ -530,6 +647,15 @@ void loop() {
     if (!portalMode) return;
     dns.processNextRequest();
     server.handleClient();
+    bool activity = false;
+    if (const Order order = pollConsole(activity); order != Order::None) {  // settings came over USB: leave the Wi-Fi point
+        server.stop();
+        dns.stop();
+        WiFi.softAPdisconnect(true);
+        portalMode = false;
+        if (order == Order::Save) saveAndSleep();
+        readAndSleep();
+    }
     if (restartAtMs && static_cast<int32_t>(millis() - restartAtMs) >= 0) ESP.restart();
     if (millis() - portalStartedMs > kPortalTimeoutMs) {
         if (haveFrame) showFrame(String());

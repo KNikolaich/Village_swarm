@@ -8,7 +8,7 @@ the token opens the texts of that one monitor's screen and nothing else (no comm
 
 | Header | Required | Meaning |
 |---|---|---|
-| `Authorization: Bearer <screen_token>` | yes | Issued on the monitor's page ("Доступ снаружи"); shown once, the hive keeps only its SHA-256 |
+| `Authorization: Bearer <screen_token>` | yes | Issued on the monitor's page ("Доступ снаружи"); shown once, the hive keeps only its SHA-256. 20 letters and digits in groups of four (`k7m2-9xqe-...`), none that look alike; dashes, spaces and case do not matter. Tokens issued before (43 characters, case-sensitive) still work |
 | `If-None-Match` | optional | The `ETag` of the last frame: nothing changed → `304` with no body |
 
 Responses:
