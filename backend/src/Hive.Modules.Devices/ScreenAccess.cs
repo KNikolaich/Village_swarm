@@ -204,12 +204,14 @@ public static class ScreenAccessEndpoints
     /// <summary>Reads a minute per address: a panel needs one a minute at most, a guesser gets nowhere.</summary>
     public const int ReadsPerMinute = 12;
 
-    public static IServiceCollection AddScreenAccess(this IServiceCollection services)
+    /// <summary>Screen:ReadsPerMinute overrides <see cref="ReadsPerMinute"/> (tests read many frames from one address).</summary>
+    public static IServiceCollection AddScreenAccess(this IServiceCollection services, Microsoft.Extensions.Configuration.IConfiguration configuration)
     {
+        var readsPerMinute = int.TryParse(configuration["Screen:ReadsPerMinute"], out var n) && n > 0 ? n : ReadsPerMinute;
         services.AddScoped<ScreenAccessService>();
         services.AddRateLimiter(o => o.AddPolicy(RateLimit, ctx => RateLimitPartition.GetFixedWindowLimiter(
             ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-            _ => new FixedWindowRateLimiterOptions { PermitLimit = ReadsPerMinute, Window = TimeSpan.FromMinutes(1) })));
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = readsPerMinute, Window = TimeSpan.FromMinutes(1) })));
         return services;
     }
 

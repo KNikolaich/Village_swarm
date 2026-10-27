@@ -359,7 +359,9 @@ public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries teleme
             return (ConfigUpdateStatus.NotFound, null);
         if (DisplayScreens.For(device.Hw, RotationOf(device)) is not { Rendered: true } screen)
             return (ConfigUpdateStatus.BadRequest, "фон бывает только у экранов, которые рисует Улей");
-        using var bitmap = SKBitmap.Decode(image);
+        // SKBitmap.Decode throws on bytes no codec recognizes, so open the codec first.
+        using var codec = SKCodec.Create(new SKMemoryStream(image));
+        using var bitmap = codec is null ? null : SKBitmap.Decode(codec);
         if (bitmap is null)
             return (ConfigUpdateStatus.BadRequest, "это не картинка: нужен PNG (лучше всего), JPEG, BMP или GIF");
         if (bitmap.Width != screen.Width || bitmap.Height != screen.Height)

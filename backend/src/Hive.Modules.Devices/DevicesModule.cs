@@ -97,7 +97,7 @@ public static class DevicesModule
         services.AddScoped<OtaService>();
         services.AddScoped<DisplayFeedService>();
         services.AddScoped<DisplayFontCatalog>();
-        services.AddScreenAccess();
+        services.AddScreenAccess(configuration);
         services.AddScoped<ValueRangeStore>();
         services.AddHostedService<DisplayFeed>();
         services.AddScoped<OtaPendingStore>();
@@ -204,6 +204,7 @@ public static class DevicesModule
                     _ => TypedResults.NoContent(),
                 };
             })
+            .WithBinaryBody()
             .RequireAuthorization(HiveRoles.AdminOnly);
         devices.MapDelete("/{deviceId}/display/background", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
                 await feed.RemoveBackgroundAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())

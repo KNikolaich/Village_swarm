@@ -154,7 +154,7 @@ public sealed class ScreenAccessTests(HiveFixture hive)
         Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
         var captioned = await Read();
         Assert.NotEqual(blank.ETag, captioned.ETag);
-        Assert.Contains(captioned.Body, b => b != 0xFF);
+        Assert.Contains(captioned.Body, b => b != 0);  // a set bit is black
 
         // a family id is a slug; one that is not in the catalog is only drawn in the standard font
         using var badFont = await admin.PutAsJsonAsync("/api/devices/monitor-bg1/display",
@@ -170,7 +170,7 @@ public sealed class ScreenAccessTests(HiveFixture hive)
         Assert.Equal(HttpStatusCode.NoContent, right.StatusCode);
         var withBackground = await Read();
         Assert.NotEqual(captioned.ETag, withBackground.ETag);
-        Assert.True(withBackground.Body.Count(b => b == 0) > 4000, "the black background is under the caption");
+        Assert.True(withBackground.Body.Count(b => b == 0xFF) > 4000, "the black background is under the caption");
         using var shown = await admin.GetAsync("/api/devices/monitor-bg1/display/background.png");
         Assert.Equal(HttpStatusCode.OK, shown.StatusCode);
 

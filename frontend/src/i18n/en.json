@@ -1345,7 +1345,7 @@
     "textHelp": "Any text up to 24 characters with no data source: \"Outside\", \"°C\", \"Dacha\". It has its own font, size and place.",
     "caption": "Text label",
     "rotation": "Rotate the picture",
-    "rotationHelp": "Turns the whole picture clockwise. The screen and the background count the way you look at the panel: at 90° and 270° width and height swap. It is the same as the \"Rotation\" setting on the panel's own page, only handier: the panel needs no setup again.",
+    "rotationHelp": "Turns the whole picture clockwise. The screen and the background count the way you look at the panel: at 90° and 270° width and height swap. Handier than the \"Rotation\" setting on the panel's own page: the panel needs no setup again. The two turns add up, so leave the panel at 0°.",
     "background": "Background",
     "backgroundHelp": "A ready picture under the digits: a frame, captions, icons.\nSize: exactly {size} pixels (the screen as it is now, with the rotation). Any other size is refused.\nFormat: PNG (best), JPEG, BMP or GIF, up to 1 MB.\nColours: the panel is black and white, anything darker than half grey becomes black, lighter white. For a crisp picture prepare it in black and white without smoothing (1 bit).\nDigits and labels are drawn over the background in black: leave a light place for them.",
     "backgroundNone": "No background: the screen is white.",

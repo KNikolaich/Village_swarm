@@ -105,6 +105,7 @@ public sealed class HiveFixture : IAsyncLifetime
             b.UseSetting("Hive:TimeZone", "Europe/Moscow");
             b.UseSetting("Auth:BootstrapAdminPassword", AdminPassword);
             b.UseSetting("Auth:AuthRequestsPerMinute", "10000");
+            b.UseSetting("Screen:ReadsPerMinute", "10000");
             // As behind Caddy: AuthTests give each "device" its own address with X-Forwarded-For.
             b.UseSetting("ForwardedHeaders:Enabled", "true");
             b.UseSetting("Smtp:From", "hive@example.org");

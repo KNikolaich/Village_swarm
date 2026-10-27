@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.OpenApi;
 using SkiaSharp;
 
 namespace Hive.Modules.Devices;
@@ -240,12 +241,31 @@ public static class DisplayFontEndpoints
                     ? TypedResults.Ok(font!)
                     : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = [error!] });
             })
+            .WithBinaryBody()
             .RequireAuthorization(HiveRoles.AdminOnly);
         fonts.MapDelete("/{familyId}", async Task<Results<NoContent, NotFound>> (string familyId, ClaimsPrincipal user, DisplayFontCatalog catalog, CancellationToken ct) =>
                 await catalog.RemoveAsync(familyId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
             .RequireAuthorization(HiveRoles.AdminOnly);
         return app;
     }
+
+    /// <summary>
+    /// The endpoint reads the raw body itself (no Accepts metadata, which would answer 415); the document still says the body
+    /// is a file, so the generated client takes one.
+    /// </summary>
+    public static RouteHandlerBuilder WithBinaryBody(this RouteHandlerBuilder builder) =>
+        builder.AddOpenApiOperationTransformer((operation, _, _) =>
+        {
+            operation.RequestBody = new OpenApiRequestBody
+            {
+                Required = true,
+                Content = new Dictionary<string, OpenApiMediaType>
+                {
+                    ["application/octet-stream"] = new() { Schema = new OpenApiSchema { Type = JsonSchemaType.String, Format = "binary" } },
+                },
+            };
+            return Task.CompletedTask;
+        });
 
     /// <summary>The body as bytes, or null when it is longer than the limit.</summary>
     public static async Task<byte[]?> ReadBodyAsync(HttpRequest request, int limit, CancellationToken ct)
