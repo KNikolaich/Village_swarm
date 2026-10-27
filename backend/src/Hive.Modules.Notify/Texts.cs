@@ -92,14 +92,25 @@ public static class Texts
         return text;
     }
 
-    /// <summary>"\nудалено фото: 120 (диск был занят на 88%)" after an emergency cleanup (Hive.Modules.Retention).</summary>
+    /// <summary>
+    /// "\nудалено фото: 120, 45 МБ (диск был занят на 88%, стало 84%)" after an emergency cleanup (Hive.Modules.Retention),
+    /// and a hint when the disk is still full: then it is not the photos that fill it.
+    /// </summary>
     private static string CleanupDetail(System.Text.Json.JsonElement p)
     {
         var photos = p.TryGetProperty("photos", out var n) ? n.GetInt32() : 0;
-        var used = p.TryGetProperty("usedPct", out var u) ? $" (диск был занят на {u.GetDouble().ToString("0.#", Ru)}%)" : "";
+        var size = p.TryGetProperty("bytes", out var b) && b.GetInt64() > 0 ? $", {Megabytes(b.GetInt64())}" : "";
+        var after = p.TryGetProperty("usedAfterPct", out var a) && a.ValueKind == System.Text.Json.JsonValueKind.Number
+            ? $", стало {a.GetDouble().ToString("0.#", Ru)}%" : "";
+        var used = p.TryGetProperty("usedPct", out var u) ? $" (диск был занят на {u.GetDouble().ToString("0.#", Ru)}%{after})" : "";
         var oldAlarms = p.TryGetProperty("level", out var l) && l.GetInt32() >= 2 ? "\nПришлось удалить и часть старых фото тревог: проверьте диск." : "";
-        return $"\nудалено фото: {photos}{used}{oldAlarms}";
+        var stillFull = p.TryGetProperty("stillFull", out var f) && f.ValueKind == System.Text.Json.JsonValueKind.True
+            ? "\nДиск всё ещё заполнен: место занимают не фото, а система, старые версии Улья, база или бэкапы. Фото тревог младше месяца и «не удалять» Улей не трогает."
+            : "";
+        return $"\nудалено фото: {photos}{size}{used}{oldAlarms}{stillFull}";
     }
+
+    private static string Megabytes(long bytes) => $"{Math.Max(1, (int)Math.Round(bytes / 1048576.0)).ToString(Ru)} МБ";
 
     /// <summary>"\nсеть «name»: подключился" / "осталась прежняя сеть" for the outcome of a Wi-Fi switch.</summary>
     private static string WifiDetail(string? ssid, string? phase) => phase switch

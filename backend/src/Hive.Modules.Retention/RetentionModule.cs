@@ -91,7 +91,13 @@ public sealed class RetentionJob(
             if (result.PhotosDeleted > 0)
             {
                 var deviceId = $"hive-{hive.Value.Node}";
-                var payload = JsonSerializer.SerializeToDocument(new { photos = result.PhotosDeleted, bytes = result.PhotoBytes, level = result.PressureLevel, usedPct = used });
+                // Where the disk ended up: when it is still above the limit, photos were not what filled it.
+                var after = service.DiskUsedPct();
+                var payload = JsonSerializer.SerializeToDocument(new
+                {
+                    photos = result.PhotosDeleted, bytes = result.PhotoBytes, level = result.PressureLevel, usedPct = used,
+                    usedAfterPct = after, stillFull = after >= options.Value.DiskHighPct,
+                });
                 ingest.Enqueue(new DeviceEventReceived(deviceId, Ulid.New(now), now, now, "disk_cleanup", EventSeverity.Warn, null, payload));
             }
         }

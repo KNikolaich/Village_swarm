@@ -47,6 +47,16 @@ for _ in $(seq 1 40); do
 	if curl -fsk https://localhost/readyz >/dev/null 2>&1; then
 		say "Готово: $previous → $version"
 		docker image prune -f >/dev/null
+		# Every build has its own tag, so old versions are never "dangling" and prune leaves them: each costs
+		# hundreds of MB on the SD card. Keep this version and the previous one (for a manual rollback).
+		prefix="$(get_env HIVE_IMAGES || true)"
+		prefix="${prefix:-ghcr.io/knikolaich/village-swarm}"
+		for part in api web backup; do
+			docker image ls --format '{{.Repository}}:{{.Tag}}' "$prefix-$part" \
+				| grep -v -x -F -e "$prefix-$part:$version" -e "$prefix-$part:$previous" \
+				| xargs -r docker rmi >/dev/null 2>&1 || true
+		done
+		say "Место на диске: $(df -h "$data" | awk 'NR==2 {print $3 " из " $2 " (" $5 ")"}')"
 		exit 0
 	fi
 	sleep 3
