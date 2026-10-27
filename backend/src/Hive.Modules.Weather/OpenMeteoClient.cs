@@ -6,8 +6,8 @@ namespace Hive.Modules.Weather;
 /// <summary>Reads a forecast from an Open-Meteo compatible server (api.open-meteo.com or a proxy of it).</summary>
 public sealed class OpenMeteoClient(HttpClient http)
 {
-    private const string Current = "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weathercode,windspeed_10m,winddirection_10m";
-    private const string Hourly = "temperature_2m,apparent_temperature,precipitation_probability,precipitation,weathercode,windspeed_10m,winddirection_10m,relative_humidity_2m";
+    private const string Current = "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weathercode,windspeed_10m,winddirection_10m,pressure_msl,cloud_cover";
+    private const string Hourly = "temperature_2m,apparent_temperature,precipitation_probability,precipitation,weathercode,windspeed_10m,winddirection_10m,relative_humidity_2m,pressure_msl,cloud_cover";
     private const string Daily = "weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset";
 
     /// <summary>Two past days (was it raining lately?) and a week ahead; wind in m/s.</summary>
@@ -60,7 +60,8 @@ public sealed class OpenMeteoClient(HttpClient http)
         if (root.TryGetProperty("current", out var c) && c.ValueKind == JsonValueKind.Object && c.TryGetProperty("time", out var ct))
             current = new WeatherCurrentDto(
                 At(ct.GetString()!), Num(c, "temperature_2m") ?? 0, Num(c, "apparent_temperature"), Num(c, "relative_humidity_2m"),
-                Num(c, "precipitation"), (int)(Num(c, "weathercode") ?? 0), Num(c, "windspeed_10m"), Int(Num(c, "winddirection_10m")));
+                Num(c, "precipitation"), (int)(Num(c, "weathercode") ?? 0), Num(c, "windspeed_10m"), Int(Num(c, "winddirection_10m")),
+                Num(c, "pressure_msl"), Int(Num(c, "cloud_cover")));
 
         var hourly = new List<WeatherHourDto>();
         if (root.TryGetProperty("hourly", out var h))
@@ -74,7 +75,8 @@ public sealed class OpenMeteoClient(HttpClient http)
                 hourly.Add(new WeatherHourDto(
                     At(times[i]), temperature, Num(h, "apparent_temperature", i), Int(Num(h, "precipitation_probability", i)),
                     Num(h, "precipitation", i) ?? 0, (int)(Num(h, "weathercode", i) ?? 0), Num(h, "windspeed_10m", i),
-                    Int(Num(h, "winddirection_10m", i)), Num(h, "relative_humidity_2m", i)));
+                    Int(Num(h, "winddirection_10m", i)), Num(h, "relative_humidity_2m", i),
+                    Num(h, "pressure_msl", i), Int(Num(h, "cloud_cover", i))));
             }
         }
 

@@ -45,11 +45,42 @@ static void test_answers() {
     TEST_ASSERT_TRUE(classify(-1, 0, 0, 0, 200, 200) == Answer::Retry);
 }
 
+static void test_tabs() {
+    TEST_ASSERT_EQUAL_STRING("https://h/api/monitor/v1/frame.bin?tab=2", tabUrl("https://h/", 2).c_str());
+    TEST_ASSERT_EQUAL_STRING("", tabUrl("h", 2).c_str());
+    TEST_ASSERT_EQUAL(1, stepTab(0, 1, 4));
+    TEST_ASSERT_EQUAL(3, stepTab(0, -1, 4));  // round at the ends
+    TEST_ASSERT_EQUAL(0, stepTab(3, 1, 4));
+    TEST_ASSERT_TRUE(everyMinute(0));
+    TEST_ASSERT_FALSE(everyMinute(1));
+    TEST_ASSERT_FALSE(everyMinute(2));
+    TEST_ASSERT_TRUE(everyMinute(3));
+    const Cell cell = tabCell(2, 4, 416, 240);
+    TEST_ASSERT_EQUAL(208, cell.x);
+    TEST_ASSERT_EQUAL(218, cell.y);
+    TEST_ASSERT_EQUAL(104, cell.w);
+    TEST_ASSERT_EQUAL(22, cell.h);
+}
+
+static void test_clock_and_battery() {
+    TEST_ASSERT_EQUAL_UINT32(1793133662u, httpDate("Tue, 27 Oct 2026 20:41:02 GMT"));
+    TEST_ASSERT_EQUAL_UINT32(1772323200u, httpDate("Sun, 01 Mar 2026 00:00:00 GMT"));
+    TEST_ASSERT_EQUAL_UINT32(0u, httpDate("Tue, 29 Feb 2000 00:00:00 GMT"));  // before 2020: not a clock to trust
+    TEST_ASSERT_EQUAL_UINT32(0u, httpDate("garbage"));
+    TEST_ASSERT_EQUAL_UINT32(59u, secondsToNextMinute(1793133662u));  // :02 -> wake at :01 of the next minute
+    TEST_ASSERT_EQUAL_UINT32(61u, secondsToNextMinute(1793133660u));
+    TEST_ASSERT_EQUAL(3900, batteryMv(1950));
+    TEST_ASSERT_EQUAL(-1, batteryMv(100));   // no divider: the pin floats low
+    TEST_ASSERT_EQUAL(-1, batteryMv(3000));  // or reads 3.3 V
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_frame_url_from_what_people_paste);
     RUN_TEST(test_interval_stays_sane);
     RUN_TEST(test_banner_after_half_an_hour_then_hourly);
     RUN_TEST(test_answers);
+    RUN_TEST(test_tabs);
+    RUN_TEST(test_clock_and_battery);
     return UNITY_END();
 }

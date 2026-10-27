@@ -2605,7 +2605,9 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    tab?: null | number;
+                };
                 header?: never;
                 path: {
                     deviceId: string;
@@ -6025,6 +6027,11 @@ export interface components {
             rendered: boolean;
             /** @default false */
             background: boolean;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            tabs: number;
         };
         DryRunHit: {
             /** Format: date-time */
@@ -6937,6 +6944,16 @@ export interface components {
             windSpeed: null | number;
             /** Format: int32 */
             windDirection: null | number;
+            /**
+             * Format: double
+             * @default null
+             */
+            pressure: null | number;
+            /**
+             * Format: int32
+             * @default null
+             */
+            cloudCover: null | number;
         };
         WeatherDayDto: {
             /** Format: date */
@@ -6985,6 +7002,16 @@ export interface components {
             windDirection: null | number;
             /** Format: double */
             humidity: null | number;
+            /**
+             * Format: double
+             * @default null
+             */
+            pressure: null | number;
+            /**
+             * Format: int32
+             * @default null
+             */
+            cloudCover: null | number;
         };
         WeatherSettingsDto: {
             baseUrl: string;

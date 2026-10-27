@@ -16,7 +16,10 @@ import { remoteStages, setupRemote } from '@/lib/remoteSetup'
 import { type SerialPortLike, serialSupported } from '@/lib/serial'
 
 /** Boards whose picture the hive draws (DisplayScreens.RenderedBoards) and the firmware build for each. */
-const remoteBoards = [{ board: 'waveshare-s3-epaper-154', build: 'monitor-epd154' }]
+const remoteBoards = [
+  { board: 'waveshare-s3-epaper-154', build: 'monitor-epd154' },
+  { board: 'crowpanel-epd37', build: 'monitor-crowpanel37' },
+]
 
 const idPattern = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
 const intervals = [5, 10, 15, 30, 60, 120]
@@ -200,7 +203,7 @@ export function RemoteMonitorPanel({ existingId }: { existingId?: string }) {
         ) : (
           <p className="text-amber-300">{t('add.noSerial')}</p>
         )}
-        {!build && !firmware.isLoading && <p className="text-xs text-amber-300">{t('remoteMonitor.noBuild').replace('{build}', 'monitor-epd154')}</p>}
+        {!build && !firmware.isLoading && <p className="text-xs text-amber-300">{t('remoteMonitor.noBuild').replace('{build}', remoteBoards.find((x) => x.board === board)?.build ?? '')}</p>}
         {stage && <SetupStages stages={stages} stage={stage} running={running} failed={failed} progress={progress} names="remoteMonitor.stage" />}
         {failed && (
           <div className="space-y-2 rounded-lg border border-red-900/60 bg-red-950/20 p-2">

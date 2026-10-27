@@ -19,6 +19,8 @@ public sealed class WeatherUnitTests
         Assert.Equal(6.7, Forecast.Current!.Temperature);
         Assert.Equal(71, Forecast.Current.Humidity);
         Assert.Equal(250, Forecast.Current.WindDirection);
+        Assert.Equal(((double?)1015.3, (int?)88), (Forecast.Current.Pressure, Forecast.Current.CloudCover));
+        Assert.Equal(((double?)1014.8, (int?)75), (Forecast.Hourly[1].Pressure, Forecast.Hourly[1].CloudCover));
         Assert.Equal((2.0, 8.0, 4.5), (Forecast.Daily[0].TemperatureMin, Forecast.Daily[0].TemperatureMax, Forecast.Daily[0].PrecipitationSum));
         Assert.Equal(90, Forecast.Daily[0].PrecipitationProbabilityMax);
     }
@@ -41,6 +43,7 @@ public sealed class WeatherUnitTests
         Assert.Contains("past_days=2", query, StringComparison.Ordinal);
         Assert.Contains("forecast_days=7", query, StringComparison.Ordinal);
         Assert.Contains("sunrise,sunset", query, StringComparison.Ordinal);
+        Assert.Contains("pressure_msl,cloud_cover", query, StringComparison.Ordinal);
     }
 
     [Fact]

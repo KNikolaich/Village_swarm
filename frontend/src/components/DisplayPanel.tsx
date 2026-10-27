@@ -128,6 +128,7 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
   const sources = (devices.data ?? []).filter((d) => d.deviceId !== deviceId && metricsOf(d.deviceId).length > 0)
   const maxRows = placed ? maxPlaced : maxAuto
   const rendered = !!current.data?.screen?.rendered
+  const tabs = current.data?.screen?.tabs ?? 0
   const styled = rendered && placed  // fonts and sizes in pixels: only where the hive draws and the rows are placed
   const fontList: FontInfo[] = fonts.data ?? []
 
@@ -278,6 +279,24 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {rendered && tabs > 0 && (
+        <div className="space-y-1">
+          <p className="flex items-center gap-1 text-xs text-neutral-400">
+            {t('display.tabs')}
+            <HelpTip text={t('display.tabsHelp')} />
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {[0, 1, 2].map((tab) => (
+              <figure key={tab} className="space-y-1">
+                <img src={`/api/devices/${encodeURIComponent(deviceId)}/display/preview.png?tab=${tab}&v=${current.dataUpdatedAt}`}
+                  alt={t(`display.tab${tab}`)} width={screen.width} height={screen.height}
+                  className="w-full max-w-64 rounded border border-neutral-700 bg-white" style={{ imageRendering: 'pixelated' }} />
+                <figcaption className="text-xs text-neutral-500">{t(`display.tab${tab}`)}</figcaption>
+              </figure>
+            ))}
           </div>
         </div>
       )}

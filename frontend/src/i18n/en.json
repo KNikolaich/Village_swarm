@@ -1006,7 +1006,8 @@
     "nodemcu-v3": "NodeMCU v3",
     "esp-01": "ESP-01 / ESP-01S (1 MB)",
     "esp-01-dht11": "ESP-01S with a DHT11 sensor (the “ESP-01S DHT11” module)",
-    "waveshare-s3-epaper-154": "Waveshare ESP32-S3 1.54\" e-ink (200×200)"
+    "waveshare-s3-epaper-154": "Waveshare ESP32-S3 1.54\" e-ink (200×200)",
+    "crowpanel-epd37": "Elecrow CrowPanel 3.7\" e-ink with a rocker (416×240)"
   },
   "weekdays": {
     "mon": "Mon",
@@ -1359,7 +1360,12 @@
     "fontUpload": "Upload a font",
     "fontSaved": "Font added",
     "fontRemove": "Delete the font",
-    "fontRemoved": "Font deleted"
+    "fontRemoved": "Font deleted",
+    "tabs": "The panel's other tabs",
+    "tabsHelp": "This panel is flipped with its rocker: Clock, Forecast, Calendar and Measure. The hive draws the first three itself: the time, the forecast from the weather settings, the month and recent events. Measure is the rows above, shown in the picture above. The bottom 22 pixels of every tab hold the tab bar: do not put rows there. Clock and Measure refresh every minute, the others at the panel's interval.",
+    "tab0": "Clock",
+    "tab1": "Forecast",
+    "tab2": "Calendar"
   },
   "screenAccess": {
     "title": "Access from outside",

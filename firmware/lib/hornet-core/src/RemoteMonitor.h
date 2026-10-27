@@ -75,4 +75,74 @@ inline Answer classify(int httpCode, size_t bytes, int width, int height, int ex
     }
 }
 
+// ------------------------------------------------------------------ panels with tabs (contracts/monitor-http.md, tabs)
+
+/// The bottom of every tab: four equal cells, the shown one inverted; the panel inverts the one under its cursor.
+constexpr int kTabBarHeight = 22;
+
+/// The address of one tab of the picture.
+inline std::string tabUrl(const std::string& base, int tab) {
+    const std::string url = frameUrl(base);
+    return url.empty() ? url : url + "?tab=" + std::to_string(tab);
+}
+
+/// The tab a step of the rocker leads to, going round at the ends.
+inline int stepTab(int tab, int step, int count) {
+    if (count <= 0) return 0;
+    return ((tab + step) % count + count) % count;
+}
+
+/// Common (the clock) and Measure (the person's readings) are read every minute; the others at the panel's interval.
+inline bool everyMinute(int tab) { return tab == 0 || tab == 3; }
+
+/// Seconds to sleep so that the panel wakes just after the minute turns (a second of slack for the hive's clock).
+inline uint32_t secondsToNextMinute(uint32_t unixSeconds) { return 60 - unixSeconds % 60 + 1; }
+
+/// A cell of the tab bar in the turned screen: x, y, width, height.
+struct Cell {
+    int x, y, w, h;
+};
+
+inline Cell tabCell(int tab, int count, int width, int height) {
+    if (count <= 0) return {0, height - kTabBarHeight, width, kTabBarHeight};
+    const int left = tab * width / count;
+    const int right = (tab + 1) * width / count;
+    return {left, height - kTabBarHeight, right - left, kTabBarHeight};
+}
+
+/// The battery in millivolts from the ADC behind a 1:2 divider, or -1 when nothing sensible is there (no divider soldered).
+inline int batteryMv(int pinMv) {
+    const int mv = pinMv * 2;
+    return mv >= 2500 && mv <= 4500 ? mv : -1;
+}
+
+/// Seconds since 1970 from an HTTP Date header ("Tue, 27 Oct 2026 20:41:02 GMT"), 0 when it does not read.
+inline uint32_t httpDate(const std::string& date) {
+    static const char* kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    const size_t comma = date.find(", ");
+    if (comma == std::string::npos || date.size() < comma + 22) return 0;
+    const std::string s = date.substr(comma + 2);  // "27 Oct 2026 20:41:02 GMT"
+    auto num = [&](size_t at, size_t len) {
+        int v = 0;
+        for (size_t i = at; i < at + len; i++) {
+            if (s[i] < '0' || s[i] > '9') return -1;
+            v = v * 10 + (s[i] - '0');
+        }
+        return v;
+    };
+    const int day = num(0, 2), year = num(7, 4), hh = num(12, 2), mm = num(15, 2), ss = num(18, 2);
+    int month = -1;
+    for (int i = 0; i < 12; i++)
+        if (s.compare(3, 3, kMonths[i]) == 0) month = i + 1;
+    if (day < 1 || year < 2020 || month < 0 || hh < 0 || mm < 0 || ss < 0) return 0;
+    // days from the civil date (Howard Hinnant's algorithm)
+    const int y = year - (month <= 2);
+    const int era = y / 400;
+    const unsigned yoe = static_cast<unsigned>(y - era * 400);
+    const unsigned doy = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1;
+    const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    const int64_t days = static_cast<int64_t>(era) * 146097 + static_cast<int64_t>(doe) - 719468;
+    return static_cast<uint32_t>(days * 86400 + hh * 3600 + mm * 60 + ss);
+}
+
 }  // namespace hornet::remote

@@ -3,11 +3,13 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.RateLimiting;
+using Hive.Contracts;
 using Hive.Contracts.Messages;
 using Hive.Domain;
 using Hive.Infrastructure;
 using Hive.Infrastructure.Data;
 using Hive.Infrastructure.Identity;
+using Hive.Modules.Telemetry.Ingest;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -34,7 +36,7 @@ public enum ScreenAccessStatus
 /// Read-only access of a monitor to its own screen from anywhere (contracts/monitor-http.md): a token per monitor, issued and
 /// revoked on its page. The token opens only the texts the hive would publish to vs/v1/hive/display/{id}.
 /// </summary>
-public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService feed, NodeState node, TimeProvider time)
+public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService feed, NodeState node, IngestQueue ingest, TimeProvider time)
 {
     public const string MonitorType = "monitor";
     public const string FramePath = "/api/monitor/v1/frame";
@@ -117,7 +119,17 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
     /// the hive draws, one bit a pixel (only for a screen the hive draws). The ETag follows the items, background, turn and fonts, not the time.
     /// The read is noted on the device; a monitor far away is seen by its reads.
     /// </summary>
-    public async Task<ScreenFrame?> FrameAsync(string? bearer, bool bitmap, string? from, bool external, CancellationToken ct)
+    public async Task<ScreenFrame?> FrameAsync(string? bearer, bool bitmap, string? from, bool external, CancellationToken ct) =>
+        await FrameAsync(bearer, bitmap, from, external, null, null, ct);
+
+    /// <summary>The panel's battery, as it says it (X-Battery-mV): what a lithium cell can show, else nothing.</summary>
+    public const int MinBatteryMv = 2500, MaxBatteryMv = 4500;
+
+    /// <summary>
+    /// As above, for one <paramref name="tab"/> of a panel with tabs (0 when absent; beyond its tabs: no picture), noting the
+    /// battery the panel told (millivolts) as its battery_voltage reading.
+    /// </summary>
+    public async Task<ScreenFrame?> FrameAsync(string? bearer, bool bitmap, string? from, bool external, int? tab, int? batteryMv, CancellationToken ct)
     {
         if (string.IsNullOrEmpty(bearer))
             return null;
@@ -130,13 +142,19 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
         if (bitmap && screen is not { Rendered: true })
             return new ScreenFrame([], "", "", NoPicture: true);
         var message = await feed.BuildAsync(device, ct);
+        var now = time.GetUtcNow();
+        if (batteryMv is >= MinBatteryMv and <= MaxBatteryMv && !node.ReadOnly)
+            ingest.Enqueue(new TelemetryReceived(device.DeviceId, Ulid.New(now), now, now, [("battery_voltage", batteryMv.Value / 1000.0)]));
+        var tabs = screen?.Tabs ?? 0;
+        var shown = tab ?? 0;
+        if (bitmap && tabs > 0 && (shown < 0 || shown >= tabs))
+            return new ScreenFrame([], "", "", NoPicture: true);
         var items = JsonSerializer.Serialize(message.Items, ContractJson.Options);
         // the picture is also what is behind and around the items: the background, the turn, the fonts
         var basis = bitmap ? items + "|" + await feed.PictureTagAsync(device, ct) : items;
         var etag = "\"" + (bitmap ? "b" : "j") + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(basis)))[..16] + "\"";
 
         // The city only watches (its copy of the database is not written): it answers but does not note the read.
-        var now = time.GetUtcNow();
         if (!node.ReadOnly && (device.ScreenReadAt is not { } last || now - last >= NoteEvery || device.ScreenReadFrom != from || device.ScreenReadExternal != external
             || (device.Driver == Drivers.Http && device.Status != DeviceStatus.Online)))
         {
@@ -152,11 +170,16 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
         }
         if (!bitmap)
             return new ScreenFrame(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message, ContractJson.Options)), "application/json", etag);
-        using var drawn = await feed.DrawAsync(device, message, ct);
+        var rotation = DisplayFeedService.RotationOf(device);
+        using var drawn = tabs > 0 ? await feed.DrawTabAsync(device, message, shown, ct) : await feed.DrawAsync(device, message, ct);
         if (drawn is null)
             return new ScreenFrame([], "", "", NoPicture: true);
-        using var turned = DisplayRender.Rotate(drawn, DisplayFeedService.RotationOf(device));
-        return new ScreenFrame(DisplayRender.Pack(turned), "application/octet-stream", etag, screen!.Width, screen.Height);
+        using var turned = DisplayRender.Rotate(drawn, rotation);
+        var bits = DisplayRender.Pack(turned);
+        // A tab holds the clock and the weather besides the items: its ETag is the picture itself.
+        if (tabs > 0)
+            etag = $"\"t{shown}" + Convert.ToHexStringLower(SHA256.HashData(bits))[..16] + "\"";
+        return new ScreenFrame(bits, "application/octet-stream", etag, screen!.Width, screen.Height, Tabs: tabs, Rotation: rotation);
     }
 
     private static readonly System.Text.RegularExpressions.Regex DeviceIdPattern = new("^[a-z][a-z0-9]*(-[a-z0-9]+)*$");
@@ -190,7 +213,8 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
 }
 
 /// <summary>A frame for a monitor: the body, its type and ETag; the size for a bitmap. NoPicture: the hive does not draw this screen.</summary>
-public sealed record ScreenFrame(byte[] Body, string ContentType, string ETag, int Width = 0, int Height = 0, bool NoPicture = false);
+/// Tabs and Rotation: how many tabs the board has and how the picture was turned (X-Frame-Tabs, X-Frame-Rotation).
+public sealed record ScreenFrame(byte[] Body, string ContentType, string ETag, int Width = 0, int Height = 0, bool NoPicture = false, int Tabs = 0, int Rotation = 0);
 
 public sealed record AddRemoteMonitorRequest(string DeviceId, string Name, string Board);
 
@@ -200,6 +224,9 @@ public static class ScreenAccessEndpoints
 
     /// <summary>Set only by the router's site in Caddy (:8088): the request came from the internet (AuthService.ExternalHeader).</summary>
     private const string ExternalHeader = "X-Hive-External";
+
+    /// <summary>The panel's battery in millivolts, with every read (contracts/monitor-http.md).</summary>
+    private const string BatteryHeader = "X-Battery-mV";
 
     /// <summary>Reads a minute per address: a panel needs one a minute at most, a guesser gets nowhere.</summary>
     public const int ReadsPerMinute = 12;
@@ -264,7 +291,9 @@ public static class ScreenAccessEndpoints
     {
         var header = http.Request.Headers.Authorization.ToString();
         var token = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header["Bearer ".Length..].Trim() : null;
-        var frame = await access.FrameAsync(token, bitmap, http.Connection.RemoteIpAddress?.ToString(), http.Request.Headers.ContainsKey(ExternalHeader), ct);
+        int? tab = int.TryParse(http.Request.Query["tab"], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : null;
+        int? battery = int.TryParse(http.Request.Headers[BatteryHeader], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var mv) ? mv : null;
+        var frame = await access.FrameAsync(token, bitmap, http.Connection.RemoteIpAddress?.ToString(), http.Request.Headers.ContainsKey(ExternalHeader), tab, battery, ct);
         http.Response.Headers.CacheControl = "no-store";
         if (frame is null)
             return Results.Unauthorized();
@@ -275,6 +304,11 @@ public static class ScreenAccessEndpoints
         {
             http.Response.Headers["X-Frame-Width"] = frame.Width.ToString(System.Globalization.CultureInfo.InvariantCulture);
             http.Response.Headers["X-Frame-Height"] = frame.Height.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            if (frame.Tabs > 0)
+            {
+                http.Response.Headers["X-Frame-Tabs"] = frame.Tabs.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                http.Response.Headers["X-Frame-Rotation"] = frame.Rotation.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            }
         }
         if (http.Request.Headers.IfNoneMatch.ToString() == frame.ETag)
             return Results.StatusCode(StatusCodes.Status304NotModified);

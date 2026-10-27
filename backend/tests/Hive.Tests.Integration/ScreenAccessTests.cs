@@ -243,6 +243,47 @@ public sealed class ScreenAccessTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task A_panel_with_tabs_reads_each_tab_and_tells_its_battery()
+    {
+        var admin = await hive.LoginAsync();
+        var anonymous = hive.App.CreateClient();
+        using var added = await admin.PostAsJsonAsync("/api/devices/remote-monitors", new { deviceId = "monitor-crow1", name = "Кухня", board = "crowpanel-epd37" });
+        Assert.Equal(HttpStatusCode.Created, added.StatusCode);
+        // landscape unless turned: the person lays out 416x240
+        var screen = (await admin.GetFromJsonAsync<JsonElement>("/api/devices/monitor-crow1/display")).GetProperty("screen");
+        Assert.Equal((416, 240, 4), (screen.GetProperty("width").GetInt32(), screen.GetProperty("height").GetInt32(), screen.GetProperty("tabs").GetInt32()));
+        using var issued = await admin.PostAsync("/api/devices/monitor-crow1/screen-access", null);
+        var token = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+
+        HttpRequestMessage Tab(int tab)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, $"/api/monitor/v1/frame.bin?tab={tab}");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.Add("X-Battery-mV", "3912");
+            return request;
+        }
+        var etags = new HashSet<string>();
+        for (var tab = 0; tab < 4; tab++)
+        {
+            using var frame = await anonymous.SendAsync(Tab(tab));
+            Assert.Equal(HttpStatusCode.OK, frame.StatusCode);
+            // the panel's own size (portrait), turned by the hive
+            Assert.Equal(("240", "416", "4", "270"), (frame.Headers.GetValues("X-Frame-Width").Single(), frame.Headers.GetValues("X-Frame-Height").Single(),
+                frame.Headers.GetValues("X-Frame-Tabs").Single(), frame.Headers.GetValues("X-Frame-Rotation").Single()));
+            Assert.Equal(30 * 416, (await frame.Content.ReadAsByteArrayAsync()).Length);
+            etags.Add(frame.Headers.ETag!.Tag);
+        }
+        Assert.Equal(4, etags.Count);  // each tab has its own picture
+        using (var none = await anonymous.SendAsync(Tab(4)))
+            Assert.Equal(HttpStatusCode.NotFound, none.StatusCode);
+        using var preview = await admin.GetAsync("/api/devices/monitor-crow1/display/preview.png?tab=1");
+        Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
+
+        // the battery it told is its reading
+        await hive.WaitForAsync(db => db.Telemetry.AnyAsync(t => t.DeviceId == "monitor-crow1" && t.Metric == "battery_voltage" && t.Value > 3.9 && t.Value < 3.92), "battery noted");
+    }
+
+    [Fact]
     public async Task A_monitor_far_away_is_added_by_hand_and_reads_the_picture_the_hive_draws()
     {
         var admin = await hive.LoginAsync();

@@ -267,7 +267,7 @@
         },
         "rotation": {
           "enum": [0, 90, 180, 270],
-          "description": "Screens the hive draws (e-ink): how the picture is turned, clockwise. Items, x, y and the background image are laid out in the turned screen (a panel standing on its side is 90 or 270); the hive turns the finished picture back for the panel. Absent: 0"
+          "description": "Screens the hive draws (e-ink): how the picture is turned, clockwise. Items, x, y and the background image are laid out in the turned screen (a panel standing on its side is 90 or 270); the hive turns the finished picture back for the panel. Absent: the board's default (0; 270 for crowpanel-epd37, which stands landscape)"
         },
         "items": {
           "type": "array",

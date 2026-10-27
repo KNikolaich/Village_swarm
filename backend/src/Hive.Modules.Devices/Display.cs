@@ -10,10 +10,12 @@ using Hive.Infrastructure;
 using Hive.Infrastructure.Data;
 using Hive.Infrastructure.Mqtt;
 using Hive.Modules.Telemetry;
+using Hive.Modules.Weather;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using SkiaSharp;
 
 namespace Hive.Modules.Devices;
@@ -30,9 +32,10 @@ public sealed record DisplayItemDto(string? Device, string Metric, string? Label
 /// <summary>
 /// Size of a screen in pixels as the person sees it (turned by the rotation): where items can be placed and what size a background
 /// image must be. <see cref="Rendered"/>: the hive draws the whole frame (e-ink panels), so a preview from the hive is exactly
-/// what the screen shows. <see cref="Background"/>: an image lies behind the items.
+/// what the screen shows. <see cref="Background"/>: an image lies behind the items. <see cref="Tabs"/>: screens the panel flips
+/// through with its buttons (contracts/monitor-http.md, tabs); the items are the last one, above the tab bar.
 /// </summary>
-public sealed record DisplayScreenDto(int Width, int Height, bool Rendered = false, bool Background = false);
+public sealed record DisplayScreenDto(int Width, int Height, bool Rendered = false, bool Background = false, int Tabs = 0);
 
 /// <summary>
 /// What the screen shows; <see cref="Screen"/> is filled by the hive for a board it knows (ignored when saving).
@@ -48,7 +51,14 @@ public static class DisplayScreens
         ["esp32c3-oled-042"] = new(72, 40),
         // Waveshare ESP32-S3-ePaper-1.54 (V2): 200x200 black and white, firmware monitor-epd154
         ["waveshare-s3-epaper-154"] = new(200, 200, Rendered: true),
+        // Elecrow CrowPanel ESP32 3.7" (UC8253, 240x416, rocker with a press): four tabs, firmware monitor-crowpanel37
+        ["crowpanel-epd37"] = new(240, 416, Rendered: true, Tabs: 4),
     };
+
+    /// <summary>How a board stands when the person did not choose: the CrowPanel lies landscape.</summary>
+    private static readonly Dictionary<string, int> DefaultRotations = new() { ["crowpanel-epd37"] = 270 };
+
+    public static int DefaultRotation(string? board) => board is not null && DefaultRotations.TryGetValue(board, out var r) ? r : 0;
 
     /// <summary>The panel's own screen.</summary>
     public static DisplayScreenDto? For(string? board) => board is not null && Boards.TryGetValue(board, out var s) ? s : null;
@@ -157,7 +167,8 @@ public static class DisplayText
 /// A hornet with a screen may show readings of other devices (config display.items). The hive keeps the choice in the hornet's
 /// config and sends the ready texts to vs/v1/hive/display/{id}: the hornet only draws them. Without items it shows its own readings.
 /// </summary>
-public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries telemetry, MqttGateway mqtt, TimeProvider time, DisplayFontCatalog fonts)
+public sealed class DisplayFeedService(
+    HiveDbContext db, TelemetryQueries telemetry, MqttGateway mqtt, TimeProvider time, DisplayFontCatalog fonts, IOptions<HiveOptions> hive)
 {
     /// <summary>Devices with a screen the hive feeds: hornets (over MQTT) and monitors far away (over HTTP).</summary>
     private static bool HasScreen(Device d) => d.Driver == Drivers.Hornet || d.Driver == Drivers.Http;
@@ -171,10 +182,11 @@ public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries teleme
         return new DisplayItemsDto(ItemsOf(device), DisplayScreens.For(device.Hw, rotation) is { } screen ? screen with { Background = device.ScreenBackground is not null } : null, rotation);
     }
 
-    /// <summary>How the picture of a screen the hive draws is turned (config display.rotation): 0, 90, 180 or 270.</summary>
+    /// <summary>How the picture of a screen the hive draws is turned (config display.rotation): 0, 90, 180 or 270; absent: the board's way.</summary>
     public static int RotationOf(Device device) =>
         device.Config is not null && device.Config.RootElement.TryGetProperty("display", out var display)
-            && display.TryGetProperty("rotation", out var r) && r.TryGetInt32(out var degrees) && DisplayScreens.Rotations.Contains(degrees) ? degrees : 0;
+            && display.TryGetProperty("rotation", out var r) && r.TryGetInt32(out var degrees) && DisplayScreens.Rotations.Contains(degrees)
+            ? degrees : DisplayScreens.DefaultRotation(device.Hw);
 
     public static IReadOnlyList<DisplayItemDto> ItemsOf(Device device)
     {
@@ -254,7 +266,7 @@ public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries teleme
                 }
                 return (JsonNode)o;
             }).ToArray());
-        if (newRotation == 0)
+        if (newRotation == DisplayScreens.DefaultRotation(device.Hw))
             display.Remove("rotation");
         else
             display["rotation"] = newRotation;
@@ -336,14 +348,76 @@ public sealed class DisplayFeedService(HiveDbContext db, TelemetryQueries teleme
     public async Task<string> PictureTagAsync(Device device, CancellationToken ct) =>
         $"{device.ScreenBackgroundSha}/{RotationOf(device)}/{await fonts.VersionAsync(ct)}";
 
-    /// <summary>The frame as PNG (the preview in the UI); null without a screen the hive draws.</summary>
-    public async Task<byte[]?> PreviewAsync(string deviceId, CancellationToken ct)
+    /// <summary>The frame as PNG (the preview in the UI), one tab of a panel with tabs; null without a screen the hive draws.</summary>
+    public async Task<byte[]?> PreviewAsync(string deviceId, int? tab, CancellationToken ct)
     {
         var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
         if (device is null || !HasScreen(device))
             return null;
-        using var bitmap = await DrawAsync(device, await BuildAsync(device, ct), ct);
+        var message = await BuildAsync(device, ct);
+        var tabs = DisplayScreens.For(device.Hw)?.Tabs ?? 0;
+        using var bitmap = tabs > 0
+            ? await DrawTabAsync(device, message, Math.Clamp(tab ?? ScreenTabs.Measure, 0, tabs - 1), ct)
+            : await DrawAsync(device, message, ct);
         return bitmap is null ? null : DisplayRender.Png(bitmap);
+    }
+
+    /// <summary>Recent events worth a line on a calendar: not the chatter (configs applied, snapshots, timelapse frames).</summary>
+    private static readonly string[] Chatter = ["config_applied", "snapshot", "photo_failed", "device_online"];
+
+    /// <summary>Short names of what happened, for a line on a small screen.</summary>
+    public static string EventName(string type) => type switch
+    {
+        "motion" => "Движение",
+        "door_open" => "Дверь",
+        "leak" => "Протечка",
+        "failsafe" => "Защита обогрева",
+        "tamper" => "Камера закрыта",
+        "rule" => "Правило",
+        "ota" => "Прошивка",
+        "ota_rollout" => "Прошивки",
+        "backup" => "Бэкап",
+        "backup_cleared" => "Бэкап в порядке",
+        "disk_cleanup" => "Диск очищен",
+        "device_offline" => "Не на связи",
+        _ => type,
+    };
+
+    /// <summary>One tab of a panel with tabs, as the person sees it (not yet turned for the panel).</summary>
+    public async Task<SKBitmap?> DrawTabAsync(Device device, DisplayMessage message, int tab, CancellationToken ct)
+    {
+        if (DisplayScreens.For(device.Hw, RotationOf(device)) is not { } screen)
+            return null;
+        var now = time.GetUtcNow();
+        var options = hive.Value;
+        WeatherForecast? weather = null;
+        if (tab == ScreenTabs.Forecast && await db.WeatherSnapshots.AsNoTracking().FirstOrDefaultAsync(ct) is { } snapshot)
+            weather = snapshot.Payload.Deserialize<WeatherForecast>(new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        IReadOnlyList<TabEvent> events = [];
+        if (tab == ScreenTabs.Calendar)
+        {
+            var since = now.AddDays(-30);
+            var rows = await db.Events.AsNoTracking()
+                .Where(e => e.Ts >= since && !Chatter.Contains(e.Type) && !db.Media.Any(m => m.EventId == e.Id && m.Kind == MediaKind.Timelapse))
+                .OrderByDescending(e => e.Ts).Take(4)
+                .Select(e => new { e.Ts, e.Type, Name = db.Devices.Where(d => d.DeviceId == e.DeviceId).Select(d => d.Name).FirstOrDefault() })
+                .ToListAsync(ct);
+            events = rows.Select(e => new TabEvent(e.Ts, EventName(e.Type), e.Name)).ToList();
+        }
+        var set = await fonts.LoadAsync(message.Items.Select(i => i.Font).Append(ScreenTabs.TextFamily).Append(ScreenTabs.ClockFamily), ct);
+        using var background = tab == ScreenTabs.Measure && device.ScreenBackground is { } png ? SKBitmap.Decode(png) : null;
+        var context = new TabContext(now, options.ToLocal, await BatteryAsync(device.DeviceId, ct), weather, events);
+        return ScreenTabs.Draw(tab, screen, context, set, message, background);
+    }
+
+    /// <summary>The panel's battery in percent from its last word on it (X-Battery-mV), when that is under two hours old.</summary>
+    private async Task<int?> BatteryAsync(string deviceId, CancellationToken ct)
+    {
+        var since = time.GetUtcNow().AddHours(-2);
+        var volts = await db.Telemetry.AsNoTracking()
+            .Where(t => t.DeviceId == deviceId && t.Metric == "battery_voltage" && t.Ts >= since)
+            .OrderByDescending(t => t.Ts).Select(t => (double?)t.Value).FirstOrDefaultAsync(ct);
+        return volts is { } v ? ScreenTabs.BatteryPercent(v) : null;
     }
 
     public const int MaxBackgroundBytes = 1024 * 1024;

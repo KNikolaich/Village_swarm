@@ -1,0 +1,11 @@
+{
+  "v": 1, "rev": 2, "name": "Панель на кухне",
+  "health_interval_s": 60,
+  "display": {
+    "rotation": 270,
+    "items": [
+      { "text": "Улица", "x": 8, "y": 8, "size": 1, "font": "anonymous-pro", "px": 18 },
+      { "device": "meteo-out1", "metric": "temperature", "x": 8, "y": 34, "size": 5, "font": "dseg7", "px": 48 }
+    ]
+  }
+}

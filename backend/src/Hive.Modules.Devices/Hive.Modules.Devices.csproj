@@ -15,5 +15,7 @@
     <ProjectReference Include="../Hive.Contracts/Hive.Contracts.csproj" />
     <ProjectReference Include="../Hive.Infrastructure/Hive.Infrastructure.csproj" />
     <ProjectReference Include="../Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
+    <!-- the forecast tab of a panel with tabs (ScreenTabs) -->
+    <ProjectReference Include="../Hive.Modules.Weather/Hive.Modules.Weather.csproj" />
   </ItemGroup>
 </Project>

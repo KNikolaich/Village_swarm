@@ -185,8 +185,9 @@ public static class DevicesModule
         devices.MapGet("/{deviceId}/display", async Task<Results<Ok<DisplayItemsDto>, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
             await feed.GetAsync(deviceId, ct) is { } display ? TypedResults.Ok(display) : TypedResults.NotFound());
         // The frame the hive draws for a screen (e-ink monitors), as the screen will show it.
-        devices.MapGet("/{deviceId}/display/preview.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
-            await feed.PreviewAsync(deviceId, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());
+        // A panel with tabs: ?tab=0..3 (contracts/monitor-http.md); absent: the person's own layout.
+        devices.MapGet("/{deviceId}/display/preview.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, int? tab, DisplayFeedService feed, CancellationToken ct) =>
+            await feed.PreviewAsync(deviceId, tab, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());
         // The picture behind the items of a screen the hive draws: the file in the body, exactly the screen's size.
         devices.MapGet("/{deviceId}/display/background.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
             await feed.BackgroundAsync(deviceId, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());

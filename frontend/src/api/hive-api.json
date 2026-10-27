@@ -2096,6 +2096,17 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "tab",
+            "in": "query",
+            "schema": {
+              "type": [
+                "null",
+                "integer"
+              ],
+              "format": "int32"
+            }
           }
         ],
         "responses": {
@@ -5749,6 +5760,11 @@
           "background": {
             "type": "boolean",
             "default": false
+          },
+          "tabs": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
           }
         }
       },
@@ -6405,7 +6421,7 @@
           }
         }
       },
-      "JsonElement": { },
+      "JsonElement": {},
       "JsonObject": {
         "type": "object"
       },
@@ -9236,6 +9252,22 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "pressure": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "cloudCover": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32",
+            "default": null
           }
         }
       },
@@ -9414,6 +9446,22 @@
               "number"
             ],
             "format": "double"
+          },
+          "pressure": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double",
+            "default": null
+          },
+          "cloudCover": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32",
+            "default": null
           }
         }
       },

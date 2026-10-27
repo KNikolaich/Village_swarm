@@ -14,7 +14,7 @@ public static class DisplayRender
     /// <summary>Label height: the smallest text, as on the OLED where labels use the smallest font.</summary>
     private static int LabelHeight(int screenHeight) => DisplayText.PixelHeight(1, screenHeight);
 
-    private static SKFont MakeFont(FontFace face, float size) => new(face.Typeface, size)
+    internal static SKFont MakeFont(FontFace face, float size) => new(face.Typeface, size)
     {
         Edging = SKFontEdging.Alias,
         Subpixel = false,
@@ -78,7 +78,7 @@ public static class DisplayRender
     /// or with <paramref name="capSized"/> the height of capital letters. A letter the font lacks (a degree sign in a segment
     /// display, Russian letters in a Gothic one) is drawn with the standard font instead.
     /// </summary>
-    private static float Text(SKCanvas canvas, SKPaint ink, string text, float x, float top, FontFace face, FontFace fallback, float size, bool capSized, string? align)
+    internal static float Text(SKCanvas canvas, SKPaint ink, string text, float x, float top, FontFace face, FontFace fallback, float size, bool capSized, string? align)
     {
         SKFont Make(FontFace f) => MakeFont(f, capSized ? SizeForCap(f.Typeface, size) : size);
         using var main = Make(face);

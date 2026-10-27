@@ -32,6 +32,29 @@ The picture is made of the screen's background image (if the person uploaded one
 (`font`, `px`, `bold`, `italic`) and the rotation the person chose; the `ETag` changes with any of them, and with the fonts the hive knows. `X-Frame-Width` and
 `X-Frame-Height` are those of the panel itself, not of the turned screen: the hive turns the picture back before it sends it.
 
+### Tabs (panels with buttons)
+
+A board with several screens to flip through (Elecrow CrowPanel 3.7", `crowpanel-epd37`: 240×416, a rocker with a press,
+MENU and EXIT) reads them one at a time: `GET /api/monitor/v1/frame.bin?tab=<n>`, `n` from 0. A board without tabs ignores
+`tab`. Answers as above, plus:
+
+- `X-Frame-Tabs`: how many tabs the board has (4 for `crowpanel-epd37`: 0 Common, 1 Forecast, 2 Calendar, 3 Measure).
+  A `tab` beyond them is `404`.
+- `X-Frame-Rotation`: how the hive turned the picture (0, 90, 180, 270, clockwise; the board's default when the person did
+  not choose: 270 for `crowpanel-epd37`, which stands landscape). The panel draws its own marks (the tab cursor, the
+  "нет связи" banner) in the same turn.
+- The `ETag` is per tab (the clock tab changes every minute).
+
+Every tab ends in a tab bar the panel can find without asking: the bottom 22 pixels of the turned screen, four equal cells
+left to right, the shown tab drawn inverted (white on black). While the person moves the rocker, the panel inverts the
+cell under its cursor itself; the press shows the chosen tab from its memory at once and then reads it anew. Common
+(the clock) and Measure (the person's own layout, as `items` with background and fonts, drawn above the tab bar) are read
+every minute, just after the minute turns; Forecast and Calendar at the panel's interval. Times are the hive's time zone.
+
+A panel may say its battery with every read: request header `X-Battery-mV` (integer millivolts, 2500..4500; absent when
+it cannot measure it). The hive keeps it as the monitor's `battery_voltage` reading (volts) and draws the battery on the
+tabs that have one; a value outside the range is ignored.
+
 Monitors far away that speak only HTTP (no MQTT, no enrollment) are added by hand in the UI: `POST /api/devices/remote-monitors`
 `{deviceId, name, board}` (admin), then a token on their page. Their first read marks them online; the time of the last read
 is when the hive last saw them.
