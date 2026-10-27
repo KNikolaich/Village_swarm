@@ -96,6 +96,7 @@ public static class DevicesModule
         services.AddScoped<DeviceConfigService>();
         services.AddScoped<OtaService>();
         services.AddScoped<DisplayFeedService>();
+        services.AddScoped<DisplayFontCatalog>();
         services.AddScreenAccess();
         services.AddScoped<ValueRangeStore>();
         services.AddHostedService<DisplayFeed>();
@@ -116,6 +117,7 @@ public static class DevicesModule
     {
         app.MapZigbeeEndpoints();
         app.MapScreenAccessEndpoints();
+        app.MapDisplayFontEndpoints();
         var devices = app.MapGroup("/api/devices").WithTags("devices");
         devices.MapGet("", (int? zone, string? type, string? status, DeviceQueries q, CancellationToken ct) =>
             q.ListAsync(zone, type, status, ct));
@@ -185,10 +187,31 @@ public static class DevicesModule
         // The frame the hive draws for a screen (e-ink monitors), as the screen will show it.
         devices.MapGet("/{deviceId}/display/preview.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
             await feed.PreviewAsync(deviceId, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());
+        // The picture behind the items of a screen the hive draws: the file in the body, exactly the screen's size.
+        devices.MapGet("/{deviceId}/display/background.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
+            await feed.BackgroundAsync(deviceId, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());
+        devices.MapPut("/{deviceId}/display/background", async Task<Results<NoContent, NotFound, ValidationProblem>> (
+                string deviceId, HttpRequest request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+            {
+                var image = await DisplayFontEndpoints.ReadBodyAsync(request, DisplayFeedService.MaxBackgroundBytes, ct);
+                if (image is null)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = ["картинка: до 1 МБ"] });
+                var (status, error) = await feed.SetBackgroundAsync(deviceId, image, $"user:{user.Identity?.Name}", ct);
+                return status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = [error ?? "refused"] }),
+                    _ => TypedResults.NoContent(),
+                };
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly);
+        devices.MapDelete("/{deviceId}/display/background", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+                await feed.RemoveBackgroundAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.AdminOnly);
         devices.MapPut("/{deviceId}/display", async Task<Results<Ok<DisplayItemsDto>, NotFound, ValidationProblem>> (
                 string deviceId, DisplayItemsDto request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
             {
-                var (status, error) = await feed.SaveAsync(deviceId, request.Items, $"user:{user.Identity?.Name}", ct);
+                var (status, error) = await feed.SaveAsync(deviceId, request.Items, request.Rotation, $"user:{user.Identity?.Name}", ct);
                 return status switch
                 {
                     ConfigUpdateStatus.NotFound => TypedResults.NotFound(),

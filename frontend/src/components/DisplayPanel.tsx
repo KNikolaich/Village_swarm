@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Plus, X } from 'lucide-react'
+import { ImagePlus, Plus, Trash2, Type, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
@@ -8,7 +8,10 @@ import { HelpTip } from '@/components/HelpTip'
 import { Button } from '@/components/ui/button'
 import { Input, Select } from '@/components/ui/primitives'
 import { metricLabel, t } from '@/i18n'
-import { type Align, clampToScreen, labelHeight, maxAuto, maxPlaced, pixelHeight, type Screen, screenText, stackedPlaces, textAnchor } from '@/lib/display'
+import {
+  type Align, backgroundSize, clampPx, clampToScreen, fontBadge, type FontInfo, labelHeight, maxAuto, maxPlaced, maxPx, minPx, pixelHeight,
+  rotations, type Screen, screenText, stackedPlaces, textAnchor,
+} from '@/lib/display'
 
 interface Row {
   /** The device whose reading is shown; '' is this hornet. */
@@ -19,7 +22,16 @@ interface Row {
   y: number
   size: number
   align: Align
+  /** A caption the person typed (no source): its text; null for a reading. */
+  text: string | null
+  /** Font family id ('' is the standard one) and the size in pixels (null: by `size`), for screens the hive draws. */
+  font: string
+  px: number | null
+  bold: boolean
+  italic: boolean
 }
+
+const noStyle = { text: null, font: '', px: null, bold: false, italic: false }
 
 /** A board the hive does not know the screen of: the 0.42" OLED, the only one so far. */
 const fallbackScreen: Screen = { width: 72, height: 40 }
@@ -56,8 +68,8 @@ function ScreenPreview({ screen, rows, texts, onMove, editable }: {
       onPointerUp={() => { drag.current = null }}
       onPointerLeave={() => { drag.current = null }}>
       {rows.map((row, i) => {
-        const valueTop = row.y + (row.label ? labelHeight : 0)
-        const height = pixelHeight(row.size, screen.height)
+        const valueTop = row.y + (row.label && row.text === null ? labelHeight : 0)
+        const height = row.px ?? pixelHeight(row.size, screen.height)
         return (
           <g key={i} className={editable ? 'cursor-move' : undefined}
             onPointerDown={(e) => {
@@ -66,11 +78,11 @@ function ScreenPreview({ screen, rows, texts, onMove, editable }: {
               drag.current = { i, dx: p.x - row.x, dy: p.y - row.y }
               svg.current?.setPointerCapture(e.pointerId)
             }}>
-            {row.label && (
+            {row.label && row.text === null && (
               <text x={row.x} y={row.y} dominantBaseline="hanging" textAnchor={textAnchor(row.align)} fontSize={7} fill="#fff" fontFamily="monospace">{row.label}</text>
             )}
             {/* digits take about 0.72 of the font size from the top */}
-            <text x={row.x} y={valueTop} dominantBaseline="hanging" textAnchor={textAnchor(row.align)} fontSize={height / 0.72} fill="#fff" fontFamily="sans-serif">{texts[i]}</text>
+            <text x={row.x} y={valueTop} dominantBaseline="hanging" textAnchor={textAnchor(row.align)} fontSize={height / 0.72} fill="#fff" fontFamily="sans-serif" fontWeight={row.bold ? 700 : 400} fontStyle={row.italic ? 'italic' : 'normal'}>{texts[i]}</text>
           </g>
         )
       })}
@@ -91,14 +103,18 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
   const latest = useLatestTelemetry()
   const [rows, setRows] = useState<Row[]>([])
   const [placed, setPlaced] = useState(false)
+  const [rotation, setRotation] = useState(0)
+  const fonts = useQuery({ queryKey: ['display-fonts'], queryFn: () => call(api.GET('/api/display/fonts')) })
   const screen: Screen = current.data?.screen ?? fallbackScreen
   useEffect(() => {
     if (!current.data) return
     setRows(current.data.items.map((i) => ({
       device: i.device ?? '', metric: i.metric, label: i.label ?? '',
       x: i.x ?? 0, y: i.y ?? 0, size: i.size ?? 3, align: (i.align as Align | null) ?? 'left',
+      text: i.text ?? null, font: i.font ?? '', px: i.px ?? null, bold: i.bold ?? false, italic: i.italic ?? false,
     })))
     setPlaced(current.data.items.some((i) => i.size != null))
+    setRotation(current.data.rotation ?? 0)
   }, [current.data])
 
   // The readings each device has had lately: a screen can only show what the hive has seen.
@@ -111,6 +127,9 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
   const nameOf = (id: string) => (devices.data ?? []).find((d) => d.deviceId === id)?.name ?? id
   const sources = (devices.data ?? []).filter((d) => d.deviceId !== deviceId && metricsOf(d.deviceId).length > 0)
   const maxRows = placed ? maxPlaced : maxAuto
+  const rendered = !!current.data?.screen?.rendered
+  const styled = rendered && placed  // fonts and sizes in pixels: only where the hive draws and the rows are placed
+  const fontList: FontInfo[] = fonts.data ?? []
 
   function setRow(i: number, patch: Partial<Row>) {
     setRows((all) => all.map((r, k) => {
@@ -126,32 +145,80 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
     setPlaced(on)
     // switching on: the rows one under another, ready to be moved; switching off: the screen lays them out again
     if (on) setRows((all) => all.map((r, i) => ({ ...r, ...stackedPlaces(all.length, screen)[i], align: 'left' })))
-    else setRows((all) => all.slice(0, maxAuto))
+    else setRows((all) => all.filter((r) => r.text === null).slice(0, maxAuto))
   }
 
   function addRow() {
     setRows((all) => [...all, {
       device: '', metric: metricsOf(deviceId)[0] ?? '', label: '',
-      x: 0, y: Math.min(screen.height - 1, all.length * 10), size: 3, align: 'left',
+      x: 0, y: Math.min(screen.height - 1, all.length * 10), size: 3, align: 'left', ...noStyle,
     }])
   }
 
-  const complete = rows.every((r) => r.metric !== '')
-  const texts = rows.map((r) => screenText(r.metric, valueOf(r.device || deviceId, r.metric)))
+  function addText() {
+    setRows((all) => [...all, {
+      device: '', metric: '', label: '', x: 0, y: Math.min(screen.height - 1, all.length * 10), size: 3, align: 'left', ...noStyle, text: '',
+    }])
+  }
+
+  const complete = rows.every((r) => (r.text === null ? r.metric !== '' : r.text.trim() !== ''))
+  const texts = rows.map((r) => r.text ?? screenText(r.metric, valueOf(r.device || deviceId, r.metric)))
   const number = (v: string, min: number, max: number) => Math.min(max, Math.max(min, Math.round(Number(v) || 0)))
 
   async function save() {
     const items = rows.map((r) => ({
-      device: r.device || null, metric: r.metric, label: r.label.trim() || null,
+      device: r.text === null ? r.device || null : null, metric: r.text === null ? r.metric : '', label: r.text === null ? r.label.trim() || null : null,
+      ...(r.text !== null ? { text: r.text.trim() } : {}),
       ...(placed ? { x: r.x, y: r.y, size: r.size, align: r.align === 'left' ? null : r.align } : {}),
+      ...(styled ? { font: r.font || null, px: r.px, bold: r.bold, italic: r.italic } : {}),
     }))
-    const { response } = await api.PUT('/api/devices/{deviceId}/display', { params: { path: { deviceId } }, body: { items } })
+    const { response } = await api.PUT('/api/devices/{deviceId}/display', {
+      params: { path: { deviceId } }, body: { items, ...(rendered ? { rotation } : {}) },
+    })
     if (!response.ok) {
       toast.error(t('errors.generic'))
       return
     }
     toast.success(t('display.saved'))
     await qc.invalidateQueries({ queryKey: key })
+  }
+
+  async function uploadBackground(file: File) {
+    const { response, error } = await api.PUT('/api/devices/{deviceId}/display/background', {
+      params: { path: { deviceId } }, body: file as unknown as string,
+      bodySerializer: (body) => body as unknown as Blob, headers: { 'Content-Type': 'application/octet-stream' },
+    })
+    if (!response.ok) {
+      const why = (error as { errors?: Record<string, string[]> } | undefined)?.errors?.file?.[0]
+      toast.error(`${t('display.backgroundWrong')}: ${why ?? t('errors.generic')}`)
+      return
+    }
+    toast.success(t('display.backgroundSaved'))
+    await qc.invalidateQueries({ queryKey: key })
+  }
+
+  async function removeBackground() {
+    await api.DELETE('/api/devices/{deviceId}/display/background', { params: { path: { deviceId } } })
+    toast.success(t('display.backgroundRemoved'))
+    await qc.invalidateQueries({ queryKey: key })
+  }
+
+  async function uploadFont(file: File) {
+    const { response, error } = await api.POST('/api/display/fonts', {
+      body: file as unknown as string, bodySerializer: (body) => body as unknown as Blob, headers: { 'Content-Type': 'application/octet-stream' },
+    })
+    if (!response.ok) {
+      toast.error((error as { errors?: Record<string, string[]> } | undefined)?.errors?.file?.[0] ?? t('errors.generic'))
+      return
+    }
+    toast.success(t('display.fontSaved'))
+    await qc.invalidateQueries({ queryKey: ['display-fonts'] })
+  }
+
+  async function removeFont(id: string) {
+    await api.DELETE('/api/display/fonts/{familyId}', { params: { path: { familyId: id } } })
+    toast.success(t('display.fontRemoved'))
+    await qc.invalidateQueries({ queryKey: ['display-fonts'] })
   }
 
   return (
@@ -168,15 +235,50 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
           <p className="text-xs text-neutral-500">{t('display.previewHint').replace('{w}', String(screen.width)).replace('{h}', String(screen.height))}</p>
         </div>
       )}
-      {current.data?.screen?.rendered && (
-        <div className="space-y-1">
-          <p className="flex items-center gap-1 text-xs text-neutral-400">
-            {t('display.rendered')}
-            <HelpTip text={t('display.renderedHelp')} />
-          </p>
-          <img src={`/api/devices/${encodeURIComponent(deviceId)}/display/preview.png?v=${current.dataUpdatedAt}`}
-            alt={t('display.rendered')} width={screen.width} height={screen.height}
-            className="w-full max-w-80 rounded border border-neutral-700 bg-white" style={{ imageRendering: 'pixelated' }} />
+      {rendered && (
+        <label className="block max-w-xs space-y-1">
+          <FieldLabel text={t('display.rotation')} help={t('display.rotationHelp')} />
+          <Select value={rotation} disabled={!editable} onChange={(e) => setRotation(Number(e.target.value))}>
+            {rotations.map((r) => <option key={r} value={r}>{r}°</option>)}
+          </Select>
+        </label>
+      )}
+      {rendered && (
+        <div className="flex flex-wrap items-start gap-4">
+          <div className="space-y-1">
+            <p className="flex items-center gap-1 text-xs text-neutral-400">
+              {t('display.rendered')}
+              <HelpTip text={t('display.renderedHelp')} />
+            </p>
+            <img src={`/api/devices/${encodeURIComponent(deviceId)}/display/preview.png?v=${current.dataUpdatedAt}`}
+              alt={t('display.rendered')} width={screen.width} height={screen.height}
+              className="w-full max-w-80 rounded border border-neutral-700 bg-white" style={{ imageRendering: 'pixelated' }} />
+          </div>
+          <div className="min-w-48 space-y-2">
+            <p className="flex items-center gap-1 text-xs text-neutral-400">
+              {t('display.background')} {backgroundSize(screen)}
+              <HelpTip text={t('display.backgroundHelp').replace('{size}', backgroundSize(screen))} />
+            </p>
+            {current.data?.screen?.background ? (
+              <img src={`/api/devices/${encodeURIComponent(deviceId)}/display/background.png?v=${current.dataUpdatedAt}`}
+                alt={t('display.background')} width={screen.width} height={screen.height}
+                className="w-full max-w-40 rounded border border-neutral-700 bg-white" style={{ imageRendering: 'pixelated' }} />
+            ) : (
+              <p className="text-xs text-neutral-500">{t('display.backgroundNone')}</p>
+            )}
+            {editable && (
+              <div className="flex flex-wrap gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800">
+                  <ImagePlus className="size-4" />{t('display.backgroundUpload')}
+                  <input type="file" accept="image/png,image/jpeg,image/bmp,image/gif" className="sr-only"
+                    onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void uploadBackground(f) }} />
+                </label>
+                {current.data?.screen?.background && (
+                  <Button variant="ghost" size="sm" onClick={() => void removeBackground()}><Trash2 />{t('display.backgroundRemove')}</Button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
       {rows.length === 0 && <p className="text-xs text-neutral-400">{t('display.own')}</p>}
@@ -185,6 +287,12 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
         return (
           <div key={i} className="space-y-2 rounded-lg border border-neutral-800 p-2">
             <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+              {row.text !== null ? (
+                <label className="col-span-2 space-y-1 sm:col-span-3">
+                  <FieldLabel text={t('display.text')} help={t('display.textHelp')} />
+                  <Input value={row.text} maxLength={24} disabled={!editable} onChange={(e) => setRow(i, { text: e.target.value })} />
+                </label>
+              ) : (<>
               <label className="space-y-1">
                 <span className="text-xs text-neutral-400">{t('display.source')}</span>
                 <Select value={row.device} disabled={!editable} onChange={(e) => setRow(i, { device: e.target.value })}>
@@ -204,6 +312,7 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
                 <FieldLabel text={t('display.label')} help={t(placed ? 'display.labelPlacedHelp' : 'display.labelHelp')} />
                 <Input value={row.label} maxLength={16} disabled={!editable} placeholder={!placed && row.device ? nameOf(row.device) : ''} onChange={(e) => setRow(i, { label: e.target.value })} />
               </label>
+              </>)}
               <Button variant="ghost" size="icon" className="size-9 shrink-0" disabled={!editable} title={t('display.remove')} aria-label={t('display.remove')}
                 onClick={() => setRows((all) => all.filter((_, k) => k !== i))}><X /></Button>
             </div>
@@ -234,14 +343,60 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
                 </label>
               </div>
             )}
+            {styled && (
+              <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[2fr_1fr_auto_auto]">
+                <label className="col-span-2 space-y-1 sm:col-span-1">
+                  <FieldLabel text={t('display.font')} help={t('display.fontHelp')} />
+                  <Select value={row.font} disabled={!editable} onChange={(e) => setRow(i, { font: e.target.value })}>
+                    <option value="">{fontList.find((f) => f.id === 'standard')?.name ?? t('display.font')}</option>
+                    {fontList.filter((f) => f.id !== 'standard').map((f) => <option key={f.id} value={f.id}>{f.name} · {fontBadge(f)}</option>)}
+                    {row.font && !fontList.some((f) => f.id === row.font) && <option value={row.font}>{row.font}</option>}
+                  </Select>
+                </label>
+                <label className="space-y-1">
+                  <FieldLabel text={t('display.px')} help={t('display.pxHelp')} />
+                  <Input type="number" min={minPx} max={maxPx} value={row.px ?? ''} disabled={!editable} placeholder={String(pixelHeight(row.size, screen.height))}
+                    onChange={(e) => setRow(i, { px: e.target.value === '' ? null : clampPx(Number(e.target.value)) })} />
+                </label>
+                <label className="flex items-center gap-1 pb-2 text-xs text-neutral-300">
+                  <input type="checkbox" checked={row.bold} disabled={!editable} onChange={(e) => setRow(i, { bold: e.target.checked })} />{t('display.bold')}
+                </label>
+                <label className="flex items-center gap-1 pb-2 text-xs text-neutral-300">
+                  <input type="checkbox" checked={row.italic} disabled={!editable} onChange={(e) => setRow(i, { italic: e.target.checked })} />{t('display.italic')}
+                </label>
+              </div>
+            )}
           </div>
         )
       })}
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="outline" disabled={!editable || rows.length >= maxRows} onClick={addRow}><Plus />{t('display.add')}</Button>
+        {styled && <Button variant="outline" disabled={!editable || rows.length >= maxRows} onClick={addText}><Type />{t('display.addText')}</Button>}
         <Button disabled={!editable || !complete} onClick={() => void save()}>{t('display.save')}</Button>
       </div>
       {!placed && <p className="text-xs text-neutral-500">{t('display.layout')}</p>}
+      {rendered && editable && (
+        <details className="text-xs text-neutral-400">
+          <summary className="cursor-pointer">{t('display.ownFonts')}</summary>
+          <div className="mt-2 space-y-2">
+            <p className="text-neutral-500">{t('display.ownFontsHelp')}</p>
+            <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-neutral-700 px-3 py-1.5 hover:bg-neutral-800">
+              <Upload className="size-4" />{t('display.fontUpload')}
+              <input type="file" accept=".ttf,.otf,font/ttf,font/otf" className="sr-only"
+                onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void uploadFont(f) }} />
+            </label>
+            <ul className="space-y-1">
+              {fontList.filter((f) => !f.builtin).map((f) => (
+                <li key={f.id} className="flex items-center gap-2">
+                  <span>{f.name} · {fontBadge(f)} · {f.styles.join(', ')}</span>
+                  <Button variant="ghost" size="icon" className="size-7" title={t('display.fontRemove')} aria-label={t('display.fontRemove')}
+                    onClick={() => void removeFont(f.id)}><Trash2 /></Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
+      )}
     </div>
   )
 }

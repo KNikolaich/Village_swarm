@@ -49,3 +49,32 @@ export function stackedPlaces(count: number, screen: Screen): { x: number; y: nu
 export function textAnchor(align: Align): 'start' | 'middle' | 'end' {
   return align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start'
 }
+
+/** Pixel heights a font can be set to on a screen the hive draws (DisplayText.MinPx/MaxPx). */
+export const minPx = 6
+export const maxPx = 48
+export const rotations = [0, 90, 180, 270] as const
+
+export interface FontInfo {
+  id: string
+  name: string
+  cyrillic: boolean
+  digitsOnly: boolean
+  builtin: boolean
+  styles: string[]
+}
+
+/** The mark the picker shows next to a font: Digi for digits only, En without Russian letters, RU with them. */
+export function fontBadge(font: Pick<FontInfo, 'cyrillic' | 'digitsOnly'>): 'Digi' | 'En' | 'RU' {
+  return font.digitsOnly ? 'Digi' : font.cyrillic ? 'RU' : 'En'
+}
+
+/** Keeps a size in pixels inside what a font can be set to. */
+export function clampPx(px: number): number {
+  return Math.min(maxPx, Math.max(minPx, Math.round(px) || minPx))
+}
+
+/** How the picture behind the items must be prepared: the exact size of the screen as it is turned. */
+export function backgroundSize(screen: Screen): string {
+  return `${screen.width}×${screen.height}`
+}

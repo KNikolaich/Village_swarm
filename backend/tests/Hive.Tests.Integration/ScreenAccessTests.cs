@@ -119,6 +119,102 @@ public sealed class ScreenAccessTests(HiveFixture hive)
         return request;
     }
 
+    private static byte[] Png(int width, int height)
+    {
+        using var bitmap = new SkiaSharp.SKBitmap(width, height);
+        bitmap.Erase(SkiaSharp.SKColors.Black);
+        using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
+        return image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100).ToArray();
+    }
+
+    [Fact]
+    public async Task A_background_of_the_right_size_a_turn_and_a_caption_change_the_frame_a_panel_reads()
+    {
+        var admin = await hive.LoginAsync();
+        using var added = await admin.PostAsJsonAsync("/api/devices/remote-monitors", new { deviceId = "monitor-bg1", name = "Фон", board = "waveshare-s3-epaper-154" });
+        Assert.Equal(HttpStatusCode.Created, added.StatusCode);
+        using var issued = await admin.PostAsync("/api/devices/monitor-bg1/screen-access", null);
+        var token = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+        var anonymous = hive.App.CreateClient();
+
+        async Task<(string ETag, byte[] Body)> Read()
+        {
+            using var response = await anonymous.SendAsync(Bitmap(token));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            return (response.Headers.ETag!.Tag, await response.Content.ReadAsByteArrayAsync());
+        }
+        var blank = await Read();
+        Assert.Equal(200 * 25, blank.Body.Length);  // 200 pixels of 200 rows, one bit each
+
+        // a caption in a font of the hive, laid out by hand
+        using var saved = await admin.PutAsJsonAsync("/api/devices/monitor-bg1/display", new
+        {
+            items = new object[] { new { metric = "", text = "Дача", x = 4, y = 4, size = 2, font = "anonymous-pro", px = 24, bold = true } },
+        });
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        var captioned = await Read();
+        Assert.NotEqual(blank.ETag, captioned.ETag);
+        Assert.Contains(captioned.Body, b => b != 0xFF);
+
+        // a family id is a slug; one that is not in the catalog is only drawn in the standard font
+        using var badFont = await admin.PutAsJsonAsync("/api/devices/monitor-bg1/display",
+            new { items = new object[] { new { metric = "", text = "x", x = 0, y = 0, size = 2, font = "Bad Font" } } });
+        Assert.Equal(HttpStatusCode.BadRequest, badFont.StatusCode);
+
+        // the background: exactly the size of the screen
+        using var wrongSize = await admin.PutAsync("/api/devices/monitor-bg1/display/background", new ByteArrayContent(Png(100, 100)));
+        Assert.Equal(HttpStatusCode.BadRequest, wrongSize.StatusCode);
+        using var notImage = await admin.PutAsync("/api/devices/monitor-bg1/display/background", new ByteArrayContent([1, 2, 3]));
+        Assert.Equal(HttpStatusCode.BadRequest, notImage.StatusCode);
+        using var right = await admin.PutAsync("/api/devices/monitor-bg1/display/background", new ByteArrayContent(Png(200, 200)));
+        Assert.Equal(HttpStatusCode.NoContent, right.StatusCode);
+        var withBackground = await Read();
+        Assert.NotEqual(captioned.ETag, withBackground.ETag);
+        Assert.True(withBackground.Body.Count(b => b == 0) > 4000, "the black background is under the caption");
+        using var shown = await admin.GetAsync("/api/devices/monitor-bg1/display/background.png");
+        Assert.Equal(HttpStatusCode.OK, shown.StatusCode);
+
+        // turned a quarter, a square panel keeps its size and the picture is drawn turned: the tag changes, so the panel redraws
+        using var turned = await admin.PutAsJsonAsync("/api/devices/monitor-bg1/display", new { items = Array.Empty<object>(), rotation = 90 });
+        Assert.Equal(HttpStatusCode.OK, turned.StatusCode);
+        var rotated = await Read();
+        Assert.NotEqual(withBackground.ETag, rotated.ETag);
+        using var badTurn = await admin.PutAsJsonAsync("/api/devices/monitor-bg1/display", new { items = Array.Empty<object>(), rotation = 45 });
+        Assert.Equal(HttpStatusCode.BadRequest, badTurn.StatusCode);
+
+        using var removed = await admin.DeleteAsync("/api/devices/monitor-bg1/display/background");
+        Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+        using var gone = await admin.GetAsync("/api/devices/monitor-bg1/display/background.png");
+        Assert.Equal(HttpStatusCode.NotFound, gone.StatusCode);
+    }
+
+    [Fact]
+    public async Task Fonts_are_listed_with_their_marks_and_a_person_can_upload_and_remove_their_own()
+    {
+        var admin = await hive.LoginAsync();
+        var fonts = await admin.GetFromJsonAsync<JsonElement>("/api/display/fonts");
+        var list = fonts.EnumerateArray().ToList();
+        Assert.Contains(list, f => f.GetProperty("id").GetString() == "standard" && f.GetProperty("cyrillic").GetBoolean());
+        var digits = list.Single(f => f.GetProperty("id").GetString() == "dseg7");
+        Assert.True(digits.GetProperty("digitsOnly").GetBoolean());
+        Assert.False(digits.GetProperty("cyrillic").GetBoolean());
+
+        using var rubbish = await admin.PostAsync("/api/display/fonts", new ByteArrayContent([1, 2, 3, 4]));
+        Assert.Equal(HttpStatusCode.BadRequest, rubbish.StatusCode);
+
+        var file = typeof(Hive.Modules.Devices.DisplayFontCatalog).Assembly.GetManifestResourceStream("Hive.Modules.Devices.Fonts.AnonymousPro-Regular.ttf")!;
+        using var bytes = new MemoryStream();
+        await file.CopyToAsync(bytes);
+        using var uploaded = await admin.PostAsync("/api/display/fonts", new ByteArrayContent(bytes.ToArray()));
+        Assert.Equal(HttpStatusCode.OK, uploaded.StatusCode);
+        var id = (await uploaded.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        Assert.Contains((await admin.GetFromJsonAsync<JsonElement>("/api/display/fonts")).EnumerateArray(), f => f.GetProperty("id").GetString() == id && !f.GetProperty("builtin").GetBoolean());
+        using var removed = await admin.DeleteAsync($"/api/display/fonts/{id}");
+        Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+        using var again = await admin.DeleteAsync($"/api/display/fonts/{id}");
+        Assert.Equal(HttpStatusCode.NotFound, again.StatusCode);
+    }
+
     [Fact]
     public async Task A_monitor_that_never_read_can_be_removed_for_good_and_a_seen_one_cannot()
     {

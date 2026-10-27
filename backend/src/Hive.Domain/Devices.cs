@@ -147,6 +147,11 @@ public class Device
     public string? ScreenReadFrom { get; set; }
     public bool ScreenReadExternal { get; set; }
 
+    /// <summary>The picture behind the items of a screen the hive draws (PNG, the size of the screen as it is turned), with its short hash.</summary>
+    public byte[]? ScreenBackground { get; set; }
+
+    public string? ScreenBackgroundSha { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public string? Notes { get; set; }
 
@@ -166,4 +171,27 @@ public class Device
     public DateTimeOffset? CommandsClearedAt { get; set; }
 
     public DateTimeOffset? LogsClearedAt { get; set; }
+}
+
+/// <summary>
+/// A font a person uploaded for the screens the hive draws (TTF/OTF): one face (regular, bold, italic or bold italic) of a family.
+/// The fonts that come with the hive are not here; they are built into it.
+/// </summary>
+public class DisplayFont
+{
+    /// <summary>Family id (a slug of its name) and the style: "my-font", "my-font-b", "my-font-i", "my-font-bi".</summary>
+    public required string Id { get; set; }
+
+    public required string FamilyId { get; set; }
+    public required string Family { get; set; }
+    public bool Bold { get; set; }
+    public bool Italic { get; set; }
+
+    /// <summary>It has Russian letters / only digits and a few signs (a segment display): the picker says so.</summary>
+    public bool Cyrillic { get; set; }
+
+    public bool DigitsOnly { get; set; }
+    public required byte[] Data { get; set; }
+    public required string Sha { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 }

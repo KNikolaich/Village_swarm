@@ -43,6 +43,10 @@ means nothing is chosen. The hornet does not read `display.items` itself. Layout
 `size` (1-10) every item carries `x`, `y` (pixels, top of the text) and `align` (`left` | `center` | `right`: which edge of the text `x` is), up to 8 items.
 Text height = max(6, round(screen height × size / 10)) px; the screen takes its largest font not taller than that. A placed item's label is drawn in the smallest
 font at `y`, the value right under it; the hive sends a placed label only when the person typed one.
+An item may also be a **caption** (config `text` instead of `device` + `metric`): the hive sends it as the item's `text`, as typed (up to 24 characters).
+For screens the hive draws itself (e-ink, `frame.bin` in monitor-http.md) an item may carry `font` (family id), `px` (6-48, the size of the font in pixels), `bold`
+and `italic`; config `display.rotation` (0, 90, 180, 270) turns the picture, so items, coordinates and the background image are laid out in the turned screen.
+The small OLED draws its own fonts and ignores these fields.
 
 Infrared (roles `irrx` and `irtx`, ESP-01 on the WS2812 connector, GPIO2; `hw.ir_pin`): the **receiver** keeps the last code it saw in its retained state
 `ir_last` = `"NEC 32 0x02FD807F"` (protocol, bits, data as hex; repeats and codes it cannot name are ignored), so a remote's button can be learned from the hive.

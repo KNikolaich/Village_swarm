@@ -1,0 +1,12 @@
+{
+  "v": 1, "rev": 3, "name": "Экран в городе",
+  "health_interval_s": 60,
+  "display": {
+    "rotation": 90,
+    "items": [
+      { "text": "Дача", "x": 6, "y": 4, "size": 2, "font": "cormorant-infant", "px": 24, "italic": true },
+      { "device": "meteo-out1", "metric": "temperature", "x": 6, "y": 40, "size": 5, "font": "dseg7", "px": 48 },
+      { "device": "meteo-out1", "metric": "humidity", "label": "влажность", "x": 190, "y": 120, "size": 3, "align": "right", "font": "anonymous-pro", "px": 24, "bold": true }
+    ]
+  }
+}

@@ -28,6 +28,10 @@ Responses:
   screen of the monitor's board, e.g. 200×200 = 5000 bytes for the Waveshare 1.54"). `ETag` / `304` as above.
 - `404`: the hive does not draw this monitor's screen (a board with its own fonts, like the 0.42" OLED): use `frame`.
 
+The picture is made of the screen's background image (if the person uploaded one; its size is that of the screen as it is turned), the items in their fonts
+(`font`, `px`, `bold`, `italic`) and the rotation the person chose; the `ETag` changes with any of them, and with the fonts the hive knows. `X-Frame-Width` and
+`X-Frame-Height` are those of the panel itself, not of the turned screen: the hive turns the picture back before it sends it.
+
 Monitors far away that speak only HTTP (no MQTT, no enrollment) are added by hand in the UI: `POST /api/devices/remote-monitors`
 `{deviceId, name, board}` (admin), then a token on their page. Their first read marks them online; the time of the last read
 is when the hive last saw them.

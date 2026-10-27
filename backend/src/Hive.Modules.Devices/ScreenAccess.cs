@@ -114,7 +114,7 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
 
     /// <summary>
     /// The frame for a bearer token, or null for a token that opens nothing. JSON: the display message; bitmap: the picture
-    /// the hive draws, one bit a pixel (only for a screen the hive draws). The ETag follows the items only, not the time.
+    /// the hive draws, one bit a pixel (only for a screen the hive draws). The ETag follows the items, background, turn and fonts, not the time.
     /// The read is noted on the device; a monitor far away is seen by its reads.
     /// </summary>
     public async Task<ScreenFrame?> FrameAsync(string? bearer, bool bitmap, string? from, bool external, CancellationToken ct)
@@ -126,12 +126,14 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
             && d.Status != DeviceStatus.Disabled && d.TypeCode == MonitorType, ct);
         if (device is null)
             return null;
-        var screen = DisplayScreens.For(device.Hw);
+        var screen = DisplayScreens.For(device.Hw);  // the panel's own size: the frame is turned to it
         if (bitmap && screen is not { Rendered: true })
             return new ScreenFrame([], "", "", NoPicture: true);
         var message = await feed.BuildAsync(device, ct);
         var items = JsonSerializer.Serialize(message.Items, ContractJson.Options);
-        var etag = "\"" + (bitmap ? "b" : "j") + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(items)))[..16] + "\"";
+        // the picture is also what is behind and around the items: the background, the turn, the fonts
+        var basis = bitmap ? items + "|" + await feed.PictureTagAsync(device, ct) : items;
+        var etag = "\"" + (bitmap ? "b" : "j") + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(basis)))[..16] + "\"";
 
         // The city only watches (its copy of the database is not written): it answers but does not note the read.
         var now = time.GetUtcNow();
@@ -150,8 +152,11 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
         }
         if (!bitmap)
             return new ScreenFrame(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message, ContractJson.Options)), "application/json", etag);
-        using var picture = DisplayRender.Render(message, screen!);
-        return new ScreenFrame(DisplayRender.Pack(picture), "application/octet-stream", etag, screen!.Width, screen.Height);
+        using var drawn = await feed.DrawAsync(device, message, ct);
+        if (drawn is null)
+            return new ScreenFrame([], "", "", NoPicture: true);
+        using var turned = DisplayRender.Rotate(drawn, DisplayFeedService.RotationOf(device));
+        return new ScreenFrame(DisplayRender.Pack(turned), "application/octet-stream", etag, screen!.Width, screen.Height);
     }
 
     private static readonly System.Text.RegularExpressions.Regex DeviceIdPattern = new("^[a-z][a-z0-9]*(-[a-z0-9]+)*$");

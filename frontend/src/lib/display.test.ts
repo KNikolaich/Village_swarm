@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { clampToScreen, pixelHeight, screenText, stackedPlaces, textAnchor } from './display'
+import { backgroundSize, clampPx, clampToScreen, fontBadge, pixelHeight, screenText, stackedPlaces, textAnchor } from './display'
 
 const oled = { width: 72, height: 40 }
 
@@ -38,5 +38,28 @@ describe('placing', () => {
 
   it('anchors the text by its alignment', () => {
     expect([textAnchor('left'), textAnchor('center'), textAnchor('right')]).toEqual(['start', 'middle', 'end'])
+  })
+})
+
+describe('fontBadge', () => {
+  it('says Digi for digits only, En without Russian letters and RU with them', () => {
+    expect(fontBadge({ cyrillic: false, digitsOnly: true })).toBe('Digi')
+    expect(fontBadge({ cyrillic: false, digitsOnly: false })).toBe('En')
+    expect(fontBadge({ cyrillic: true, digitsOnly: false })).toBe('RU')
+  })
+})
+
+describe('clampPx', () => {
+  it('stays between 6 and 48 pixels', () => {
+    expect(clampPx(3)).toBe(6)
+    expect(clampPx(24.4)).toBe(24)
+    expect(clampPx(500)).toBe(48)
+    expect(clampPx(Number.NaN)).toBe(6)
+  })
+})
+
+describe('backgroundSize', () => {
+  it('names the exact size of the picture', () => {
+    expect(backgroundSize({ width: 200, height: 200 })).toBe('200×200')
   })
 })

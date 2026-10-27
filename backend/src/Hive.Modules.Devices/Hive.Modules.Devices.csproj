@@ -6,7 +6,8 @@
   </ItemGroup>
   <ItemGroup>
     <!-- The hive draws the frames of e-ink monitors (DisplayRender): DejaVu Sans Condensed Bold, Cyrillic included (Fonts/DejaVu-LICENSE.txt). -->
-    <EmbeddedResource Include="Fonts/DejaVuSansCondensed-Bold.ttf" LogicalName="Hive.Modules.Devices.Fonts.DejaVuSansCondensed-Bold.ttf" />
+    <!-- And the families people can choose (DisplayFontCatalog), all under open licenses (Fonts/licenses). -->
+    <EmbeddedResource Include="Fonts/*.ttf" LogicalName="Hive.Modules.Devices.Fonts.%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Hive.Domain/Hive.Domain.csproj" />

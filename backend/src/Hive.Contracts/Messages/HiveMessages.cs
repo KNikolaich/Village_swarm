@@ -207,6 +207,15 @@ public sealed record DisplayItem
 
     /// <summary>left (absent), center or right.</summary>
     public string? Align { get; init; }
+
+    /// <summary>Screens the hive draws: id of the font family (GET /api/display/fonts). Absent: the standard font.</summary>
+    public string? Font { get; init; }
+
+    /// <summary>Screens the hive draws: the size of the font in pixels, 6-48. Absent: derived from <see cref="Size"/>.</summary>
+    public int? Px { get; init; }
+
+    public bool? Bold { get; init; }
+    public bool? Italic { get; init; }
 }
 
 /// <summary>Role ble: the Bluetooth LE thermometer the hornet is a bridge for.</summary>

@@ -4566,6 +4566,180 @@
           }
         }
       }
+    },
+    "/api/devices/{deviceId}/display/background.png": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/devices/{deviceId}/display/background": {
+      "put": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/display/fonts": {
+      "get": {
+        "tags": [
+          "display"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DisplayFontDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "display"
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayFontDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/display/fonts/{familyId}": {
+      "delete": {
+        "tags": [
+          "display"
+        ],
+        "parameters": [
+          {
+            "name": "familyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5452,6 +5626,37 @@
               "null",
               "string"
             ]
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "font": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "px": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "bold": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "italic": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },
@@ -5476,6 +5681,13 @@
                 "$ref": "#/components/schemas/DisplayScreenDto"
               }
             ]
+          },
+          "rotation": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -5495,6 +5707,10 @@
             "format": "int32"
           },
           "rendered": {
+            "type": "boolean",
+            "default": false
+          },
+          "background": {
             "type": "boolean",
             "default": false
           }
@@ -6153,7 +6369,7 @@
           }
         }
       },
-      "JsonElement": { },
+      "JsonElement": {},
       "JsonObject": {
         "type": "object"
       },
@@ -9424,6 +9640,40 @@
           "garden",
           "tech"
         ]
+      },
+      "DisplayFontDto": {
+        "required": [
+          "id",
+          "name",
+          "cyrillic",
+          "digitsOnly",
+          "builtin",
+          "styles"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "cyrillic": {
+            "type": "boolean"
+          },
+          "digitsOnly": {
+            "type": "boolean"
+          },
+          "builtin": {
+            "type": "boolean"
+          },
+          "styles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
       }
     }
   },
