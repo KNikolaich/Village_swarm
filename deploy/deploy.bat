@@ -27,7 +27,14 @@ if errorlevel 1 (
 
 set "WINDIR_REPO=%~dp0.."
 set "WINDIR_REPO=%WINDIR_REPO:\=/%"
-for /f "usebackq delims=" %%i in (`wsl wslpath -a "%WINDIR_REPO%"`) do set "REPO=%%i"
+set "REPO="
+for /f "usebackq delims=" %%i in (`wsl wslpath -a "%WINDIR_REPO%" 2^>nul`) do set "REPO=%%i"
+rem wsl.exe prints its own errors in UTF-16: only a real Linux path (starts with /) is taken
+if not "%REPO:~0,1%"=="/" (
+  echo WSL не смог перевести путь к репозиторию "%WINDIR_REPO%" в путь Linux. Проверьте: wsl -l -v ^(Ubuntu должна быть дистрибутивом по умолчанию^) и wsl wslpath -a "%WINDIR_REPO%".
+  if not "%NOPAUSE%"=="1" pause
+  exit /b 1
+)
 
 rem Hornet firmware first: firmware/dist is baked into the api image, and the hive offers it in the "add hornet"
 rem wizard and for over-the-air updates. set SKIP_FIRMWARE=1 to reuse what firmware/dist already has.
