@@ -65,6 +65,23 @@ public class ScreenTabsTests
     }
 
     [Fact]
+    public void The_fraktur_clock_stays_below_the_date_and_above_the_weekday()
+    {
+        using var stream = typeof(ScreenTabs).Assembly.GetManifestResourceStream("Hive.Modules.Devices.Fonts.UnifrakturCook-Bold.ttf")!;
+        var fraktur = SKTypeface.FromStream(stream);
+        var fonts = new FontSet(new Dictionary<string, IReadOnlyDictionary<(bool, bool), SKTypeface>>
+        {
+            [ScreenTabs.ClockFamily] = new Dictionary<(bool, bool), SKTypeface> { [(true, false)] = fraktur },
+        });
+        using var bitmap = ScreenTabs.Draw(ScreenTabs.Common, Landscape, Context(), fonts, new DisplayMessage { Ts = 0, Items = [] }, null);
+        // the gap under the date's underline and the strip of the weekday's line (left of it) are clear of the digits
+        Assert.Equal(0, Black(bitmap, new SKRectI(0, 39, 416, 44)));
+        var content = 240 - ScreenTabs.BarHeight;
+        Assert.Equal(0, Black(bitmap, new SKRectI(0, content - 20, 300, content)));
+        Assert.True(Black(bitmap, new SKRectI(0, 44, 416, content - 20)) > 3000, "the clock is big");
+    }
+
+    [Fact]
     public void A_forecast_without_weather_says_so_instead_of_drawing_nothing()
     {
         using var bitmap = Draw(ScreenTabs.Forecast, Context() with { Weather = null });

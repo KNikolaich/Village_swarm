@@ -245,10 +245,13 @@ void epdInit(bool partial) {
     }
 }
 
-/// Our pictures: a set bit is black. The panel's: a set bit is white.
+/// Our pictures: a set bit is black. The panel's: a set bit is white. With the gate scan set as above the panel
+/// fills its rows from the far end, so the rows go last first, or the picture comes out mirrored.
 void epdSend(uint8_t command, const uint8_t* bits) {
+    constexpr size_t row = kWidth / 8;
     epdCommand(command);
-    for (size_t i = 0; i < kFrameBytes; i++) epdData(static_cast<uint8_t>(~bits[i]));
+    for (int y = kHeight - 1; y >= 0; y--)
+        for (size_t i = 0; i < row; i++) epdData(static_cast<uint8_t>(~bits[y * row + i]));
 }
 
 void epdSleep() {

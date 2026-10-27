@@ -219,14 +219,29 @@ public static class ScreenTabs
         using (var underline = p.Line(2))
             p.Canvas.DrawLine(dateRight - dateWidth, 37, dateRight, 37, underline);
 
-        // the largest clock that fits between the week and the bar
+        // the largest clock that fits between the date and the weekday, by the inked bounds of its digits:
+        // the fraktur digits rise above the capitals, so the cap height alone lets them run off the top
         var time = now.ToString("HH:mm", CultureInfo.InvariantCulture);
-        float px = 200;
-        while (px > 40 && (p.Width(time, px, p.Clock) > p.W - 20 || CapOf(p.Clock, px) > p.H - 70))
+        const float roomTop = 44;
+        var roomBottom = p.H - 20f;
+        float px = 220;
+        var ink = InkOf(p.Clock, time, px);
+        while (px > 40 && (ink.Width > p.W - 20 || ink.Height > roomBottom - roomTop))
+        {
             px -= 4;
-        var cap = CapOf(p.Clock, px);
-        p.Text(time, p.W / 2f, 48 + (p.H - 48 - cap) / 2 - 6, px, "center", p.Clock);
+            ink = InkOf(p.Clock, time, px);
+        }
+        var baseline = roomTop + (roomBottom - roomTop - ink.Height) / 2 - ink.Top;
+        p.Text(time, p.W / 2f, baseline - CapOf(p.Clock, px), px, "center", p.Clock);
         p.Text(Weekdays[DayIndex(now)], p.W - 8, p.H - 16, 12, "right");
+    }
+
+    /// <summary>The inked box of <paramref name="text"/> about its baseline (the advance box left of the pen at 0).</summary>
+    private static SKRect InkOf(FontFace face, string text, float px)
+    {
+        using var font = DisplayRender.MakeFont(face, px);
+        font.MeasureText(text, out var bounds);
+        return bounds;
     }
 
     private static float CapOf(FontFace face, float px)
