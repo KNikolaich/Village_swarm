@@ -22,7 +22,8 @@ namespace Hive.Modules.Retention;
 
 public sealed record RetentionStatusDto(
     double? DiskUsedPct, double DiskHighPct, DateTimeOffset? LastRunAt, int LastPhotosDeleted, long LastPhotoBytes,
-    DateTimeOffset? TelemetryHourlyBefore, RetentionOptions Settings);
+    DateTimeOffset? TelemetryHourlyBefore, RetentionOptions Settings,
+    long? DiskTotalBytes, long? DiskUsedBytes, long PhotoBytes, long DatabaseBytes);
 
 /// <summary>
 /// Looks after the disk (spec 7.4): the daily cleanup once a night after the backup, and every few minutes a look at
@@ -134,7 +135,9 @@ public static class RetentionModule
                 }
                 DateTimeOffset? cut = modes.TryGetValue(Mode.TelemetryCut, out var c)
                     && DateTimeOffset.TryParse(c, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed) ? parsed : null;
-                return new RetentionStatusDto(service.DiskUsedPct(), options.Value.DiskHighPct, lastAt, photos, bytes, cut, options.Value);
+                var usage = await service.UsageAsync(ct);
+                return new RetentionStatusDto(service.DiskUsedPct(), options.Value.DiskHighPct, lastAt, photos, bytes, cut, options.Value,
+                    usage.TotalBytes, usage.UsedBytes, usage.PhotoBytes, usage.DatabaseBytes);
             })
             .WithTags("retention")
             .RequireAuthorization(HiveRoles.AdminOnly);

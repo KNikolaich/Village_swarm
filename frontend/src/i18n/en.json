@@ -1089,7 +1089,14 @@
   "retention": {
     "title": "Disk and retention",
     "disk": "Disk used",
-    "diskHint": "From {n}% the hive deletes old photos by itself, ordinary ones first; alarm and kept-forever photos go last or stay.",
+    "diskHint": "Every {every} min the hive checks the disk: from {n}% it deletes old photos until it is at {target}%. Ordinary photos go first, then time-lapse frames; alarm photos younger than {floor} days and keep-forever ones stay. Marking events as seen does not matter.",
+    "notPhotos": "The disk is mostly not photos, so deleting photos will hardly help. Usually it is old hive versions in Docker (an update now removes them) or backups on the same card.",
+    "part": {
+      "photos": "Photos",
+      "database": "Database",
+      "other": "Other: system, hive versions, backups",
+      "free": "Free"
+    },
     "lastRun": "Last cleanup: {when}, photos deleted: {photos} ({size}).",
     "neverRun": "No cleanup yet: the first one is tonight.",
     "keepAlarm": "Alarm photos are kept {n} days.",

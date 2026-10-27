@@ -6354,6 +6354,14 @@ export interface components {
             /** Format: date-time */
             telemetryHourlyBefore: null | string;
             settings: components["schemas"]["RetentionOptions"];
+            /** Format: int64 */
+            diskTotalBytes: null | number;
+            /** Format: int64 */
+            diskUsedBytes: null | number;
+            /** Format: int64 */
+            photoBytes: number;
+            /** Format: int64 */
+            databaseBytes: number;
         };
         RuleAction: {
             kind: string;

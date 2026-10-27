@@ -185,5 +185,10 @@ public sealed class RetentionTests(HiveFixture hive)
 
         var status = await admin.GetFromJsonAsync<JsonElement>("/api/retention");
         Assert.Equal(DateTimeOffset.Parse("2025-02-01T00:00:00Z"), status.GetProperty("telemetryHourlyBefore").GetDateTimeOffset());
+
+        // What fills the disk: photos as the database counts them, and the database itself.
+        var photoBytes = await hive.QueryAsync(db => db.Media.SumAsync(m => (long?)m.Bytes)) ?? 0;
+        Assert.Equal(photoBytes, status.GetProperty("photoBytes").GetInt64());
+        Assert.True(status.GetProperty("databaseBytes").GetInt64() > 0);
     }
 }

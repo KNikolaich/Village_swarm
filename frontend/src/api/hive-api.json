@@ -7648,7 +7648,11 @@
           "lastPhotosDeleted",
           "lastPhotoBytes",
           "telemetryHourlyBefore",
-          "settings"
+          "settings",
+          "diskTotalBytes",
+          "diskUsedBytes",
+          "photoBytes",
+          "databaseBytes"
         ],
         "type": "object",
         "properties": {
@@ -7687,6 +7691,28 @@
           },
           "settings": {
             "$ref": "#/components/schemas/RetentionOptions"
+          },
+          "diskTotalBytes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "diskUsedBytes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int64"
+          },
+          "photoBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "databaseBytes": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },

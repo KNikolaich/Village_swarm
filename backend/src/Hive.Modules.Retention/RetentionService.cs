@@ -21,6 +21,9 @@ public sealed record RetentionResult(
         a.HealthRows + b.HealthRows, a.LogRows + b.LogRows, a.OtherRows + b.OtherRows, Math.Max(a.PressureLevel, b.PressureLevel));
 }
 
+/// <summary>Disk size and use, and the part of it that is photos and the database, in bytes.</summary>
+public sealed record DiskUsage(long? TotalBytes, long? UsedBytes, long PhotoBytes, long DatabaseBytes);
+
 /// <summary>The daily cleanup (spec 7.4) and the emergency one when the disk fills up.</summary>
 public sealed partial class RetentionService(
     HiveDbContext db, MediaStore media, IDiskSpaceReader disks, IOptions<RetentionOptions> options, TimeProvider time, ILogger<RetentionService> logger)
@@ -32,6 +35,20 @@ public sealed partial class RetentionService(
     private static partial Regex PartitionName();
 
     public double? DiskUsedPct() => disks.Read(media.Root)?.UsedPct;
+
+    /// <summary>
+    /// What fills the disk: photos and the database are what the hive can measure; the rest (the system, old hive
+    /// versions in Docker, backups) is whatever is left of the used space. Shows the family what a cleanup can help with.
+    /// </summary>
+    public async Task<DiskUsage> UsageAsync(CancellationToken ct)
+    {
+        var disk = disks.Read(media.Root);
+        var photos = await db.Media.SumAsync(m => (long?)m.Bytes, ct) ?? 0;
+        var database = await db.Database.SqlQuery<long>($"""
+            SELECT pg_database_size(current_database()) AS "Value"
+            """).SingleAsync(ct);
+        return new DiskUsage(disk?.Total, disk is null ? null : disk.Total - disk.Free, photos, database);
+    }
 
     /// <summary>The normal schedule: photos by age, old months of readings into hourly rows, health, logs, housekeeping.</summary>
     public async Task<RetentionResult> RunDailyAsync(CancellationToken ct)
