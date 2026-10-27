@@ -162,6 +162,9 @@ public sealed record DisplayConfig
 
     /// <summary>What to show, kept by the hive; it feeds the screen through vs/v1/hive/display/{id}.</summary>
     public IReadOnlyList<DisplayConfigItem>? Items { get; init; }
+
+    /// <summary>Screens the hive draws: how the picture is turned clockwise, 0/90/180/270. Absent: 0.</summary>
+    public int? Rotation { get; init; }
 }
 
 public sealed record DisplayConfigItem
@@ -169,7 +172,12 @@ public sealed record DisplayConfigItem
     /// <summary>The device whose reading is shown; absent: the hornet itself.</summary>
     public string? Device { get; init; }
 
-    public required string Metric { get; init; }
+    /// <summary>The reading shown; absent when the item is a caption (<see cref="Text"/>).</summary>
+    public string? Metric { get; init; }
+
+    /// <summary>A caption the person typed instead of a reading, shown as it is.</summary>
+    public string? Text { get; init; }
+
     public string? Label { get; init; }
     /// <summary>Placed layout: pixels from the left edge to the anchor of the text (<see cref="Align"/> says which edge).</summary>
     public int? X { get; init; }
@@ -182,6 +190,15 @@ public sealed record DisplayConfigItem
 
     /// <summary>left (absent), center or right.</summary>
     public string? Align { get; init; }
+
+    /// <summary>Screens the hive draws: id of the font family (GET /api/display/fonts). Absent: the standard font.</summary>
+    public string? Font { get; init; }
+
+    /// <summary>Screens the hive draws: the size of the font in pixels, 6-48. Absent: derived from <see cref="Size"/>.</summary>
+    public int? Px { get; init; }
+
+    public bool? Bold { get; init; }
+    public bool? Italic { get; init; }
 }
 
 /// <summary>vs/v1/hive/display/{id} (retained): ready texts for the screen, in the automatic layout or placed (x, y, size). No items: nothing chosen.</summary>
@@ -207,6 +224,15 @@ public sealed record DisplayItem
 
     /// <summary>left (absent), center or right.</summary>
     public string? Align { get; init; }
+
+    /// <summary>Screens the hive draws: id of the font family (GET /api/display/fonts). Absent: the standard font.</summary>
+    public string? Font { get; init; }
+
+    /// <summary>Screens the hive draws: the size of the font in pixels, 6-48. Absent: derived from <see cref="Size"/>.</summary>
+    public int? Px { get; init; }
+
+    public bool? Bold { get; init; }
+    public bool? Italic { get; init; }
 }
 
 /// <summary>Role ble: the Bluetooth LE thermometer the hornet is a bridge for.</summary>

@@ -52,4 +52,23 @@ public class DisplayTextTests
     [InlineData(1, 200, 20)]
     public void A_size_is_a_share_of_the_screen_height(int size, int height, int pixels) =>
         Assert.Equal(pixels, DisplayText.PixelHeight(size, height));
+
+    [Fact]
+    public void Fonts_pixels_and_captions_are_checked()
+    {
+        var epaper = new DisplayScreenDto(200, 200, Rendered: true);
+        DisplayItemDto Item(string? font = null, int? px = null, string? text = null, string metric = "temperature", int? size = 3) =>
+            new(null, metric, null, 0, 0, size, null, text, font, px);
+        Assert.Null(DisplayText.Validate([Item("anonymous-pro", 6), Item(px: 48)], epaper));
+        Assert.NotNull(DisplayText.Validate([Item(px: 5)], epaper));
+        Assert.NotNull(DisplayText.Validate([Item(px: 49)], epaper));
+        Assert.NotNull(DisplayText.Validate([Item("Bad Font")], epaper));
+        // a screen the hive does not draw (the firmware has its own fonts), or an item laid out by the screen: no fonts
+        Assert.NotNull(DisplayText.Validate([Item(px: 12)], new DisplayScreenDto(72, 40)));
+        Assert.NotNull(DisplayText.Validate([Item(px: 12, size: null)], epaper));
+        // a caption has a text and no source
+        Assert.Null(DisplayText.Validate([Item(text: "Улица", metric: "")], epaper));
+        Assert.NotNull(DisplayText.Validate([Item(text: "Улица")], epaper));
+        Assert.NotNull(DisplayText.Validate([Item(text: new string('x', 25), metric: "")], epaper));
+    }
 }

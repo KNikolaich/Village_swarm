@@ -55,6 +55,56 @@ public class DisplayRenderTests
         Assert.StartsWith("\u0089PNG", System.Text.Encoding.Latin1.GetString(DisplayRender.Png(empty)[..4]));
     }
 
+    [Fact]
+    public void A_size_in_pixels_is_the_height_of_the_digits_and_a_caption_needs_no_reading()
+    {
+        using var small = DisplayRender.Render(Message(new DisplayItem { Text = "88", X = 0, Y = 0, Size = 1, Px = 16 }), Epaper);
+        using var big = DisplayRender.Render(Message(new DisplayItem { Text = "88", X = 0, Y = 0, Size = 1, Px = 48 }), Epaper);
+        var (t1, b1, _) = Ink(small);
+        var (t2, b2, _) = Ink(big);
+        Assert.True(b2 - t2 > 2 * (b1 - t1), "48 px is much taller than 16 px");
+        Assert.InRange(b2 - t2, 30, 52);
+    }
+
+    [Fact]
+    public void A_font_of_the_catalog_is_drawn_and_a_missing_style_is_made_from_the_one_there_is()
+    {
+        var faces = DisplayFontCatalog.StandardFaces();
+        var bold = FontSet.Pick(faces, true, false);
+        Assert.False(bold.FakeBold);
+        var italic = FontSet.Pick(faces, false, true);  // the standard family has the bold face only
+        Assert.True(italic.FakeItalic);
+    }
+
+    [Fact]
+    public void A_turn_moves_the_picture_a_quarter_clockwise_and_four_turns_are_none()
+    {
+        using var source = new SkiaSharp.SKBitmap(new SkiaSharp.SKImageInfo(4, 2, SkiaSharp.SKColorType.Gray8, SkiaSharp.SKAlphaType.Opaque));
+        source.Erase(SkiaSharp.SKColors.White);
+        source.SetPixel(0, 0, SkiaSharp.SKColors.Black);  // top left
+        using var quarter = DisplayRender.Rotate(source, 90);
+        Assert.Equal((2, 4), (quarter.Width, quarter.Height));
+        Assert.Equal(0, quarter.GetPixel(1, 0).Red);  // top left goes to top right
+        using var half = DisplayRender.Rotate(source, 180);
+        Assert.Equal(0, half.GetPixel(3, 1).Red);
+        using var three = DisplayRender.Rotate(source, 270);
+        using var back = DisplayRender.Rotate(three, 90);
+        Assert.Equal(DisplayRender.Pack(source), DisplayRender.Pack(back));
+    }
+
+    [Fact]
+    public void The_background_lies_behind_the_items_and_one_of_the_wrong_size_is_ignored()
+    {
+        using var background = new SkiaSharp.SKBitmap(new SkiaSharp.SKImageInfo(200, 200, SkiaSharp.SKColorType.Gray8, SkiaSharp.SKAlphaType.Opaque));
+        background.Erase(SkiaSharp.SKColors.Black);
+        using var drawn = DisplayRender.Render(Message(), Epaper, null, background);
+        Assert.Equal(0, drawn.GetPixel(5, 5).Red);
+        using var wrong = new SkiaSharp.SKBitmap(new SkiaSharp.SKImageInfo(100, 100, SkiaSharp.SKColorType.Gray8, SkiaSharp.SKAlphaType.Opaque));
+        wrong.Erase(SkiaSharp.SKColors.Black);
+        using var ignored = DisplayRender.Render(Message(), Epaper, null, wrong);
+        Assert.Equal(255, ignored.GetPixel(5, 5).Red);
+    }
+
     private static (int Top, int Bottom, int Left) Ink(SkiaSharp.SKBitmap bitmap)
     {
         int top = int.MaxValue, bottom = 0, left = int.MaxValue;

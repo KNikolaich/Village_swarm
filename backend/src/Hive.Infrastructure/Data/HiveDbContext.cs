@@ -26,6 +26,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     public DbSet<TgLinkCode> TgLinkCodes => Set<TgLinkCode>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<EnrollmentCode> EnrollmentCodes => Set<EnrollmentCode>();
+    public DbSet<DisplayFont> DisplayFonts => Set<DisplayFont>();
     public DbSet<WeatherSnapshot> WeatherSnapshots => Set<WeatherSnapshot>();
     public DbSet<BackupRun> BackupRuns => Set<BackupRun>();
     public DbSet<TelemetryHourly> TelemetryHourly => Set<TelemetryHourly>();
@@ -130,6 +131,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.Property(x => x.ScreenTokenHash).HasMaxLength(64);
             e.HasIndex(x => x.ScreenTokenHash).IsUnique();
             e.Property(x => x.ScreenReadFrom).HasMaxLength(64);
+            e.Property(x => x.ScreenBackgroundSha).HasMaxLength(16);
             e.Property(x => x.Driver).HasMaxLength(16).HasDefaultValue(Drivers.Hornet);
             e.Property(x => x.ParentId).HasMaxLength(32);
             e.HasIndex(x => x.ParentId);
@@ -283,6 +285,17 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.ToTable("weather_snapshot");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).ValueGeneratedNever();
+        });
+
+        b.Entity<DisplayFont>(e =>
+        {
+            e.ToTable("display_fonts");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasMaxLength(64);
+            e.Property(x => x.FamilyId).HasMaxLength(56);
+            e.Property(x => x.Family).HasMaxLength(64);
+            e.Property(x => x.Sha).HasMaxLength(16);
+            e.HasIndex(x => x.FamilyId);
         });
 
         b.Entity<EnrollmentCode>(e =>

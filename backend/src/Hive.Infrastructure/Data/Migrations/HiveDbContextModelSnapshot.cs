@@ -252,6 +252,15 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("rssi");
 
+                    b.Property<byte[]>("ScreenBackground")
+                        .HasColumnType("bytea")
+                        .HasColumnName("screen_background");
+
+                    b.Property<string>("ScreenBackgroundSha")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("screen_background_sha");
+
                     b.Property<DateTimeOffset?>("ScreenReadAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("screen_read_at");
@@ -668,6 +677,65 @@ namespace Hive.Infrastructure.Data.Migrations
                             OfflineAfterS = 180,
                             Title = "Видеорегистратор"
                         });
+                });
+
+            modelBuilder.Entity("Hive.Domain.DisplayFont", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Bold")
+                        .HasColumnType("boolean")
+                        .HasColumnName("bold");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("Cyrillic")
+                        .HasColumnType("boolean")
+                        .HasColumnName("cyrillic");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("data");
+
+                    b.Property<bool>("DigitsOnly")
+                        .HasColumnType("boolean")
+                        .HasColumnName("digits_only");
+
+                    b.Property<string>("Family")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("family");
+
+                    b.Property<string>("FamilyId")
+                        .IsRequired()
+                        .HasMaxLength(56)
+                        .HasColumnType("character varying(56)")
+                        .HasColumnName("family_id");
+
+                    b.Property<bool>("Italic")
+                        .HasColumnType("boolean")
+                        .HasColumnName("italic");
+
+                    b.Property<string>("Sha")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("sha");
+
+                    b.HasKey("Id")
+                        .HasName("pk_display_fonts");
+
+                    b.HasIndex("FamilyId")
+                        .HasDatabaseName("ix_display_fonts_family_id");
+
+                    b.ToTable("display_fonts", (string)null);
                 });
 
             modelBuilder.Entity("Hive.Domain.EnrollmentCode", b =>
