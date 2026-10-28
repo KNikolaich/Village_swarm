@@ -305,8 +305,8 @@ public sealed class ScreenAccessTests(HiveFixture hive)
             Assert.DoesNotContain(plain.Headers.ETag!.Tag, etags);
             Assert.Equal(30 * 416, (await plain.Content.ReadAsByteArrayAsync()).Length);
         }
-        using (var tooBig = await admin.PutAsync("/api/devices/monitor-crow1/display/sleep", new ByteArrayContent(Png(300, 100))))
-            Assert.Equal(HttpStatusCode.BadRequest, tooBig.StatusCode);  // the screen is 416x240 as it is laid out
+        using (var tooBig = await admin.PutAsync("/api/devices/monitor-crow1/display/sleep", new ByteArrayContent(Png(240, 300))))
+            Assert.Equal(HttpStatusCode.BadRequest, tooBig.StatusCode);  // the screen is 416x240 as it is laid out: too tall
         using (var small = await admin.PutAsync("/api/devices/monitor-crow1/display/sleep", new ByteArrayContent(Png(100, 60))))
             Assert.Equal(HttpStatusCode.NoContent, small.StatusCode);
         using (var asleep = await anonymous.SendAsync(Sleeping()))

@@ -274,6 +274,15 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("screen_read_from");
 
+                    b.Property<byte[]>("ScreenSleep")
+                        .HasColumnType("bytea")
+                        .HasColumnName("screen_sleep");
+
+                    b.Property<string>("ScreenSleepSha")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("screen_sleep_sha");
+
                     b.Property<string>("ScreenTokenHash")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
