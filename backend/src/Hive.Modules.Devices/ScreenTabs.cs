@@ -34,7 +34,7 @@ public static class ScreenTabs
     public const string TextFamily = "roboto";
     public const string LightFamily = "roboto-light";
     public const string SerifFamily = "roboto-serif";
-    public const string PixelFamily = "press-start";
+    public const string PixelFamily = "public-pixel";
     public static readonly string[] Families = [TextFamily, LightFamily, SerifFamily, PixelFamily];
 
     // Written out: the hive's image may run without culture data.

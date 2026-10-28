@@ -34,7 +34,7 @@ public class ScreenTabsTests
             [ScreenTabs.TextFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("Roboto-Regular"), [(true, false)] = Load("Roboto-Bold") },
             [ScreenTabs.LightFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("Roboto-Light") },
             [ScreenTabs.SerifFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("RobotoSerif-Regular"), [(true, false)] = Load("RobotoSerif-Bold") },
-            [ScreenTabs.PixelFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("PressStart2P-Regular") },
+            [ScreenTabs.PixelFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("PublicPixel") },
         });
     }
 
@@ -163,6 +163,7 @@ public class ScreenTabsTests
     public void Pixel_fonts_are_offered_at_their_grid_and_outline_fonts_at_whole_sizes()
     {
         Assert.Equal(new[] { 8, 16, 24, 32 }, DisplayFontCatalog.SizesOf("press-start").Take(4));
+        Assert.Equal(new[] { 8, 16, 24 }, DisplayFontCatalog.SizesOf(ScreenTabs.PixelFamily).Take(3));
         Assert.Equal(new[] { 16, 32, 48 }, DisplayFontCatalog.SizesOf("pixellari").Take(3));
         Assert.Contains(12, DisplayFontCatalog.SizesOf("roboto"));
         Assert.Contains(36, DisplayFontCatalog.SizesOf("roboto-serif"));
