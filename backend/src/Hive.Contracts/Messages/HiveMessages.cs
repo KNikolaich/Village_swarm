@@ -165,6 +165,18 @@ public sealed record DisplayConfig
 
     /// <summary>Screens the hive draws: how the picture is turned clockwise, 0/90/180/270. Absent: 0.</summary>
     public int? Rotation { get; init; }
+
+    /// <summary>Monitoring of a monitor far away: it reads its screen every <see cref="DisplayMonitorConfig.EveryMin"/> minutes until the time is up.</summary>
+    public DisplayMonitorConfig? Monitor { get; init; }
+}
+
+public sealed record DisplayMonitorConfig
+{
+    /// <summary>Unix ms when the monitoring ends.</summary>
+    public required long Until { get; init; }
+
+    /// <summary>1, 2, 5 or 10.</summary>
+    public required int EveryMin { get; init; }
 }
 
 public sealed record DisplayConfigItem
@@ -194,11 +206,17 @@ public sealed record DisplayConfigItem
     /// <summary>Screens the hive draws: id of the font family (GET /api/display/fonts). Absent: the standard font.</summary>
     public string? Font { get; init; }
 
-    /// <summary>Screens the hive draws: the size of the font in pixels, 6-48. Absent: derived from <see cref="Size"/>.</summary>
+    /// <summary>Screens the hive draws: the size of the font in pixels, 6-120. Absent: derived from <see cref="Size"/>.</summary>
     public int? Px { get; init; }
 
     public bool? Bold { get; init; }
     public bool? Italic { get; init; }
+
+    /// <summary>The hive's clock instead of a reading: time or date.</summary>
+    public string? Clock { get; init; }
+
+    /// <summary>How the clock is written (contracts: config display.items[].format); absent: the first format of its kind.</summary>
+    public string? Format { get; init; }
 }
 
 /// <summary>vs/v1/hive/display/{id} (retained): ready texts for the screen, in the automatic layout or placed (x, y, size). No items: nothing chosen.</summary>
@@ -228,7 +246,7 @@ public sealed record DisplayItem
     /// <summary>Screens the hive draws: id of the font family (GET /api/display/fonts). Absent: the standard font.</summary>
     public string? Font { get; init; }
 
-    /// <summary>Screens the hive draws: the size of the font in pixels, 6-48. Absent: derived from <see cref="Size"/>.</summary>
+    /// <summary>Screens the hive draws: the size of the font in pixels, 6-120. Absent: derived from <see cref="Size"/>.</summary>
     public int? Px { get; init; }
 
     public bool? Bold { get; init; }
