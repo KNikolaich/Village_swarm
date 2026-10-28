@@ -322,8 +322,8 @@ public static class ScreenTabs
         var slotW = dayW / 4;
         for (var slot = 0; slot < days * 4; slot++)
         {
-            var from = start.AddHours(6 * slot);
-            var of = hours.Where(h => h.At >= from && h.At < from.AddHours(6)).Select(h => h.Hour).ToList();
+            var slotStart = start.AddHours(6 * slot);
+            var of = hours.Where(h => h.At >= slotStart && h.At < slotStart.AddHours(6)).Select(h => h.Hour).ToList();
             if (of.Count == 0)
                 continue;
             var x = left + slot * slotW;
