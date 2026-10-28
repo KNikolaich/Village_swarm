@@ -304,7 +304,12 @@
               "bold": { "type": "boolean", "description": "Screens the hive draws: bold (a family without a bold face is emboldened)" },
               "italic": { "type": "boolean", "description": "Screens the hive draws: italic (a family without an italic face is slanted)" },
               "clock": { "enum": ["time", "date"], "description": "The hive's clock instead of a reading (then device, metric and text are absent): the time or the date in the hive's time zone, as format says" },
-              "format": { "enum": ["HH:mm", "H:mm", "d MMMM", "d MMM", "dd.MM", "dd.MM.yyyy", "dd/MM", "dddd", "ddd, d MMM", "d MMMM yyyy", "MMMM"], "description": "How the clock is written (Russian names): time HH:mm (absent) or H:mm; date d MMMM (absent: 28 октября), d MMM (28 окт), dd.MM, dd.MM.yyyy, dd/MM, dddd (среда), ddd, d MMM (ср, 28 окт), d MMMM yyyy, MMMM (октябрь)" }
+              "format": { "enum": ["HH:mm", "H:mm", "d MMMM", "d MMM", "dd.MM", "dd.MM.yyyy", "dd/MM", "dddd", "ddd, d MMM", "d MMMM yyyy", "MMMM"], "description": "How the clock is written (Russian names): time HH:mm (absent) or H:mm; date d MMMM (absent: 28 октября), d MMM (28 окт), dd.MM, dd.MM.yyyy, dd/MM, dddd (среда), ddd, d MMM (ср, 28 окт), d MMMM yyyy, MMMM (октябрь)" },
+              "state": { "type": "boolean", "description": "metric is a state of the device (device state: relay, relay2, a valve ...: on/off, true/false, 1/0) and not a reading; shown as on_text / off_text or, on screens the hive draws with the items placed, as on_image / off_image" },
+              "on_text": { "type": "string", "maxLength": 12, "description": "State item: the words for on. Absent: вкл" },
+              "off_text": { "type": "string", "maxLength": 12, "description": "State item: the words for off. Absent: выкл" },
+              "on_image": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "State item, screens the hive draws, items placed: the picture for on (POST /api/devices/{id}/display/images: PNG at most 100x100). Both pictures or none" },
+              "off_image": { "type": "string", "pattern": "^[0-9a-f]{16}$", "description": "State item: the picture for off" }
             },
             "additionalProperties": false
           }
