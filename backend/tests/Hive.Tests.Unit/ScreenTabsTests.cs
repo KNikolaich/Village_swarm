@@ -120,6 +120,20 @@ public class ScreenTabsTests
         Assert.Equal(WeatherIcons.Kind.Snow, WeatherIcons.Of(73));
         Assert.Equal(WeatherIcons.Kind.Thunder, WeatherIcons.Of(95));
         Assert.Equal(WeatherIcons.Kind.Fog, WeatherIcons.Of(45));
+        Assert.Equal("Переменная облачность", WeatherIcons.Describe(2));
+        Assert.Equal("Небольшие ливни", WeatherIcons.Describe(80));
+    }
+
+    [Fact]
+    public void Standing_the_weather_shows_the_sun_of_today_beside_the_details()
+    {
+        var day = new WeatherDayDto(new DateOnly(2026, 10, 29), 3, 10, 1.2, 60, 2, new DateTimeOffset(2026, 10, 29, 4, 27, 0, TimeSpan.Zero), new DateTimeOffset(2026, 10, 29, 14, 12, 0, TimeSpan.Zero));
+        var context = Context();
+        using var without = Draw(ScreenTabs.Forecast, context, Portrait);
+        using var with = Draw(ScreenTabs.Forecast, context with { Weather = context.Weather! with { Daily = [day] } }, Portrait);
+        var sun = new SKRectI(130, 112, 240, 162);
+        Assert.Equal(0, Black(without, sun));
+        Assert.True(Black(with, sun) > 100, "sunrise and sunset are drawn");
     }
 
     [Fact]

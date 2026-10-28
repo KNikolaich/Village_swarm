@@ -188,7 +188,11 @@ public static class ScreenTabs
         p.Canvas.DrawRect(new SKRect(right - w, top + 2, right, top + h), line);
         var fill = (h - 4) * Math.Clamp(pct, 0, 100) / 100f;
         p.Canvas.DrawRect(new SKRect(right - w + 2, top + h - 2 - fill, right - 2, top + h - 2), p.Ink);
-        p.Text($"{pct}%", right - w - 3, top + 5, 10, "right", p.Light);
+        // standing, the date takes the whole top line: the percent goes under the battery
+        if (p.Portrait)
+            p.Text($"{pct}%", right - w / 2, top + h + 3, 9, "center", p.Light);
+        else
+            p.Text($"{pct}%", right - w - 3, top + 5, 10, "right", p.Light);
     }
 
     /// <summary>The week as seven squares, Monday first: weekdays black, the weekend grey; today circled.</summary>
@@ -219,9 +223,20 @@ public static class ScreenTabs
     {
         var now = c.Local(c.Now);
         var weather = c.Weather;
-        // the date, big: the day and month, the weekday under it
-        p.Text($"{now.Day} {MonthsOf[now.Month - 1]}", 6, 6, 16, null, p.Bold);
-        p.Text(Weekdays[DayIndex(now)], 6, 28, 14);
+        if (p.Portrait)
+        {
+            // standing: the whole date in one line, a line under it
+            var date = $"{now.Day} {MonthsOf[now.Month - 1]} {Weekdays[DayIndex(now)]}";
+            p.Text(date, 6, 6, p.Width(date, 14, p.Bold) <= p.W - 34 ? 14 : 12, null, p.Bold);
+            using var under = p.Line();
+            p.Canvas.DrawLine(4, 26, p.W - 28, 26, under);
+        }
+        else
+        {
+            // the date, big: the day and month, the weekday under it
+            p.Text($"{now.Day} {MonthsOf[now.Month - 1]}", 6, 6, 16, null, p.Bold);
+            p.Text(Weekdays[DayIndex(now)], 6, 28, 14);
+        }
         if (weather?.Current is not { } current)
         {
             p.Text("Нет прогноза: укажите место", p.W / 2f, p.H / 2f - 10, 14, "center");
@@ -230,17 +245,7 @@ public static class ScreenTabs
         }
         float headBottom;
         if (p.Portrait)
-        {
-            // standing: the picture and the temperature under the date, the rest in a row under them
-            WeatherIcons.Draw(p.Canvas, current.WeatherCode, 8, 48, 50);
-            p.Text(Degrees(current.Temperature), p.W - 12, 58, 36, "right", p.Serif);
-            if (current.Pressure is { } hpa)
-                p.Text(Pressure(hpa), p.W - 12, 100, 12, "right", p.Serif);
-            var details = Details(current);
-            for (var i = 0; i < details.Count; i++)
-                p.Text(details[i], 8 + i * (p.W - 16) / 3f, 120, 12);
-            headBottom = 140;
-        }
+            headBottom = DrawNowStanding(p, c, current, now);
         else
         {
             WeatherIcons.Draw(p.Canvas, current.WeatherCode, 104, 4, 46);
@@ -250,25 +255,19 @@ public static class ScreenTabs
             var details = Details(current);
             for (var i = 0; i < details.Count; i++)
                 p.Text(details[i], 352, 6 + 17 * i, 12, "right");
+            if (current.WindSpeed is not null && current.WindDirection is { } from)
+                WindArrow(p, 352 - p.Width(details[^1], 12) - 10, 6 + 17 * (details.Count - 1) + 6, from);
             headBottom = 60;
-        }
-        if (current.WindSpeed is not null && current.WindDirection is { } from)
-        {
-            // the arrow left of the wind's line (the last of the details)
-            var line = Details(current)[^1];
-            if (p.Portrait)
-                WindArrow(p, 8 + 2 * (p.W - 16) / 3f - 10, 126, from);
-            else
-                WindArrow(p, 352 - p.Width(line, 12) - 10, 6 + 17 * 2 + 6, from);
         }
         using (var thick = p.Line(2))
             p.Canvas.DrawLine(0, headBottom, p.W, headBottom, thick);
 
-        // the next days from today: date, hours 3 9 15 21, the temperature line, rain and wind per six hours
+        // the next days (lying: five from today; standing: three from tomorrow, today is above): date, hours 3 9 15 21,
+        // the temperature line, rain and wind per six hours
         var days = p.Portrait ? 3 : 5;
         const float left = 22;
         var dayW = (p.W - left - 2) / days;
-        var start = new DateTimeOffset(now.Date, now.Offset);
+        var start = new DateTimeOffset(now.Date, now.Offset).AddDays(p.Portrait ? 1 : 0);
         var hours = weather.Hourly.Select(h => (At: c.Local(h.Time), Hour: h)).Where(h => h.At >= start && h.At < start.AddDays(days)).ToList();
         var y0 = headBottom + 4;
         float hoursTop = y0 + 16, hoursBottom = y0 + 28;
@@ -279,7 +278,7 @@ public static class ScreenTabs
         {
             var x = left + d * dayW;
             var day = start.AddDays(d);
-            p.Text(day.ToString("dd/MM", CultureInfo.InvariantCulture), x + 4, y0, 12, null, d == 0 ? p.Bold : p.Serif);
+            p.Text(day.ToString("dd/MM", CultureInfo.InvariantCulture), x + 4, y0, 12, null, day.Date == now.Date ? p.Bold : p.Serif);
             for (var s = 0; s < 4; s++)
                 p.Text((3 + 6 * s).ToString(CultureInfo.InvariantCulture), x + dayW * (s + 0.5f) / 4, hoursTop, 10, "center", p.Light);
             if (d > 0)
@@ -337,6 +336,59 @@ public static class ScreenTabs
                 p.Text(Math.Round(windMax).ToString("0", CultureInfo.InvariantCulture), x + slotW / 2, windTop + 3, 10, "center");
         }
         p.Text("обновлено " + now.ToString("HH:mm", CultureInfo.InvariantCulture), p.W - 4, p.H - 10, 8, "right", p.Pixel);
+    }
+
+    /// <summary>
+    /// The weather now, standing (the person's design): thermometer, temperature and picture; how warm it feels and the
+    /// weather in words; humidity, clouds, pressure and wind in a column, sunrise and sunset beside them. Returns its bottom.
+    /// </summary>
+    private static float DrawNowStanding(Pen p, TabContext c, WeatherCurrentDto current, DateTimeOffset now)
+    {
+        WeatherIcons.Thermometer(p.Canvas, 8, 36, 44);
+        p.Text(Degrees(current.Temperature), 30, 44, 36, null, p.Serif);
+        WeatherIcons.Draw(p.Canvas, current.WeatherCode, p.W - 76, 34, 70);
+        var words = WeatherIcons.Describe(current.WeatherCode);
+        var feels = current.Apparent is { } apparent ? "Ощущается: " + Degrees(apparent) : "";
+        p.Text(feels, 6, 94, 10);
+        p.Text(Fit(p, words, p.W - 12 - p.Width(feels + "  ", 10), 10, p.Bold), p.W - 6, 94, 10, "right", p.Bold);
+        p.Dotted(4, 108, p.W - 4, 108);
+
+        var rows = new List<(string Label, string Value)>();
+        if (current.Humidity is { } humidity)
+            rows.Add(("Влажн", Math.Round(humidity).ToString(CultureInfo.InvariantCulture) + "%"));
+        if (current.CloudCover is { } clouds)
+            rows.Add(("Облачн", clouds.ToString(CultureInfo.InvariantCulture) + "%"));
+        if (current.Pressure is { } hpa)
+            rows.Add(("Давлен", Math.Round(hpa * 0.750062).ToString(CultureInfo.InvariantCulture) + " мм"));
+        if (current.WindSpeed is { } wind)
+            rows.Add(("Ветер", wind.ToString("0.0", CultureInfo.InvariantCulture) + " м/с"));
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var y = 116 + 18 * i;
+            p.Text(rows[i].Label, 6, y, 13);
+            p.Text(":", 54, y, 13);
+            p.Text(rows[i].Value, 62, y, 13);
+            if (rows[i].Label == "Ветер" && current.WindDirection is { } from)
+                WindArrow(p, 62 + p.Width(rows[i].Value, 13) + 12, y + 5, from);
+        }
+
+        // the sun today, by the hive's clock
+        var today = DateOnly.FromDateTime(now.Date);
+        if (c.Weather?.Daily.FirstOrDefault(d => d.Date == today) is { } day)
+        {
+            float rise = p.W - 84, set = p.W - 36;
+            if (day.Sunrise is { } up)
+            {
+                WeatherIcons.SunOnHorizon(p.Canvas, rise - 16, 116, 32, rising: true);
+                p.Text(c.Local(up).ToString("H:mm", CultureInfo.InvariantCulture), rise, 146, 13, "center");
+            }
+            if (day.Sunset is { } down)
+            {
+                WeatherIcons.SunOnHorizon(p.Canvas, set - 16, 116, 32, rising: false);
+                p.Text(c.Local(down).ToString("H:mm", CultureInfo.InvariantCulture), set, 146, 13, "center");
+            }
+        }
+        return Math.Max(170, 116 + 18 * rows.Count + 2);
     }
 
     private static string Degrees(double t) => t.ToString("0.0", CultureInfo.InvariantCulture) + "°";
@@ -440,11 +492,11 @@ public static class ScreenTabs
         }
     }
 
-    private static string Fit(Pen p, string text, float width, float px)
+    private static string Fit(Pen p, string text, float width, float px, FontFace? face = null)
     {
-        if (p.Width(text, px) <= width)
+        if (p.Width(text, px, face) <= width)
             return text;
-        while (text.Length > 1 && p.Width(text + "…", px) > width)
+        while (text.Length > 1 && p.Width(text + "…", px, face) > width)
             text = text[..^1];
         return text + "…";
     }
@@ -546,6 +598,84 @@ public static class WeatherIcons
         canvas.DrawPath(cloud, white);
         using var line = Stroke(size);
         canvas.DrawPath(cloud, line);
+    }
+
+    /// <summary>The weather in words (Russian), by its WMO code.</summary>
+    public static string Describe(int code) => code switch
+    {
+        0 => "Ясно",
+        1 => "Почти ясно",
+        2 => "Переменная облачность",
+        3 => "Пасмурно",
+        45 or 48 => "Туман",
+        51 or 53 or 55 => "Морось",
+        56 or 57 => "Ледяная морось",
+        61 => "Небольшой дождь",
+        63 => "Дождь",
+        65 => "Сильный дождь",
+        66 or 67 => "Ледяной дождь",
+        71 => "Небольшой снег",
+        73 => "Снег",
+        75 => "Сильный снег",
+        77 => "Снежная крупа",
+        80 => "Небольшие ливни",
+        81 => "Ливни",
+        82 => "Сильные ливни",
+        85 or 86 => "Снегопад",
+        95 => "Гроза",
+        96 or 99 => "Гроза с градом",
+        _ => "",
+    };
+
+    /// <summary>A thermometer <paramref name="height"/> tall at x, y: a tube with marks, the bulb and its column filled.</summary>
+    public static void Thermometer(SKCanvas canvas, float x, float y, float height)
+    {
+        var r = height * 0.16f;
+        var tube = height * 0.09f;
+        var cx = x + r;
+        using var line = new SKPaint { Color = SKColors.Black, IsAntialias = false, StrokeWidth = Math.Max(1.5f, height / 22), Style = SKPaintStyle.Stroke };
+        using var ink = new SKPaint { Color = SKColors.Black, IsAntialias = false, Style = SKPaintStyle.Fill };
+        var bulbY = y + height - r;
+        canvas.DrawRoundRect(new SKRect(cx - tube, y, cx + tube, bulbY - r * 0.6f), tube, tube, line);
+        canvas.DrawCircle(cx, bulbY, r, ink);
+        canvas.DrawRect(new SKRect(cx - tube * 0.45f, y + height * 0.35f, cx + tube * 0.45f, bulbY), ink);
+        for (var i = 0; i < 3; i++)
+            canvas.DrawLine(cx + tube + 2, y + height * (0.18f + 0.14f * i), cx + tube + 5, y + height * (0.18f + 0.14f * i), line);
+    }
+
+    /// <summary>
+    /// Half a sun on the horizon (three lines under it), <paramref name="width"/> wide at x, y: rising drawn in outline,
+    /// setting filled.
+    /// </summary>
+    public static void SunOnHorizon(SKCanvas canvas, float x, float y, float width, bool rising)
+    {
+        var size = width;
+        using var line = new SKPaint
+        {
+            Color = SKColors.Black, IsAntialias = false, StrokeWidth = Math.Max(1.5f, size / 20), Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round,
+        };
+        float cx = x + size / 2, horizon = y + size * 0.5f, r = size * 0.2f;
+        using (var half = new SKPath())
+        {
+            half.AddArc(new SKRect(cx - r, horizon - r, cx + r, horizon + r), 180, 180);
+            if (rising)
+                canvas.DrawPath(half, line);
+            else
+            {
+                half.Close();
+                using var ink = new SKPaint { Color = SKColors.Black, IsAntialias = false, Style = SKPaintStyle.Fill };
+                canvas.DrawPath(half, ink);
+            }
+        }
+        for (var i = 0; i < 5; i++)
+        {
+            var a = Math.PI + i * Math.PI / 4;
+            float dx = (float)Math.Cos(a), dy = (float)Math.Sin(a);
+            canvas.DrawLine(cx + dx * r * 1.4f, horizon + dy * r * 1.4f, cx + dx * r * 1.9f, horizon + dy * r * 1.9f, line);
+        }
+        canvas.DrawLine(x, horizon + 1, x + size, horizon + 1, line);
+        canvas.DrawLine(x + size * 0.15f, horizon + size * 0.13f, x + size * 0.85f, horizon + size * 0.13f, line);
+        canvas.DrawLine(x + size * 0.3f, horizon + size * 0.25f, x + size * 0.7f, horizon + size * 0.25f, line);
     }
 
     /// <summary>A drop of radius <paramref name="r"/>, its round bottom at x, y.</summary>
