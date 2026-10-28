@@ -38,18 +38,23 @@ A board with several screens to flip through (Elecrow CrowPanel 3.7", `crowpanel
 MENU and EXIT) reads them one at a time: `GET /api/monitor/v1/frame.bin?tab=<n>`, `n` from 0. A board without tabs ignores
 `tab`. Answers as above, plus:
 
-- `X-Frame-Tabs`: how many tabs the board has (4 for `crowpanel-epd37`: 0 Common, 1 Forecast, 2 Calendar, 3 Measure).
-  A `tab` beyond them is `404`.
+- `X-Frame-Tabs`: how many tabs the board has (3 for `crowpanel-epd37`: 0 Weather, 1 Measure, 2 Calendar). A `tab` beyond
+  them is `404`. The panel takes the count from this header.
 - `X-Frame-Rotation`: how the hive turned the picture (0, 90, 180, 270, clockwise; the board's default when the person did
-  not choose: 270 for `crowpanel-epd37`, which stands landscape). The panel draws its own marks (the tab cursor, the
-  "нет связи" banner) in the same turn.
-- The `ETag` is per tab (the clock tab changes every minute).
+  not choose: 270 for `crowpanel-epd37`, which stands landscape). One turn for all the tabs: each lays itself out in a
+  landscape or a portrait screen. The panel draws its own marks (the tab cursor, the "нет связи" banner) in the same turn.
+- The `ETag` is per tab.
 
-Every tab ends in a tab bar the panel can find without asking: the bottom 22 pixels of the turned screen, four equal cells
-left to right, the shown tab drawn inverted (white on black). While the person moves the rocker, the panel inverts the
-cell under its cursor itself; the press shows the chosen tab from its memory at once and then reads it anew. Common
-(the clock) and Measure (the person's own layout, as `items` with background and fonts, drawn above the tab bar) are read
-every minute, just after the minute turns; Forecast and Calendar at the panel's interval. Times are the hive's time zone.
+Every tab ends in a tab bar the panel can find without asking: the bottom 22 pixels of the turned screen, as many equal
+cells left to right as there are tabs, the shown tab drawn inverted (white on black). While the person moves the rocker,
+the panel shows only its cursor inverted: it inverts the cell under the cursor and turns the shown tab's cell back to white
+(the panel knows which tab it shows). The press shows the chosen tab from its memory at once and then reads it anew. Every
+tab is read at the panel's own interval. Times are the hive's time zone.
+
+`X-Frame-Refresh` (both `frame` and `frame.bin`, also on `304`): while the person monitors the panel (its page,
+"Мониторинг": for 0.5-12 hours, every 1, 2, 5 or 10 minutes), the seconds until the panel should read again. The panel
+reads at the shorter of this and its own interval; when the header is gone, the monitoring is over and its own interval
+holds again.
 
 A panel may say its battery with every read: request header `X-Battery-mV` (integer millivolts, 2500..4500; absent when
 it cannot measure it). The hive keeps it as the monitor's `battery_voltage` reading (volts) and draws the battery on the

@@ -107,10 +107,12 @@ public static class DisplayRender
         }
         Flush();
         var width = runs.Sum(r => r.Width);
-        var left = align switch { "center" => x - width / 2, "right" => x - width, _ => x };
+        // whole pixels: a pixel font at its own size lands on the screen's grid, not smeared across two pixels
+        var left = MathF.Round(align switch { "center" => x - width / 2, "right" => x - width, _ => x });
+        var baseline = MathF.Round(top + cap);
         foreach (var (run, font, runWidth) in runs)
         {
-            canvas.DrawText(run, left, top + cap, SKTextAlign.Left, font, ink);
+            canvas.DrawText(run, left, baseline, SKTextAlign.Left, font, ink);
             left += runWidth;
         }
         return cap;

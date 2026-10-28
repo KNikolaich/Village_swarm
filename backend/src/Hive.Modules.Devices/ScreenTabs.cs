@@ -16,26 +16,30 @@ public sealed record TabContext(
     DateTimeOffset Now, Func<DateTimeOffset, DateTimeOffset> Local, int? Battery, WeatherForecast? Weather, IReadOnlyList<TabEvent> Events);
 
 /// <summary>
-/// The tabs of a panel with buttons (contracts/monitor-http.md, tabs): Common (a clock), Forecast (the weather now and the
-/// next five days), Calendar (the month and the hive's recent events) and Measure (the person's own layout). Each ends in
-/// the tab bar the panel finds by itself: the bottom <see cref="BarHeight"/> pixels, four equal cells, the shown tab inverted.
+/// The tabs of a panel with buttons (contracts/monitor-http.md, tabs): Weather (now and the next days), Measure (the person's
+/// own layout) and Calendar (the month and the hive's recent events). Each ends in the tab bar the panel finds by itself: the
+/// bottom <see cref="BarHeight"/> pixels, three equal cells, the shown tab inverted. The panel may stand either way (the
+/// person's rotation): the tabs lay themselves out in a landscape or a portrait screen.
 /// </summary>
 public static class ScreenTabs
 {
-    public const int Common = 0, Forecast = 1, Calendar = 2, Measure = 3;
+    public const int Forecast = 0, Measure = 1, Calendar = 2;
     public const int BarHeight = 22;
-    public static readonly string[] Names = ["Часы", "Прогноз", "Календарь", "Измерения"];
+    public static readonly string[] Names = ["Погода", "Измерения", "Календарь"];
 
-    /// <summary>The families the tabs are written in: Anonymous Pro (Russian letters, clear digits), UnifrakturCook for the clock.</summary>
-    public const string TextFamily = "anonymous-pro";
-    public const string ClockFamily = "unifraktur-cook";
+    /// <summary>
+    /// The families the tabs are written in: Roboto for text (bold for what stands out, light for scales), Roboto Serif for
+    /// the bigger numbers, a pixel font for the 8 px small print.
+    /// </summary>
+    public const string TextFamily = "roboto";
+    public const string LightFamily = "roboto-light";
+    public const string SerifFamily = "roboto-serif";
+    public const string PixelFamily = "press-start";
+    public static readonly string[] Families = [TextFamily, LightFamily, SerifFamily, PixelFamily];
 
     // Written out: the hive's image may run without culture data.
     private static readonly string[] Weekdays = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"];
-    private static readonly string[] Months = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
     private static readonly string[] MonthsOf = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-    private static readonly string[] WeekdaysShort = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
-    private static readonly string[] MonthsShort = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 
     /// <summary>Monday first: 0 for Monday, 6 for Sunday.</summary>
     public static int DayIndex(DateTimeOffset day) => ((int)day.DayOfWeek + 6) % 7;
@@ -79,7 +83,6 @@ public static class ScreenTabs
         var pen = new Pen(canvas, fonts, screen.Width, screen.Height - BarHeight);
         switch (tab)
         {
-            case Common: DrawCommon(pen, context); break;
             case Forecast: DrawForecast(pen, context); break;
             case Calendar: DrawCalendar(pen, context); break;
         }
@@ -96,18 +99,23 @@ public static class ScreenTabs
             Canvas = canvas;
             W = width;
             H = height;
-            Mono = fonts.Resolve(TextFamily, false, false);
-            MonoBold = fonts.Resolve(TextFamily, true, false);
-            Clock = fonts.Resolve(ClockFamily, true, false);
+            Regular = fonts.Resolve(TextFamily, false, false);
+            Bold = fonts.Resolve(TextFamily, true, false);
+            Light = fonts.Resolve(LightFamily, false, false);
+            Serif = fonts.Resolve(SerifFamily, false, false);
+            Pixel = fonts.Resolve(PixelFamily, false, false);
             Fallback = fonts.Fallback;
         }
 
         public SKCanvas Canvas { get; }
         public int W { get; }
         public int H { get; }
-        public FontFace Mono { get; }
-        public FontFace MonoBold { get; }
-        public FontFace Clock { get; }
+        public bool Portrait => W < H;
+        public FontFace Regular { get; }
+        public FontFace Bold { get; }
+        public FontFace Light { get; }
+        public FontFace Serif { get; }
+        public FontFace Pixel { get; }
         public FontFace Fallback { get; }
         public SKPaint Ink { get; } = new() { Color = SKColors.Black, IsAntialias = false, StrokeWidth = 1, Style = SKPaintStyle.Fill };
         public SKPaint Paper { get; } = new() { Color = SKColors.White, IsAntialias = false, Style = SKPaintStyle.Fill };
@@ -115,11 +123,11 @@ public static class ScreenTabs
 
         /// <summary>Text of <paramref name="px"/> pixels, its top at <paramref name="top"/>; returns the height of its capitals.</summary>
         public float Text(string text, float x, float top, float px, string? align = null, FontFace? face = null, bool white = false) =>
-            DisplayRender.Text(Canvas, white ? Paper : Ink, text, x, top, face ?? Mono, Fallback, px, false, align);
+            DisplayRender.Text(Canvas, white ? Paper : Ink, text, x, top, face ?? Regular, Fallback, px, false, align);
 
         public float Width(string text, float px, FontFace? face = null)
         {
-            using var font = DisplayRender.MakeFont(face ?? Mono, px);
+            using var font = DisplayRender.MakeFont(face ?? Regular, px);
             return font.MeasureText(text);
         }
 
@@ -140,6 +148,7 @@ public static class ScreenTabs
         }
     }
 
+    /// <summary>The tab bar: three cells, the shown one black; a name that does not fit its cell is written smaller.</summary>
     private static void DrawBar(Pen p, int tab, int height)
     {
         var top = height - BarHeight;
@@ -147,6 +156,9 @@ public static class ScreenTabs
         p.Canvas.DrawRect(new SKRect(0, top, p.W, height), p.Paper);
         p.Canvas.DrawLine(0, top, p.W, top, line);
         var cell = p.W / (float)Names.Length;
+        var px = 16f;
+        while (px > 10 && Names.Any(n => p.Width(n, px, p.Bold) > cell - 6))
+            px -= 2;
         for (var i = 0; i < Names.Length; i++)
         {
             var left = i * cell;
@@ -154,8 +166,15 @@ public static class ScreenTabs
                 p.Canvas.DrawRect(new SKRect(left, top, left + cell, height), p.Ink);
             else if (i > 0 && i != tab + 1)
                 p.Canvas.DrawLine(left, top + 4, left, height - 4, line);
-            p.Text(Names[i], left + cell / 2, top + 6, 13, "center", i == tab ? p.MonoBold : p.Mono, white: i == tab);
+            var cap = CapOf(p.Bold, px);
+            p.Text(Names[i], left + cell / 2, top + (BarHeight - cap) / 2 + 1, px, "center", p.Bold, white: i == tab);
         }
+    }
+
+    private static float CapOf(FontFace face, float px)
+    {
+        using var font = DisplayRender.MakeFont(face, px);
+        return font.Metrics.CapHeight > 0 ? font.Metrics.CapHeight : px * 0.7f;
     }
 
     /// <summary>A small battery standing upright in the top right corner, the percent to its left. Nothing when unknown.</summary>
@@ -169,11 +188,11 @@ public static class ScreenTabs
         p.Canvas.DrawRect(new SKRect(right - w, top + 2, right, top + h), line);
         var fill = (h - 4) * Math.Clamp(pct, 0, 100) / 100f;
         p.Canvas.DrawRect(new SKRect(right - w + 2, top + h - 2 - fill, right - 2, top + h - 2), p.Ink);
-        p.Text($"{pct}%", right - w - 3, top + 5, 10, "right");
+        p.Text($"{pct}%", right - w - 3, top + 5, 10, "right", p.Light);
     }
 
-    /// <summary>The week as seven squares, Monday first: weekdays black, the weekend grey; today marked under (or around) its square.</summary>
-    private static void DrawWeek(Pen p, float x, float y, float size, float gap, DateTimeOffset today, bool circle)
+    /// <summary>The week as seven squares, Monday first: weekdays black, the weekend grey; today circled.</summary>
+    private static void DrawWeek(Pen p, float x, float y, float size, float gap, DateTimeOffset today)
     {
         var index = DayIndex(today);
         for (var i = 0; i < 7; i++)
@@ -189,120 +208,85 @@ public static class ScreenTabs
             }
             if (i != index)
                 continue;
-            if (circle)
-            {
-                using var ring = p.Line(2);
-                p.Canvas.DrawCircle(r.MidX, r.MidY, size * 0.85f, ring);
-            }
-            else
-            {
-                using var mark = new SKPath();
-                mark.MoveTo(r.MidX, r.Bottom + 3);
-                mark.LineTo(r.MidX - 6, r.Bottom + 10);
-                mark.LineTo(r.MidX + 6, r.Bottom + 10);
-                mark.Close();
-                p.Canvas.DrawPath(mark, p.Ink);
-            }
+            using var ring = p.Line(2);
+            p.Canvas.DrawCircle(r.MidX, r.MidY, size * 0.85f, ring);
         }
     }
 
-    // ------------------------------------------------------------------ Common: the clock
-
-    private static void DrawCommon(Pen p, TabContext c)
-    {
-        var now = c.Local(c.Now);
-        DrawWeek(p, 10, 10, 18, 7, now, circle: false);
-        var date = $"{now.Day} {MonthsShort[now.Month - 1]}";
-        var dateRight = p.W - (c.Battery is null ? 10 : 50);
-        var dateWidth = p.Width(date, 22);
-        p.Text(date, dateRight, 10, 22, "right");
-        using (var underline = p.Line(2))
-            p.Canvas.DrawLine(dateRight - dateWidth, 37, dateRight, 37, underline);
-
-        // the largest clock that fits between the date and the weekday, by the inked bounds of its digits:
-        // the fraktur digits rise above the capitals, so the cap height alone lets them run off the top
-        var time = now.ToString("HH:mm", CultureInfo.InvariantCulture);
-        const float roomTop = 44;
-        var roomBottom = p.H - 20f;
-        float px = 220;
-        var ink = InkOf(p.Clock, time, px);
-        while (px > 40 && (ink.Width > p.W - 20 || ink.Height > roomBottom - roomTop))
-        {
-            px -= 4;
-            ink = InkOf(p.Clock, time, px);
-        }
-        var baseline = roomTop + (roomBottom - roomTop - ink.Height) / 2 - ink.Top;
-        p.Text(time, p.W / 2f, baseline - CapOf(p.Clock, px), px, "center", p.Clock);
-        p.Text(Weekdays[DayIndex(now)], p.W - 8, p.H - 16, 12, "right");
-    }
-
-    /// <summary>The inked box of <paramref name="text"/> about its baseline (the advance box left of the pen at 0).</summary>
-    private static SKRect InkOf(FontFace face, string text, float px)
-    {
-        using var font = DisplayRender.MakeFont(face, px);
-        font.MeasureText(text, out var bounds);
-        return bounds;
-    }
-
-    private static float CapOf(FontFace face, float px)
-    {
-        using var font = DisplayRender.MakeFont(face, px);
-        return font.Metrics.CapHeight > 0 ? font.Metrics.CapHeight : px * 0.7f;
-    }
-
-    // ------------------------------------------------------------------ Forecast: now and five days
+    // ------------------------------------------------------------------ Weather: now and the next days
 
     private static void DrawForecast(Pen p, TabContext c)
     {
         var now = c.Local(c.Now);
         var weather = c.Weather;
-        p.Text($"{now.Day} {WeekdaysShort[DayIndex(now)]}", 6, 4, 13);
-        p.Text(Months[now.Month - 1], 6, 20, 13);
-        p.Text(now.ToString("HH:mm", CultureInfo.InvariantCulture), 6, 36, 13);
+        // the date, big: the day and month, the weekday under it
+        p.Text($"{now.Day} {MonthsOf[now.Month - 1]}", 6, 6, 16, null, p.Bold);
+        p.Text(Weekdays[DayIndex(now)], 6, 28, 14);
         if (weather?.Current is not { } current)
         {
             p.Text("Нет прогноза: укажите место", p.W / 2f, p.H / 2f - 10, 14, "center");
             p.Text("в настройках погоды Улья", p.W / 2f, p.H / 2f + 10, 14, "center");
             return;
         }
-        WeatherIcons.Draw(p.Canvas, current.WeatherCode, 92, 4, 46);
-        var temp = current.Temperature.ToString("0.0", CultureInfo.InvariantCulture) + "°";
-        p.Text(temp, 222, 2, 38, "center");
-        if (current.Pressure is { } hpa)
-            p.Text($"Давл. {Math.Round(hpa * 0.750062).ToString(CultureInfo.InvariantCulture)} мм", 222, 44, 11, "center");
-        var right = 340f;
-        if (current.CloudCover is { } clouds)
-            p.Text($"Обл. {clouds}%", right, 6, 12, "right");
-        if (current.Humidity is { } humidity)
-            p.Text($"Влаж. {Math.Round(humidity).ToString(CultureInfo.InvariantCulture)}%", right, 22, 12, "right");
-        if (current.WindSpeed is { } wind)
+        float headBottom;
+        if (p.Portrait)
         {
-            var speed = wind.ToString("0.0", CultureInfo.InvariantCulture) + " м/с";
-            p.Text(speed, right, 40, 12, "right");
-            if (current.WindDirection is { } from)
-                WindArrow(p, right - p.Width(speed, 12) - 12, 46, from);
+            // standing: the picture and the temperature under the date, the rest in a row under them
+            WeatherIcons.Draw(p.Canvas, current.WeatherCode, 8, 48, 50);
+            p.Text(Degrees(current.Temperature), p.W - 12, 58, 36, "right", p.Serif);
+            if (current.Pressure is { } hpa)
+                p.Text(Pressure(hpa), p.W - 12, 100, 12, "right", p.Serif);
+            var details = Details(current);
+            for (var i = 0; i < details.Count; i++)
+                p.Text(details[i], 8 + i * (p.W - 16) / 3f, 120, 12);
+            headBottom = 140;
+        }
+        else
+        {
+            WeatherIcons.Draw(p.Canvas, current.WeatherCode, 104, 4, 46);
+            p.Text(Degrees(current.Temperature), 228, 7, 36, "center", p.Serif);
+            if (current.Pressure is { } hpa)
+                p.Text(Pressure(hpa), 228, 46, 12, "center", p.Serif);
+            var details = Details(current);
+            for (var i = 0; i < details.Count; i++)
+                p.Text(details[i], 352, 6 + 17 * i, 12, "right");
+            headBottom = 60;
+        }
+        if (current.WindSpeed is not null && current.WindDirection is { } from)
+        {
+            // the arrow left of the wind's line (the last of the details)
+            var line = Details(current)[^1];
+            if (p.Portrait)
+                WindArrow(p, 8 + 2 * (p.W - 16) / 3f - 10, 126, from);
+            else
+                WindArrow(p, 352 - p.Width(line, 12) - 10, 6 + 17 * 2 + 6, from);
         }
         using (var thick = p.Line(2))
-            p.Canvas.DrawLine(0, 60, p.W, 60, thick);
+            p.Canvas.DrawLine(0, headBottom, p.W, headBottom, thick);
 
-        // five days from today: date, hours 3 9 15 21, the temperature line, rain and wind per six hours
-        const float left = 20;
-        var dayW = (p.W - left - 2) / 5f;
+        // the next days from today: date, hours 3 9 15 21, the temperature line, rain and wind per six hours
+        var days = p.Portrait ? 3 : 5;
+        const float left = 22;
+        var dayW = (p.W - left - 2) / days;
         var start = new DateTimeOffset(now.Date, now.Offset);
-        var hours = weather.Hourly.Select(h => (At: c.Local(h.Time), Hour: h)).Where(h => h.At >= start && h.At < start.AddDays(5)).ToList();
-        float gTop = 92, gBottom = 152, rainTop = 156, rainBottom = 184, windTop = 188;
-        for (var d = 0; d < 5; d++)
+        var hours = weather.Hourly.Select(h => (At: c.Local(h.Time), Hour: h)).Where(h => h.At >= start && h.At < start.AddDays(days)).ToList();
+        var y0 = headBottom + 4;
+        float hoursTop = y0 + 16, hoursBottom = y0 + 28;
+        // the graph sits under the hours with room for the warmest of each day; it may run over the rain, not the hours
+        var rest = p.H - hoursBottom - 14;
+        float gTop = hoursBottom + 12, gBottom = hoursBottom + rest * 0.52f, rainTop = gBottom + 4, rainBottom = hoursBottom + rest * 0.8f, windTop = rainBottom + 5;
+        for (var d = 0; d < days; d++)
         {
             var x = left + d * dayW;
             var day = start.AddDays(d);
-            p.Text(day.ToString("dd/MM", CultureInfo.InvariantCulture), x + 4, 64, 13, null, d == 0 ? p.MonoBold : p.Mono);
+            p.Text(day.ToString("dd/MM", CultureInfo.InvariantCulture), x + 4, y0, 12, null, d == 0 ? p.Bold : p.Serif);
             for (var s = 0; s < 4; s++)
-                p.Text((3 + 6 * s).ToString(CultureInfo.InvariantCulture), x + dayW * (s + 0.5f) / 4, 80, 9, "center");
+                p.Text((3 + 6 * s).ToString(CultureInfo.InvariantCulture), x + dayW * (s + 0.5f) / 4, hoursTop, 10, "center", p.Light);
             if (d > 0)
-                p.Dotted(x, 64, x, windTop + 12);
+                p.Dotted(x, y0, x, windTop + 12);
         }
         using (var thin = p.Line())
-            p.Canvas.DrawLine(0, 90, p.W, 90, thin);
+            p.Canvas.DrawLine(0, hoursBottom + 1, p.W, hoursBottom + 1, thin);
         if (hours.Count == 0)
             return;
 
@@ -312,7 +296,7 @@ public static class ScreenTabs
         for (var t = low; t <= high; t += step)
         {
             p.Dotted(left, Y(t), p.W - 2, Y(t));
-            p.Text(t.ToString(CultureInfo.InvariantCulture), left - 2, Y(t) - 4, 9, "right");
+            p.Text(t.ToString(CultureInfo.InvariantCulture), left - 3, Y(t) - 4, 10, "right", p.Light);
         }
         using (var curve = p.Line(2))
         using (var path = new SKPath())
@@ -322,21 +306,21 @@ public static class ScreenTabs
                 path.LineTo(X(at), Y(hour.Temperature));
             p.Canvas.DrawPath(path, curve);
         }
-        // the warmest of each day above the line
-        for (var d = 0; d < 5; d++)
+        // the warmest of each day above the line, never up on the hours
+        for (var d = 0; d < days; d++)
         {
             var ofDay = hours.Where(h => h.At >= start.AddDays(d) && h.At < start.AddDays(d + 1)).ToList();
             if (ofDay.Count == 0)
                 continue;
             var max = ofDay.MaxBy(h => h.Hour.Temperature);
             var label = Math.Round(max.Hour.Temperature).ToString("0", CultureInfo.InvariantCulture);
-            p.Text(label, Math.Clamp(X(max.At), left + d * dayW + 8, left + (d + 1) * dayW - 8), Math.Max(gTop - 12, Y(max.Hour.Temperature) - 13), 10, "center");
+            p.Text(label, Math.Clamp(X(max.At), left + d * dayW + 8, left + (d + 1) * dayW - 8), Math.Max(hoursBottom + 3, Y(max.Hour.Temperature) - 12), 10, "center");
         }
 
-        WeatherIcons.Drop(p.Canvas, 8, rainTop + 8, 6);
-        WeatherIcons.Wind(p.Canvas, 2, windTop + 2, 14);
+        WeatherIcons.Drops(p.Canvas, 2, rainTop + 2, 14);
+        WeatherIcons.Wind(p.Canvas, 2, windTop - 1, 16);
         var slotW = dayW / 4;
-        for (var slot = 0; slot < 20; slot++)
+        for (var slot = 0; slot < days * 4; slot++)
         {
             var from = start.AddHours(6 * slot);
             var of = hours.Where(h => h.At >= from && h.At < from.AddHours(6)).Select(h => h.Hour).ToList();
@@ -352,7 +336,24 @@ public static class ScreenTabs
             if (of.Max(h => h.WindSpeed) is { } windMax)
                 p.Text(Math.Round(windMax).ToString("0", CultureInfo.InvariantCulture), x + slotW / 2, windTop + 3, 10, "center");
         }
-        p.Text("обновлено " + now.ToString("HH:mm", CultureInfo.InvariantCulture), p.W - 4, p.H - 12, 9, "right");
+        p.Text("обновлено " + now.ToString("HH:mm", CultureInfo.InvariantCulture), p.W - 4, p.H - 10, 8, "right", p.Pixel);
+    }
+
+    private static string Degrees(double t) => t.ToString("0.0", CultureInfo.InvariantCulture) + "°";
+
+    private static string Pressure(double hpa) => $"Давл. {Math.Round(hpa * 0.750062).ToString(CultureInfo.InvariantCulture)} мм";
+
+    /// <summary>Clouds, humidity and the wind (always last), as far as the weather says them.</summary>
+    private static List<string> Details(WeatherCurrentDto current)
+    {
+        var lines = new List<string>();
+        if (current.CloudCover is { } clouds)
+            lines.Add($"Обл. {clouds}%");
+        if (current.Humidity is { } humidity)
+            lines.Add($"Влаж. {Math.Round(humidity).ToString(CultureInfo.InvariantCulture)}%");
+        if (current.WindSpeed is { } wind)
+            lines.Add(wind.ToString("0.0", CultureInfo.InvariantCulture) + " м/с");
+        return lines;
     }
 
     /// <summary>An arrow the way the wind blows (it comes from <paramref name="fromDegrees"/>).</summary>
@@ -361,61 +362,81 @@ public static class ScreenTabs
         var to = (fromDegrees + 180) * Math.PI / 180;
         float dx = (float)Math.Sin(to), dy = (float)-Math.Cos(to);
         using var line = p.Line(2);
-        p.Canvas.DrawLine(cx - dx * 7, cy - dy * 7, cx + dx * 7, cy + dy * 7, line);
+        p.Canvas.DrawLine(cx - dx * 6, cy - dy * 6, cx + dx * 6, cy + dy * 6, line);
         using var head = new SKPath();
-        head.MoveTo(cx + dx * 9, cy + dy * 9);
-        head.LineTo(cx + dx * 3 - dy * 4, cy + dy * 3 + dx * 4);
-        head.LineTo(cx + dx * 3 + dy * 4, cy + dy * 3 - dx * 4);
+        head.MoveTo(cx + dx * 8, cy + dy * 8);
+        head.LineTo(cx + dx * 2 - dy * 4, cy + dy * 2 + dx * 4);
+        head.LineTo(cx + dx * 2 + dy * 4, cy + dy * 2 - dx * 4);
         head.Close();
         p.Canvas.DrawPath(head, p.Ink);
     }
 
     // ------------------------------------------------------------------ Calendar: the month and the hive's news
 
+    /// <summary>The month on the left and today with the news on the right; standing, the month above and the news under it.</summary>
     private static void DrawCalendar(Pen p, TabContext c)
     {
         var now = c.Local(c.Now);
-        const float cell = 28, left = 6;
+        var cell = p.Portrait ? (p.W - 12) / 7f : 28f;
+        const float left = 6;
+        var monthBottom = p.Portrait ? p.H * 0.52f : p.H;
         string[] heads = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
         for (var i = 0; i < 7; i++)
-            p.Text(heads[i], left + cell * i + cell / 2, 8, 12, "center", i >= 5 ? p.MonoBold : p.Mono);
+            p.Text(heads[i], left + cell * i + cell / 2, 8, 12, "center", i >= 5 ? p.Bold : p.Regular);
         p.Dotted(left, 26, left + cell * 7, 26);
         var first = new DateTime(now.Year, now.Month, 1);
         var gridStart = first.AddDays(-((int)first.DayOfWeek + 6) % 7);
         var rows = (int)Math.Ceiling(((first - gridStart).TotalDays + DateTime.DaysInMonth(now.Year, now.Month)) / 7);
-        var rowH = Math.Min(30f, (p.H - 34) / (float)rows);
+        var rowH = Math.Min(30f, (monthBottom - 34) / rows);
         for (var i = 0; i < rows * 7; i++)
         {
             var day = gridStart.AddDays(i);
             float x = left + cell * (i % 7) + cell / 2, y = 32 + rowH * (i / 7);
             var other = day.Month != now.Month;
-            p.Text(day.Day.ToString(CultureInfo.InvariantCulture), x, y + 3, other ? 11 : 15, "center", i % 7 >= 5 && !other ? p.MonoBold : p.Mono);
+            p.Text(day.Day.ToString(CultureInfo.InvariantCulture), x, y + 3, other ? 10 : 14, "center", i % 7 >= 5 && !other ? p.Bold : other ? p.Light : p.Regular);
             if (day.Date == now.Date)
             {
                 using var ring = p.Line(2);
-                p.Canvas.DrawCircle(x, y + 10, 13, ring);
+                p.Canvas.DrawCircle(x, y + 9, Math.Min(13, rowH / 2), ring);
             }
         }
-        var divider = left + cell * 7 + 8;
-        using (var line = p.Line(2))
-            p.Canvas.DrawLine(divider, 6, divider, p.H - 6, line);
 
-        var x0 = divider + 10;
+        float x0, top;
+        using (var line = p.Line(2))
+        {
+            if (p.Portrait)
+            {
+                p.Canvas.DrawLine(6, monthBottom + 4, p.W - 6, monthBottom + 4, line);
+                (x0, top) = (8, monthBottom + 14);
+            }
+            else
+            {
+                var divider = left + cell * 7 + 8;
+                p.Canvas.DrawLine(divider, 6, divider, p.H - 6, line);
+                (x0, top) = (divider + 10, 8);
+            }
+        }
         var dayText = now.Day.ToString(CultureInfo.InvariantCulture);
-        p.Text(dayText, x0, 8, 54);
-        p.Text(MonthsOf[now.Month - 1], x0 + p.Width(dayText, 54) + 8, 36, 16);
-        DrawWeek(p, x0, 76, 12, 9, now, circle: true);
-        float y0 = 106;
+        p.Text(dayText, x0, top, 48, null, p.Serif);
+        var dayW = p.Width(dayText, 48, p.Serif);
+        p.Text(MonthsOf[now.Month - 1], x0 + dayW + 8, top + 4, 16, null, p.Bold);
+        p.Text(Weekdays[DayIndex(now)], x0 + dayW + 8, top + 22, 14);
+        DrawWeek(p, x0 + 2, top + 46, 12, 9, now);
+        var y0 = top + 72;
         if (c.Events.Count == 0)
             p.Text("Событий нет", x0, y0, 12);
-        foreach (var e in c.Events.Take(4))
+        var room = (int)((p.H - y0) / 20);
+        foreach (var e in c.Events.Take(Math.Max(0, room)))
         {
             var at = c.Local(e.At);
-            var line = at.ToString("dd/MM", CultureInfo.InvariantCulture) + " " + e.What;
-            p.Text(line, x0, y0, 12);
+            var date = at.ToString("dd/MM", CultureInfo.InvariantCulture) + " ";
+            p.Text(date, x0, y0, 12, null, p.Serif);
+            var x = x0 + p.Width(date, 12, p.Serif);
+            p.Text(e.What, x, y0, 12, null, p.Bold);
+            x += p.Width(e.What + " ", 12, p.Bold);
             if (e.Where is { Length: > 0 } where)
-                p.Text(Fit(p, where, p.W - x0 - p.Width(line + " ", 12) - 4, 10), x0 + p.Width(line + " ", 12), y0 + 2, 10);
-            y0 += 22;
+                p.Text(Fit(p, where, p.W - x - 4, 12), x, y0, 12);
+            y0 += 20;
         }
     }
 
@@ -528,15 +549,35 @@ public static class WeatherIcons
     }
 
     /// <summary>A drop of radius <paramref name="r"/>, its round bottom at x, y.</summary>
-    public static void Drop(SKCanvas canvas, float x, float y, float r)
+    public static void Drop(SKCanvas canvas, float x, float y, float r) => Tear(canvas, x, y - r * 2.4f, x, y, r);
+
+    /// <summary>A teardrop: its point at (tx, ty), its round end a circle of <paramref name="r"/> around (cx, cy).</summary>
+    public static void Tear(SKCanvas canvas, float tx, float ty, float cx, float cy, float r)
     {
+        // the two lines from the point touch the circle where they meet its radius at a right angle
+        float dx = tx - cx, dy = ty - cy;
+        var d = MathF.Sqrt(dx * dx + dy * dy);
+        var toPoint = MathF.Atan2(dy, dx);
+        var spread = MathF.Acos(Math.Clamp(r / d, -1, 1));
+        var a1 = toPoint + spread;
         using var path = new SKPath();
-        path.MoveTo(x, y - r * 2.4f);
-        path.LineTo(x - r, y - r * 0.2f);
-        path.ArcTo(new SKRect(x - r, y - r, x + r, y + r), 180, -180, false);
+        path.MoveTo(tx, ty);
+        path.LineTo(cx + r * MathF.Cos(a1), cy + r * MathF.Sin(a1));
+        // around the far side of the circle, from one touching point to the other
+        var sweep = 360f - 2 * spread * 180 / MathF.PI;
+        path.ArcTo(new SKRect(cx - r, cy - r, cx + r, cy + r), a1 * 180 / MathF.PI, sweep, false);
+        path.LineTo(tx, ty);
         path.Close();
         using var ink = new SKPaint { Color = SKColors.Black, IsAntialias = false, Style = SKPaintStyle.Fill };
         canvas.DrawPath(path, ink);
+    }
+
+    /// <summary>Two drops slanting across each other (the rain row), in a box <paramref name="size"/> tall at x, y.</summary>
+    public static void Drops(SKCanvas canvas, float x, float y, float size)
+    {
+        var w = size * 0.625f;
+        Tear(canvas, x + w * 0.37f, y + size * 0.49f, x + w * 0.70f, y + size * 0.21f, w * 0.22f);
+        Tear(canvas, x + w * 0.17f, y + size * 0.42f, x + w * 0.62f, y + size * 0.75f, w * 0.21f);
     }
 
     private static void Flake(SKCanvas canvas, float cx, float cy, float r)
@@ -550,12 +591,36 @@ public static class WeatherIcons
         }
     }
 
-    /// <summary>Three lines of wind, the longest in the middle.</summary>
+    /// <summary>
+    /// The wind: three strokes blowing to the right, the upper one curling up at its end, the lower one curling down, the
+    /// middle one the longest; in a square of <paramref name="size"/> at x, y.
+    /// </summary>
     public static void Wind(SKCanvas canvas, float x, float y, float size)
     {
-        using var line = new SKPaint { Color = SKColors.Black, IsAntialias = false, StrokeWidth = 1.5f, Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round };
-        canvas.DrawLine(x, y + size * 0.25f, x + size * 0.7f, y + size * 0.25f, line);
-        canvas.DrawLine(x, y + size * 0.5f, x + size, y + size * 0.5f, line);
-        canvas.DrawLine(x, y + size * 0.75f, x + size * 0.6f, y + size * 0.75f, line);
+        using var line = new SKPaint
+        {
+            Color = SKColors.Black, IsAntialias = false, StrokeWidth = Math.Max(1.5f, size / 9), Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round,
+        };
+        float S(float f) => f * size;
+        var r = S(0.13f);
+        // upper: a dash, then a stroke that curls up and back over itself
+        canvas.DrawLine(x + S(0.04f), y + S(0.38f), x + S(0.14f), y + S(0.38f), line);
+        using (var upper = new SKPath())
+        {
+            upper.MoveTo(x + S(0.26f), y + S(0.38f));
+            upper.LineTo(x + S(0.66f), y + S(0.38f));
+            upper.ArcTo(new SKRect(x + S(0.66f) - r, y + S(0.38f) - 2 * r, x + S(0.66f) + r, y + S(0.38f)), 90, -270, false);
+            canvas.DrawPath(upper, line);
+        }
+        // middle: the longest
+        canvas.DrawLine(x + S(0.04f), y + S(0.56f), x + S(0.86f), y + S(0.56f), line);
+        // lower: a stroke that curls down
+        using (var lower = new SKPath())
+        {
+            lower.MoveTo(x + S(0.30f), y + S(0.74f));
+            lower.LineTo(x + S(0.60f), y + S(0.74f));
+            lower.ArcTo(new SKRect(x + S(0.60f) - r, y + S(0.74f), x + S(0.60f) + r, y + S(0.74f) + 2 * r), -90, 270, false);
+            canvas.DrawPath(lower, line);
+        }
     }
 }

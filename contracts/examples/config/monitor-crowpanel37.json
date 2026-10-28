@@ -1,11 +1,14 @@
 {
-  "v": 1, "rev": 2, "name": "Панель на кухне",
+  "v": 1, "rev": 3, "name": "Панель на кухне",
   "health_interval_s": 60,
   "display": {
     "rotation": 270,
+    "monitor": { "until": 1793133662000, "every_min": 2 },
     "items": [
-      { "text": "Улица", "x": 8, "y": 8, "size": 1, "font": "anonymous-pro", "px": 18 },
-      { "device": "meteo-out1", "metric": "temperature", "x": 8, "y": 34, "size": 5, "font": "dseg7", "px": 48 }
+      { "clock": "time", "x": 208, "y": 20, "size": 5, "align": "center", "font": "roboto-serif", "px": 96 },
+      { "clock": "date", "format": "ddd, d MMM", "x": 208, "y": 130, "size": 1, "align": "center", "font": "roboto", "px": 24 },
+      { "text": "Улица", "x": 8, "y": 170, "size": 1, "font": "roboto", "px": 16, "bold": true },
+      { "device": "meteo-out1", "metric": "temperature", "x": 8, "y": 190, "size": 1, "font": "roboto-serif", "px": 24 }
     ]
   }
 }

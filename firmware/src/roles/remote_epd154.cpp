@@ -118,6 +118,7 @@ RTC_DATA_ATTR char lastEtag[72] = "";
 RTC_DATA_ATTR uint32_t offlineMin = 0;  // minutes without a picture from the hive
 RTC_DATA_ATTR uint32_t bannerAtMin = 0; // offlineMin when the banner was last drawn
 RTC_DATA_ATTR bool messageShown = false; // a message replaced the picture: draw the picture again even on 304
+RTC_DATA_ATTR uint32_t refreshS = 0;     // the hive's monitoring: read this often (X-Frame-Refresh), 0 = own interval
 
 struct Settings {
     String ssid[2], pass[2], url, token;
@@ -515,9 +516,11 @@ Reply fetchFrame() {
     if (!begun) return reply;
     http.addHeader("Authorization", "Bearer " + settings.token);
     if (lastEtag[0] && haveFrame) http.addHeader("If-None-Match", lastEtag);
-    const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height"};
-    http.collectHeaders(keys, 3);
+    const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Refresh"};
+    http.collectHeaders(keys, 4);
     reply.code = http.GET();
+    if (reply.code == 200 || reply.code == 304)
+        refreshS = http.hasHeader("X-Frame-Refresh") ? static_cast<uint32_t>(http.header("X-Frame-Refresh").toInt()) : 0;
     size_t bytes = 0;
     if (reply.code == 200) {
         FrameSink sink(incoming);
@@ -575,7 +578,7 @@ Reply fetchFrame() {
             }
             break;
     }
-    sleepFor(settings.intervalMin);
+    sleepFor(nextReadSeconds(settings.intervalMin, refreshS) / 60);  // sooner while the hive monitors the panel
 }
 
 /// Woken by BOOT: held for 2 s = the settings point, a short press = read now.

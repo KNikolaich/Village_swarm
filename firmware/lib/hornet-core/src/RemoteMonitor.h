@@ -92,8 +92,19 @@ inline int stepTab(int tab, int step, int count) {
     return ((tab + step) % count + count) % count;
 }
 
-/// Common (the clock) and Measure (the person's readings) are read every minute; the others at the panel's interval.
-inline bool everyMinute(int tab) { return tab == 0 || tab == 3; }
+/// The most tabs a panel keeps in its flash.
+constexpr int kMaxTabs = 4;
+
+/// How many tabs the hive says the board has (X-Frame-Tabs); a missing or odd answer keeps <current>.
+inline int tabCount(int said, int current) { return said >= 1 && said <= kMaxTabs ? said : current; }
+
+/// Seconds to the next read: the panel's interval, or sooner while the hive monitors it (X-Frame-Refresh, at least a minute).
+inline uint32_t nextReadSeconds(int intervalMin, uint32_t refreshS) {
+    const uint32_t own = static_cast<uint32_t>(intervalMin) * 60;
+    if (refreshS == 0) return own;
+    const uint32_t monitored = refreshS < 60 ? 60 : refreshS;
+    return monitored < own ? monitored : own;
+}
 
 /// Seconds to sleep so that the panel wakes just after the minute turns (a second of slack for the hive's clock).
 inline uint32_t secondsToNextMinute(uint32_t unixSeconds) { return 60 - unixSeconds % 60 + 1; }

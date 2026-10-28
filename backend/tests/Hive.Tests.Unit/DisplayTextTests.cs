@@ -59,9 +59,9 @@ public class DisplayTextTests
         var epaper = new DisplayScreenDto(200, 200, Rendered: true);
         DisplayItemDto Item(string? font = null, int? px = null, string? text = null, string metric = "temperature", int? size = 3) =>
             new(null, metric, null, 0, 0, size, null, text, font, px);
-        Assert.Null(DisplayText.Validate([Item("anonymous-pro", 6), Item(px: 48)], epaper));
+        Assert.Null(DisplayText.Validate([Item("anonymous-pro", 6), Item(px: 120)], epaper));
         Assert.NotNull(DisplayText.Validate([Item(px: 5)], epaper));
-        Assert.NotNull(DisplayText.Validate([Item(px: 49)], epaper));
+        Assert.NotNull(DisplayText.Validate([Item(px: 121)], epaper));
         Assert.NotNull(DisplayText.Validate([Item("Bad Font")], epaper));
         // a screen the hive does not draw (the firmware has its own fonts), or an item laid out by the screen: no fonts
         Assert.NotNull(DisplayText.Validate([Item(px: 12)], new DisplayScreenDto(72, 40)));
@@ -70,5 +70,28 @@ public class DisplayTextTests
         Assert.Null(DisplayText.Validate([Item(text: "Улица", metric: "")], epaper));
         Assert.NotNull(DisplayText.Validate([Item(text: "Улица")], epaper));
         Assert.NotNull(DisplayText.Validate([Item(text: new string('x', 25), metric: "")], epaper));
+    }
+
+    [Theory]
+    [InlineData("HH:mm", "09:05")]
+    [InlineData("H:mm", "9:05")]
+    [InlineData("d MMMM", "29 октября")]
+    [InlineData("d MMM", "29 окт")]
+    [InlineData("dd.MM.yyyy", "29.10.2026")]
+    [InlineData("dddd", "четверг")]
+    [InlineData("ddd, d MMM", "чт, 29 окт")]
+    [InlineData("MMMM", "октябрь")]
+    public void The_clock_is_written_in_russian_without_culture_data(string format, string text) =>
+        Assert.Equal(text, DisplayText.ClockText(format, new DateTimeOffset(2026, 10, 29, 9, 5, 0, TimeSpan.FromHours(3))));
+
+    [Fact]
+    public void A_clock_item_has_a_kind_and_one_of_its_formats_and_nothing_to_read()
+    {
+        DisplayItemDto Clock(string kind, string? format = null, string metric = "") => new(null, metric, null, 0, 0, 3, Clock: kind, Format: format);
+        Assert.Null(DisplayText.Validate([Clock("time"), Clock("date", "d MMMM")]));
+        Assert.NotNull(DisplayText.Validate([Clock("week")]));
+        Assert.NotNull(DisplayText.Validate([Clock("time", "d MMMM")]));
+        Assert.NotNull(DisplayText.Validate([Clock("time", metric: "temperature")]));
+        Assert.NotNull(DisplayText.Validate([new DisplayItemDto(null, "temperature", null, Format: "HH:mm")]));
     }
 }

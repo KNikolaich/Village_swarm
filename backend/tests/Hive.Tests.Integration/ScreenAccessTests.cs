@@ -251,7 +251,7 @@ public sealed class ScreenAccessTests(HiveFixture hive)
         Assert.Equal(HttpStatusCode.Created, added.StatusCode);
         // landscape unless turned: the person lays out 416x240
         var screen = (await admin.GetFromJsonAsync<JsonElement>("/api/devices/monitor-crow1/display")).GetProperty("screen");
-        Assert.Equal((416, 240, 4), (screen.GetProperty("width").GetInt32(), screen.GetProperty("height").GetInt32(), screen.GetProperty("tabs").GetInt32()));
+        Assert.Equal((416, 240, 3), (screen.GetProperty("width").GetInt32(), screen.GetProperty("height").GetInt32(), screen.GetProperty("tabs").GetInt32()));
         using var issued = await admin.PostAsync("/api/devices/monitor-crow1/screen-access", null);
         var token = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
 
@@ -263,19 +263,43 @@ public sealed class ScreenAccessTests(HiveFixture hive)
             return request;
         }
         var etags = new HashSet<string>();
-        for (var tab = 0; tab < 4; tab++)
+        for (var tab = 0; tab < 3; tab++)
         {
             using var frame = await anonymous.SendAsync(Tab(tab));
             Assert.Equal(HttpStatusCode.OK, frame.StatusCode);
+            Assert.False(frame.Headers.Contains("X-Frame-Refresh"));  // not monitored: the panel keeps its own interval
             // the panel's own size (portrait), turned by the hive
-            Assert.Equal(("240", "416", "4", "270"), (frame.Headers.GetValues("X-Frame-Width").Single(), frame.Headers.GetValues("X-Frame-Height").Single(),
+            Assert.Equal(("240", "416", "3", "270"), (frame.Headers.GetValues("X-Frame-Width").Single(), frame.Headers.GetValues("X-Frame-Height").Single(),
                 frame.Headers.GetValues("X-Frame-Tabs").Single(), frame.Headers.GetValues("X-Frame-Rotation").Single()));
             Assert.Equal(30 * 416, (await frame.Content.ReadAsByteArrayAsync()).Length);
             etags.Add(frame.Headers.ETag!.Tag);
         }
-        Assert.Equal(4, etags.Count);  // each tab has its own picture
-        using (var none = await anonymous.SendAsync(Tab(4)))
+        Assert.Equal(3, etags.Count);  // each tab has its own picture
+        using (var none = await anonymous.SendAsync(Tab(3)))
             Assert.Equal(HttpStatusCode.NotFound, none.StatusCode);
+
+        // monitoring: the panel is told to read every 2 minutes for an hour, then nothing again
+        using (var wrong = await admin.PutAsJsonAsync("/api/devices/monitor-crow1/display/monitoring", new { hours = 1, everyMin = 3 }))
+            Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);
+        using (var on = await admin.PutAsJsonAsync("/api/devices/monitor-crow1/display/monitoring", new { hours = 1, everyMin = 2 }))
+        {
+            Assert.Equal(HttpStatusCode.OK, on.StatusCode);
+            Assert.Equal(2, (await on.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("monitor").GetProperty("everyMin").GetInt32());
+        }
+        using (var monitored = await anonymous.SendAsync(Tab(1)))
+            Assert.Equal("120", monitored.Headers.GetValues("X-Frame-Refresh").Single());
+        // a clock on the Measure tab keeps the monitoring (the person's layout and the monitoring live side by side)
+        using (var clock = await admin.PutAsJsonAsync("/api/devices/monitor-crow1/display",
+            new { items = new object[] { new { metric = "", clock = "time", x = 10, y = 20, size = 5, px = 96 }, new { metric = "", clock = "date", format = "d MMMM", x = 10, y = 150, size = 2, px = 24 } } }))
+            Assert.Equal(HttpStatusCode.OK, clock.StatusCode);
+        var display = await admin.GetFromJsonAsync<JsonElement>("/api/devices/monitor-crow1/display");
+        Assert.Equal("time", display.GetProperty("items")[0].GetProperty("clock").GetString());
+        Assert.Equal("d MMMM", display.GetProperty("items")[1].GetProperty("format").GetString());
+        Assert.Equal(JsonValueKind.Object, display.GetProperty("monitor").ValueKind);
+        using (var off = await admin.DeleteAsync("/api/devices/monitor-crow1/display/monitoring"))
+            Assert.Equal(HttpStatusCode.NoContent, off.StatusCode);
+        using (var free = await anonymous.SendAsync(Tab(1)))
+            Assert.False(free.Headers.Contains("X-Frame-Refresh"));
         using var preview = await admin.GetAsync("/api/devices/monitor-crow1/display/preview.png?tab=1");
         Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
 

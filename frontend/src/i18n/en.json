@@ -1337,7 +1337,7 @@
     "fontsTitle": "Font",
     "font": "Font",
     "px": "Size, px",
-    "pxHelp": "Height of the digits in screen pixels, 6 to 48. When set it replaces the Size of 1 to 10.",
+    "pxHelp": "Font height in screen dots. Only sizes the font looks sharp at are listed: a pixel font's grid and its multiples (8, 16, 24…), whole sizes from 8 to 120 for the others.",
     "bold": "Bold",
     "italic": "Italic",
     "fontHelp": "RU: has Russian letters; En: Latin letters and digits only; Digi: digits and the signs \": - °\" only (letters are drawn with the standard font instead). A style the font lacks (bold, italic) is made by the hive from the regular one.",
@@ -1362,10 +1362,17 @@
     "fontRemove": "Delete the font",
     "fontRemoved": "Font deleted",
     "tabs": "The panel's other tabs",
-    "tabsHelp": "This panel is flipped with its rocker: Clock, Forecast, Calendar and Measure. The hive draws the first three itself: the time, the forecast from the weather settings, the month and recent events. Measure is the rows above, shown in the picture above. The bottom 22 pixels of every tab hold the tab bar: do not put rows there. Clock and Measure refresh every minute, the others at the panel's interval.",
-    "tab0": "Clock",
-    "tab1": "Forecast",
-    "tab2": "Calendar"
+    "tabsHelp": "This panel is flipped with its rocker: Weather, Measure and Calendar. The hive draws Weather and Calendar itself. Measure is the rows below, its picture is shown above. The bottom 22 dots of every tab are the tab bar: keep rows out of it. All tabs refresh at the panel's interval, more often while monitored.",
+    "tab0": "Weather",
+    "tab1": "Measure",
+    "tab2": "Calendar",
+    "clock": "Clock",
+    "clockTime": "Time",
+    "clockDate": "Date",
+    "format": "Format",
+    "formatHelp": "How the time or date is written, in the hive's time zone. The screen refreshes at the panel's interval, so the minutes may lag by that much.",
+    "pick": "Choose what to show",
+    "sourceHelp": "Where the value comes from: a reading of this device, of any other (listed by name) or the hive's clock (time and date). Pick the value itself; its source is the heading above it."
   },
   "screenAccess": {
     "title": "Access from outside",
@@ -1562,5 +1569,11 @@
     "steps": "Switch the panel on holding BOOT (2 seconds), join the phone to the Wi-Fi \"VillageSwarm-…\" it shows and point the camera at this code: the form opens with the hive's address, the token and the Wi-Fi, press Save.",
     "help": "The code holds the address of the panel's page 192.168.4.1 with your settings. It works only while the phone is joined to the panel and is sent nowhere else. The token can be typed too: it is short, with no look-alike characters, and case does not matter.",
     "token": "Token"
+  },
+  "panelMonitoring": {
+    "help": "Frequent refreshes for a while, for instance to watch the Measure tab. The panel reads its screen as often as chosen, then goes back to its own interval. The time counts from switching on. More often drains the battery faster.",
+    "off": "The panel refreshes at its own interval.",
+    "every": "every {n} min",
+    "stopped": "Monitoring stopped, the panel goes back to its own interval"
   }
 }

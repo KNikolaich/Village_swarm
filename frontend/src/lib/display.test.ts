@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backgroundSize, clampPx, clampToScreen, fontBadge, pixelHeight, screenText, stackedPlaces, textAnchor } from './display'
+import { backgroundSize, clampPx, clampToScreen, clockText, fontBadge, nearestSize, pixelHeight, screenText, sizeForPx, stackedPlaces, textAnchor } from './display'
 
 const oled = { width: 72, height: 40 }
 
@@ -50,10 +50,10 @@ describe('fontBadge', () => {
 })
 
 describe('clampPx', () => {
-  it('stays between 6 and 48 pixels', () => {
+  it('stays between 6 and 120 pixels', () => {
     expect(clampPx(3)).toBe(6)
     expect(clampPx(24.4)).toBe(24)
-    expect(clampPx(500)).toBe(48)
+    expect(clampPx(500)).toBe(120)
     expect(clampPx(Number.NaN)).toBe(6)
   })
 })
@@ -61,5 +61,30 @@ describe('clampPx', () => {
 describe('backgroundSize', () => {
   it('names the exact size of the picture', () => {
     expect(backgroundSize({ width: 200, height: 200 })).toBe('200×200')
+  })
+})
+
+describe('sizes of a font', () => {
+  it('takes the offered size nearest to the old one', () => {
+    expect(nearestSize(20, [8, 16, 24])).toBe(16)
+    expect(nearestSize(22, [8, 16, 24])).toBe(24)
+    expect(nearestSize(30, [])).toBe(30)
+  })
+  it('turns pixels into the relative size the layout keeps', () => {
+    expect(sizeForPx(96, 240)).toBe(4)
+    expect(sizeForPx(8, 240)).toBe(1)
+    expect(sizeForPx(400, 240)).toBe(10)
+  })
+})
+
+describe('clockText', () => {
+  const at = new Date(2026, 9, 29, 9, 5)
+  it('writes the clock the way the hive does', () => {
+    expect(clockText('HH:mm', at)).toBe('09:05')
+    expect(clockText('H:mm', at)).toBe('9:05')
+    expect(clockText('d MMMM', at)).toBe('29 октября')
+    expect(clockText('ddd, d MMM', at)).toBe('чт, 29 окт')
+    expect(clockText('MMMM', at)).toBe('октябрь')
+    expect(clockText('dd.MM.yyyy', at)).toBe('29.10.2026')
   })
 })

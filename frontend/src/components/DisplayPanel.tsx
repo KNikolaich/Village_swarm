@@ -5,12 +5,13 @@ import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { useDevices, useLatestTelemetry } from '@/api/queries'
 import { HelpTip } from '@/components/HelpTip'
+import { type SourceGroup, SourcePicker } from '@/components/SourcePicker'
 import { Button } from '@/components/ui/button'
 import { Input, Select } from '@/components/ui/primitives'
 import { metricLabel, t } from '@/i18n'
 import {
-  type Align, backgroundSize, clampPx, clampToScreen, fontBadge, type FontInfo, labelHeight, maxAuto, maxPlaced, maxPx, minPx, pixelHeight,
-  rotations, type Screen, screenText, stackedPlaces, textAnchor,
+  type Align, backgroundSize, clampToScreen, type ClockKind, clockFormats, clockText, fontBadge, type FontInfo, labelHeight, maxAuto, maxPlaced,
+  nearestSize, pixelHeight, rotations, type Screen, screenText, sizeForPx, stackedPlaces, textAnchor,
 } from '@/lib/display'
 
 interface Row {
@@ -29,9 +30,15 @@ interface Row {
   px: number | null
   bold: boolean
   italic: boolean
+  /** The hive's clock instead of a reading (then device and metric are empty), written as `format` says. */
+  clock: ClockKind | null
+  format: string
 }
 
-const noStyle = { text: null, font: '', px: null, bold: false, italic: false }
+const noStyle = { text: null, font: '', px: null, bold: false, italic: false, clock: null, format: '' }
+
+/** The id of the clock among the sources of the picker. */
+const clockSource = 'clock'
 
 /** A board the hive does not know the screen of: the 0.42" OLED, the only one so far. */
 const fallbackScreen: Screen = { width: 72, height: 40 }
@@ -112,6 +119,7 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
       device: i.device ?? '', metric: i.metric, label: i.label ?? '',
       x: i.x ?? 0, y: i.y ?? 0, size: i.size ?? 3, align: (i.align as Align | null) ?? 'left',
       text: i.text ?? null, font: i.font ?? '', px: i.px ?? null, bold: i.bold ?? false, italic: i.italic ?? false,
+      clock: (i.clock as ClockKind | null | undefined) ?? null, format: i.format ?? (i.clock ? clockFormats[i.clock as ClockKind][0] : ''),
     })))
     setPlaced(current.data.items.some((i) => i.size != null))
     setRotation(current.data.rotation ?? 0)
@@ -131,13 +139,25 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
   const tabs = current.data?.screen?.tabs ?? 0
   const styled = rendered && placed  // fonts and sizes in pixels: only where the hive draws and the rows are placed
   const fontList: FontInfo[] = fonts.data ?? []
+  const sizesOf = (font: string) => (fontList.find((f) => f.id === (font || 'standard')) ?? fontList.find((f) => f.id === 'standard'))?.sizes ?? []
+  /** The size in pixels a row is drawn at: its own, or the offered one nearest to its relative size. */
+  const pxOf = (r: Row) => r.px ?? nearestSize(pixelHeight(r.size, screen.height), sizesOf(r.font))
+  const thisName = (devices.data ?? []).find((d) => d.deviceId === deviceId)?.name ?? t('display.thisHornet')
+  const groups: SourceGroup[] = [
+    ...(metricsOf(deviceId).length > 0 ? [{ id: '', title: thisName, items: metricsOf(deviceId).map((m) => ({ value: m, label: metricLabel(m) })) }] : []),
+    ...sources.map((d) => ({ id: d.deviceId, title: d.name, items: metricsOf(d.deviceId).map((m) => ({ value: m, label: metricLabel(m) })) })),
+    { id: clockSource, title: t('display.clock'), items: [{ value: 'time', label: t('display.clockTime') }, { value: 'date', label: t('display.clockDate') }] },
+  ]
+  const sourceText = (r: Row) => r.clock
+    ? `${t('display.clock')} · ${t(r.clock === 'time' ? 'display.clockTime' : 'display.clockDate')}`
+    : r.metric ? `${r.device ? nameOf(r.device) : thisName} · ${metricLabel(r.metric)}` : t('display.pick')
 
   function setRow(i: number, patch: Partial<Row>) {
     setRows((all) => all.map((r, k) => {
       if (k !== i) return r
       const next = { ...r, ...patch }
       // another device: the first reading it has, when the old choice does not exist there
-      if (patch.device !== undefined && !metricsOf(patch.device || deviceId).includes(next.metric)) next.metric = metricsOf(patch.device || deviceId)[0] ?? ''
+      if (patch.device !== undefined && next.clock === null && !metricsOf(patch.device || deviceId).includes(next.metric)) next.metric = metricsOf(patch.device || deviceId)[0] ?? ''
       return next
     }))
   }
@@ -162,17 +182,24 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
     }])
   }
 
-  const complete = rows.every((r) => (r.text === null ? r.metric !== '' : r.text.trim() !== ''))
-  const texts = rows.map((r) => r.text ?? screenText(r.metric, valueOf(r.device || deviceId, r.metric)))
+  const complete = rows.every((r) => (r.clock !== null || (r.text === null ? r.metric !== '' : r.text.trim() !== '')))
+  const now = new Date()
+  const texts = rows.map((r) => (r.clock ? clockText(r.format, now) : r.text ?? screenText(r.metric, valueOf(r.device || deviceId, r.metric))))
   const number = (v: string, min: number, max: number) => Math.min(max, Math.max(min, Math.round(Number(v) || 0)))
 
   async function save() {
-    const items = rows.map((r) => ({
-      device: r.text === null ? r.device || null : null, metric: r.text === null ? r.metric : '', label: r.text === null ? r.label.trim() || null : null,
-      ...(r.text !== null ? { text: r.text.trim() } : {}),
-      ...(placed ? { x: r.x, y: r.y, size: r.size, align: r.align === 'left' ? null : r.align } : {}),
-      ...(styled ? { font: r.font || null, px: r.px, bold: r.bold, italic: r.italic } : {}),
-    }))
+    const items = rows.map((r) => {
+      const reading = r.text === null && r.clock === null
+      // where the hive draws, the size in pixels rules; the relative size only says the layout is placed
+      const px = styled ? pxOf(r) : null
+      return {
+        device: reading ? r.device || null : null, metric: reading ? r.metric : '', label: reading ? r.label.trim() || null : null,
+        ...(r.text !== null ? { text: r.text.trim() } : {}),
+        ...(r.clock !== null ? { clock: r.clock, format: r.format } : {}),
+        ...(placed ? { x: r.x, y: r.y, size: px !== null ? sizeForPx(px, screen.height) : r.size, align: r.align === 'left' ? null : r.align } : {}),
+        ...(styled ? { font: r.font || null, px, bold: r.bold, italic: r.italic } : {}),
+      }
+    })
     const { response } = await api.PUT('/api/devices/{deviceId}/display', {
       params: { path: { deviceId } }, body: { items, ...(rendered ? { rotation } : {}) },
     })
@@ -289,7 +316,7 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
             <HelpTip text={t('display.tabsHelp')} />
           </p>
           <div className="flex flex-wrap gap-3">
-            {[0, 1, 2].map((tab) => (
+            {[0, 2].filter((tab) => tab < tabs).map((tab) => (
               <figure key={tab} className="space-y-1">
                 <img src={`/api/devices/${encodeURIComponent(deviceId)}/display/preview.png?tab=${tab}&v=${current.dataUpdatedAt}`}
                   alt={t(`display.tab${tab}`)} width={screen.width} height={screen.height}
@@ -302,86 +329,102 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
       )}
       {rows.length === 0 && <p className="text-xs text-neutral-400">{t('display.own')}</p>}
       {rows.map((row, i) => {
-        const metrics = metricsOf(row.device || deviceId)
+        const sizes = sizesOf(row.font)
+        const px = pxOf(row)
+        const remove = (
+          <Button variant="ghost" size="icon" className="size-9 shrink-0" disabled={!editable} title={t('display.remove')} aria-label={t('display.remove')}
+            onClick={() => setRows((all) => all.filter((_, k) => k !== i))}><X /></Button>
+        )
         return (
           <div key={i} className="space-y-2 rounded-lg border border-neutral-800 p-2">
-            <div className="grid grid-cols-[1fr_1fr_auto] items-end gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+            {/* first line: what (source, caption or format), how it is written (font, bold, italic) */}
+            <div className={styled
+              ? 'grid grid-cols-2 items-end gap-2 sm:grid-cols-[2fr_1.5fr_2fr_auto_auto]'
+              : 'grid grid-cols-[1fr_1fr_auto] items-end gap-2'}>
               {row.text !== null ? (
-                <label className="col-span-2 space-y-1 sm:col-span-3">
+                <label className="col-span-2 space-y-1">
                   <FieldLabel text={t('display.text')} help={t('display.textHelp')} />
-                  <Input value={row.text} maxLength={24} disabled={!editable} onChange={(e) => setRow(i, { text: e.target.value })} />
+                  <Input className="h-9 text-sm" value={row.text} maxLength={24} disabled={!editable} onChange={(e) => setRow(i, { text: e.target.value })} />
                 </label>
               ) : (<>
-              <label className="space-y-1">
-                <span className="text-xs text-neutral-400">{t('display.source')}</span>
-                <Select value={row.device} disabled={!editable} onChange={(e) => setRow(i, { device: e.target.value })}>
-                  <option value="">{t('display.thisHornet')}</option>
-                  {sources.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.name}</option>)}
-                  {row.device && !sources.some((d) => d.deviceId === row.device) && <option value={row.device}>{nameOf(row.device)}</option>}
-                </Select>
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs text-neutral-400">{t('display.data')}</span>
-                <Select value={row.metric} disabled={!editable} onChange={(e) => setRow(i, { metric: e.target.value })}>
-                  {row.metric && !metrics.includes(row.metric) && <option value={row.metric}>{metricLabel(row.metric)}</option>}
-                  {metrics.map((m) => <option key={m} value={m}>{metricLabel(m)}</option>)}
-                </Select>
-              </label>
-              <label className="col-span-2 space-y-1 sm:col-span-1">
-                <FieldLabel text={t('display.label')} help={t(placed ? 'display.labelPlacedHelp' : 'display.labelHelp')} />
-                <Input value={row.label} maxLength={16} disabled={!editable} placeholder={!placed && row.device ? nameOf(row.device) : ''} onChange={(e) => setRow(i, { label: e.target.value })} />
-              </label>
+                <div className="space-y-1">
+                  <FieldLabel text={t('display.source')} help={t('display.sourceHelp')} />
+                  <SourcePicker groups={groups} source={row.clock ? clockSource : row.device} value={row.clock ?? row.metric} text={sourceText(row)} disabled={!editable}
+                    onPick={(source, value) => source === clockSource
+                      ? setRow(i, { clock: value as ClockKind, format: clockFormats[value as ClockKind][0], device: '', metric: '', label: '' })
+                      : setRow(i, { clock: null, format: '', device: source, metric: value })} />
+                </div>
+                {row.clock ? (
+                  <label className="space-y-1">
+                    <FieldLabel text={t('display.format')} help={t('display.formatHelp')} />
+                    <Select className="w-full" value={row.format} disabled={!editable} onChange={(e) => setRow(i, { format: e.target.value })}>
+                      {clockFormats[row.clock].map((f) => <option key={f} value={f}>{clockText(f, now)}</option>)}
+                    </Select>
+                  </label>
+                ) : (
+                  <label className="space-y-1">
+                    <FieldLabel text={t('display.label')} help={t(placed ? 'display.labelPlacedHelp' : 'display.labelHelp')} />
+                    <Input className="h-9 text-sm" value={row.label} maxLength={16} disabled={!editable} placeholder={!placed && row.device ? nameOf(row.device) : ''}
+                      onChange={(e) => setRow(i, { label: e.target.value })} />
+                  </label>
+                )}
               </>)}
-              <Button variant="ghost" size="icon" className="size-9 shrink-0" disabled={!editable} title={t('display.remove')} aria-label={t('display.remove')}
-                onClick={() => setRows((all) => all.filter((_, k) => k !== i))}><X /></Button>
-            </div>
-            {placed && (
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {styled && (<>
                 <label className="space-y-1">
-                  <FieldLabel text="X" help={t('display.xHelp').replace('{max}', String(screen.width - 1))} />
-                  <Input type="number" min={0} max={screen.width - 1} value={row.x} disabled={!editable}
-                    onChange={(e) => setRow(i, { x: number(e.target.value, 0, screen.width - 1) })} />
-                </label>
-                <label className="space-y-1">
-                  <FieldLabel text="Y" help={t('display.yHelp').replace('{max}', String(screen.height - 1))} />
-                  <Input type="number" min={0} max={screen.height - 1} value={row.y} disabled={!editable}
-                    onChange={(e) => setRow(i, { y: number(e.target.value, 0, screen.height - 1) })} />
-                </label>
-                <label className="space-y-1">
-                  <FieldLabel text={t('display.size')} help={t('display.sizeHelp').replace('{px}', String(pixelHeight(5, screen.height)))} />
-                  <Input type="number" min={1} max={10} value={row.size} disabled={!editable}
-                    onChange={(e) => setRow(i, { size: number(e.target.value, 1, 10) })} />
-                </label>
-                <label className="space-y-1">
-                  <FieldLabel text={t('display.align')} help={t('display.alignHelp')} />
-                  <Select value={row.align} disabled={!editable} onChange={(e) => setRow(i, { align: e.target.value as Align })}>
-                    <option value="left">{t('display.alignLeft')}</option>
-                    <option value="center">{t('display.alignCenter')}</option>
-                    <option value="right">{t('display.alignRight')}</option>
-                  </Select>
-                </label>
-              </div>
-            )}
-            {styled && (
-              <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[2fr_1fr_auto_auto]">
-                <label className="col-span-2 space-y-1 sm:col-span-1">
                   <FieldLabel text={t('display.font')} help={t('display.fontHelp')} />
-                  <Select value={row.font} disabled={!editable} onChange={(e) => setRow(i, { font: e.target.value })}>
+                  <Select className="w-full" value={row.font} disabled={!editable}
+                    onChange={(e) => setRow(i, { font: e.target.value, px: nearestSize(px, sizesOf(e.target.value)) })}>
                     <option value="">{fontList.find((f) => f.id === 'standard')?.name ?? t('display.font')}</option>
                     {fontList.filter((f) => f.id !== 'standard').map((f) => <option key={f.id} value={f.id}>{f.name} · {fontBadge(f)}</option>)}
                     {row.font && !fontList.some((f) => f.id === row.font) && <option value={row.font}>{row.font}</option>}
                   </Select>
                 </label>
+                <div className="flex h-9 items-center gap-3 text-xs text-neutral-300">
+                  <label className="flex items-center gap-1">
+                    <input type="checkbox" checked={row.bold} disabled={!editable} onChange={(e) => setRow(i, { bold: e.target.checked })} />{t('display.bold')}
+                  </label>
+                  <label className="flex items-center gap-1">
+                    <input type="checkbox" checked={row.italic} disabled={!editable} onChange={(e) => setRow(i, { italic: e.target.checked })} />{t('display.italic')}
+                  </label>
+                </div>
+              </>)}
+              {remove}
+            </div>
+            {/* second line: where and how big */}
+            {placed && (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 <label className="space-y-1">
-                  <FieldLabel text={t('display.px')} help={t('display.pxHelp')} />
-                  <Input type="number" min={minPx} max={maxPx} value={row.px ?? ''} disabled={!editable} placeholder={String(pixelHeight(row.size, screen.height))}
-                    onChange={(e) => setRow(i, { px: e.target.value === '' ? null : clampPx(Number(e.target.value)) })} />
+                  <FieldLabel text="X" help={t('display.xHelp').replace('{max}', String(screen.width - 1))} />
+                  <Input className="h-9 text-sm" type="number" min={0} max={screen.width - 1} value={row.x} disabled={!editable}
+                    onChange={(e) => setRow(i, { x: number(e.target.value, 0, screen.width - 1) })} />
                 </label>
-                <label className="flex items-center gap-1 pb-2 text-xs text-neutral-300">
-                  <input type="checkbox" checked={row.bold} disabled={!editable} onChange={(e) => setRow(i, { bold: e.target.checked })} />{t('display.bold')}
+                <label className="space-y-1">
+                  <FieldLabel text="Y" help={t('display.yHelp').replace('{max}', String(screen.height - 1))} />
+                  <Input className="h-9 text-sm" type="number" min={0} max={screen.height - 1} value={row.y} disabled={!editable}
+                    onChange={(e) => setRow(i, { y: number(e.target.value, 0, screen.height - 1) })} />
                 </label>
-                <label className="flex items-center gap-1 pb-2 text-xs text-neutral-300">
-                  <input type="checkbox" checked={row.italic} disabled={!editable} onChange={(e) => setRow(i, { italic: e.target.checked })} />{t('display.italic')}
+                {styled ? (
+                  <label className="space-y-1">
+                    <FieldLabel text={t('display.px')} help={t('display.pxHelp')} />
+                    <Select className="w-full" value={px} disabled={!editable} onChange={(e) => setRow(i, { px: Number(e.target.value) })}>
+                      {!sizes.includes(px) && <option value={px}>{px}</option>}
+                      {sizes.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </Select>
+                  </label>
+                ) : (
+                  <label className="space-y-1">
+                    <FieldLabel text={t('display.size')} help={t('display.sizeHelp').replace('{px}', String(pixelHeight(5, screen.height)))} />
+                    <Input className="h-9 text-sm" type="number" min={1} max={10} value={row.size} disabled={!editable}
+                      onChange={(e) => setRow(i, { size: number(e.target.value, 1, 10) })} />
+                  </label>
+                )}
+                <label className="space-y-1">
+                  <FieldLabel text={t('display.align')} help={t('display.alignHelp')} />
+                  <Select className="w-full" value={row.align} disabled={!editable} onChange={(e) => setRow(i, { align: e.target.value as Align })}>
+                    <option value="left">{t('display.alignLeft')}</option>
+                    <option value="center">{t('display.alignCenter')}</option>
+                    <option value="right">{t('display.alignRight')}</option>
+                  </Select>
                 </label>
               </div>
             )}

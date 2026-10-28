@@ -21,13 +21,14 @@ using SkiaSharp;
 namespace Hive.Modules.Devices;
 
 /// <summary>
-/// One item of a screen: a reading of this hornet (<see cref="Device"/> absent) or of another device, or a caption the person
-/// typed (<see cref="Text"/>, then <see cref="Metric"/> is empty). With <see cref="Size"/> the item is placed: <see cref="X"/>,
+/// One item of a screen: a reading of this hornet (<see cref="Device"/> absent) or of another device, a caption the person
+/// typed (<see cref="Text"/>, then <see cref="Metric"/> is empty), or the hive's clock (<see cref="Clock"/> time or date, written
+/// as <see cref="Format"/> says, then <see cref="Metric"/> is empty too). With <see cref="Size"/> the item is placed: <see cref="X"/>,
 /// <see cref="Y"/> in pixels, <see cref="Align"/> left (absent), center or right. On screens the hive draws, <see cref="Font"/>
-/// (a family id), <see cref="Px"/> (6-48), <see cref="Bold"/> and <see cref="Italic"/> say how it is written.
+/// (a family id), <see cref="Px"/> (6-120), <see cref="Bold"/> and <see cref="Italic"/> say how it is written.
 /// </summary>
 public sealed record DisplayItemDto(string? Device, string Metric, string? Label, int? X = null, int? Y = null, int? Size = null, string? Align = null,
-    string? Text = null, string? Font = null, int? Px = null, bool? Bold = null, bool? Italic = null);
+    string? Text = null, string? Font = null, int? Px = null, bool? Bold = null, bool? Italic = null, string? Clock = null, string? Format = null);
 
 /// <summary>
 /// Size of a screen in pixels as the person sees it (turned by the rotation): where items can be placed and what size a background
@@ -41,7 +42,16 @@ public sealed record DisplayScreenDto(int Width, int Height, bool Rendered = fal
 /// What the screen shows; <see cref="Screen"/> is filled by the hive for a board it knows (ignored when saving).
 /// <see cref="Rotation"/> turns the picture of a screen the hive draws (0, 90, 180, 270); absent when saving: unchanged.
 /// </summary>
-public sealed record DisplayItemsDto(IReadOnlyList<DisplayItemDto> Items, DisplayScreenDto? Screen = null, int? Rotation = null);
+public sealed record DisplayItemsDto(IReadOnlyList<DisplayItemDto> Items, DisplayScreenDto? Screen = null, int? Rotation = null, DisplayMonitorDto? Monitor = null);
+
+/// <summary>
+/// Monitoring of a panel far away: until <see cref="Until"/> it reads its screen every <see cref="EveryMin"/> minutes
+/// (X-Frame-Refresh, contracts/monitor-http.md), then goes back to its own interval by itself.
+/// </summary>
+public sealed record DisplayMonitorDto(DateTimeOffset Until, int EveryMin);
+
+/// <summary>How long and how often a panel is monitored (hours 0.5-12, every 1-10 minutes).</summary>
+public sealed record DisplayMonitorRequest(double Hours, int EveryMin);
 
 /// <summary>Screens of the boards the hive knows, by board (info hw).</summary>
 public static class DisplayScreens
@@ -51,8 +61,8 @@ public static class DisplayScreens
         ["esp32c3-oled-042"] = new(72, 40),
         // Waveshare ESP32-S3-ePaper-1.54 (V2): 200x200 black and white, firmware monitor-epd154
         ["waveshare-s3-epaper-154"] = new(200, 200, Rendered: true),
-        // Elecrow CrowPanel ESP32 3.7" (UC8253, 240x416, rocker with a press): four tabs, firmware monitor-crowpanel37
-        ["crowpanel-epd37"] = new(240, 416, Rendered: true, Tabs: 4),
+        // Elecrow CrowPanel ESP32 3.7" (UC8253, 240x416, rocker with a press): three tabs, firmware monitor-crowpanel37
+        ["crowpanel-epd37"] = new(240, 416, Rendered: true, Tabs: 3),
     };
 
     /// <summary>How a board stands when the person did not choose: the CrowPanel lies landscape.</summary>
@@ -82,7 +92,7 @@ public static class DisplayText
     public const int MaxLabel = 16;
     public const int MaxText = 24;
     public const int MinPx = 6;
-    public const int MaxPx = 48;
+    public const int MaxPx = 120;
     public const int MaxCoordinate = 1023;
     public static readonly string[] Aligns = ["left", "center", "right"];
 
@@ -92,6 +102,45 @@ public static class DisplayText
     private static readonly Regex Segment = new("^[a-z0-9_]+$");
     private static readonly Regex DeviceId = new("^[a-z][a-z0-9]*(-[a-z0-9]+)*$");
     private static readonly Regex FontId = new("^[a-z0-9]+(-[a-z0-9]+)*$");
+
+    /// <summary>How the clock items may be written (config display.items[].format), the first one when absent.</summary>
+    public static readonly IReadOnlyDictionary<string, string[]> ClockFormats = new Dictionary<string, string[]>
+    {
+        ["time"] = ["HH:mm", "H:mm"],
+        ["date"] = ["d MMMM", "d MMM", "dd.MM", "dd.MM.yyyy", "dd/MM", "dddd", "ddd, d MMM", "d MMMM yyyy", "MMMM"],
+    };
+
+    // Written out: the hive's image may run without culture data.
+    private static readonly string[] Weekdays = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"];
+    private static readonly string[] WeekdaysShort = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
+    private static readonly string[] Months = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+    private static readonly string[] MonthsOf = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+    private static readonly string[] MonthsShort = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+    private static readonly Regex ClockToken = new("dddd|ddd|dd|d|MMMM|MMM|MM|yyyy|HH|H|mm");
+
+    /// <summary>
+    /// The hive's local time <paramref name="local"/> written as <paramref name="format"/> (one of <see cref="ClockFormats"/>):
+    /// a month after a day is "of" it (28 октября), alone it is itself (октябрь).
+    /// </summary>
+    public static string ClockText(string format, DateTimeOffset local)
+    {
+        var withDay = format.Contains('d');
+        var weekday = ((int)local.DayOfWeek + 6) % 7;
+        return ClockToken.Replace(format, m => m.Value switch
+        {
+            "dddd" => Weekdays[weekday],
+            "ddd" => WeekdaysShort[weekday],
+            "dd" => local.Day.ToString("00", CultureInfo.InvariantCulture),
+            "d" => local.Day.ToString(CultureInfo.InvariantCulture),
+            "MMMM" => withDay ? MonthsOf[local.Month - 1] : Months[local.Month - 1],
+            "MMM" => MonthsShort[local.Month - 1],
+            "MM" => local.Month.ToString("00", CultureInfo.InvariantCulture),
+            "yyyy" => local.Year.ToString(CultureInfo.InvariantCulture),
+            "HH" => local.Hour.ToString("00", CultureInfo.InvariantCulture),
+            "H" => local.Hour.ToString(CultureInfo.InvariantCulture),
+            _ => local.Minute.ToString("00", CultureInfo.InvariantCulture),
+        });
+    }
 
     public static string Format(string metric, double v)
     {
@@ -134,7 +183,19 @@ public static class DisplayText
                 return $"x, y: экран {screen.Width}×{screen.Height}, x до {screen.Width - 1}, y до {screen.Height - 1}";
             if (item.Align is { } align && !Aligns.Contains(align))
                 return "align: left, center или right";
-            if (item.Text is { Length: > 0 } text)
+            if (item.Clock is { } clock)
+            {
+                // the hive's clock: nothing to read from a device
+                if (!ClockFormats.TryGetValue(clock, out var formats))
+                    return "clock: time или date";
+                if (item.Format is { } format && !formats.Contains(format))
+                    return $"format: {string.Join(", ", formats)}";
+                if (!string.IsNullOrEmpty(item.Metric) || !string.IsNullOrEmpty(item.Device) || !string.IsNullOrEmpty(item.Text))
+                    return "часы: без датчика и без текста";
+            }
+            else if (item.Format is not null)
+                return "format: только у часов (clock)";
+            else if (item.Text is { Length: > 0 } text)
             {
                 // a caption typed by the person: nothing to read from anywhere
                 if (text.Length > MaxText)
@@ -179,7 +240,58 @@ public sealed class DisplayFeedService(
         if (device is null)
             return null;
         var rotation = RotationOf(device);
-        return new DisplayItemsDto(ItemsOf(device), DisplayScreens.For(device.Hw, rotation) is { } screen ? screen with { Background = device.ScreenBackground is not null } : null, rotation);
+        return new DisplayItemsDto(ItemsOf(device), DisplayScreens.For(device.Hw, rotation) is { } screen ? screen with { Background = device.ScreenBackground is not null } : null, rotation,
+            MonitorOf(device, time.GetUtcNow()));
+    }
+
+    /// <summary>What a panel may be monitored for: as long and as often as a person can choose (the same hours as a thermometer).</summary>
+    public static readonly double[] MonitorHours = [0.5, 1, 2, 3, 4, 6, 8, 12];
+    public static readonly int[] MonitorEveryMin = [1, 2, 5, 10];
+
+    /// <summary>The monitoring of a panel (config display.monitor) while it lasts; null when off or over.</summary>
+    public static DisplayMonitorDto? MonitorOf(Device device, DateTimeOffset now)
+    {
+        if (device.Config is null || !device.Config.RootElement.TryGetProperty("display", out var display)
+            || !display.TryGetProperty("monitor", out var monitor) || !monitor.TryGetProperty("until", out var u) || !u.TryGetInt64(out var untilMs)
+            || !monitor.TryGetProperty("every_min", out var e) || !e.TryGetInt32(out var every))
+            return null;
+        var until = DateTimeOffset.FromUnixTimeMilliseconds(untilMs);
+        return until > now ? new DisplayMonitorDto(until, every) : null;
+    }
+
+    /// <summary>
+    /// Starts (or changes) the monitoring of a panel far away: it reads its screen more often until the time is up. Null hours
+    /// stops it. Only monitors that read over HTTP: a hornet's screen is fed when it changes anyway.
+    /// </summary>
+    public async Task<(ConfigUpdateStatus Status, string? Error)> SetMonitorAsync(string deviceId, DisplayMonitorRequest? request, string by, CancellationToken ct)
+    {
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Driver == Drivers.Http, ct);
+        if (device is null)
+            return (ConfigUpdateStatus.NotFound, null);
+        if (request is not null && (!MonitorHours.Contains(request.Hours) || !MonitorEveryMin.Contains(request.EveryMin)))
+            return (ConfigUpdateStatus.BadRequest, $"часы: {string.Join(", ", MonitorHours)}; минуты: {string.Join(", ", MonitorEveryMin)}");
+        var config = device.Config is { } current
+            ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
+            : new JsonObject { ["v"] = 1, ["name"] = device.Name, ["health_interval_s"] = 60 };
+        var display = config["display"] as JsonObject ?? new JsonObject();
+        if (request is null)
+            display.Remove("monitor");
+        else
+            display["monitor"] = new JsonObject
+            {
+                ["until"] = time.GetUtcNow().AddHours(request.Hours).ToUnixTimeMilliseconds(),
+                ["every_min"] = request.EveryMin,
+            };
+        if (display.Count == 0)
+            config.Remove("display");
+        else
+            config["display"] = display;
+        device.ConfigRev++;
+        config["rev"] = device.ConfigRev;
+        device.Config = JsonDocument.Parse(config.ToJsonString());
+        Audit.Record(db, time.GetUtcNow(), by, request is null ? "display_monitor_stopped" : "display_monitor_started", deviceId, request);
+        await db.SaveChangesAsync(ct);
+        return (ConfigUpdateStatus.Updated, null);
     }
 
     /// <summary>How the picture of a screen the hive draws is turned (config display.rotation): 0, 90, 180 or 270; absent: the board's way.</summary>
@@ -202,7 +314,9 @@ public sealed class DisplayFeedService(
                 i.TryGetProperty("align", out var a) ? a.GetString() : null,
                 i.TryGetProperty("text", out var text) ? text.GetString() : null,
                 i.TryGetProperty("font", out var font) ? font.GetString() : null,
-                Int(i, "px"), Bool(i, "bold"), Bool(i, "italic")))
+                Int(i, "px"), Bool(i, "bold"), Bool(i, "italic"),
+                i.TryGetProperty("clock", out var clock) ? clock.GetString() : null,
+                i.TryGetProperty("format", out var format) ? format.GetString() : null))
             .ToList();
     }
 
@@ -238,7 +352,13 @@ public sealed class DisplayFeedService(
             display["items"] = new JsonArray(items.Select(i =>
             {
                 var o = new JsonObject();
-                if (i.Text is { Length: > 0 } caption)
+                if (i.Clock is { } clock)
+                {
+                    o["clock"] = clock;
+                    if (i.Format is { } format)
+                        o["format"] = format;
+                }
+                else if (i.Text is { Length: > 0 } caption)
                     o["text"] = caption.Trim();
                 else
                 {
@@ -307,9 +427,11 @@ public sealed class DisplayFeedService(
         foreach (var item in items)
         {
             var source = string.IsNullOrEmpty(item.Device) ? device.DeviceId : item.Device;
-            var caption = item.Text is { Length: > 0 };
+            var clock = item.Clock is { } kind && DisplayText.ClockFormats.TryGetValue(kind, out var formats) ? item.Format ?? formats[0] : null;
+            var caption = item.Text is { Length: > 0 } || clock is not null;
             var value = caption ? null : values.FirstOrDefault(v => v.DeviceId == source && v.Metric == item.Metric);
-            var text = caption ? item.Text!.Trim() : value is null || now - value.Ts > DisplayText.Stale ? "--" : DisplayText.Format(item.Metric, value.Value);
+            var text = clock is not null ? DisplayText.ClockText(clock, hive.Value.ToLocal(now))
+                : caption ? item.Text!.Trim() : value is null || now - value.Ts > DisplayText.Stale ? "--" : DisplayText.Format(item.Metric, value.Value);
             // Another device is named by its own name unless the person chose a label; the hornet's own readings need none.
             // A placed screen has its own place for names (a background, say): only a typed label goes there.
             var label = caption ? null : !string.IsNullOrWhiteSpace(item.Label) ? item.Label.Trim()
@@ -404,7 +526,7 @@ public sealed class DisplayFeedService(
                 .ToListAsync(ct);
             events = rows.Select(e => new TabEvent(e.Ts, EventName(e.Type), e.Name)).ToList();
         }
-        var set = await fonts.LoadAsync(message.Items.Select(i => i.Font).Append(ScreenTabs.TextFamily).Append(ScreenTabs.ClockFamily), ct);
+        var set = await fonts.LoadAsync(message.Items.Select(i => i.Font).Concat(ScreenTabs.Families), ct);
         using var background = tab == ScreenTabs.Measure && device.ScreenBackground is { } png ? SKBitmap.Decode(png) : null;
         var context = new TabContext(now, options.ToLocal, await BatteryAsync(device.DeviceId, ct), weather, events);
         return ScreenTabs.Draw(tab, screen, context, set, message, background);

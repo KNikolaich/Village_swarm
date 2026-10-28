@@ -52,7 +52,7 @@ export function textAnchor(align: Align): 'start' | 'middle' | 'end' {
 
 /** Pixel heights a font can be set to on a screen the hive draws (DisplayText.MinPx/MaxPx). */
 export const minPx = 6
-export const maxPx = 48
+export const maxPx = 120
 export const rotations = [0, 90, 180, 270] as const
 
 export interface FontInfo {
@@ -62,6 +62,55 @@ export interface FontInfo {
   digitsOnly: boolean
   builtin: boolean
   styles: string[]
+  /** The sizes in pixels the family reads well at (a pixel font: its grid and whole multiples). */
+  sizes: number[]
+}
+
+/** The offered size nearest to <px>: a font changes, the text keeps about its height. */
+export function nearestSize(px: number, sizes: number[]): number {
+  if (sizes.length === 0) return clampPx(px)
+  return sizes.reduce((best, s) => (Math.abs(s - px) < Math.abs(best - px) ? s : best), sizes[0])
+}
+
+/** The relative size 1-10 a size in pixels stands for (screens that also lay out by size need one). */
+export function sizeForPx(px: number, screenHeight: number): number {
+  return Math.min(10, Math.max(1, Math.round((px * 10) / screenHeight)))
+}
+
+export type ClockKind = 'time' | 'date'
+
+/** How the hive's clock may be written (DisplayText.ClockFormats); the first is the default. */
+export const clockFormats: Record<ClockKind, string[]> = {
+  time: ['HH:mm', 'H:mm'],
+  date: ['d MMMM', 'd MMM', 'dd.MM', 'dd.MM.yyyy', 'dd/MM', 'dddd', 'ddd, d MMM', 'd MMMM yyyy', 'MMMM'],
+}
+
+const weekdays = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье']
+const weekdaysShort = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс']
+const months = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь']
+const monthsOf = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
+const monthsShort = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек']
+
+/** The clock as the hive writes it (DisplayText.ClockText), for the preview: a month after a day is "of" it. */
+export function clockText(format: string, at: Date): string {
+  const withDay = format.includes('d')
+  const two = (n: number) => String(n).padStart(2, '0')
+  const weekday = (at.getDay() + 6) % 7
+  return format.replace(/dddd|ddd|dd|d|MMMM|MMM|MM|yyyy|HH|H|mm/g, (token) => {
+    switch (token) {
+      case 'dddd': return weekdays[weekday]
+      case 'ddd': return weekdaysShort[weekday]
+      case 'dd': return two(at.getDate())
+      case 'd': return String(at.getDate())
+      case 'MMMM': return (withDay ? monthsOf : months)[at.getMonth()]
+      case 'MMM': return monthsShort[at.getMonth()]
+      case 'MM': return two(at.getMonth() + 1)
+      case 'yyyy': return String(at.getFullYear())
+      case 'HH': return two(at.getHours())
+      case 'H': return String(at.getHours())
+      default: return two(at.getMinutes())
+    }
+  })
 }
 
 /** The mark the picker shows next to a font: Digi for digits only, En without Russian letters, RU with them. */

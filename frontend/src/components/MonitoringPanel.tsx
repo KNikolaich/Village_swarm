@@ -39,7 +39,7 @@ export function MonitoringPanel({ device, metrics, canControl, onStarted }: {
   if (!session && !canControl) return null
   return (
     <div className="space-y-3 text-sm">
-      {session ? <Session session={session} /> : <p className="text-xs text-neutral-500">{t('monitoring.hint')}</p>}
+      {session && <Session session={session} />}
       {canControl && (!session || editing) && (
         <MonitoringForm
           key={session?.until ?? 'new'}
@@ -177,7 +177,6 @@ function MonitoringForm({ deviceId, metrics, session, onDone }: {
           </Select>
         </label>
       )}
-      <p className="text-xs text-neutral-500">{t('monitoring.alarmHint')}</p>
       {!valid && <p className="text-xs text-amber-300">{t('monitoring.limitsBad')}</p>}
       <Button disabled={!valid || busy} onClick={() => void start()}>
         <Activity />{session ? t('monitoring.apply') : t('monitoring.start')}

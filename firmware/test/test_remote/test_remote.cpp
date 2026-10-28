@@ -51,10 +51,13 @@ static void test_tabs() {
     TEST_ASSERT_EQUAL(1, stepTab(0, 1, 4));
     TEST_ASSERT_EQUAL(3, stepTab(0, -1, 4));  // round at the ends
     TEST_ASSERT_EQUAL(0, stepTab(3, 1, 4));
-    TEST_ASSERT_TRUE(everyMinute(0));
-    TEST_ASSERT_FALSE(everyMinute(1));
-    TEST_ASSERT_FALSE(everyMinute(2));
-    TEST_ASSERT_TRUE(everyMinute(3));
+    TEST_ASSERT_EQUAL_INT(3, tabCount(3, 4));
+    TEST_ASSERT_EQUAL_INT(4, tabCount(0, 4));  // no header: as before
+    TEST_ASSERT_EQUAL_INT(4, tabCount(9, 4));
+    TEST_ASSERT_EQUAL_UINT32(900u, nextReadSeconds(15, 0));    // its own interval
+    TEST_ASSERT_EQUAL_UINT32(120u, nextReadSeconds(15, 120));  // monitored: sooner
+    TEST_ASSERT_EQUAL_UINT32(300u, nextReadSeconds(5, 600));   // never later than its own
+    TEST_ASSERT_EQUAL_UINT32(60u, nextReadSeconds(15, 5));     // at least a minute
     const Cell cell = tabCell(2, 4, 416, 240);
     TEST_ASSERT_EQUAL(208, cell.x);
     TEST_ASSERT_EQUAL(218, cell.y);

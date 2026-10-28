@@ -20,7 +20,7 @@ In VS Code the PlatformIO toolbar does the same (✓ build, → upload, plug ico
 | `meteo-c3`, `relay-c3` | ESP32-C3 mini (SuperMini) | ESP32-C3 |
 | `monitor-c3oled` | ESP32-C3 with the 0.42" OLED (72×40): a monitor, see **monitor** below | ESP32-C3 |
 | `monitor-epd154` | Waveshare ESP32-S3-ePaper-1.54 (200×200 e-ink): a remote monitor, not a hornet, see **monitor** below | ESP32-S3 |
-| `monitor-crowpanel37` | Elecrow CrowPanel ESP32 3.7" (240×416 e-ink, rocker): a remote monitor with four tabs the hive draws, see **monitor** below | ESP32-S3 |
+| `monitor-crowpanel37` | Elecrow CrowPanel ESP32 3.7" (240×416 e-ink, rocker): a remote monitor with tabs the hive draws, see **monitor** below | ESP32-S3 |
 | `meteo-d1mini`, `relay-d1mini` | Wemos D1 mini | ESP8266 |
 | `meteo-nodemcu`, `relay-nodemcu` | NodeMCU v3 | ESP8266 |
 | `meteo-esp01`, `relay-esp01` | ESP-01 / ESP-01S (1 MB), incl. "ESP-01 Relay v1.0" and DS18B20 modules | ESP8266 |
@@ -87,9 +87,10 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
   Each switch it makes by itself goes out as `event/failsafe {rule, heater, temperature}`. A meteo or relay
   hornet on the same board can be moved to it over the air (the swarm screen offers the heat build).
 - **meteo** also honours `features` (`thermometer`, `bme280`) and then skips the bus that is not wired.
-  `monitor-crowpanel37` works the same way and reads `frame.bin?tab=0..3`: four tabs kept in LittleFS, flipped with the
-  rocker (cursor drawn by the panel on the tab bar, the press chooses), partial refreshes of the UC8253; the clock and
-  Measure tabs are read every minute, the others at the interval. MENU 2 s = settings point, EXIT = read now. With a
+  `monitor-crowpanel37` works the same way and reads `frame.bin?tab=n`: as many tabs as `X-Frame-Tabs` says (3: Weather,
+  Measure, Calendar), kept in LittleFS, flipped with the rocker (only the cell under the cursor is black, the press
+  chooses), partial refreshes of the UC8253; every tab is read at the interval, sooner while the hive monitors the panel
+  (`X-Frame-Refresh`, the 1.54" honours it too). MENU 2 s = settings point, EXIT = read now. With a
   divider from the battery to GPIO8 it sends `X-Battery-mV` (docs/display.md).
 
 ESP8266 notes: 80 KB of RAM, so roles stay small; the watchdog is the chip's fixed one (~8 s). Settings live

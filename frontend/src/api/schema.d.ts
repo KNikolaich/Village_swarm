@@ -5779,6 +5779,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/devices/{deviceId}/display/monitoring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["DisplayMonitorRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DisplayItemsDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -5993,6 +6076,7 @@ export interface components {
             digitsOnly: boolean;
             builtin: boolean;
             styles: string[];
+            sizes: number[];
         };
         DisplayItemDto: {
             device: null | string;
@@ -6011,12 +6095,15 @@ export interface components {
             px?: null | number;
             bold?: null | boolean;
             italic?: null | boolean;
+            clock?: null | string;
+            format?: null | string;
         };
         DisplayItemsDto: {
             items: components["schemas"]["DisplayItemDto"][];
             screen?: null | components["schemas"]["DisplayScreenDto"];
             /** Format: int32 */
             rotation?: null | number;
+            monitor?: null | components["schemas"]["DisplayMonitorDto"];
         };
         DisplayScreenDto: {
             /** Format: int32 */
@@ -7064,6 +7151,18 @@ export interface components {
         };
         /** @enum {unknown} */
         ZoneKind: "perimeter" | "house" | "garden" | "tech";
+        DisplayMonitorDto: {
+            /** Format: date-time */
+            until: string;
+            /** Format: int32 */
+            everyMin: number;
+        };
+        DisplayMonitorRequest: {
+            /** Format: double */
+            hours: number;
+            /** Format: int32 */
+            everyMin: number;
+        };
     };
     responses: never;
     parameters: never;

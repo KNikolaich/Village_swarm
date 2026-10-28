@@ -17,8 +17,12 @@ using SkiaSharp;
 
 namespace Hive.Modules.Devices;
 
-/// <summary>A font family a person can pick for a screen the hive draws. <see cref="Styles"/>: regular, bold, italic, bolditalic that the family has.</summary>
-public sealed record DisplayFontDto(string Id, string Name, bool Cyrillic, bool DigitsOnly, bool Builtin, IReadOnlyList<string> Styles);
+/// <summary>
+/// A font family a person can pick for a screen the hive draws. <see cref="Styles"/>: regular, bold, italic, bolditalic that the
+/// family has. <see cref="Sizes"/>: the sizes in pixels it is offered in, the ones it reads well at on a black-and-white screen
+/// (a pixel font only at its own grid and whole multiples of it, so no pixel of it is smeared).
+/// </summary>
+public sealed record DisplayFontDto(string Id, string Name, bool Cyrillic, bool DigitsOnly, bool Builtin, IReadOnlyList<string> Styles, IReadOnlyList<int> Sizes);
 
 /// <summary>A typeface to draw with; a face the family lacks is made from the one it has (emboldened, slanted).</summary>
 public sealed record FontFace(SKTypeface Typeface, bool FakeBold, bool FakeItalic);
@@ -64,7 +68,17 @@ public sealed class DisplayFontCatalog(HiveDbContext db, TimeProvider time)
     public const int MaxUploads = 24;
     public const int MaxFontBytes = 4 * 1024 * 1024;
 
-    private sealed record Builtin(string Id, string Name, bool Cyrillic, bool DigitsOnly, string? Regular, string? Bold, string? Italic, string? BoldItalic);
+    private sealed record Builtin(string Id, string Name, bool Cyrillic, bool DigitsOnly, string? Regular, string? Bold, string? Italic, string? BoldItalic, int Grid = 0);
+
+    /// <summary>The sizes an outline font is offered in: whole pixels from small print to a clock across the screen.</summary>
+    public static readonly int[] OutlineSizes = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 60, 72, 96, 120];
+
+    /// <summary>A pixel font drawn on a grid of <paramref name="grid"/> pixels: that size and its whole multiples.</summary>
+    public static int[] GridSizes(int grid) => Enumerable.Range(1, DisplayText.MaxPx / grid).Select(k => k * grid).ToArray();
+
+    /// <summary>The sizes <paramref name="familyId"/> is offered in; an unknown family (an uploaded one) is an outline font.</summary>
+    public static IReadOnlyList<int> SizesOf(string? familyId) =>
+        Builtins.FirstOrDefault(b => b.Id == (string.IsNullOrEmpty(familyId) ? FontSet.Standard : familyId)) is { Grid: > 0 } pixel ? GridSizes(pixel.Grid) : OutlineSizes;
 
     // The fonts that were asked for and are not free to ship (Old English Text MT, Super Mario 3D World, Digital Numbers,
     // a_LCDNova) can be uploaded: they stay on this hive. Their free neighbours are here.
@@ -74,7 +88,11 @@ public sealed class DisplayFontCatalog(HiveDbContext db, TimeProvider time)
         new("anonymous-pro", "Anonymous Pro", true, false, "AnonymousPro-Regular", "AnonymousPro-Bold", "AnonymousPro-Italic", "AnonymousPro-BoldItalic"),
         new("cormorant-infant", "Cormorant Infant", true, false, "CormorantInfant-Regular", "CormorantInfant-Bold", "CormorantInfant-Italic", "CormorantInfant-BoldItalic"),
         new("dseg7", "DSEG7 Classic (цифры как на табло)", false, true, "DSEG7Classic-Regular", "DSEG7Classic-Bold", "DSEG7Classic-Italic", "DSEG7Classic-BoldItalic"),
-        new("press-start", "Press Start 2P (пиксельный, как в играх)", true, false, "PressStart2P-Regular", null, null, null),
+        new("roboto", "Roboto", true, false, "Roboto-Regular", "Roboto-Bold", null, null),
+        new("roboto-light", "Roboto Light (тонкий)", true, false, "Roboto-Light", null, null, null),
+        new("roboto-serif", "Roboto Serif (с засечками)", true, false, "RobotoSerif-Regular", "RobotoSerif-Bold", null, null),
+        new("pixellari", "Pixellari (пиксельный, 16 px)", true, false, "Pixellari-Regular", null, null, null, Grid: 16),
+        new("press-start", "Press Start 2P (пиксельный, как в играх)", true, false, "PressStart2P-Regular", null, null, null, Grid: 8),
         new("unifraktur-cook", "UnifrakturCook (готический)", false, false, null, "UnifrakturCook-Bold", null, null),
     ];
 
@@ -113,10 +131,10 @@ public sealed class DisplayFontCatalog(HiveDbContext db, TimeProvider time)
 
     public async Task<IReadOnlyList<DisplayFontDto>> ListAsync(CancellationToken ct)
     {
-        var list = Builtins.Select(b => new DisplayFontDto(b.Id, b.Name, b.Cyrillic, b.DigitsOnly, true, StylesOf(AvailableOf(b)))).ToList();
+        var list = Builtins.Select(b => new DisplayFontDto(b.Id, b.Name, b.Cyrillic, b.DigitsOnly, true, StylesOf(AvailableOf(b)), SizesOf(b.Id))).ToList();
         var custom = await db.DisplayFonts.AsNoTracking().Select(f => new { f.FamilyId, f.Family, f.Bold, f.Italic, f.Cyrillic, f.DigitsOnly }).ToListAsync(ct);
         list.AddRange(custom.GroupBy(f => f.FamilyId).OrderBy(g => g.First().Family, StringComparer.CurrentCultureIgnoreCase).Select(g =>
-            new DisplayFontDto(g.Key, g.First().Family, g.All(f => f.Cyrillic), g.All(f => f.DigitsOnly), false, StylesOf(g.Select(f => (f.Bold, f.Italic))))));
+            new DisplayFontDto(g.Key, g.First().Family, g.All(f => f.Cyrillic), g.All(f => f.DigitsOnly), false, StylesOf(g.Select(f => (f.Bold, f.Italic))), OutlineSizes)));
         return list;
     }
 

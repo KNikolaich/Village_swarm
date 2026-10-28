@@ -168,8 +168,10 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
             }
             await db.SaveChangesAsync(ct);
         }
+        // monitoring: the panel reads this often until it is over, then at its own interval again
+        var refresh = DisplayFeedService.MonitorOf(device, now) is { } monitor ? monitor.EveryMin * 60 : 0;
         if (!bitmap)
-            return new ScreenFrame(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message, ContractJson.Options)), "application/json", etag);
+            return new ScreenFrame(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message, ContractJson.Options)), "application/json", etag, RefreshS: refresh);
         var rotation = DisplayFeedService.RotationOf(device);
         using var drawn = tabs > 0 ? await feed.DrawTabAsync(device, message, shown, ct) : await feed.DrawAsync(device, message, ct);
         if (drawn is null)
@@ -179,7 +181,7 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
         // A tab holds the clock and the weather besides the items: its ETag is the picture itself.
         if (tabs > 0)
             etag = $"\"t{shown}" + Convert.ToHexStringLower(SHA256.HashData(bits))[..16] + "\"";
-        return new ScreenFrame(bits, "application/octet-stream", etag, screen!.Width, screen.Height, Tabs: tabs, Rotation: rotation);
+        return new ScreenFrame(bits, "application/octet-stream", etag, screen!.Width, screen.Height, Tabs: tabs, Rotation: rotation, RefreshS: refresh);
     }
 
     private static readonly System.Text.RegularExpressions.Regex DeviceIdPattern = new("^[a-z][a-z0-9]*(-[a-z0-9]+)*$");
@@ -214,7 +216,9 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
 
 /// <summary>A frame for a monitor: the body, its type and ETag; the size for a bitmap. NoPicture: the hive does not draw this screen.</summary>
 /// Tabs and Rotation: how many tabs the board has and how the picture was turned (X-Frame-Tabs, X-Frame-Rotation).
-public sealed record ScreenFrame(byte[] Body, string ContentType, string ETag, int Width = 0, int Height = 0, bool NoPicture = false, int Tabs = 0, int Rotation = 0);
+/// RefreshS: seconds to the next read while the panel is monitored (X-Frame-Refresh); 0 otherwise.
+public sealed record ScreenFrame(byte[] Body, string ContentType, string ETag, int Width = 0, int Height = 0, bool NoPicture = false, int Tabs = 0, int Rotation = 0,
+    int RefreshS = 0);
 
 public sealed record AddRemoteMonitorRequest(string DeviceId, string Name, string Board);
 
@@ -300,6 +304,8 @@ public static class ScreenAccessEndpoints
         if (frame.NoPicture)
             return Results.NotFound();
         http.Response.Headers.ETag = frame.ETag;
+        if (frame.RefreshS > 0)
+            http.Response.Headers["X-Frame-Refresh"] = frame.RefreshS.ToString(System.Globalization.CultureInfo.InvariantCulture);
         if (bitmap)
         {
             http.Response.Headers["X-Frame-Width"] = frame.Width.ToString(System.Globalization.CultureInfo.InvariantCulture);

@@ -44,7 +44,7 @@ means nothing is chosen. The hornet does not read `display.items` itself. Layout
 Text height = max(6, round(screen height × size / 10)) px; the screen takes its largest font not taller than that. A placed item's label is drawn in the smallest
 font at `y`, the value right under it; the hive sends a placed label only when the person typed one.
 An item may also be a **caption** (config `text` instead of `device` + `metric`): the hive sends it as the item's `text`, as typed (up to 24 characters).
-For screens the hive draws itself (e-ink, `frame.bin` in monitor-http.md) an item may carry `font` (family id), `px` (6-48, the size of the font in pixels), `bold`
+For screens the hive draws itself (e-ink, `frame.bin` in monitor-http.md) an item may carry `font` (family id), `px` (6-120, the size of the font in pixels), `bold`
 and `italic`; config `display.rotation` (0, 90, 180, 270) turns the picture, so items, coordinates and the background image are laid out in the turned screen.
 The small OLED draws its own fonts and ignores these fields.
 

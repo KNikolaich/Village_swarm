@@ -269,13 +269,23 @@
           "enum": [0, 90, 180, 270],
           "description": "Screens the hive draws (e-ink): how the picture is turned, clockwise. Items, x, y and the background image are laid out in the turned screen (a panel standing on its side is 90 or 270); the hive turns the finished picture back for the panel. Absent: the board's default (0; 270 for crowpanel-epd37, which stands landscape)"
         },
+        "monitor": {
+          "type": "object",
+          "description": "Monitoring of a monitor far away (contracts/monitor-http.md, X-Frame-Refresh): until the time is up it reads its screen every every_min minutes, then at its own interval. Kept by the hive; set on the monitor's page",
+          "required": ["until", "every_min"],
+          "properties": {
+            "until": { "$ref": "common.schema.json#/$defs/unixMs" },
+            "every_min": { "enum": [1, 2, 5, 10] }
+          },
+          "additionalProperties": false
+        },
         "items": {
           "type": "array",
           "maxItems": 8,
           "description": "What the screen shows, kept by the hive: a reading of this hornet or of another device. Up to 4 in the automatic layout, up to 8 when placed (size set). The hornet does not read it: the hive turns it into the display message",
           "items": {
             "type": "object",
-            "anyOf": [{ "required": ["metric"] }, { "required": ["text"] }],
+            "anyOf": [{ "required": ["metric"] }, { "required": ["text"] }, { "required": ["clock"] }],
             "properties": {
               "device": { "$ref": "common.schema.json#/$defs/deviceId", "description": "Absent: this hornet" },
               "metric": { "$ref": "common.schema.json#/$defs/segment" },
@@ -286,9 +296,11 @@
               "size": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Relative text height: size/10 of the screen height, at least 6 px; the screen takes its largest font not taller than that. Set on any item: the whole screen is placed by x, y, size" },
               "align": { "enum": ["left", "center", "right"], "description": "Placed layout: which edge of the text x is. Absent: left" },
               "font": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 40, "description": "Screens the hive draws (e-ink): the id of the font family (GET /api/display/fonts). Absent: the standard font. The panel only shows the picture; the small OLED ignores it" },
-              "px": { "type": "integer", "minimum": 6, "maximum": 48, "description": "Screens the hive draws: the size of the font in pixels. Absent: derived from size. Ignored by the small OLED" },
+              "px": { "type": "integer", "minimum": 6, "maximum": 120, "description": "Screens the hive draws: the size of the font in pixels (the UI offers the sizes the family reads well at: GET /api/display/fonts, sizes). Absent: derived from size. Ignored by the small OLED" },
               "bold": { "type": "boolean", "description": "Screens the hive draws: bold (a family without a bold face is emboldened)" },
-              "italic": { "type": "boolean", "description": "Screens the hive draws: italic (a family without an italic face is slanted)" }
+              "italic": { "type": "boolean", "description": "Screens the hive draws: italic (a family without an italic face is slanted)" },
+              "clock": { "enum": ["time", "date"], "description": "The hive's clock instead of a reading (then device, metric and text are absent): the time or the date in the hive's time zone, as format says" },
+              "format": { "enum": ["HH:mm", "H:mm", "d MMMM", "d MMM", "dd.MM", "dd.MM.yyyy", "dd/MM", "dddd", "ddd, d MMM", "d MMMM yyyy", "MMMM"], "description": "How the clock is written (Russian names): time HH:mm (absent) or H:mm; date d MMMM (absent: 28 октября), d MMM (28 окт), dd.MM, dd.MM.yyyy, dd/MM, dddd (среда), ddd, d MMM (ср, 28 окт), d MMMM yyyy, MMMM (октябрь)" }
             },
             "additionalProperties": false
           }

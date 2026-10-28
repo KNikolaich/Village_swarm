@@ -1,13 +1,14 @@
 // Remote monitor on the Elecrow CrowPanel ESP32 3.7" e-paper (UC8253, 240x416 black and white, a rocker with a press, MENU and
-// EXIT): a panel far from the hive with four tabs the hive draws (contracts/monitor-http.md, tabs): 0 Common (a clock),
-// 1 Forecast, 2 Calendar, 3 Measure (the person's own layout). No MQTT, no enrollment: added by hand on the hive's page and
-// given a read-only token there, like the Waveshare 1.54" (remote_epd154.cpp, whose settings point and console it shares).
+// EXIT): a panel far from the hive with the tabs the hive draws (contracts/monitor-http.md, tabs; X-Frame-Tabs says how
+// many: 0 Weather, 1 Measure (the person's own layout), 2 Calendar). No MQTT, no enrollment: added by hand on the hive's
+// page and given a read-only token there, like the Waveshare 1.54" (remote_epd154.cpp, whose settings point and console it
+// shares).
 //
-// The rocker moves a cursor over the tab bar (the panel inverts the cell itself), its press chooses the tab: it is shown at
-// once from the flash and then read anew. The tabs are kept in LittleFS, so flipping needs no Wi-Fi. In between the panel
-// sleeps: the clock and Measure tabs wake it every minute (just after the minute turns, by the hive's clock from the Date
-// header), Forecast and Calendar at the panel's interval. Every picture is a partial refresh from the one on the screen,
-// with a full one now and then against ghosting.
+// The rocker moves a cursor over the tab bar (the panel inverts the cell itself, and turns the shown tab's cell back to
+// white while the cursor is elsewhere), its press chooses the tab: it is shown at once from the flash and then read anew.
+// The tabs are kept in LittleFS, so flipping needs no Wi-Fi. In between the panel sleeps for its interval, or less while the
+// hive monitors it (X-Frame-Refresh). Every picture is a partial refresh from the one on the screen, with a full one now
+// and then against ghosting.
 //
 // Buttons: rocker up/down = cursor, rocker press = choose, EXIT = read now (or leave the cursor), MENU short = read now,
 // MENU for 2 s = the settings point (Wi-Fi "VillageSwarm-xxxx", http://192.168.4.1).
@@ -42,7 +43,6 @@ using namespace hornet::remote;
 constexpr int kWidth = 240;
 constexpr int kHeight = 416;
 constexpr size_t kFrameBytes = frameBytes(kWidth, kHeight);
-constexpr int kTabs = 4;
 
 constexpr int kPinSck = 12, kPinMosi = 11, kPinCs = 45, kPinDc = 46, kPinRst = 47, kPinBusy = 48;
 constexpr gpio_num_t kPinEpdPower = GPIO_NUM_7;  // HIGH = e-paper powered
@@ -112,6 +112,8 @@ tL4ndQavEi51mI38AjEAi/V3bNTIZargCyzuFJ0nN6T5U6VR5CmD1/iQMVtCnwr1
 
 // Kept across deep sleep (lost when the power goes). The pictures themselves are in LittleFS: too big for RTC memory.
 RTC_DATA_ATTR int currentTab = 0;
+RTC_DATA_ATTR int tabs = 3;              // how many the hive says (X-Frame-Tabs)
+RTC_DATA_ATTR uint32_t refreshS = 0;     // the hive's monitoring: read this often (X-Frame-Refresh), 0 = own interval
 RTC_DATA_ATTR int rotation = 270;        // how the hive turned the picture (X-Frame-Rotation): the panel's marks follow it
 RTC_DATA_ATTR uint32_t clockUnix = 0;    // the hive's time at the last read, plus what was slept since
 RTC_DATA_ATTR uint32_t offlineMin = 0;
@@ -192,7 +194,7 @@ void writeTag(int tab, const String& tag) {
 }
 
 void forgetTabs() {
-    for (int t = 0; t < kTabs; t++) LittleFS.remove(tagPath(t));
+    for (int t = 0; t < kMaxTabs; t++) LittleFS.remove(tagPath(t));
 }
 
 // ------------------------------------------------------------------ UC8253 (as the Elecrow examples drive it)
@@ -297,12 +299,17 @@ void beginMarks() {
 
 void endMarks() { memcpy(picture, canvas.getBuffer(), kFrameBytes); }
 
-/// The cursor: the cell of the tab bar under it, inverted (the chosen tab is inverted by the hive already).
-void markCursor(int tab) {
-    const Cell cell = tabCell(tab, kTabs, canvas.width(), canvas.height());
+void invertCell(int tab) {
+    const Cell cell = tabCell(tab, tabs, canvas.width(), canvas.height());
     for (int y = cell.y + 1; y < cell.y + cell.h; y++)
         for (int x = cell.x; x < cell.x + cell.w; x++) canvas.drawPixel(x, y, canvas.getPixel(x, y) ? 0 : 1);
-    canvas.drawRect(cell.x, cell.y - 3, cell.w, 3, 1);  // and a line above it, so the cursor shows on the chosen tab too
+}
+
+/// The cursor: only its cell is black. The hive drew the shown tab's cell black: away from it, that one turns white again.
+void markCursor(int tab) {
+    if (tab == currentTab) return;
+    invertCell(tab);
+    invertCell(currentTab);
 }
 
 void markBanner(const String& line) {
@@ -473,11 +480,8 @@ int readBatteryMv() {
     esp_deep_sleep_start();
 }
 
-/// Until the next read of the shown tab: the next minute for the clock and Measure, the interval for the others.
-uint32_t nextReadSeconds() {
-    if (everyMinute(currentTab)) return clockUnix ? secondsToNextMinute(clockUnix + millis() / 1000) : 60;
-    return static_cast<uint32_t>(settings.intervalMin) * 60;
-}
+/// Until the next read of the shown tab: the panel's interval, sooner while the hive monitors it.
+uint32_t nextReadSeconds() { return hornet::remote::nextReadSeconds(settings.intervalMin, refreshS); }
 
 bool pressed(gpio_num_t pin) { return digitalRead(pin) == LOW; }
 
@@ -537,7 +541,7 @@ String pageHtml(const char* note) {
          "\"><small>Адрес, по которому Улей открывается из интернета.</small></label>";
     h += "<label>Токен экрана<input name=token autocapitalize=off placeholder='xxxx-xxxx-xxxx-xxxx-xxxx' value=\"" + escapeHtml(settings.token) +
          "\"><small>Выдаётся на странице монитора в Улье; там же QR-код, который заполняет эту форму.</small></label>";
-    h += F("<label>Прогноз и календарь обновлять<select name=interval>");
+    h += F("<label>Обновлять вкладки<select name=interval>");
     for (int m : {5, 10, 15, 30, 60, 120}) {
         h += String("<option value=") + m + (m == settings.intervalMin ? " selected>" : ">") + m + " мин</option>";
     }
@@ -679,8 +683,8 @@ Reply fetchTab(int tab, int batteryMv) {
     const String tag = readTag(tab);
     if (tag.length() && LittleFS.exists(tabPath(tab))) http.addHeader("If-None-Match", tag);
     if (batteryMv > 0) http.addHeader("X-Battery-mV", String(batteryMv));
-    const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Rotation", "Date"};
-    http.collectHeaders(keys, 5);
+    const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Rotation", "Date", "X-Frame-Tabs", "X-Frame-Refresh"};
+    http.collectHeaders(keys, 7);
     reply.code = http.GET();
     size_t bytes = 0;
     if (reply.code == 200) {
@@ -690,6 +694,11 @@ Reply fetchTab(int tab, int batteryMv) {
     }
     if (const uint32_t now = httpDate(http.header("Date").c_str())) clockUnix = now - millis() / 1000;
     if (http.hasHeader("X-Frame-Rotation")) rotation = http.header("X-Frame-Rotation").toInt() % 360;
+    if (reply.code == 200 || reply.code == 304) {
+        tabs = tabCount(http.header("X-Frame-Tabs").toInt(), tabs);
+        refreshS = http.hasHeader("X-Frame-Refresh") ? static_cast<uint32_t>(http.header("X-Frame-Refresh").toInt()) : 0;
+        if (currentTab >= tabs) currentTab = 0;
+    }
     reply.answer = classify(reply.code, bytes, http.header("X-Frame-Width").toInt(), http.header("X-Frame-Height").toInt(), kWidth, kHeight);
     if (reply.answer == Answer::Draw) {
         writeFile(tabPath(tab), incoming, kFrameBytes);
@@ -705,8 +714,8 @@ Reply fetchTab(int tab, int batteryMv) {
     const uint32_t intervalS = nextReadSeconds();
     const uint32_t missedMin = intervalS / 60 > 0 ? intervalS / 60 : 1;
     if (!joinWifi()) {
-        // no Wi-Fi: no use waking every minute for the clock
-        const uint32_t retryS = everyMinute(currentTab) ? 300 : intervalS;
+        // no Wi-Fi: no use waking every minute while monitored
+        const uint32_t retryS = intervalS < 300 ? 300 : intervalS;
         Serial.println("[monitor] wifi failed");
         offlineMin += retryS / 60;
         if (!LittleFS.exists(tabPath(currentTab))) {
@@ -755,7 +764,7 @@ Reply fetchTab(int tab, int batteryMv) {
 /// The cursor over the tab bar: up/down move it, the press chooses (shown from the flash at once, then read), EXIT or
 /// a few quiet seconds leave it.
 [[noreturn]] void chooseTab(int firstStep) {
-    int cursor = stepTab(currentTab, firstStep, kTabs);
+    int cursor = stepTab(currentTab, firstStep, tabs);
     showTab(currentTab, cursor, String());
     waitRelease();
     uint32_t lastInput = millis();
@@ -764,7 +773,7 @@ Reply fetchTab(int tab, int batteryMv) {
         if (pressed(kPinDown)) step = 1;
         else if (pressed(kPinUp)) step = -1;
         if (step != 0) {
-            cursor = stepTab(cursor, step, kTabs);
+            cursor = stepTab(cursor, step, tabs);
             showTab(currentTab, cursor, String());
             waitRelease();
             lastInput = millis();

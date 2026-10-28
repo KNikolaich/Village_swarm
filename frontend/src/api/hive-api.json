@@ -4750,6 +4750,81 @@
           }
         }
       }
+    },
+    "/api/devices/{deviceId}/display/monitoring": {
+      "put": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisplayMonitorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayItemsDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5594,7 +5669,8 @@
           "cyrillic",
           "digitsOnly",
           "builtin",
-          "styles"
+          "styles",
+          "sizes"
         ],
         "type": "object",
         "properties": {
@@ -5617,6 +5693,13 @@
             "type": "array",
             "items": {
               "type": "string"
+            }
+          },
+          "sizes": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
             }
           }
         }
@@ -5701,6 +5784,18 @@
               "null",
               "boolean"
             ]
+          },
+          "clock": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "format": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -5732,6 +5827,16 @@
               "integer"
             ],
             "format": "int32"
+          },
+          "monitor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DisplayMonitorDto"
+              }
+            ]
           }
         }
       },
@@ -6418,7 +6523,7 @@
           }
         }
       },
-      "JsonElement": { },
+      "JsonElement": {},
       "JsonObject": {
         "type": "object"
       },
@@ -9717,6 +9822,40 @@
           "garden",
           "tech"
         ]
+      },
+      "DisplayMonitorDto": {
+        "required": [
+          "until",
+          "everyMin"
+        ],
+        "type": "object",
+        "properties": {
+          "until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "everyMin": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "DisplayMonitorRequest": {
+        "required": [
+          "hours",
+          "everyMin"
+        ],
+        "type": "object",
+        "properties": {
+          "hours": {
+            "type": "number",
+            "format": "double"
+          },
+          "everyMin": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
       }
     }
   },

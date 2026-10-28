@@ -2,6 +2,7 @@ import { IpCamChannelSettings, NvrDeviceView } from '@/components/IpCamPanel'
 import { FeaturesPanel } from '@/components/FeaturesPanel'
 import { BlePanel } from '@/components/BlePanel'
 import { DisplayPanel } from '@/components/DisplayPanel'
+import { HelpTip } from '@/components/HelpTip'
 import { ScreenAccessPanel } from '@/components/ScreenAccessPanel'
 import { RangeEditor } from '@/components/RangeEditor'
 import { cn } from '@/lib/utils'
@@ -27,6 +28,7 @@ import { DeviceName } from '@/components/DeviceName'
 import { PinsPanel } from '@/pages/SwarmPage'
 import { SortInput } from '@/components/SortInput'
 import { MonitoringPanel } from '@/components/MonitoringPanel'
+import { PanelMonitoring } from '@/components/PanelMonitoring'
 import { TimelapsePanel } from '@/components/TimelapsePanel'
 import { DashboardChecks } from '@/components/DashboardChecks'
 import { canMonitor } from '@/lib/monitoring'
@@ -370,7 +372,9 @@ export function DevicePage() {
 
       {canMonitor(device) && readings.some((v) => v.metric.startsWith('temperature')) && (canControl || monitored) && (
         <Card>
-          <CardHeader><CardTitle>{t('monitoring.title')}</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-1">{t('monitoring.title')}<HelpTip text={`${t('monitoring.hint')}\n${t('monitoring.alarmHint')}`} /></CardTitle>
+          </CardHeader>
           <CardContent>
             <MonitoringPanel
               device={device}
@@ -439,6 +443,15 @@ export function DevicePage() {
         <Card>
           <CardHeader><CardTitle>{t('display.title')}</CardTitle></CardHeader>
           <CardContent><DisplayPanel deviceId={deviceId} editable={isAdmin} /></CardContent>
+        </Card>
+      )}
+
+      {device.type === 'monitor' && device.driver === 'http' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-1">{t('monitoring.title')}<HelpTip text={t('panelMonitoring.help')} /></CardTitle>
+          </CardHeader>
+          <CardContent><PanelMonitoring deviceId={deviceId} canControl={canControl} /></CardContent>
         </Card>
       )}
 

@@ -8,7 +8,8 @@ namespace Hive.Tests.Unit;
 /// <summary>The tabs of a panel with buttons (CrowPanel 3.7"): drawn by the hive, the tab bar where the panel looks for it.</summary>
 public class ScreenTabsTests
 {
-    private static readonly DisplayScreenDto Landscape = new(416, 240, Rendered: true, Tabs: 4);
+    private static readonly DisplayScreenDto Landscape = new(416, 240, Rendered: true, Tabs: 3);
+    private static readonly DisplayScreenDto Portrait = new(240, 416, Rendered: true, Tabs: 3);
     private static readonly DateTimeOffset Now = new(2026, 10, 29, 20, 58, 0, TimeSpan.Zero);
 
     private static TabContext Context(int? battery = 64)
@@ -20,8 +21,25 @@ public class ScreenTabsTests
             [new TabEvent(Now.AddHours(-3), "Движение", "Калитка"), new TabEvent(Now.AddDays(-1), "Дверь", "Сарай")]);
     }
 
-    private static SKBitmap Draw(int tab, TabContext? context = null) =>
-        ScreenTabs.Draw(tab, Landscape, context ?? Context(), new FontSet(new Dictionary<string, IReadOnlyDictionary<(bool, bool), SKTypeface>>()),
+    /// <summary>The families the tabs are written in, from the hive's own fonts.</summary>
+    private static FontSet TabFonts()
+    {
+        SKTypeface Load(string name)
+        {
+            using var stream = typeof(ScreenTabs).Assembly.GetManifestResourceStream($"Hive.Modules.Devices.Fonts.{name}.ttf")!;
+            return SKTypeface.FromStream(stream);
+        }
+        return new FontSet(new Dictionary<string, IReadOnlyDictionary<(bool, bool), SKTypeface>>
+        {
+            [ScreenTabs.TextFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("Roboto-Regular"), [(true, false)] = Load("Roboto-Bold") },
+            [ScreenTabs.LightFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("Roboto-Light") },
+            [ScreenTabs.SerifFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("RobotoSerif-Regular"), [(true, false)] = Load("RobotoSerif-Bold") },
+            [ScreenTabs.PixelFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("PressStart2P-Regular") },
+        });
+    }
+
+    private static SKBitmap Draw(int tab, TabContext? context = null, DisplayScreenDto? screen = null) =>
+        ScreenTabs.Draw(tab, screen ?? Landscape, context ?? Context(), TabFonts(),
             new DisplayMessage { Ts = 0, Items = [new DisplayItem { Text = "21.5°", X = 10, Y = 10, Size = 3 }] }, null);
 
     private static int Black(SKBitmap b, SKRectI r)
@@ -35,50 +53,38 @@ public class ScreenTabsTests
     }
 
     [Theory]
-    [InlineData(ScreenTabs.Common)]
-    [InlineData(ScreenTabs.Forecast)]
-    [InlineData(ScreenTabs.Calendar)]
-    [InlineData(ScreenTabs.Measure)]
-    public void Every_tab_draws_above_the_bar_and_inverts_its_own_cell(int tab)
+    [InlineData(ScreenTabs.Forecast, false)]
+    [InlineData(ScreenTabs.Measure, false)]
+    [InlineData(ScreenTabs.Calendar, false)]
+    [InlineData(ScreenTabs.Forecast, true)]
+    [InlineData(ScreenTabs.Measure, true)]
+    [InlineData(ScreenTabs.Calendar, true)]
+    public void Every_tab_draws_above_the_bar_and_inverts_its_own_cell(int tab, bool standing)
     {
-        using var bitmap = Draw(tab);
-        Assert.Equal((416, 240), (bitmap.Width, bitmap.Height));
-        Assert.True(Black(bitmap, new SKRectI(0, 0, 416, 240 - ScreenTabs.BarHeight)) > 300, "something is drawn");
-        var top = 240 - ScreenTabs.BarHeight + 1;
-        for (var cell = 0; cell < 4; cell++)
+        var screen = standing ? Portrait : Landscape;
+        using var bitmap = Draw(tab, screen: screen);
+        Assert.Equal((screen.Width, screen.Height), (bitmap.Width, bitmap.Height));
+        Assert.True(Black(bitmap, new SKRectI(0, 0, screen.Width, screen.Height - ScreenTabs.BarHeight)) > 300, "something is drawn");
+        var top = screen.Height - ScreenTabs.BarHeight + 1;
+        var cell = screen.Width / 3;
+        for (var i = 0; i < 3; i++)
         {
-            var r = new SKRectI(cell * 104 + 2, top, cell * 104 + 102, 240);
+            var r = new SKRectI(i * cell + 2, top, i * cell + cell - 2, screen.Height);
             var share = Black(bitmap, r) / (double)(r.Width * r.Height);
-            if (cell == tab)
+            if (i == tab)
                 Assert.True(share > 0.6, $"tab {tab}: its cell is black");
             else
-                Assert.True(share < 0.4, $"tab {tab}: cell {cell} is white");
+                Assert.True(share < 0.4, $"tab {tab}: cell {i} is white");
         }
     }
 
     [Fact]
-    public void The_clock_shows_the_minute_so_the_picture_changes_with_it()
+    public void The_weather_keeps_its_temperature_inside_the_screen()
     {
-        using var a = Draw(ScreenTabs.Common);
-        using var b = Draw(ScreenTabs.Common, Context() with { Now = Now.AddMinutes(1) });
-        Assert.NotEqual(DisplayRender.Pack(a), DisplayRender.Pack(b));
-    }
-
-    [Fact]
-    public void The_fraktur_clock_stays_below_the_date_and_above_the_weekday()
-    {
-        using var stream = typeof(ScreenTabs).Assembly.GetManifestResourceStream("Hive.Modules.Devices.Fonts.UnifrakturCook-Bold.ttf")!;
-        var fraktur = SKTypeface.FromStream(stream);
-        var fonts = new FontSet(new Dictionary<string, IReadOnlyDictionary<(bool, bool), SKTypeface>>
-        {
-            [ScreenTabs.ClockFamily] = new Dictionary<(bool, bool), SKTypeface> { [(true, false)] = fraktur },
-        });
-        using var bitmap = ScreenTabs.Draw(ScreenTabs.Common, Landscape, Context(), fonts, new DisplayMessage { Ts = 0, Items = [] }, null);
-        // the gap under the date's underline and the strip of the weekday's line (left of it) are clear of the digits
-        Assert.Equal(0, Black(bitmap, new SKRectI(0, 39, 416, 44)));
-        var content = 240 - ScreenTabs.BarHeight;
-        Assert.Equal(0, Black(bitmap, new SKRectI(0, content - 20, 300, content)));
-        Assert.True(Black(bitmap, new SKRectI(0, 44, 416, content - 20)) > 3000, "the clock is big");
+        using var bitmap = Draw(ScreenTabs.Forecast);
+        // the degree sign of the big temperature once ran off the top edge
+        Assert.Equal(0, Black(bitmap, new SKRectI(150, 0, 310, 4)));
+        Assert.True(Black(bitmap, new SKRectI(150, 4, 310, 46)) > 200, "the temperature is there");
     }
 
     [Fact]
@@ -117,10 +123,36 @@ public class ScreenTabsTests
     }
 
     [Fact]
+    public void The_drops_and_the_wind_are_inked_in_their_boxes()
+    {
+        using var bitmap = new SKBitmap(new SKImageInfo(40, 20, SKColorType.Gray8, SKAlphaType.Opaque));
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(SKColors.White);
+            WeatherIcons.Drops(canvas, 0, 2, 16);
+            WeatherIcons.Wind(canvas, 20, 2, 16);
+        }
+        Assert.InRange(Black(bitmap, new SKRectI(0, 0, 12, 20)), 30, 140);
+        Assert.InRange(Black(bitmap, new SKRectI(20, 0, 40, 20)), 30, 200);
+        Assert.Equal(0, Black(bitmap, new SKRectI(12, 0, 19, 20)));
+    }
+
+    [Fact]
     public void The_crowpanel_lies_landscape_unless_turned_otherwise()
     {
         Assert.Equal(270, DisplayScreens.DefaultRotation("crowpanel-epd37"));
         Assert.Equal(0, DisplayScreens.DefaultRotation("waveshare-s3-epaper-154"));
-        Assert.Equal((416, 240, 4), DisplayScreens.For("crowpanel-epd37", 270) is { } s ? (s.Width, s.Height, s.Tabs) : default);
+        Assert.Equal((416, 240, 3), DisplayScreens.For("crowpanel-epd37", 270) is { } s ? (s.Width, s.Height, s.Tabs) : default);
+    }
+
+    [Fact]
+    public void Pixel_fonts_are_offered_at_their_grid_and_outline_fonts_at_whole_sizes()
+    {
+        Assert.Equal(new[] { 8, 16, 24, 32 }, DisplayFontCatalog.SizesOf("press-start").Take(4));
+        Assert.Equal(new[] { 16, 32, 48 }, DisplayFontCatalog.SizesOf("pixellari").Take(3));
+        Assert.Contains(12, DisplayFontCatalog.SizesOf("roboto"));
+        Assert.Contains(36, DisplayFontCatalog.SizesOf("roboto-serif"));
+        Assert.Equal(DisplayFontCatalog.OutlineSizes, DisplayFontCatalog.SizesOf("my-uploaded-font"));
+        Assert.Equal(DisplayFontCatalog.OutlineSizes, DisplayFontCatalog.SizesOf(null));
     }
 }

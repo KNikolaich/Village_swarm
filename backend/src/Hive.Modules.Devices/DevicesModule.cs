@@ -185,7 +185,7 @@ public static class DevicesModule
         devices.MapGet("/{deviceId}/display", async Task<Results<Ok<DisplayItemsDto>, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
             await feed.GetAsync(deviceId, ct) is { } display ? TypedResults.Ok(display) : TypedResults.NotFound());
         // The frame the hive draws for a screen (e-ink monitors), as the screen will show it.
-        // A panel with tabs: ?tab=0..3 (contracts/monitor-http.md); absent: the person's own layout.
+        // A panel with tabs: ?tab=0..2 (contracts/monitor-http.md); absent: the person's own layout.
         devices.MapGet("/{deviceId}/display/preview.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, int? tab, DisplayFeedService feed, CancellationToken ct) =>
             await feed.PreviewAsync(deviceId, tab, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());
         // The picture behind the items of a screen the hive draws: the file in the body, exactly the screen's size.
@@ -210,6 +210,22 @@ public static class DevicesModule
         devices.MapDelete("/{deviceId}/display/background", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
                 await feed.RemoveBackgroundAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
             .RequireAuthorization(HiveRoles.AdminOnly);
+        // Monitoring of a panel far away: it reads its screen more often for a while (contracts/monitor-http.md, X-Frame-Refresh).
+        devices.MapPut("/{deviceId}/display/monitoring", async Task<Results<Ok<DisplayItemsDto>, NotFound, ValidationProblem>> (
+                string deviceId, DisplayMonitorRequest request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+            {
+                var (status, error) = await feed.SetMonitorAsync(deviceId, request, $"user:{user.Identity?.Name}", ct);
+                return status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["monitoring"] = [error ?? "refused"] }),
+                    _ => TypedResults.Ok((await feed.GetAsync(deviceId, ct))!),
+                };
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
+        devices.MapDelete("/{deviceId}/display/monitoring", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+                (await feed.SetMonitorAsync(deviceId, null, $"user:{user.Identity?.Name}", ct)).Status == ConfigUpdateStatus.NotFound ? TypedResults.NotFound() : TypedResults.NoContent())
+            .RequireAuthorization(HiveRoles.CanControl);
         devices.MapPut("/{deviceId}/display", async Task<Results<Ok<DisplayItemsDto>, NotFound, ValidationProblem>> (
                 string deviceId, DisplayItemsDto request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
             {

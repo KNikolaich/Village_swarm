@@ -3,6 +3,8 @@ import type { DeviceDto } from '@/api/client'
 /** What the server accepts (Hive.Modules.Telemetry.MonitoringService Hours and Intervals). */
 export const monitorHours = [0.5, 1, 2, 3, 4, 6, 8, 12]
 export const monitorIntervals = [5, 10, 15, 30]
+/** How often a monitored panel far away reads its screen, in minutes (Hive.Modules.Devices.DisplayFeedService.MonitorEveryMin). */
+export const panelEveryMin = [1, 2, 5, 10]
 const monitorTypes = ['meteo', 'heat', 'ble']
 
 /** Our own thermometers that stay on line (no sleep between readings) can be monitored. */
