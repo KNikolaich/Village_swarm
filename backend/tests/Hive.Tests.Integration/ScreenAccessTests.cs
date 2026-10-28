@@ -182,6 +182,18 @@ public sealed class ScreenAccessTests(HiveFixture hive)
         using var badTurn = await admin.PutAsJsonAsync("/api/devices/monitor-bg1/display", new { items = Array.Empty<object>(), rotation = 45 });
         Assert.Equal(HttpStatusCode.BadRequest, badTurn.StatusCode);
 
+        // inverted, the screen is white on black: the tag changes and so does every bit; saving without it keeps it
+        using var dark = await admin.PutAsJsonAsync("/api/devices/monitor-bg1/display", new { items = Array.Empty<object>(), invert = true });
+        Assert.Equal(HttpStatusCode.OK, dark.StatusCode);
+        Assert.True((await dark.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("invert").GetBoolean());
+        var inverted = await Read();
+        Assert.NotEqual(rotated.ETag, inverted.ETag);
+        Assert.Equal(rotated.Body.Select(b => (byte)~b), inverted.Body);
+        using var kept = await admin.PutAsJsonAsync("/api/devices/monitor-bg1/display", new { items = Array.Empty<object>() });
+        Assert.Equal(inverted.ETag, (await Read()).ETag);
+        using var light = await admin.PutAsJsonAsync("/api/devices/monitor-bg1/display", new { items = Array.Empty<object>(), invert = false });
+        Assert.Equal(rotated.ETag, (await Read()).ETag);
+
         using var removed = await admin.DeleteAsync("/api/devices/monitor-bg1/display/background");
         Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
         using var gone = await admin.GetAsync("/api/devices/monitor-bg1/display/background.png");

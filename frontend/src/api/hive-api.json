@@ -5837,6 +5837,12 @@
                 "$ref": "#/components/schemas/DisplayMonitorDto"
               }
             ]
+          },
+          "invert": {
+            "type": [
+              "null",
+              "boolean"
+            ]
           }
         }
       },

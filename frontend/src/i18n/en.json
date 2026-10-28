@@ -1333,7 +1333,7 @@
     "alignCenter": "center",
     "alignRight": "right",
     "rendered": "How the hive will draw the screen (saved rows)",
-    "renderedHelp": "This screen does not draw itself: the hive makes the picture and the panel only shows it. This is exactly the picture the panel gets on its next read, with the current readings. The rows above change at once, the picture after Save.",
+    "renderedHelp": "This screen does not draw itself: the hive makes the picture and the panel only shows it. This is exactly the picture the panel gets on its next read, with the current readings. The rows below change at once, the picture after Save.",
     "fontsTitle": "Font",
     "font": "Font",
     "px": "Size, px",
@@ -1361,8 +1361,8 @@
     "fontSaved": "Font added",
     "fontRemove": "Delete the font",
     "fontRemoved": "Font deleted",
-    "tabs": "The panel's other tabs",
-    "tabsHelp": "This panel is flipped with its rocker: Weather, Measure and Calendar. The hive draws Weather and Calendar itself. Measure is the rows below, its picture is shown above. The bottom 22 dots of every tab are the tab bar: keep rows out of it. All tabs refresh at the panel's interval, more often while monitored.",
+    "tabs": "The panel's tabs",
+    "tabsHelp": "This panel is flipped with its rocker: Weather, Measure and Calendar. The hive draws Weather and Calendar itself. Measure is the rows below. The bottom 22 dots of every tab are the tab bar: keep rows out of it. All tabs refresh at the panel's interval, more often while monitored.",
     "tab0": "Weather",
     "tab1": "Measure",
     "tab2": "Calendar",
@@ -1372,7 +1372,11 @@
     "format": "Format",
     "formatHelp": "How the time or date is written, in the hive's time zone. The screen refreshes at the panel's interval, so the minutes may lag by that much.",
     "pick": "Choose what to show",
-    "sourceHelp": "Where the value comes from: a reading of this device, of any other (listed by name) or the hive's clock (time and date). Pick the value itself; its source is the heading above it."
+    "sourceHelp": "Where the value comes from: a reading of this device, of any other (listed by name) or the hive's clock (time and date). Pick the value itself; its source is the heading above it.",
+    "invert": "Invert",
+    "invertHelp": "Swaps black and white on every tab: light text on a dark background. No reflashing: the new picture comes with the next read.",
+    "moveUp": "Up the list",
+    "moveDown": "Down the list"
   },
   "screenAccess": {
     "title": "Access from outside",

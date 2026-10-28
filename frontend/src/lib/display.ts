@@ -66,6 +66,15 @@ export interface FontInfo {
   sizes: number[]
 }
 
+/** The list with the item at <i> moved one place up (-1) or down (+1); unchanged at either end. */
+export function moved<T>(all: T[], i: number, by: -1 | 1): T[] {
+  const j = i + by
+  if (i < 0 || i >= all.length || j < 0 || j >= all.length) return all
+  const next = all.slice()
+  ;[next[i], next[j]] = [next[j], next[i]]
+  return next
+}
+
 /** The offered size nearest to <px>: a font changes, the text keeps about its height. */
 export function nearestSize(px: number, sizes: number[]): number {
   if (sizes.length === 0) return clampPx(px)

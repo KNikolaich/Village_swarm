@@ -29,7 +29,8 @@ Responses:
 - `404`: the hive does not draw this monitor's screen (a board with its own fonts, like the 0.42" OLED): use `frame`.
 
 The picture is made of the screen's background image (if the person uploaded one; its size is that of the screen as it is turned), the items in their fonts
-(`font`, `px`, `bold`, `italic`) and the rotation the person chose; the `ETag` changes with any of them, and with the fonts the hive knows. `X-Frame-Width` and
+(`font`, `px`, `bold`, `italic`), the rotation the person chose and whether the picture is inverted (white on black, config
+`display.invert`, every tab alike); the `ETag` changes with any of them, and with the fonts the hive knows. `X-Frame-Width` and
 `X-Frame-Height` are those of the panel itself, not of the turned screen: the hive turns the picture back before it sends it.
 
 ### Tabs (panels with buttons)

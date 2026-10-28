@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ImagePlus, Plus, Trash2, Type, Upload, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, ImagePlus, Plus, Trash2, Type, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
@@ -11,7 +11,7 @@ import { Input, Select } from '@/components/ui/primitives'
 import { metricLabel, t } from '@/i18n'
 import {
   type Align, backgroundSize, clampToScreen, type ClockKind, clockFormats, clockText, fontBadge, type FontInfo, labelHeight, maxAuto, maxPlaced,
-  nearestSize, pixelHeight, rotations, type Screen, screenText, sizeForPx, stackedPlaces, textAnchor,
+  moved, nearestSize, pixelHeight, rotations, type Screen, screenText, sizeForPx, stackedPlaces, textAnchor,
 } from '@/lib/display'
 
 interface Row {
@@ -111,6 +111,7 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
   const [rows, setRows] = useState<Row[]>([])
   const [placed, setPlaced] = useState(false)
   const [rotation, setRotation] = useState(0)
+  const [invert, setInvert] = useState(false)
   const fonts = useQuery({ queryKey: ['display-fonts'], queryFn: () => call(api.GET('/api/display/fonts')) })
   const screen: Screen = current.data?.screen ?? fallbackScreen
   useEffect(() => {
@@ -123,6 +124,7 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
     })))
     setPlaced(current.data.items.some((i) => i.size != null))
     setRotation(current.data.rotation ?? 0)
+    setInvert(current.data.invert ?? false)
   }, [current.data])
 
   // The readings each device has had lately: a screen can only show what the hive has seen.
@@ -169,6 +171,11 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
     else setRows((all) => all.filter((r) => r.text === null).slice(0, maxAuto))
   }
 
+  /** The rows in the order the person reads them: one place up (-1) or down (+1). */
+  function move(i: number, by: -1 | 1) {
+    setRows((all) => moved(all, i, by))
+  }
+
   function addRow() {
     setRows((all) => [...all, {
       device: '', metric: metricsOf(deviceId)[0] ?? '', label: '',
@@ -201,7 +208,7 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
       }
     })
     const { response } = await api.PUT('/api/devices/{deviceId}/display', {
-      params: { path: { deviceId } }, body: { items, ...(rendered ? { rotation } : {}) },
+      params: { path: { deviceId } }, body: { items, ...(rendered ? { rotation, invert } : {}) },
     })
     if (!response.ok) {
       toast.error(t('errors.generic'))
@@ -249,91 +256,101 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
     await qc.invalidateQueries({ queryKey: ['display-fonts'] })
   }
 
+  const picture = (tab: number | null) =>
+    `/api/devices/${encodeURIComponent(deviceId)}/display/preview.png?${tab === null ? '' : `tab=${tab}&`}v=${current.dataUpdatedAt}`
+
   return (
     <div className="space-y-3 text-sm">
-      <p className="text-xs text-neutral-500">{t('display.hint')}</p>
-      <label className="flex items-center gap-2 text-xs text-neutral-300">
-        <input type="checkbox" checked={placed} disabled={!editable} onChange={(e) => togglePlaced(e.target.checked)} />
-        {t('display.placed')}
-        <HelpTip text={t('display.placedHelp').replace('{w}', String(screen.width)).replace('{h}', String(screen.height))} />
-      </label>
-      {placed && rows.length > 0 && (
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+        <label className="flex h-9 items-center gap-2 text-xs text-neutral-300">
+          <input type="checkbox" checked={placed} disabled={!editable} onChange={(e) => togglePlaced(e.target.checked)} />
+          {t('display.placed')}
+          <HelpTip text={t('display.placedHelp').replace('{w}', String(screen.width)).replace('{h}', String(screen.height))} />
+        </label>
+        {rendered && (<>
+          <label className="space-y-1">
+            <FieldLabel text={t('display.rotation')} help={t('display.rotationHelp')} />
+            <Select value={rotation} disabled={!editable} onChange={(e) => setRotation(Number(e.target.value))}>
+              {rotations.map((r) => <option key={r} value={r}>{r}°</option>)}
+            </Select>
+          </label>
+          <label className="flex h-9 items-center gap-2 text-xs text-neutral-300">
+            <input type="checkbox" checked={invert} disabled={!editable} onChange={(e) => setInvert(e.target.checked)} />
+            {t('display.invert')}
+            <HelpTip text={t('display.invertHelp')} />
+          </label>
+        </>)}
+      </div>
+      {/* a screen that draws itself (the OLED): this sketch is all there is before saving, its rows are dragged here */}
+      {!rendered && placed && rows.length > 0 && (
         <div className="space-y-1">
           <ScreenPreview screen={screen} rows={rows} texts={texts} editable={editable} onMove={(i, x, y) => setRow(i, { x, y })} />
           <p className="text-xs text-neutral-500">{t('display.previewHint').replace('{w}', String(screen.width)).replace('{h}', String(screen.height))}</p>
         </div>
       )}
+      {/* the hive draws it: every tab as the panel will show it, and the background, in one row */}
       {rendered && (
-        <label className="block max-w-xs space-y-1">
-          <FieldLabel text={t('display.rotation')} help={t('display.rotationHelp')} />
-          <Select value={rotation} disabled={!editable} onChange={(e) => setRotation(Number(e.target.value))}>
-            {rotations.map((r) => <option key={r} value={r}>{r}°</option>)}
-          </Select>
-        </label>
-      )}
-      {rendered && (
-        <div className="flex flex-wrap items-start gap-4">
-          <div className="space-y-1">
-            <p className="flex items-center gap-1 text-xs text-neutral-400">
-              {t('display.rendered')}
-              <HelpTip text={t('display.renderedHelp')} />
-            </p>
-            <img src={`/api/devices/${encodeURIComponent(deviceId)}/display/preview.png?v=${current.dataUpdatedAt}`}
-              alt={t('display.rendered')} width={screen.width} height={screen.height}
-              className="w-full max-w-80 rounded border border-neutral-700 bg-white" style={{ imageRendering: 'pixelated' }} />
-          </div>
-          <div className="min-w-48 space-y-2">
-            <p className="flex items-center gap-1 text-xs text-neutral-400">
-              {t('display.background')} {backgroundSize(screen)}
-              <HelpTip text={t('display.backgroundHelp').replace('{size}', backgroundSize(screen))} />
-            </p>
-            {current.data?.screen?.background ? (
-              <img src={`/api/devices/${encodeURIComponent(deviceId)}/display/background.png?v=${current.dataUpdatedAt}`}
-                alt={t('display.background')} width={screen.width} height={screen.height}
-                className="w-full max-w-40 rounded border border-neutral-700 bg-white" style={{ imageRendering: 'pixelated' }} />
-            ) : (
-              <p className="text-xs text-neutral-500">{t('display.backgroundNone')}</p>
-            )}
-            {editable && (
-              <div className="flex flex-wrap gap-2">
-                <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800">
-                  <ImagePlus className="size-4" />{t('display.backgroundUpload')}
-                  <input type="file" accept="image/png,image/jpeg,image/bmp,image/gif" className="sr-only"
-                    onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void uploadBackground(f) }} />
-                </label>
-                {current.data?.screen?.background && (
-                  <Button variant="ghost" size="sm" onClick={() => void removeBackground()}><Trash2 />{t('display.backgroundRemove')}</Button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-      {rendered && tabs > 0 && (
         <div className="space-y-1">
           <p className="flex items-center gap-1 text-xs text-neutral-400">
-            {t('display.tabs')}
-            <HelpTip text={t('display.tabsHelp')} />
+            {tabs > 0 ? t('display.tabs') : t('display.rendered')}
+            <HelpTip text={tabs > 0 ? `${t('display.tabsHelp')}\n${t('display.renderedHelp')}` : t('display.renderedHelp')} />
           </p>
-          <div className="flex flex-wrap gap-3">
-            {[0, 2].filter((tab) => tab < tabs).map((tab) => (
-              <figure key={tab} className="space-y-1">
-                <img src={`/api/devices/${encodeURIComponent(deviceId)}/display/preview.png?tab=${tab}&v=${current.dataUpdatedAt}`}
-                  alt={t(`display.tab${tab}`)} width={screen.width} height={screen.height}
-                  className="w-full max-w-64 rounded border border-neutral-700 bg-white" style={{ imageRendering: 'pixelated' }} />
-                <figcaption className="text-xs text-neutral-500">{t(`display.tab${tab}`)}</figcaption>
+          <div className="flex flex-wrap items-start gap-3">
+            {(tabs > 0 ? Array.from({ length: tabs }, (_, tab) => tab) : [null]).map((tab) => (
+              <figure key={tab ?? 'screen'} className="space-y-1">
+                <img src={picture(tab)} alt={tab === null ? t('display.rendered') : t(`display.tab${tab}`)} width={screen.width} height={screen.height}
+                  className="max-w-full rounded border border-neutral-700 bg-white" style={{ width: screen.width, imageRendering: 'pixelated' }} />
+                {tab !== null && <figcaption className="text-xs text-neutral-500">{t(`display.tab${tab}`)}</figcaption>}
               </figure>
             ))}
+            <div className="min-w-40 space-y-2">
+              <p className="flex items-center gap-1 text-xs text-neutral-400">
+                {t('display.background')} {backgroundSize(screen)}
+                <HelpTip text={t('display.backgroundHelp').replace('{size}', backgroundSize(screen))} />
+              </p>
+              {current.data?.screen?.background ? (
+                <img src={`/api/devices/${encodeURIComponent(deviceId)}/display/background.png?v=${current.dataUpdatedAt}`}
+                  alt={t('display.background')} width={screen.width} height={screen.height}
+                  className="w-full max-w-40 rounded border border-neutral-700 bg-white" style={{ imageRendering: 'pixelated' }} />
+              ) : (
+                <p className="text-xs text-neutral-500">{t('display.backgroundNone')}</p>
+              )}
+              {editable && (
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800">
+                    <ImagePlus className="size-4" />{t('display.backgroundUpload')}
+                    <input type="file" accept="image/png,image/jpeg,image/bmp,image/gif" className="sr-only"
+                      onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void uploadBackground(f) }} />
+                  </label>
+                  {current.data?.screen?.background && (
+                    <Button variant="ghost" size="sm" onClick={() => void removeBackground()}><Trash2 />{t('display.backgroundRemove')}</Button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
+      {/* right under the pictures: what can be done with the rows, then the rows themselves */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" disabled={!editable || rows.length >= maxRows} onClick={addRow}><Plus />{t('display.add')}</Button>
+        {styled && <Button variant="outline" disabled={!editable || rows.length >= maxRows} onClick={addText}><Type />{t('display.addText')}</Button>}
+        <Button disabled={!editable || !complete} onClick={() => void save()}>{t('display.save')}</Button>
+      </div>
+      {!placed && <p className="text-xs text-neutral-500">{t('display.layout')}</p>}
       {rows.length === 0 && <p className="text-xs text-neutral-400">{t('display.own')}</p>}
       {rows.map((row, i) => {
         const sizes = sizesOf(row.font)
         const px = pxOf(row)
         const remove = (
-          <Button variant="ghost" size="icon" className="size-9 shrink-0" disabled={!editable} title={t('display.remove')} aria-label={t('display.remove')}
-            onClick={() => setRows((all) => all.filter((_, k) => k !== i))}><X /></Button>
+          <div className="flex shrink-0 items-center">
+            <Button variant="ghost" size="icon" className="size-9" disabled={!editable || i === 0} title={t('display.moveUp')} aria-label={t('display.moveUp')}
+              onClick={() => move(i, -1)}><ChevronUp /></Button>
+            <Button variant="ghost" size="icon" className="size-9" disabled={!editable || i === rows.length - 1} title={t('display.moveDown')} aria-label={t('display.moveDown')}
+              onClick={() => move(i, 1)}><ChevronDown /></Button>
+            <Button variant="ghost" size="icon" className="size-9" disabled={!editable} title={t('display.remove')} aria-label={t('display.remove')}
+              onClick={() => setRows((all) => all.filter((_, k) => k !== i))}><X /></Button>
+          </div>
         )
         return (
           <div key={i} className="space-y-2 rounded-lg border border-neutral-800 p-2">
@@ -431,12 +448,6 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
           </div>
         )
       })}
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="outline" disabled={!editable || rows.length >= maxRows} onClick={addRow}><Plus />{t('display.add')}</Button>
-        {styled && <Button variant="outline" disabled={!editable || rows.length >= maxRows} onClick={addText}><Type />{t('display.addText')}</Button>}
-        <Button disabled={!editable || !complete} onClick={() => void save()}>{t('display.save')}</Button>
-      </div>
-      {!placed && <p className="text-xs text-neutral-500">{t('display.layout')}</p>}
       {rendered && editable && (
         <details className="text-xs text-neutral-400">
           <summary className="cursor-pointer">{t('display.ownFonts')}</summary>

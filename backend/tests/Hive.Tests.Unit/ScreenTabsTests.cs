@@ -79,6 +79,45 @@ public class ScreenTabsTests
     }
 
     [Fact]
+    public void The_calendar_shows_each_event_once_newest_first()
+    {
+        var at = new DateTimeOffset(2026, 10, 28, 11, 54, 10, TimeSpan.Zero);
+        var events = ScreenTabs.Distinct(
+        [
+            new TabEvent(at, "Движение", "Top zoom30 front"),
+            new TabEvent(at.AddSeconds(20), "Движение", "Top zoom30 front"),
+            new TabEvent(at.AddSeconds(40), "Движение", "Top zoom30 front"),
+            new TabEvent(at.AddSeconds(30), "Движение", "dahua4"),
+            new TabEvent(at.AddMinutes(-5), "Движение", "Top zoom30 front"),
+        ], t => t.ToOffset(TimeSpan.FromHours(3)));
+        Assert.Equal(3, events.Count);
+        Assert.Equal(at.AddSeconds(40), events[0].At);
+        Assert.Equal("dahua4", events[1].Where);
+        Assert.Equal(at.AddMinutes(-5), events[2].At);
+    }
+
+    [Fact]
+    public void Standing_the_calendar_fills_down_to_the_tabs_with_news_and_leaves_them_clear()
+    {
+        var many = Enumerable.Range(0, 30).Select(i => new TabEvent(Now.AddMinutes(-7 * i), "Движение", "Калитка")).ToList();
+        using var bitmap = Draw(ScreenTabs.Calendar, Context() with { Events = many }, Portrait);
+        var barTop = Portrait.Height - ScreenTabs.BarHeight;
+        // the news reach the lowest fifth of the screen above the tabs
+        Assert.True(Black(bitmap, new SKRectI(0, barTop - 40, Portrait.Width, barTop - 4)) > 100, "news down to the tabs");
+        // and leave the line above the tab bar white
+        Assert.Equal(0, Black(bitmap, new SKRectI(0, barTop - 2, Portrait.Width, barTop - 1)));
+    }
+
+    [Fact]
+    public void Inverting_swaps_black_and_white()
+    {
+        using var bitmap = Draw(ScreenTabs.Calendar);
+        var black = Black(bitmap, new SKRectI(0, 0, bitmap.Width, bitmap.Height));
+        DisplayRender.Invert(bitmap);
+        Assert.Equal(bitmap.Width * bitmap.Height - black, Black(bitmap, new SKRectI(0, 0, bitmap.Width, bitmap.Height)));
+    }
+
+    [Fact]
     public void The_weather_keeps_its_temperature_inside_the_screen()
     {
         using var bitmap = Draw(ScreenTabs.Forecast);

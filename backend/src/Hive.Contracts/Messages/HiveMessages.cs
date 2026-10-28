@@ -166,6 +166,9 @@ public sealed record DisplayConfig
     /// <summary>Screens the hive draws: how the picture is turned clockwise, 0/90/180/270. Absent: 0.</summary>
     public int? Rotation { get; init; }
 
+    /// <summary>Screens the hive draws: black and white swapped (a dark screen). Absent: false.</summary>
+    public bool? Invert { get; init; }
+
     /// <summary>Monitoring of a monitor far away: it reads its screen every <see cref="DisplayMonitorConfig.EveryMin"/> minutes until the time is up.</summary>
     public DisplayMonitorConfig? Monitor { get; init; }
 }

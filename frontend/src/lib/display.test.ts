@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backgroundSize, clampPx, clampToScreen, clockText, fontBadge, nearestSize, pixelHeight, screenText, sizeForPx, stackedPlaces, textAnchor } from './display'
+import { backgroundSize, clampPx, clampToScreen, clockText, fontBadge, moved, nearestSize, pixelHeight, screenText, sizeForPx, stackedPlaces, textAnchor } from './display'
 
 const oled = { width: 72, height: 40 }
 
@@ -86,5 +86,15 @@ describe('clockText', () => {
     expect(clockText('ddd, d MMM', at)).toBe('чт, 29 окт')
     expect(clockText('MMMM', at)).toBe('октябрь')
     expect(clockText('dd.MM.yyyy', at)).toBe('29.10.2026')
+  })
+})
+
+describe('moved', () => {
+  it('moves a row one place up or down and leaves the ends as they are', () => {
+    expect(moved(['a', 'b', 'c'], 2, -1)).toEqual(['a', 'c', 'b'])
+    expect(moved(['a', 'b', 'c'], 0, 1)).toEqual(['b', 'a', 'c'])
+    const all = ['a', 'b']
+    expect(moved(all, 0, -1)).toBe(all)
+    expect(moved(all, 1, 1)).toBe(all)
   })
 })

@@ -52,6 +52,15 @@ public static class DisplayRender
         return bitmap;
     }
 
+    /// <summary>Black for white and white for black, in place (a gray picture, as the hive draws them): the dark look of a screen.</summary>
+    public static SKBitmap Invert(SKBitmap bitmap)
+    {
+        var pixels = bitmap.GetPixelSpan();
+        for (var i = 0; i < pixels.Length; i++)
+            pixels[i] = (byte)(255 - pixels[i]);
+        return bitmap;
+    }
+
     /// <summary>The picture turned clockwise by 0, 90, 180 or 270 degrees: from the screen as the person sees it to the panel's own.</summary>
     public static SKBitmap Rotate(SKBitmap source, int degrees)
     {

@@ -6104,6 +6104,7 @@ export interface components {
             /** Format: int32 */
             rotation?: null | number;
             monitor?: null | components["schemas"]["DisplayMonitorDto"];
+            invert?: null | boolean;
         };
         DisplayMonitorDto: {
             /** Format: date-time */

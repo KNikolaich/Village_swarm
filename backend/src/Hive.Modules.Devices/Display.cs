@@ -40,9 +40,11 @@ public sealed record DisplayScreenDto(int Width, int Height, bool Rendered = fal
 
 /// <summary>
 /// What the screen shows; <see cref="Screen"/> is filled by the hive for a board it knows (ignored when saving).
-/// <see cref="Rotation"/> turns the picture of a screen the hive draws (0, 90, 180, 270); absent when saving: unchanged.
+/// <see cref="Rotation"/> turns the picture of a screen the hive draws (0, 90, 180, 270); <see cref="Invert"/> swaps its black and
+/// white (a dark screen); either absent when saving: unchanged.
 /// </summary>
-public sealed record DisplayItemsDto(IReadOnlyList<DisplayItemDto> Items, DisplayScreenDto? Screen = null, int? Rotation = null, DisplayMonitorDto? Monitor = null);
+public sealed record DisplayItemsDto(
+    IReadOnlyList<DisplayItemDto> Items, DisplayScreenDto? Screen = null, int? Rotation = null, DisplayMonitorDto? Monitor = null, bool? Invert = null);
 
 /// <summary>
 /// Monitoring of a panel far away: until <see cref="Until"/> it reads its screen every <see cref="EveryMin"/> minutes
@@ -241,7 +243,7 @@ public sealed class DisplayFeedService(
             return null;
         var rotation = RotationOf(device);
         return new DisplayItemsDto(ItemsOf(device), DisplayScreens.For(device.Hw, rotation) is { } screen ? screen with { Background = device.ScreenBackground is not null } : null, rotation,
-            MonitorOf(device, time.GetUtcNow()));
+            MonitorOf(device, time.GetUtcNow()), InvertOf(device));
     }
 
     /// <summary>What a panel may be monitored for: as long and as often as a person can choose (the same hours as a thermometer).</summary>
@@ -300,6 +302,11 @@ public sealed class DisplayFeedService(
             && display.TryGetProperty("rotation", out var r) && r.TryGetInt32(out var degrees) && DisplayScreens.Rotations.Contains(degrees)
             ? degrees : DisplayScreens.DefaultRotation(device.Hw);
 
+    /// <summary>Whether the picture of a screen the hive draws is dark: white on black (config display.invert).</summary>
+    public static bool InvertOf(Device device) =>
+        device.Config is not null && device.Config.RootElement.TryGetProperty("display", out var display)
+            && display.TryGetProperty("invert", out var i) && i.ValueKind == JsonValueKind.True;
+
     public static IReadOnlyList<DisplayItemDto> ItemsOf(Device device)
     {
         if (device.Config is null || !device.Config.RootElement.TryGetProperty("display", out var display)
@@ -330,13 +337,16 @@ public sealed class DisplayFeedService(
     /// Stores the choice in the config (bumping its revision), sends the config, then the screen text. A refusal comes
     /// with its reason (checked against the screen of the board too).
     /// </summary>
-    public async Task<(ConfigUpdateStatus Status, string? Error)> SaveAsync(string deviceId, IReadOnlyList<DisplayItemDto> items, int? rotation, string by, CancellationToken ct)
+    public async Task<(ConfigUpdateStatus Status, string? Error)> SaveAsync(
+        string deviceId, IReadOnlyList<DisplayItemDto> items, int? rotation, string by, CancellationToken ct, bool? invert = null)
     {
         var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && (d.Driver == Drivers.Hornet || d.Driver == Drivers.Http), ct);
         if (device is null)
             return (ConfigUpdateStatus.NotFound, null);
         if (rotation is { } turn && (!DisplayScreens.Rotations.Contains(turn) || (turn != 0 && DisplayScreens.For(device.Hw) is not { Rendered: true })))
             return (ConfigUpdateStatus.BadRequest, "поворот: 0, 90, 180 или 270, и только у экранов, которые рисует Улей");
+        if (invert == true && DisplayScreens.For(device.Hw) is not { Rendered: true })
+            return (ConfigUpdateStatus.BadRequest, "инверсия бывает только у экранов, которые рисует Улей");
         var newRotation = rotation ?? RotationOf(device);
         if (DisplayText.Validate(items, DisplayScreens.For(device.Hw, newRotation)) is { } error)
             return (ConfigUpdateStatus.BadRequest, error);
@@ -390,6 +400,10 @@ public sealed class DisplayFeedService(
             display.Remove("rotation");
         else
             display["rotation"] = newRotation;
+        if (invert == true)
+            display["invert"] = true;
+        else if (invert == false)
+            display.Remove("invert");
         // A turn that changes the screen's shape (a panel on its side) makes the background image the wrong size: it goes.
         if (device.ScreenBackground is not null && DisplayScreens.For(device.Hw, newRotation) is { } shape && DisplayScreens.For(device.Hw, RotationOf(device)) is { } before
             && (shape.Width != before.Width || shape.Height != before.Height))
@@ -404,7 +418,7 @@ public sealed class DisplayFeedService(
         device.ConfigRev++;
         config["rev"] = device.ConfigRev;
         device.Config = JsonDocument.Parse(config.ToJsonString());
-        Audit.Record(db, time.GetUtcNow(), by, "device_display", deviceId, new { items, rotation = newRotation });
+        Audit.Record(db, time.GetUtcNow(), by, "device_display", deviceId, new { items, rotation = newRotation, invert = invert ?? InvertOf(device) });
         await db.SaveChangesAsync(ct);
         // A monitor far away has no MQTT: it reads the frame over HTTP when it wakes.
         if (mqtt.IsConnected && device.Driver == Drivers.Hornet)
@@ -463,12 +477,13 @@ public sealed class DisplayFeedService(
             return null;
         var set = await fonts.LoadAsync(message.Items.Select(i => i.Font), ct);
         using var background = device.ScreenBackground is { } png ? SKBitmap.Decode(png) : null;
-        return DisplayRender.Render(message, screen, set, background);
+        var bitmap = DisplayRender.Render(message, screen, set, background);
+        return InvertOf(device) ? DisplayRender.Invert(bitmap) : bitmap;
     }
 
     /// <summary>What besides the items makes the picture what it is (background, turn, fonts): a panel redraws when it changes.</summary>
     public async Task<string> PictureTagAsync(Device device, CancellationToken ct) =>
-        $"{device.ScreenBackgroundSha}/{RotationOf(device)}/{await fonts.VersionAsync(ct)}";
+        $"{device.ScreenBackgroundSha}/{RotationOf(device)}{(InvertOf(device) ? "/dark" : "")}/{await fonts.VersionAsync(ct)}";
 
     /// <summary>The frame as PNG (the preview in the UI), one tab of a panel with tabs; null without a screen the hive draws.</summary>
     public async Task<byte[]?> PreviewAsync(string deviceId, int? tab, CancellationToken ct)
@@ -521,15 +536,16 @@ public sealed class DisplayFeedService(
             var since = now.AddDays(-30);
             var rows = await db.Events.AsNoTracking()
                 .Where(e => e.Ts >= since && !Chatter.Contains(e.Type) && !db.Media.Any(m => m.EventId == e.Id && m.Kind == MediaKind.Timelapse))
-                .OrderByDescending(e => e.Ts).Take(4)
+                .OrderByDescending(e => e.Ts).Take(60)
                 .Select(e => new { e.Ts, e.Type, Name = db.Devices.Where(d => d.DeviceId == e.DeviceId).Select(d => d.Name).FirstOrDefault() })
                 .ToListAsync(ct);
-            events = rows.Select(e => new TabEvent(e.Ts, EventName(e.Type), e.Name)).ToList();
+            events = ScreenTabs.Distinct(rows.Select(e => new TabEvent(e.Ts, EventName(e.Type), e.Name)), options.ToLocal);
         }
         var set = await fonts.LoadAsync(message.Items.Select(i => i.Font).Concat(ScreenTabs.Families), ct);
         using var background = tab == ScreenTabs.Measure && device.ScreenBackground is { } png ? SKBitmap.Decode(png) : null;
         var context = new TabContext(now, options.ToLocal, await BatteryAsync(device.DeviceId, ct), weather, events);
-        return ScreenTabs.Draw(tab, screen, context, set, message, background);
+        var bitmap = ScreenTabs.Draw(tab, screen, context, set, message, background);
+        return InvertOf(device) ? DisplayRender.Invert(bitmap) : bitmap;
     }
 
     /// <summary>The panel's battery in percent from its last word on it (X-Battery-mV), when that is under two hours old.</summary>
