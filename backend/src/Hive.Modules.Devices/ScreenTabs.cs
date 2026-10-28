@@ -13,7 +13,7 @@ public sealed record TabEvent(DateTimeOffset At, string What, string? Where);
 /// zone by <see cref="Local"/>; <see cref="Battery"/> is percent, null when the panel cannot measure it.
 /// </summary>
 public sealed record TabContext(
-    DateTimeOffset Now, Func<DateTimeOffset, DateTimeOffset> Local, int? Battery, WeatherForecast? Weather, IReadOnlyList<TabEvent> Events);
+    DateTimeOffset Now, Func<DateTimeOffset, DateTimeOffset> Local, int? Battery, WeatherForecast? Weather, IReadOnlyList<TabEvent> Events, bool Asleep = false);
 
 /// <summary>
 /// The tabs of a panel with buttons (contracts/monitor-http.md, tabs): Weather (now and the next days), Measure (the person's
@@ -103,7 +103,7 @@ public static class ScreenTabs
         using var canvas = new SKCanvas(bitmap);
         if (tab != Measure)
             canvas.Clear(SKColors.White);
-        var pen = new Pen(canvas, fonts, screen.Width, screen.Height - BarHeight);
+        var pen = new Pen(canvas, fonts, screen.Width, screen.Height - BarHeight) { Asleep = context.Asleep };
         switch (tab)
         {
             case Measure: Stamp(pen, context.Local(context.Now)); break;
@@ -117,7 +117,7 @@ public static class ScreenTabs
 
     /// <summary>When the picture was drawn, in the pixel font at the bottom right (the same on Weather and Measure).</summary>
     private static void Stamp(Pen p, DateTimeOffset now) =>
-        p.Text("обновлено " + now.ToString("HH:mm", CultureInfo.InvariantCulture), p.W - 4, p.H - 10, 8, "right", p.Pixel);
+        p.Text(p.Asleep ? "спит" : "обновлено " + now.ToString("HH:mm", CultureInfo.InvariantCulture), p.W - 4, p.H - 10, 8, "right", p.Pixel);
 
     /// <summary>Drawing tools of one tab: ink, white ink, the text faces and the area above the bar.</summary>
     private sealed class Pen
@@ -139,6 +139,8 @@ public static class ScreenTabs
         public SKCanvas Canvas { get; }
         public int W { get; }
         public int H { get; }
+        /// <summary>The panel is put to sleep: the stamp says so instead of when the picture was drawn.</summary>
+        public bool Asleep { get; init; }
         public bool Portrait => W < H;
         public FontFace Regular { get; }
         public FontFace Bold { get; }

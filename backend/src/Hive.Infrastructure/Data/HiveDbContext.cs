@@ -132,6 +132,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.HasIndex(x => x.ScreenTokenHash).IsUnique();
             e.Property(x => x.ScreenReadFrom).HasMaxLength(64);
             e.Property(x => x.ScreenBackgroundSha).HasMaxLength(16);
+            e.Property(x => x.ScreenSleepSha).HasMaxLength(16);
             e.Property(x => x.Driver).HasMaxLength(16).HasDefaultValue(Drivers.Hornet);
             e.Property(x => x.ParentId).HasMaxLength(32);
             e.HasIndex(x => x.ParentId);

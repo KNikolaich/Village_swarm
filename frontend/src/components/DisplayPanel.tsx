@@ -240,6 +240,26 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
     await qc.invalidateQueries({ queryKey: key })
   }
 
+  async function uploadSleep(file: File) {
+    const { response, error } = await api.PUT('/api/devices/{deviceId}/display/sleep', {
+      params: { path: { deviceId } }, body: file as unknown as string,
+      bodySerializer: (body) => body as unknown as Blob, headers: { 'Content-Type': 'application/octet-stream' },
+    })
+    if (!response.ok) {
+      const why = (error as { errors?: Record<string, string[]> } | undefined)?.errors?.file?.[0]
+      toast.error(`${t('display.sleepWrong')}: ${why ?? t('errors.generic')}`)
+      return
+    }
+    toast.success(t('display.sleepSaved'))
+    await qc.invalidateQueries({ queryKey: key })
+  }
+
+  async function removeSleep() {
+    await api.DELETE('/api/devices/{deviceId}/display/sleep', { params: { path: { deviceId } } })
+    toast.success(t('display.sleepRemoved'))
+    await qc.invalidateQueries({ queryKey: key })
+  }
+
   async function removeBackground() {
     await api.DELETE('/api/devices/{deviceId}/display/background', { params: { path: { deviceId } } })
     toast.success(t('display.backgroundRemoved'))
@@ -339,6 +359,30 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
                   </label>
                   {current.data?.screen?.background && (
                     <Button variant="ghost" size="sm" onClick={() => void removeBackground()}><Trash2 />{t('display.backgroundRemove')}</Button>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="min-w-40 space-y-2">
+              <p className="flex items-center gap-1 text-xs text-neutral-400">
+                {t('display.sleep')}
+                <HelpTip text={t('display.sleepHelp').replace('{w}', String(screen.width)).replace('{h}', String(screen.height))} />
+              </p>
+              {current.data?.screen?.sleep ? (
+                <img src={`/api/devices/${encodeURIComponent(deviceId)}/display/sleep.png?v=${current.dataUpdatedAt}`}
+                  alt={t('display.sleep')} className="max-w-40 rounded border border-neutral-700 bg-white" style={{ imageRendering: 'pixelated' }} />
+              ) : (
+                <p className="text-xs text-neutral-500">{t('display.sleepNone')}</p>
+              )}
+              {editable && (
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800">
+                    <ImagePlus className="size-4" />{t('display.sleepUpload')}
+                    <input type="file" accept="image/png,image/jpeg,image/bmp,image/gif" className="sr-only"
+                      onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void uploadSleep(f) }} />
+                  </label>
+                  {current.data?.screen?.sleep && (
+                    <Button variant="ghost" size="sm" onClick={() => void removeSleep()}><Trash2 />{t('display.sleepRemove')}</Button>
                   )}
                 </div>
               )}

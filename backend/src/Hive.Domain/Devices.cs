@@ -152,6 +152,11 @@ public class Device
 
     public string? ScreenBackgroundSha { get; set; }
 
+    /// <summary>The picture a panel shows while it sleeps (PNG, at most the size of the screen as it is turned), with its short hash.</summary>
+    public byte[]? ScreenSleep { get; set; }
+
+    public string? ScreenSleepSha { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public string? Notes { get; set; }
 

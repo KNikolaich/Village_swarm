@@ -129,7 +129,7 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
     /// As above, for one <paramref name="tab"/> of a panel with tabs (0 when absent; beyond its tabs: no picture), noting the
     /// battery the panel told (millivolts) as its battery_voltage reading.
     /// </summary>
-    public async Task<ScreenFrame?> FrameAsync(string? bearer, bool bitmap, string? from, bool external, int? tab, int? batteryMv, CancellationToken ct)
+    public async Task<ScreenFrame?> FrameAsync(string? bearer, bool bitmap, string? from, bool external, int? tab, int? batteryMv, CancellationToken ct, bool sleep = false)
     {
         if (string.IsNullOrEmpty(bearer))
             return null;
@@ -173,14 +173,17 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
         if (!bitmap)
             return new ScreenFrame(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message, ContractJson.Options)), "application/json", etag, RefreshS: refresh);
         var rotation = DisplayFeedService.RotationOf(device);
-        using var drawn = tabs > 0 ? await feed.DrawTabAsync(device, message, shown, ct) : await feed.DrawAsync(device, message, ct);
+        // Asleep (?sleep=1): the person's sleep picture, else the tab the panel was showing with "спит" in place of the time it was drawn.
+        using var drawn = sleep && tabs > 0
+            ? feed.DrawSleep(device) ?? await feed.DrawTabAsync(device, message, shown, ct, asleep: true)
+            : tabs > 0 ? await feed.DrawTabAsync(device, message, shown, ct) : await feed.DrawAsync(device, message, ct);
         if (drawn is null)
             return new ScreenFrame([], "", "", NoPicture: true);
         using var turned = DisplayRender.Rotate(drawn, rotation);
         var bits = DisplayRender.Pack(turned);
-        // A tab holds the clock and the weather besides the items: its ETag is the picture itself.
+        // A tab holds the clock and the weather besides the items: its ETag is the picture itself. The sleeping picture has its own.
         if (tabs > 0)
-            etag = $"\"t{shown}" + Convert.ToHexStringLower(SHA256.HashData(bits))[..16] + "\"";
+            etag = $"\"{(sleep ? "s" : "t" + shown)}" + Convert.ToHexStringLower(SHA256.HashData(bits))[..16] + "\"";
         return new ScreenFrame(bits, "application/octet-stream", etag, screen!.Width, screen.Height, Tabs: tabs, Rotation: rotation, RefreshS: refresh);
     }
 
@@ -297,7 +300,8 @@ public static class ScreenAccessEndpoints
         var token = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? header["Bearer ".Length..].Trim() : null;
         int? tab = int.TryParse(http.Request.Query["tab"], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : null;
         int? battery = int.TryParse(http.Request.Headers[BatteryHeader], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var mv) ? mv : null;
-        var frame = await access.FrameAsync(token, bitmap, http.Connection.RemoteIpAddress?.ToString(), http.Request.Headers.ContainsKey(ExternalHeader), tab, battery, ct);
+        var frame = await access.FrameAsync(token, bitmap, http.Connection.RemoteIpAddress?.ToString(), http.Request.Headers.ContainsKey(ExternalHeader), tab, battery, ct,
+            sleep: http.Request.Query["sleep"] == "1");
         http.Response.Headers.CacheControl = "no-store";
         if (frame is null)
             return Results.Unauthorized();

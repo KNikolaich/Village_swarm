@@ -252,4 +252,18 @@ public class ScreenTabsTests
         Assert.Equal(DisplayFontCatalog.OutlineSizes, DisplayFontCatalog.SizesOf("my-uploaded-font"));
         Assert.Equal(DisplayFontCatalog.OutlineSizes, DisplayFontCatalog.SizesOf(null));
     }
+
+    [Theory]
+    [InlineData(ScreenTabs.Forecast)]
+    [InlineData(ScreenTabs.Measure)]
+    public void A_sleeping_panel_says_so_in_place_of_when_it_was_drawn(int tab)
+    {
+        var awake = Context();
+        using var awakePicture = Draw(tab, awake);
+        using var asleepPicture = Draw(tab, awake with { Asleep = true });
+        var stamp = new SKRectI(300, 196, 416, 218);
+        var (woke, slept) = (Black(awakePicture, stamp), Black(asleepPicture, stamp));
+        Assert.True(woke > 0 && slept > 0);
+        Assert.True(slept < woke, "\"спит\" is shorter than \"обновлено 23:58\"");
+    }
 }

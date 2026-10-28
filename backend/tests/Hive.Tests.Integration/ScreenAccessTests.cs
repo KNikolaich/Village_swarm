@@ -291,6 +291,37 @@ public sealed class ScreenAccessTests(HiveFixture hive)
         using (var none = await anonymous.SendAsync(Tab(3)))
             Assert.Equal(HttpStatusCode.NotFound, none.StatusCode);
 
+        // sleep (a long press of EXIT): without a picture the tab it showed, with its own picture; with one, that picture
+        HttpRequestMessage Sleeping()
+        {
+            var request = Tab(1);
+            request.RequestUri = new Uri("/api/monitor/v1/frame.bin?tab=1&sleep=1", UriKind.Relative);
+            return request;
+        }
+        using (var plain = await anonymous.SendAsync(Sleeping()))
+        {
+            Assert.Equal(HttpStatusCode.OK, plain.StatusCode);
+            Assert.StartsWith("\"s", plain.Headers.ETag!.Tag);
+            Assert.DoesNotContain(plain.Headers.ETag!.Tag, etags);
+            Assert.Equal(30 * 416, (await plain.Content.ReadAsByteArrayAsync()).Length);
+        }
+        using (var tooBig = await admin.PutAsync("/api/devices/monitor-crow1/display/sleep", new ByteArrayContent(Png(300, 100))))
+            Assert.Equal(HttpStatusCode.BadRequest, tooBig.StatusCode);  // the screen is 416x240 as it is laid out
+        using (var small = await admin.PutAsync("/api/devices/monitor-crow1/display/sleep", new ByteArrayContent(Png(100, 60))))
+            Assert.Equal(HttpStatusCode.NoContent, small.StatusCode);
+        using (var asleep = await anonymous.SendAsync(Sleeping()))
+        {
+            var bits = await asleep.Content.ReadAsByteArrayAsync();
+            Assert.Equal(30 * 416, bits.Length);
+            // a 1 is a black pixel: the 100x60 picture, turned, is some 700 full bytes and the rest of the screen is white
+            Assert.InRange(bits.Count(b => b == 0xFF), 300, 1000);
+            Assert.True(bits.Count(b => b == 0x00) > bits.Length / 2, "white is around it");
+        }
+        using (var shown = await admin.GetAsync("/api/devices/monitor-crow1/display/sleep.png"))
+            Assert.Equal(HttpStatusCode.OK, shown.StatusCode);
+        using (var removed = await admin.DeleteAsync("/api/devices/monitor-crow1/display/sleep"))
+            Assert.Equal(HttpStatusCode.NoContent, removed.StatusCode);
+
         // monitoring: the panel is told to read every 2 minutes for an hour, then nothing again
         using (var wrong = await admin.PutAsJsonAsync("/api/devices/monitor-crow1/display/monitoring", new { hours = 1, everyMin = 3 }))
             Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);

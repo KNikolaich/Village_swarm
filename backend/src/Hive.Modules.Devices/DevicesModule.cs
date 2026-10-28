@@ -210,6 +210,28 @@ public static class DevicesModule
         devices.MapDelete("/{deviceId}/display/background", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
                 await feed.RemoveBackgroundAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
             .RequireAuthorization(HiveRoles.AdminOnly);
+        // The picture a panel shows while it sleeps (a long press of EXIT): any size up to the screen's.
+        devices.MapGet("/{deviceId}/display/sleep.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
+            await feed.SleepAsync(deviceId, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());
+        devices.MapPut("/{deviceId}/display/sleep", async Task<Results<NoContent, NotFound, ValidationProblem>> (
+                string deviceId, HttpRequest request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+            {
+                var image = await DisplayFontEndpoints.ReadBodyAsync(request, DisplayFeedService.MaxBackgroundBytes, ct);
+                if (image is null)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = ["картинка: до 1 МБ"] });
+                var (status, error) = await feed.SetSleepAsync(deviceId, image, $"user:{user.Identity?.Name}", ct);
+                return status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = [error ?? "refused"] }),
+                    _ => TypedResults.NoContent(),
+                };
+            })
+            .WithBinaryBody()
+            .RequireAuthorization(HiveRoles.AdminOnly);
+        devices.MapDelete("/{deviceId}/display/sleep", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+                await feed.RemoveSleepAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.AdminOnly);
         // Monitoring of a panel far away: it reads its screen more often for a while (contracts/monitor-http.md, X-Frame-Refresh).
         devices.MapPut("/{deviceId}/display/monitoring", async Task<Results<Ok<DisplayItemsDto>, NotFound, ValidationProblem>> (
                 string deviceId, DisplayMonitorRequest request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>

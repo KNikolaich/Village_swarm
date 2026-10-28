@@ -36,7 +36,7 @@ public sealed record DisplayItemDto(string? Device, string Metric, string? Label
 /// what the screen shows. <see cref="Background"/>: an image lies behind the items. <see cref="Tabs"/>: screens the panel flips
 /// through with its buttons (contracts/monitor-http.md, tabs); the items are the last one, above the tab bar.
 /// </summary>
-public sealed record DisplayScreenDto(int Width, int Height, bool Rendered = false, bool Background = false, int Tabs = 0);
+public sealed record DisplayScreenDto(int Width, int Height, bool Rendered = false, bool Background = false, int Tabs = 0, bool Sleep = false);
 
 /// <summary>
 /// What the screen shows; <see cref="Screen"/> is filled by the hive for a board it knows (ignored when saving).
@@ -242,7 +242,7 @@ public sealed class DisplayFeedService(
         if (device is null)
             return null;
         var rotation = RotationOf(device);
-        return new DisplayItemsDto(ItemsOf(device), DisplayScreens.For(device.Hw, rotation) is { } screen ? screen with { Background = device.ScreenBackground is not null } : null, rotation,
+        return new DisplayItemsDto(ItemsOf(device), DisplayScreens.For(device.Hw, rotation) is { } screen ? screen with { Background = device.ScreenBackground is not null, Sleep = device.ScreenSleep is not null } : null, rotation,
             MonitorOf(device, time.GetUtcNow()), InvertOf(device));
     }
 
@@ -411,6 +411,13 @@ public sealed class DisplayFeedService(
             device.ScreenBackground = null;
             device.ScreenBackgroundSha = null;
         }
+        // The sleep picture may be smaller than the screen but not bigger: a turn can make it too big.
+        if (device.ScreenSleep is { } sleep && DisplayScreens.For(device.Hw, newRotation) is { } turned && SKBitmap.DecodeBounds(sleep) is var size
+            && (size.Width > turned.Width || size.Height > turned.Height))
+        {
+            device.ScreenSleep = null;
+            device.ScreenSleepSha = null;
+        }
         if (display.Count == 0)
             config.Remove("display");
         else
@@ -521,7 +528,7 @@ public sealed class DisplayFeedService(
     };
 
     /// <summary>One tab of a panel with tabs, as the person sees it (not yet turned for the panel).</summary>
-    public async Task<SKBitmap?> DrawTabAsync(Device device, DisplayMessage message, int tab, CancellationToken ct)
+    public async Task<SKBitmap?> DrawTabAsync(Device device, DisplayMessage message, int tab, CancellationToken ct, bool asleep = false)
     {
         if (DisplayScreens.For(device.Hw, RotationOf(device)) is not { } screen)
             return null;
@@ -543,7 +550,7 @@ public sealed class DisplayFeedService(
         }
         var set = await fonts.LoadAsync(message.Items.Select(i => i.Font).Concat(ScreenTabs.Families), ct);
         using var background = tab == ScreenTabs.Measure && device.ScreenBackground is { } png ? SKBitmap.Decode(png) : null;
-        var context = new TabContext(now, options.ToLocal, await BatteryAsync(device.DeviceId, ct), weather, events);
+        var context = new TabContext(now, options.ToLocal, await BatteryAsync(device.DeviceId, ct), weather, events, asleep);
         var bitmap = ScreenTabs.Draw(tab, screen, context, set, message, background);
         return InvertOf(device) ? DisplayRender.Invert(bitmap) : bitmap;
     }
@@ -590,6 +597,65 @@ public sealed class DisplayFeedService(
 
     public async Task<byte[]?> BackgroundAsync(string deviceId, CancellationToken ct) =>
         await db.Devices.AsNoTracking().Where(d => d.DeviceId == deviceId).Select(d => d.ScreenBackground).FirstOrDefaultAsync(ct);
+
+    /// <summary>
+    /// The picture a panel shows while it sleeps (a long press of EXIT). A PNG, JPEG, BMP or GIF of any size up to the screen as
+    /// it is turned; the panel shows it in the middle on white. Kept as PNG.
+    /// </summary>
+    public async Task<(ConfigUpdateStatus Status, string? Error)> SetSleepAsync(string deviceId, byte[] image, string by, CancellationToken ct)
+    {
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && (d.Driver == Drivers.Hornet || d.Driver == Drivers.Http), ct);
+        if (device is null)
+            return (ConfigUpdateStatus.NotFound, null);
+        if (DisplayScreens.For(device.Hw, RotationOf(device)) is not { Rendered: true } screen)
+            return (ConfigUpdateStatus.BadRequest, "картинка сна бывает только у экранов, которые рисует Улей");
+        using var codec = SKCodec.Create(new SKMemoryStream(image));
+        using var bitmap = codec is null ? null : SKBitmap.Decode(codec);
+        if (bitmap is null)
+            return (ConfigUpdateStatus.BadRequest, "это не картинка: нужен PNG (лучше всего), JPEG, BMP или GIF");
+        if (bitmap.Width > screen.Width || bitmap.Height > screen.Height)
+            return (ConfigUpdateStatus.BadRequest, $"размер картинки {bitmap.Width}×{bitmap.Height}, а экран {screen.Width}×{screen.Height}: она не должна быть больше");
+        using var picture = SKImage.FromBitmap(bitmap);
+        using var png = picture.Encode(SKEncodedImageFormat.Png, 100);
+        var bytes = png.ToArray();
+        device.ScreenSleep = bytes;
+        device.ScreenSleepSha = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes))[..16];
+        Audit.Record(db, time.GetUtcNow(), by, "device_display_sleep", deviceId);
+        await db.SaveChangesAsync(ct);
+        return (ConfigUpdateStatus.Updated, null);
+    }
+
+    public async Task<byte[]?> SleepAsync(string deviceId, CancellationToken ct) =>
+        await db.Devices.AsNoTracking().Where(d => d.DeviceId == deviceId).Select(d => d.ScreenSleep).FirstOrDefaultAsync(ct);
+
+    public async Task<bool> RemoveSleepAsync(string deviceId, string by, CancellationToken ct)
+    {
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null)
+            return false;
+        device.ScreenSleep = null;
+        device.ScreenSleepSha = null;
+        Audit.Record(db, time.GetUtcNow(), by, "device_display_sleep_removed", deviceId);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    /// <summary>The sleep picture in the middle of a white screen of the size the person sees it (not yet turned), or null without one.</summary>
+    public SKBitmap? DrawSleep(Device device)
+    {
+        if (device.ScreenSleep is not { } png || DisplayScreens.For(device.Hw, RotationOf(device)) is not { } screen)
+            return null;
+        using var picture = SKBitmap.Decode(png);
+        if (picture is null)
+            return null;
+        var bitmap = new SKBitmap(new SKImageInfo(screen.Width, screen.Height, SKColorType.Gray8, SKAlphaType.Opaque));
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(SKColors.White);
+            canvas.DrawBitmap(picture, (screen.Width - picture.Width) / 2, (screen.Height - picture.Height) / 2);
+        }
+        return InvertOf(device) ? DisplayRender.Invert(bitmap) : bitmap;
+    }
 
     public async Task<bool> RemoveBackgroundAsync(string deviceId, string by, CancellationToken ct)
     {

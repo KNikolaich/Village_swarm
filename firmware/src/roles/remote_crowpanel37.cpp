@@ -122,6 +122,7 @@ RTC_DATA_ATTR uint32_t offlineMin = 0;
 RTC_DATA_ATTR uint32_t bannerAtMin = 0;
 RTC_DATA_ATTR int partials = kPartialsBeforeFull;  // full refresh first after power-on
 RTC_DATA_ATTR bool messageShown = false;
+RTC_DATA_ATTR bool asleep = false;       // put to sleep by a long EXIT: the next button only wakes the panel
 
 struct Settings {
     String ssid[2], pass[2], url, token;
@@ -430,6 +431,8 @@ Order pollConsole(bool& activity) {
 
 // ------------------------------------------------------------------ power and buttons
 
+constexpr uint32_t kHelpTimeoutMs = 30000;  // the help screen waits this long for a button
+
 constexpr gpio_num_t kButtons[] = {kPinExit, kPinMenu, kPinDown, kPinConf, kPinUp};
 
 void powerOn() {
@@ -662,10 +665,10 @@ struct Reply {
     Answer answer = Answer::Retry;
 };
 
-/// Reads one tab; a new picture lands in the flash (and its ETag beside it).
-Reply fetchTab(int tab, int batteryMv) {
+/// Reads one tab; a new picture lands in the flash (and its ETag beside it). <sleep>: the sleeping picture, which is only shown (it lands in <incoming>).
+Reply fetchTab(int tab, int batteryMv, bool sleep = false) {
     Reply reply;
-    const std::string url = tabUrl(settings.url.c_str(), tab);
+    const std::string url = tabUrl(settings.url.c_str(), tab, sleep);
     WiFiClientSecure secure;
     WiFiClient plain;
     HTTPClient http;
@@ -683,7 +686,7 @@ Reply fetchTab(int tab, int batteryMv) {
     if (!begun) return reply;
     http.addHeader("Authorization", "Bearer " + settings.token);
     const String tag = readTag(tab);
-    if (tag.length() && LittleFS.exists(tabPath(tab))) http.addHeader("If-None-Match", tag);
+    if (!sleep && tag.length() && LittleFS.exists(tabPath(tab))) http.addHeader("If-None-Match", tag);
     if (batteryMv > 0) http.addHeader("X-Battery-mV", String(batteryMv));
     const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Rotation", "Date", "X-Frame-Tabs", "X-Frame-Refresh", "X-Frame-Tab-Weights"};
     http.collectHeaders(keys, 8);
@@ -703,7 +706,7 @@ Reply fetchTab(int tab, int batteryMv) {
         weightCount = http.hasHeader("X-Frame-Tab-Weights") ? parseTabWeights(http.header("X-Frame-Tab-Weights").c_str(), tabWeights, kMaxTabs) : 0;
     }
     reply.answer = classify(reply.code, bytes, http.header("X-Frame-Width").toInt(), http.header("X-Frame-Height").toInt(), kWidth, kHeight);
-    if (reply.answer == Answer::Draw) {
+    if (reply.answer == Answer::Draw && !sleep) {
         writeFile(tabPath(tab), incoming, kFrameBytes);
         writeTag(tab, http.header("ETag"));
     }
@@ -798,14 +801,59 @@ Reply fetchTab(int tab, int batteryMv) {
     sleepFor(nextReadSeconds());
 }
 
-/// Woken by MENU: held for 2 s = the settings point.
-bool menuHeld() {
+/// Woken by a button: held for 2 s = the long press (MENU: the settings point, EXIT: sleep).
+bool held(gpio_num_t pin) {
     const uint32_t started = millis();
     while (millis() - started < 2000) {
-        if (!pressed(kPinMenu)) return false;
+        if (!pressed(pin)) return false;
         delay(20);
     }
     return true;
+}
+
+bool menuHeld() { return held(kPinMenu); }
+
+/// A long EXIT: the sleeping picture from the hive (the person's own, or the shown tab saying "спит"), then deep sleep until any button.
+[[noreturn]] void sleepUntilButton() {
+    bool drawn = false;
+    if (joinWifi()) {
+        const Reply reply = fetchTab(currentTab, -1, true);
+        Serial.printf("[monitor] sleep frame %d\n", reply.code);
+        if (reply.answer == Answer::Draw) {
+            memcpy(picture, incoming, kFrameBytes);
+            present();
+            drawn = true;
+        }
+    }
+    // no Wi-Fi: the shown tab from the flash with the word on it
+    if (!drawn && !showTab(currentTab, -1, "спит")) showMessage("Спит", {"Любая кнопка будит панель"});
+    partials = kPartialsBeforeFull;  // whatever comes next is a different picture: wipe the screen
+    asleep = true;
+    sleepFor(0);
+}
+
+/// A short EXIT: what the buttons do. EXIT again gives the screen back; a few quiet seconds do the same. True: MENU held, the settings point is up.
+bool showHelp() {
+    showMessage("Кнопки", {"Вверх/вниз: вкладки", "Нажать: выбрать вкладку", "MENU: обновить сейчас", "MENU 2 с: настройки", "  http://192.168.4.1",
+                           "EXIT 2 с: сон до кнопки", "EXIT: назад"});
+    waitRelease();
+    const uint32_t started = millis();
+    while (millis() - started < kHelpTimeoutMs) {
+        if (pressed(kPinExit)) {
+            waitRelease();
+            break;
+        }
+        if (pressed(kPinMenu)) {
+            if (menuHeld()) return true;
+            readAndSleep();
+        }
+        if (pressed(kPinDown)) chooseTab(1);
+        if (pressed(kPinUp)) chooseTab(-1);
+        if (pressed(kPinConf)) chooseTab(0);
+        delay(20);
+    }
+    if (!showTab(currentTab, -1, String())) readAndSleep();
+    sleepFor(nextReadSeconds());
 }
 
 [[noreturn]] void saveAndSleep() {
@@ -849,9 +897,24 @@ void setup() {
     const uint64_t buttons = cause == ESP_SLEEP_WAKEUP_EXT1 ? esp_sleep_get_ext1_wakeup_status() : 0;
     const bool wantPortal = !settings.ready() || ((buttons & (1ULL << kPinMenu)) && menuHeld());
     if (wantPortal) {
+        asleep = false;
         portalMode = true;
         startPortal();
         return;
+    }
+    if (asleep && buttons) {
+        // the panel was put to sleep: any button only wakes it, with the tab it had
+        asleep = false;
+        showTab(currentTab, -1, String());
+        readAndSleep();
+    }
+    if (buttons & (1ULL << kPinExit)) {
+        if (held(kPinExit)) sleepUntilButton();
+        if (showHelp()) {
+            portalMode = true;
+            startPortal();
+            return;
+        }
     }
     if (buttons & (1ULL << kPinDown)) chooseTab(1);
     if (buttons & (1ULL << kPinUp)) chooseTab(-1);

@@ -49,6 +49,10 @@ MENU and EXIT) reads them one at a time: `GET /api/monitor/v1/frame.bin?tab=<n>`
   the left edge of cell `i` is `width * (w0 + … + w(i-1)) / (w0 + … + w(n-1))` (integer division), its right edge that of
   the next cell, the last one's the screen's.
 - The `ETag` is per tab.
+- `?sleep=1` (with `tab`): the picture for a panel that is put to sleep (a long press of EXIT). When the person has loaded a sleep
+  picture (any size up to the screen's, `display/sleep`), it is that picture in the middle of a white screen; otherwise the
+  tab it is given, drawn with "спит" in place of "обновлено HH:mm". The `ETag` starts with `s`; the panel shows it and does not
+  keep it as a tab.
 
 Every tab ends in a tab bar the panel can find without asking: the bottom 22 pixels of the turned screen, as many cells
 left to right as there are tabs (`X-Frame-Tab-Weights` says how wide), the shown tab drawn inverted (white on black). While the person moves the rocker,

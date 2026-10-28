@@ -80,10 +80,10 @@ inline Answer classify(int httpCode, size_t bytes, int width, int height, int ex
 /// The bottom of every tab: the cells of the tab bar, the shown one inverted; the panel inverts the one under its cursor.
 constexpr int kTabBarHeight = 22;
 
-/// The address of one tab of the picture.
-inline std::string tabUrl(const std::string& base, int tab) {
+/// The address of one tab of the picture; <sleep>: the picture for a panel put to sleep (the tab is the one it showed).
+inline std::string tabUrl(const std::string& base, int tab, bool sleep = false) {
     const std::string url = frameUrl(base);
-    return url.empty() ? url : url + "?tab=" + std::to_string(tab);
+    return url.empty() ? url : url + "?tab=" + std::to_string(tab) + (sleep ? "&sleep=1" : "");
 }
 
 /// The tab a step of the rocker leads to, going round at the ends.
