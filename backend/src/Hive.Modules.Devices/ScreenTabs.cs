@@ -39,6 +39,7 @@ public static class ScreenTabs
 
     // Written out: the hive's image may run without culture data.
     private static readonly string[] Weekdays = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"];
+    private static readonly string[] Months = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
     private static readonly string[] MonthsOf = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 
     /// <summary>Monday first: 0 for Monday, 6 for Sunday.</summary>
@@ -432,18 +433,25 @@ public static class ScreenTabs
         var cell = p.Portrait ? (p.W - 12) / 7f : 28f;
         const float left = 6;
         var monthBottom = p.Portrait ? p.H * 0.52f : p.H;
+        // standing, the top line is the month's name (the battery stands at its right end), the weeks under it
+        var top0 = 0f;
+        if (p.Portrait)
+        {
+            p.Text($"{Months[now.Month - 1]} {now.Year}", left, 6, 14, null, p.Bold);
+            top0 = 30;
+        }
         string[] heads = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
         for (var i = 0; i < 7; i++)
-            p.Text(heads[i], left + cell * i + cell / 2, 8, 12, "center", i >= 5 ? p.Bold : p.Regular);
-        p.Dotted(left, 26, left + cell * 7, 26);
+            p.Text(heads[i], left + cell * i + cell / 2, top0 + 8, 12, "center", i >= 5 ? p.Bold : p.Regular);
+        p.Dotted(left, top0 + 26, left + cell * 7, top0 + 26);
         var first = new DateTime(now.Year, now.Month, 1);
         var gridStart = first.AddDays(-((int)first.DayOfWeek + 6) % 7);
         var rows = (int)Math.Ceiling(((first - gridStart).TotalDays + DateTime.DaysInMonth(now.Year, now.Month)) / 7);
-        var rowH = Math.Min(30f, (monthBottom - 34) / rows);
+        var rowH = Math.Min(30f, (monthBottom - top0 - 34) / rows);
         for (var i = 0; i < rows * 7; i++)
         {
             var day = gridStart.AddDays(i);
-            float x = left + cell * (i % 7) + cell / 2, y = 32 + rowH * (i / 7);
+            float x = left + cell * (i % 7) + cell / 2, y = top0 + 32 + rowH * (i / 7);
             var other = day.Month != now.Month;
             p.Text(day.Day.ToString(CultureInfo.InvariantCulture), x, y + 3, other ? 10 : 14, "center", i % 7 >= 5 && !other ? p.Bold : other ? p.Light : p.Regular);
             if (day.Date == now.Date)
