@@ -100,14 +100,17 @@ export function RemoteMonitorPanel({ existingId }: { existingId?: string }) {
         created.current = true
         await qc.invalidateQueries({ queryKey: keys.devices })
       }
-      const issued = await api.POST('/api/devices/{deviceId}/screen-access', { params: { path: { deviceId: id } } })
-      if (!issued.response.ok || !issued.data) throw new SetupError('port', 'other', t('errors.generic'))
-      setToken(issued.data.token)
       rememberHiveUrl(hive)
       await setupRemote({
         port,
         build: flashed || !build ? undefined : { build: build.build, chipFamily: build.chipFamily },
-        settings: { ssid, pass, url: hive, token: issued.data.token, intervalMin: interval },
+        settings: { ssid, pass, url: hive, intervalMin: interval },
+        issueToken: async () => {
+          const issued = await api.POST('/api/devices/{deviceId}/screen-access', { params: { path: { deviceId: id } } })
+          if (!issued.response.ok || !issued.data) throw new SetupError('settings', 'other', t('errors.generic'))
+          setToken(issued.data.token)
+          return issued.data.token
+        },
         readNow: here,
         onStage,
         onProgress: setProgress,

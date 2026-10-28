@@ -51,7 +51,13 @@ export function frameProblem(code: number): string | null {
 export type RemoteSetupOptions = {
   port: SerialPortLike
   build?: { build: string; chipFamily: string }
-  settings: RemoteSettings
+  /** The settings but the token: that is issued only once the panel answers (issueToken). */
+  settings: Omit<RemoteSettings, 'token'>
+  /**
+   * A new screen token from the hive. A new one replaces the panel's old one at once, so it is asked for only when the
+   * panel is flashed and listening: a flash or a restart that fails leaves the old token working.
+   */
+  issueToken: () => Promise<string>
   /** Read the picture now (the panel is at this Wi-Fi) or only save the settings. */
   readNow: boolean
   onStage: (stage: SetupStage) => void
@@ -73,11 +79,12 @@ export async function setupRemote(o: RemoteSetupOptions) {
     if ((await board.waitForLine((l) => panelLine(l) === 'ready', 20_000)) === null) throw new SetupError('restart', 'noAnswer')
 
     o.onStage('settings')
+    const token = await o.issueToken()
     const answer = board.waitForLine((l) => {
       const p = panelLine(l)
       return p === 'saved' || p === 'wifiFailed' || (typeof p === 'object' && p !== null)
     }, o.readNow ? 90_000 : 15_000)
-    for (const command of remoteCommands(o.settings, o.readNow)) {
+    for (const command of remoteCommands({ ...o.settings, token }, o.readNow)) {
       await board.send(command)
       await sleep(250)
     }
