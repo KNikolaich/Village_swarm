@@ -2749,6 +2749,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/devices/{deviceId}/display/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["DisplayImageDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/devices/{deviceId}/display/images/{imageId}.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                    imageId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/devices/{deviceId}/display/sleep.png": {
         parameters: {
             query?: never;
@@ -6194,6 +6287,13 @@ export interface components {
             styles: string[];
             sizes: number[];
         };
+        DisplayImageDto: {
+            id: string;
+            /** Format: int32 */
+            width: number;
+            /** Format: int32 */
+            height: number;
+        };
         DisplayItemDto: {
             device: null | string;
             metric: string;
@@ -6213,6 +6313,11 @@ export interface components {
             italic?: null | boolean;
             clock?: null | string;
             format?: null | string;
+            state?: null | boolean;
+            onText?: null | string;
+            offText?: null | string;
+            onImage?: null | string;
+            offImage?: null | string;
         };
         DisplayItemsDto: {
             items: components["schemas"]["DisplayItemDto"][];

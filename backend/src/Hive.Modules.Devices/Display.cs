@@ -650,7 +650,7 @@ public sealed class DisplayFeedService(
     }
 
     /// <summary>"вкл" and "выкл" unless the person wrote their own; "--" while the device has not said.</summary>
-    internal static string StateText(DisplayItemDto item, bool? on) =>
+    public static string StateText(DisplayItemDto item, bool? on) =>
         on is null ? "--" : on.Value ? item.OnText is { Length: > 0 } onText ? onText : "вкл" : item.OffText is { Length: > 0 } offText ? offText : "выкл";
 
     /// <summary>

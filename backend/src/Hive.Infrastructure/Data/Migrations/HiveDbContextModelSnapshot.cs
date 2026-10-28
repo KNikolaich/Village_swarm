@@ -747,6 +747,41 @@ namespace Hive.Infrastructure.Data.Migrations
                     b.ToTable("display_fonts", (string)null);
                 });
 
+            modelBuilder.Entity("Hive.Domain.DisplayImage", b =>
+                {
+                    b.Property<string>("DeviceId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("device_id");
+
+                    b.Property<string>("Id")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Height")
+                        .HasColumnType("integer")
+                        .HasColumnName("height");
+
+                    b.Property<byte[]>("Png")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("png");
+
+                    b.Property<int>("Width")
+                        .HasColumnType("integer")
+                        .HasColumnName("width");
+
+                    b.HasKey("DeviceId", "Id")
+                        .HasName("pk_display_images");
+
+                    b.ToTable("display_images", (string)null);
+                });
+
             modelBuilder.Entity("Hive.Domain.EnrollmentCode", b =>
                 {
                     b.Property<string>("Code")

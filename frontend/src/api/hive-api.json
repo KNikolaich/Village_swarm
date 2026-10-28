@@ -2204,6 +2204,89 @@
         }
       }
     },
+    "/api/devices/{deviceId}/display/images": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisplayImageDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices/{deviceId}/display/images/{imageId}.png": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "imageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
     "/api/devices/{deviceId}/display/sleep.png": {
       "get": {
         "tags": [
@@ -5795,6 +5878,27 @@
           }
         }
       },
+      "DisplayImageDto": {
+        "required": [
+          "id",
+          "width",
+          "height"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "width": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "height": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "DisplayItemDto": {
         "required": [
           "device",
@@ -5883,6 +5987,36 @@
             ]
           },
           "format": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "state": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "onText": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "offText": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "onImage": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "offImage": {
             "type": [
               "null",
               "string"
