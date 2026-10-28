@@ -37,6 +37,9 @@ interface Row {
 
 const noStyle = { text: null, font: '', px: null, bold: false, italic: false, clock: null, format: '' }
 
+/** The tab of a panel with tabs that shows the rows (contracts/monitor-http.md, tabs). */
+const measureTab = 1
+
 /** The id of the clock among the sources of the picker. */
 const clockSource = 'clock'
 
@@ -49,10 +52,11 @@ function FieldLabel({ text, help }: { text: string; help: string }) {
 
 /**
  * What the screen will look like, drawn at its own pixels and scaled up. Placed rows can be dragged to their spot; the
- * fonts are close to the screen's, not the same, so the picture is a guide.
+ * fonts are close to the screen's, not the same, so the picture is a guide. As an <overlay> it lies over the picture the
+ * hive drew: the rows are marks to drag where they are now, the picture under them shows them where they were saved.
  */
-function ScreenPreview({ screen, rows, texts, onMove, editable }: {
-  screen: Screen; rows: Row[]; texts: string[]; onMove: (i: number, x: number, y: number) => void; editable: boolean
+function ScreenPreview({ screen, rows, texts, onMove, editable, overlay = false }: {
+  screen: Screen; rows: Row[]; texts: string[]; onMove: (i: number, x: number, y: number) => void; editable: boolean; overlay?: boolean
 }) {
   const svg = useRef<SVGSVGElement>(null)
   const drag = useRef<{ i: number; dx: number; dy: number } | null>(null)
@@ -64,8 +68,8 @@ function ScreenPreview({ screen, rows, texts, onMove, editable }: {
 
   return (
     <svg ref={svg} viewBox={`0 0 ${screen.width} ${screen.height}`} role="img" aria-label={t('display.preview')}
-      className="w-full max-w-72 touch-none select-none rounded border border-neutral-700 bg-black"
-      style={{ aspectRatio: `${screen.width} / ${screen.height}` }}
+      className={overlay ? 'absolute inset-0 h-full w-full touch-none select-none' : 'w-full max-w-72 touch-none select-none rounded border border-neutral-700 bg-black'}
+      style={overlay ? undefined : { aspectRatio: `${screen.width} / ${screen.height}` }}
       onPointerMove={(e) => {
         if (!drag.current) return
         const p = point(e)
@@ -86,10 +90,10 @@ function ScreenPreview({ screen, rows, texts, onMove, editable }: {
               svg.current?.setPointerCapture(e.pointerId)
             }}>
             {row.label && row.text === null && (
-              <text x={row.x} y={row.y} dominantBaseline="hanging" textAnchor={textAnchor(row.align)} fontSize={7} fill="#fff" fontFamily="monospace">{row.label}</text>
+              <text x={row.x} y={row.y} dominantBaseline="hanging" textAnchor={textAnchor(row.align)} fontSize={7} fill={overlay ? '#f59e0b' : '#fff'} fillOpacity={overlay ? 0.5 : 1} fontFamily="monospace">{row.label}</text>
             )}
             {/* digits take about 0.72 of the font size from the top */}
-            <text x={row.x} y={valueTop} dominantBaseline="hanging" textAnchor={textAnchor(row.align)} fontSize={height / 0.72} fill="#fff" fontFamily="sans-serif" fontWeight={row.bold ? 700 : 400} fontStyle={row.italic ? 'italic' : 'normal'}>{texts[i]}</text>
+            <text x={row.x} y={valueTop} dominantBaseline="hanging" textAnchor={textAnchor(row.align)} fontSize={height / 0.72} fill={overlay ? '#f59e0b' : '#fff'} fillOpacity={overlay ? 0.5 : 1} fontFamily="sans-serif" fontWeight={row.bold ? 700 : 400} fontStyle={row.italic ? 'italic' : 'normal'}>{texts[i]}</text>
           </g>
         )
       })}
@@ -298,8 +302,15 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
           <div className="flex flex-wrap items-start gap-3">
             {(tabs > 0 ? Array.from({ length: tabs }, (_, tab) => tab) : [null]).map((tab) => (
               <figure key={tab ?? 'screen'} className="space-y-1">
-                <img src={picture(tab)} alt={tab === null ? t('display.rendered') : t(`display.tab${tab}`)} width={screen.width} height={screen.height}
-                  className="max-w-full rounded border border-neutral-700 bg-white" style={{ width: screen.width, imageRendering: 'pixelated' }} />
+                <div className="relative max-w-full" style={{ width: screen.width }}>
+                  <img src={picture(tab)} alt={tab === null ? t('display.rendered') : t(`display.tab${tab}`)} width={screen.width} height={screen.height}
+                    className="block h-auto w-full rounded border border-neutral-700 bg-white" style={{ imageRendering: 'pixelated' }} />
+                  {/* the rows of Measure (or of the only screen) are dragged right on its picture */}
+                  {placed && editable && rows.length > 0 && (tab === null || tab === measureTab) && (
+                    <ScreenPreview overlay screen={screen} rows={rows.map((r) => ({ ...r, px: styled ? pxOf(r) : r.px }))} texts={texts} editable
+                      onMove={(i, x, y) => setRow(i, { x, y })} />
+                  )}
+                </div>
                 {tab !== null && <figcaption className="text-xs text-neutral-500">{t(`display.tab${tab}`)}</figcaption>}
               </figure>
             ))}

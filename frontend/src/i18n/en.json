@@ -1333,7 +1333,7 @@
     "alignCenter": "center",
     "alignRight": "right",
     "rendered": "How the hive will draw the screen (saved rows)",
-    "renderedHelp": "This screen does not draw itself: the hive makes the picture and the panel only shows it. This is exactly the picture the panel gets on its next read, with the current readings. The rows below change at once, the picture after Save.",
+    "renderedHelp": "This screen does not draw itself: the hive makes the picture and the panel only shows it. This is exactly the picture the panel gets on its next read, with the current readings. The rows below change at once, the picture after Save. The Measure rows can be dragged right on the picture: the orange marks show where they will be, the picture itself follows after Save.",
     "fontsTitle": "Font",
     "font": "Font",
     "px": "Size, px",
