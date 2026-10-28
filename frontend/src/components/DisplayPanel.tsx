@@ -68,7 +68,7 @@ function ScreenPreview({ screen, rows, texts, onMove, editable, overlay = false 
 
   return (
     <svg ref={svg} viewBox={`0 0 ${screen.width} ${screen.height}`} role="img" aria-label={t('display.preview')}
-      className={overlay ? 'absolute inset-0 h-full w-full touch-none select-none' : 'w-full max-w-72 touch-none select-none rounded border border-neutral-700 bg-black'}
+      className={overlay ? 'absolute left-px top-px h-[calc(100%-2px)] w-[calc(100%-2px)] touch-none select-none' : 'w-full max-w-72 touch-none select-none rounded border border-neutral-700 bg-black'}
       style={overlay ? undefined : { aspectRatio: `${screen.width} / ${screen.height}` }}
       onPointerMove={(e) => {
         if (!drag.current) return
@@ -79,8 +79,12 @@ function ScreenPreview({ screen, rows, texts, onMove, editable, overlay = false 
       onPointerUp={() => { drag.current = null }}
       onPointerLeave={() => { drag.current = null }}>
       {rows.map((row, i) => {
-        const valueTop = row.y + (row.label && row.text === null ? labelHeight : 0)
-        const height = row.px ?? pixelHeight(row.size, screen.height)
+        const labeled = !!row.label && row.text === null
+        // px is the font size, its capitals about 0.72 of it, the label in half of it (as the hive draws, DisplayRender.cs);
+        // without px the size is the height of the capitals
+        const labelPx = row.px === null ? 7 : Math.max(6, Math.round(row.px / 2))
+        const valueTop = row.y + (!labeled ? 0 : row.px === null ? labelHeight : labelPx * 0.72 + Math.max(2, labelPx / 3))
+        const cap = row.px === null ? pixelHeight(row.size, screen.height) : row.px * 0.72
         return (
           <g key={i} className={editable ? 'cursor-move' : undefined}
             onPointerDown={(e) => {
@@ -89,11 +93,11 @@ function ScreenPreview({ screen, rows, texts, onMove, editable, overlay = false 
               drag.current = { i, dx: p.x - row.x, dy: p.y - row.y }
               svg.current?.setPointerCapture(e.pointerId)
             }}>
-            {row.label && row.text === null && (
-              <text x={row.x} y={row.y} dominantBaseline="hanging" textAnchor={textAnchor(row.align)} fontSize={7} fill={overlay ? '#f59e0b' : '#fff'} fillOpacity={overlay ? 0.5 : 1} fontFamily="monospace">{row.label}</text>
+            {labeled && (
+              <text x={row.x} y={row.px === null ? row.y : row.y + labelPx * 0.72} dominantBaseline={row.px === null ? 'hanging' : 'alphabetic'} textAnchor={textAnchor(row.align)} fontSize={labelPx} fill={overlay ? '#f59e0b' : '#fff'} fillOpacity={overlay ? 0.5 : 1} fontFamily="monospace">{row.label}</text>
             )}
             {/* digits take about 0.72 of the font size from the top */}
-            <text x={row.x} y={valueTop} dominantBaseline="hanging" textAnchor={textAnchor(row.align)} fontSize={height / 0.72} fill={overlay ? '#f59e0b' : '#fff'} fillOpacity={overlay ? 0.5 : 1} fontFamily="sans-serif" fontWeight={row.bold ? 700 : 400} fontStyle={row.italic ? 'italic' : 'normal'}>{texts[i]}</text>
+            <text x={row.x} y={row.px === null ? valueTop : valueTop + cap} dominantBaseline={row.px === null ? 'hanging' : 'alphabetic'} textAnchor={textAnchor(row.align)} fontSize={cap / 0.72} fill={overlay ? '#f59e0b' : '#fff'} fillOpacity={overlay ? 0.5 : 1} fontFamily="sans-serif" fontWeight={row.bold ? 700 : 400} fontStyle={row.italic ? 'italic' : 'normal'}>{texts[i]}</text>
           </g>
         )
       })}
