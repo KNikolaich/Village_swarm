@@ -28,6 +28,28 @@ public static class ScreenTabs
     public static readonly string[] Names = ["Погода", "Измерения", "Календарь"];
 
     /// <summary>
+    /// How wide the cells of the tab bar are, relative to each other: Weather is the shortest word and gets the least room.
+    /// The panel learns it from X-Frame-Tab-Weights, since it inverts the cell under its cursor itself.
+    /// </summary>
+    public static readonly int[] TabWeights = [2, 3, 3];
+    public static string TabWeightsHeader => string.Join(',', TabWeights);
+
+    /// <summary>The left edges of the cells and the right edge of the last one, in a bar <paramref name="width"/> pixels wide.</summary>
+    public static int[] CellEdges(int width)
+    {
+        var edges = new int[TabWeights.Length + 1];
+        var total = TabWeights.Sum();
+        var sum = 0;
+        for (var i = 0; i < TabWeights.Length; i++)
+        {
+            edges[i] = width * sum / total;
+            sum += TabWeights[i];
+        }
+        edges[^1] = width;
+        return edges;
+    }
+
+    /// <summary>
     /// The families the tabs are written in: Roboto for text (bold for what stands out, light for scales), Roboto Serif for
     /// the bigger numbers, a pixel font for the 8 px small print.
     /// </summary>
@@ -84,6 +106,7 @@ public static class ScreenTabs
         var pen = new Pen(canvas, fonts, screen.Width, screen.Height - BarHeight);
         switch (tab)
         {
+            case Measure: Stamp(pen, context.Local(context.Now)); break;
             case Forecast: DrawForecast(pen, context); break;
             case Calendar: DrawCalendar(pen, context); break;
         }
@@ -91,6 +114,10 @@ public static class ScreenTabs
         DrawBar(pen, tab, screen.Height);
         return bitmap;
     }
+
+    /// <summary>When the picture was drawn, in the pixel font at the bottom right (the same on Weather and Measure).</summary>
+    private static void Stamp(Pen p, DateTimeOffset now) =>
+        p.Text("обновлено " + now.ToString("HH:mm", CultureInfo.InvariantCulture), p.W - 4, p.H - 10, 8, "right", p.Pixel);
 
     /// <summary>Drawing tools of one tab: ink, white ink, the text faces and the area above the bar.</summary>
     private sealed class Pen
@@ -103,6 +130,7 @@ public static class ScreenTabs
             Regular = fonts.Resolve(TextFamily, false, false);
             Bold = fonts.Resolve(TextFamily, true, false);
             Light = fonts.Resolve(LightFamily, false, false);
+            LightBold = fonts.Resolve(LightFamily, true, false);
             Serif = fonts.Resolve(SerifFamily, false, false);
             Pixel = fonts.Resolve(PixelFamily, false, false);
             Fallback = fonts.Fallback;
@@ -115,6 +143,8 @@ public static class ScreenTabs
         public FontFace Regular { get; }
         public FontFace Bold { get; }
         public FontFace Light { get; }
+        /// <summary>Roboto Light has no bold of its own: this one is the light face made heavier.</summary>
+        public FontFace LightBold { get; }
         public FontFace Serif { get; }
         public FontFace Pixel { get; }
         public FontFace Fallback { get; }
@@ -149,26 +179,26 @@ public static class ScreenTabs
         }
     }
 
-    /// <summary>The tab bar: three cells, the shown one black; a name that does not fit its cell is written smaller.</summary>
+    /// <summary>The tab bar: the cells of <see cref="TabWeights"/>, the shown one black; a name that does not fit its cell is written smaller.</summary>
     private static void DrawBar(Pen p, int tab, int height)
     {
         var top = height - BarHeight;
         using var line = p.Line();
         p.Canvas.DrawRect(new SKRect(0, top, p.W, height), p.Paper);
         p.Canvas.DrawLine(0, top, p.W, top, line);
-        var cell = p.W / (float)Names.Length;
-        var px = 16f;
-        while (px > 10 && Names.Any(n => p.Width(n, px, p.Bold) > cell - 6))
-            px -= 2;
+        var edges = CellEdges(p.W);
+        var px = 14f;
+        while (px > 10 && Enumerable.Range(0, Names.Length).Any(i => p.Width(Names[i], px, p.LightBold) > edges[i + 1] - edges[i] - 6))
+            px -= 1;
         for (var i = 0; i < Names.Length; i++)
         {
-            var left = i * cell;
+            float left = edges[i], right = edges[i + 1];
             if (i == tab)
-                p.Canvas.DrawRect(new SKRect(left, top, left + cell, height), p.Ink);
+                p.Canvas.DrawRect(new SKRect(left, top, right, height), p.Ink);
             else if (i > 0 && i != tab + 1)
                 p.Canvas.DrawLine(left, top + 4, left, height - 4, line);
-            var cap = CapOf(p.Bold, px);
-            p.Text(Names[i], left + cell / 2, top + (BarHeight - cap) / 2 + 1, px, "center", p.Bold, white: i == tab);
+            var cap = CapOf(p.LightBold, px);
+            p.Text(Names[i], (left + right) / 2, top + (BarHeight - cap) / 2 + 1, px, "center", p.LightBold, white: i == tab);
         }
     }
 
@@ -263,36 +293,46 @@ public static class ScreenTabs
         using (var thick = p.Line(2))
             p.Canvas.DrawLine(0, headBottom, p.W, headBottom, thick);
 
-        // the next days (lying: five from today; standing: three from tomorrow, today is above): date, hours 3 9 15 21,
-        // the temperature line, rain and wind per six hours
-        var days = p.Portrait ? 3 : 5;
+        Stamp(p, now);
+
+        // the time axis runs from now to the end of the day after tomorrow: what is left of today and two whole days. A day
+        // that has little room left (today, late) goes without its date or its hours rather than squeezed in.
+        const int ahead = 2;
         const float left = 22;
-        var dayW = (p.W - left - 2) / days;
-        var start = new DateTimeOffset(now.Date, now.Offset).AddDays(p.Portrait ? 1 : 0);
-        var hours = weather.Hourly.Select(h => (At: c.Local(h.Time), Hour: h)).Where(h => h.At >= start && h.At < start.AddDays(days)).ToList();
+        var today = new DateTimeOffset(now.Date, now.Offset);
+        var end = today.AddDays(1 + ahead);
+        var axisW = p.W - left - 2;
+        float X(DateTimeOffset at) => left + (float)((at - now).TotalHours / (end - now).TotalHours) * axisW;
+        var points = new List<(DateTimeOffset At, double Temperature)> { (now, current.Temperature) };
+        points.AddRange(weather.Hourly.Select(h => (At: c.Local(h.Time), h.Temperature)).Where(h => h.At > now && h.At < end));
+        var hours = weather.Hourly.Select(h => (At: c.Local(h.Time), Hour: h)).Where(h => h.At > now.AddHours(-1) && h.At < end).ToList();
         var y0 = headBottom + 4;
         float hoursTop = y0 + 16, hoursBottom = y0 + 28;
         // the graph sits under the hours with room for the warmest of each day; it may run over the rain, not the hours
         var rest = p.H - hoursBottom - 14;
         float gTop = hoursBottom + 12, gBottom = hoursBottom + rest * 0.52f, rainTop = gBottom + 4, rainBottom = hoursBottom + rest * 0.8f, windTop = rainBottom + 5;
-        for (var d = 0; d < days; d++)
+        for (var d = 0; d <= ahead; d++)
         {
-            var x = left + d * dayW;
-            var day = start.AddDays(d);
-            p.Text(day.ToString("dd/MM", CultureInfo.InvariantCulture), x + 4, y0, 12, null, day.Date == now.Date ? p.Bold : p.Serif);
+            var dayStart = today.AddDays(d);
+            float colLeft = X(dayStart > now ? dayStart : now), colRight = X(dayStart.AddDays(1));
+            var label = dayStart.ToString("dd/MM", CultureInfo.InvariantCulture);
+            var face = dayStart.Date == now.Date ? p.Bold : p.Serif;
+            if (colRight - colLeft >= p.Width(label, 12, face) + 8)
+                p.Text(label, colLeft + 4, y0, 12, null, face);
             for (var s = 0; s < 4; s++)
-                p.Text((3 + 6 * s).ToString(CultureInfo.InvariantCulture), x + dayW * (s + 0.5f) / 4, hoursTop, 10, "center", p.Light);
+            {
+                var middle = dayStart.AddHours(6 * s + 3);
+                if (middle > now && X(middle) - 6 >= colLeft)
+                    p.Text((3 + 6 * s).ToString(CultureInfo.InvariantCulture), X(middle), hoursTop, 10, "center", p.Light);
+            }
             if (d > 0)
-                p.Dotted(x, y0, x, windTop + 12);
+                p.Dotted(colLeft, y0, colLeft, windTop + 12);
         }
         using (var thin = p.Line())
             p.Canvas.DrawLine(0, hoursBottom + 1, p.W, hoursBottom + 1, thin);
-        if (hours.Count == 0)
-            return;
 
-        var (low, high, step) = Scale(hours.Min(h => h.Hour.Temperature), hours.Max(h => h.Hour.Temperature));
+        var (low, high, step) = Scale(points.Min(h => h.Temperature), points.Max(h => h.Temperature));
         float Y(double t) => gBottom - (float)((t - low) / (high - low)) * (gBottom - gTop);
-        float X(DateTimeOffset at) => left + (float)((at - start).TotalHours / 24.0) * dayW;
         for (var t = low; t <= high; t += step)
         {
             p.Dotted(left, Y(t), p.W - 2, Y(t));
@@ -301,32 +341,37 @@ public static class ScreenTabs
         using (var curve = p.Line(2))
         using (var path = new SKPath())
         {
-            path.MoveTo(X(hours[0].At), Y(hours[0].Hour.Temperature));
-            foreach (var (at, hour) in hours.Skip(1))
-                path.LineTo(X(at), Y(hour.Temperature));
+            path.MoveTo(X(points[0].At), Y(points[0].Temperature));
+            foreach (var (at, temperature) in points.Skip(1))
+                path.LineTo(X(at), Y(temperature));
             p.Canvas.DrawPath(path, curve);
         }
         // the warmest of each day above the line, never up on the hours
-        for (var d = 0; d < days; d++)
+        for (var d = 0; d <= ahead; d++)
         {
-            var ofDay = hours.Where(h => h.At >= start.AddDays(d) && h.At < start.AddDays(d + 1)).ToList();
-            if (ofDay.Count == 0)
+            var dayStart = today.AddDays(d);
+            float colLeft = X(dayStart > now ? dayStart : now), colRight = X(dayStart.AddDays(1));
+            var ofDay = points.Where(h => h.At >= dayStart && h.At < dayStart.AddDays(1)).ToList();
+            if (ofDay.Count == 0 || colRight - colLeft < 28)
                 continue;
-            var max = ofDay.MaxBy(h => h.Hour.Temperature);
-            var label = Math.Round(max.Hour.Temperature).ToString("0", CultureInfo.InvariantCulture);
-            p.Text(label, Math.Clamp(X(max.At), left + d * dayW + 8, left + (d + 1) * dayW - 8), Math.Max(hoursBottom + 3, Y(max.Hour.Temperature) - 12), 10, "center");
+            var max = ofDay.MaxBy(h => h.Temperature);
+            var text = Math.Round(max.Temperature).ToString("0", CultureInfo.InvariantCulture);
+            p.Text(text, Math.Clamp(X(max.At), colLeft + 8, colRight - 8), Math.Max(hoursBottom + 3, Y(max.Temperature) - 12), 10, "center");
         }
 
         WeatherIcons.Drops(p.Canvas, 2, rainTop + 2, 14);
         WeatherIcons.Wind(p.Canvas, 2, windTop - 1, 16);
-        var slotW = dayW / 4;
-        for (var slot = 0; slot < days * 4; slot++)
+        for (var slot = 0; slot < (1 + ahead) * 4; slot++)
         {
-            var slotStart = start.AddHours(6 * slot);
-            var of = hours.Where(h => h.At >= slotStart && h.At < slotStart.AddHours(6)).Select(h => h.Hour).ToList();
-            if (of.Count == 0)
+            var slotStart = today.AddHours(6 * slot);
+            var slotEnd = slotStart.AddHours(6);
+            if (slotEnd <= now)
                 continue;
-            var x = left + slot * slotW;
+            // the slot that is going on is only what is left of it
+            float x = X(slotStart > now ? slotStart : now), slotW = X(slotEnd) - x;
+            var of = hours.Where(h => h.At >= slotStart && h.At < slotEnd).Select(h => h.Hour).ToList();
+            if (of.Count == 0 || slotW < 10)
+                continue;
             // grey: the chance of rain, black: how much (6 mm in six hours fills the row)
             if (of.Max(h => h.PrecipitationProbability) is { } chance && chance > 0)
                 p.Grey(new SKRect(x + 3, rainBottom - (rainBottom - rainTop) * chance / 100f, x + slotW / 2, rainBottom));
@@ -336,7 +381,6 @@ public static class ScreenTabs
             if (of.Max(h => h.WindSpeed) is { } windMax)
                 p.Text(Math.Round(windMax).ToString("0", CultureInfo.InvariantCulture), x + slotW / 2, windTop + 3, 10, "center");
         }
-        p.Text("обновлено " + now.ToString("HH:mm", CultureInfo.InvariantCulture), p.W - 4, p.H - 10, 8, "right", p.Pixel);
     }
 
     /// <summary>
@@ -348,12 +392,25 @@ public static class ScreenTabs
         WeatherIcons.Thermometer(p.Canvas, 8, 36, 44);
         p.Text(Degrees(current.Temperature), 30, 44, 36, null, p.Serif);
         WeatherIcons.Draw(p.Canvas, current.WeatherCode, p.W - 76, 34, 70);
-        var words = WeatherIcons.Describe(current.WeatherCode);
-        var feels = current.Apparent is { } apparent ? "Ощущается: " + Degrees(apparent) : "";
-        p.Text(feels, 6, 94, 10);
-        p.Text(Fit(p, words, p.W - 12 - p.Width(feels + "  ", 10), 10, p.Bold), p.W - 6, 94, 10, "right", p.Bold);
-        p.Dotted(4, 108, p.W - 4, 108);
+        // how warm it feels, bigger; beside the picture, not under it
+        if (current.Apparent is { } apparent)
+        {
+            var feels = "Ощущается: " + Degrees(apparent);
+            var feelsPx = 16f;
+            while (feelsPx > 12 && p.Width(feels, feelsPx, p.Bold) > p.W - 84 - 6)
+                feelsPx--;
+            p.Text(feels, 6, 86, feelsPx, null, p.Bold);
+        }
+        // the weather in words stands on the dotted line, which the words erase
+        const float lineY = 116;
+        var words = Fit(p, WeatherIcons.Describe(current.WeatherCode), p.W - 40, 14, p.Bold);
+        var wordsW = p.Width(words, 14, p.Bold);
+        var wordsLeft = (p.W - wordsW) / 2;
+        p.Dotted(4, lineY, wordsLeft - 6, lineY);
+        p.Dotted(wordsLeft + wordsW + 6, lineY, p.W - 4, lineY);
+        p.Text(words, p.W / 2f, lineY - CapOf(p.Bold, 14) / 2, 14, "center", p.Bold);
 
+        const float rowsTop = 126;
         var rows = new List<(string Label, string Value)>();
         if (current.Humidity is { } humidity)
             rows.Add(("Влажн", Math.Round(humidity).ToString(CultureInfo.InvariantCulture) + "%"));
@@ -365,7 +422,7 @@ public static class ScreenTabs
             rows.Add(("Ветер", wind.ToString("0.0", CultureInfo.InvariantCulture) + " м/с"));
         for (var i = 0; i < rows.Count; i++)
         {
-            var y = 116 + 18 * i;
+            var y = rowsTop + 18 * i;
             p.Text(rows[i].Label, 6, y, 13);
             p.Text(":", 54, y, 13);
             p.Text(rows[i].Value, 62, y, 13);
@@ -380,16 +437,16 @@ public static class ScreenTabs
             float rise = p.W - 84, set = p.W - 36;
             if (day.Sunrise is { } up)
             {
-                WeatherIcons.SunOnHorizon(p.Canvas, rise - 16, 116, 32, rising: true);
-                p.Text(c.Local(up).ToString("H:mm", CultureInfo.InvariantCulture), rise, 146, 13, "center");
+                WeatherIcons.SunOnHorizon(p.Canvas, rise - 16, rowsTop + 18, 32, rising: true);
+                p.Text(c.Local(up).ToString("H:mm", CultureInfo.InvariantCulture), rise, rowsTop + 48, 13, "center");
             }
             if (day.Sunset is { } down)
             {
-                WeatherIcons.SunOnHorizon(p.Canvas, set - 16, 116, 32, rising: false);
-                p.Text(c.Local(down).ToString("H:mm", CultureInfo.InvariantCulture), set, 146, 13, "center");
+                WeatherIcons.SunOnHorizon(p.Canvas, set - 16, rowsTop + 18, 32, rising: false);
+                p.Text(c.Local(down).ToString("H:mm", CultureInfo.InvariantCulture), set, rowsTop + 48, 13, "center");
             }
         }
-        return Math.Max(170, 116 + 18 * rows.Count + 2);
+        return Math.Max(190, rowsTop + 18 * rows.Count + 2);
     }
 
     private static string Degrees(double t) => t.ToString("0.0", CultureInfo.InvariantCulture) + "°";

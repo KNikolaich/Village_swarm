@@ -77,7 +77,7 @@ inline Answer classify(int httpCode, size_t bytes, int width, int height, int ex
 
 // ------------------------------------------------------------------ panels with tabs (contracts/monitor-http.md, tabs)
 
-/// The bottom of every tab: four equal cells, the shown one inverted; the panel inverts the one under its cursor.
+/// The bottom of every tab: the cells of the tab bar, the shown one inverted; the panel inverts the one under its cursor.
 constexpr int kTabBarHeight = 22;
 
 /// The address of one tab of the picture.
@@ -114,10 +114,45 @@ struct Cell {
     int x, y, w, h;
 };
 
-inline Cell tabCell(int tab, int count, int width, int height) {
+/// Reads X-Frame-Tab-Weights ("2,3,3") into <weights>; returns how many it found (0 for a missing or odd text: equal cells).
+inline int parseTabWeights(const char* text, uint8_t* weights, int maxCount) {
+    int count = 0;
+    int value = 0;
+    bool digits = false;
+    for (const char* c = text ? text : ""; ; c++) {
+        if (*c >= '0' && *c <= '9') {
+            value = value * 10 + (*c - '0');
+            digits = true;
+            if (value > 100) return 0;
+        } else if (*c == ',' || *c == '\0') {
+            if (!digits || value == 0 || count >= maxCount) return 0;
+            weights[count++] = static_cast<uint8_t>(value);
+            value = 0;
+            digits = false;
+            if (*c == '\0') break;
+        } else if (*c != ' ') {
+            return 0;
+        }
+    }
+    return count;
+}
+
+/// The cell of <tab> among <count>: equal widths, or as <weights> (<count> of them) say.
+inline Cell tabCell(int tab, int count, int width, int height, const uint8_t* weights = nullptr) {
     if (count <= 0) return {0, height - kTabBarHeight, width, kTabBarHeight};
-    const int left = tab * width / count;
-    const int right = (tab + 1) * width / count;
+    int total = count, before = tab, through = tab + 1;
+    if (weights) {
+        total = 0;
+        before = 0;
+        through = 0;
+        for (int i = 0; i < count; i++) {
+            if (i == tab) before = total;
+            total += weights[i];
+            if (i == tab) through = total;
+        }
+    }
+    const int left = width * before / total;
+    const int right = tab == count - 1 ? width : width * through / total;
     return {left, height - kTabBarHeight, right - left, kTabBarHeight};
 }
 

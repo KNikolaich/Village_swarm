@@ -66,10 +66,10 @@ public class ScreenTabsTests
         Assert.Equal((screen.Width, screen.Height), (bitmap.Width, bitmap.Height));
         Assert.True(Black(bitmap, new SKRectI(0, 0, screen.Width, screen.Height - ScreenTabs.BarHeight)) > 300, "something is drawn");
         var top = screen.Height - ScreenTabs.BarHeight + 1;
-        var cell = screen.Width / 3;
+        var edges = ScreenTabs.CellEdges(screen.Width);
         for (var i = 0; i < 3; i++)
         {
-            var r = new SKRectI(i * cell + 2, top, i * cell + cell - 2, screen.Height);
+            var r = new SKRectI(edges[i] + 2, top, edges[i + 1] - 2, screen.Height);
             var share = Black(bitmap, r) / (double)(r.Width * r.Height);
             if (i == tab)
                 Assert.True(share > 0.6, $"tab {tab}: its cell is black");
@@ -115,6 +115,49 @@ public class ScreenTabsTests
         var black = Black(bitmap, new SKRectI(0, 0, bitmap.Width, bitmap.Height));
         DisplayRender.Invert(bitmap);
         Assert.Equal(bitmap.Width * bitmap.Height - black, Black(bitmap, new SKRectI(0, 0, bitmap.Width, bitmap.Height)));
+    }
+
+    [Fact]
+    public void The_cells_of_the_tab_bar_follow_their_weights_and_cover_the_screen()
+    {
+        Assert.Equal("2,3,3", ScreenTabs.TabWeightsHeader);
+        Assert.Equal(new[] { 0, 60, 150, 240 }, ScreenTabs.CellEdges(240));
+        Assert.Equal(new[] { 0, 104, 260, 416 }, ScreenTabs.CellEdges(416));
+    }
+
+    [Theory]
+    [InlineData(ScreenTabs.Forecast)]
+    [InlineData(ScreenTabs.Measure)]
+    public void Weather_and_measure_say_when_they_were_drawn_in_the_corner(int tab)
+    {
+        using var bitmap = Draw(tab);
+        // the small print of the pixel font, at the bottom right above the tabs
+        Assert.True(Black(bitmap, new SKRectI(300, Landscape.Height - ScreenTabs.BarHeight - 12, 416, Landscape.Height - ScreenTabs.BarHeight)) > 40, "the time of the picture");
+    }
+
+    [Fact]
+    public void The_graph_starts_now_and_runs_two_days_past_today()
+    {
+        // late in the evening little is left of today: its column is narrow and goes without a date, the next two days
+        // still fill the graph to the right edge
+        var context = Context();
+        using var evening = Draw(ScreenTabs.Forecast, context with { Now = new DateTimeOffset(2026, 10, 29, 20, 58, 0, TimeSpan.Zero) }, Portrait);
+        using var morning = Draw(ScreenTabs.Forecast, context with { Now = new DateTimeOffset(2026, 10, 29, 3, 0, 0, TimeSpan.Zero) }, Portrait);
+        foreach (var bitmap in new[] { evening, morning })
+        {
+            Assert.True(Black(bitmap, new SKRectI(0, 210, 240, 394)) > 300, "a graph is drawn");
+            Assert.True(Black(bitmap, new SKRectI(200, 210, 240, 394)) > 40, "the third day reaches the right edge");
+        }
+        Assert.NotEqual(Black(evening, new SKRectI(0, 200, 240, 394)), Black(morning, new SKRectI(0, 200, 240, 394)));
+    }
+
+    [Fact]
+    public void The_weather_in_words_stands_on_the_dotted_line_and_erases_it_under_the_words()
+    {
+        using var bitmap = Draw(ScreenTabs.Forecast, screen: Portrait);
+        // the dotted line at y 116 runs at the edges and is wiped in the middle, where the words are drawn
+        Assert.True(Black(bitmap, new SKRectI(4, 115, 20, 118)) > 0, "the line is at the edge");
+        Assert.True(Black(bitmap, new SKRectI(60, 108, 180, 124)) > 60, "the words");
     }
 
     [Fact]
@@ -170,7 +213,7 @@ public class ScreenTabsTests
         var context = Context();
         using var without = Draw(ScreenTabs.Forecast, context, Portrait);
         using var with = Draw(ScreenTabs.Forecast, context with { Weather = context.Weather! with { Daily = [day] } }, Portrait);
-        var sun = new SKRectI(130, 112, 240, 162);
+        var sun = new SKRectI(150, 138, 240, 190);
         Assert.Equal(0, Black(without, sun));
         Assert.True(Black(with, sun) > 100, "sunrise and sunset are drawn");
     }

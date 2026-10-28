@@ -283,6 +283,7 @@ public sealed class ScreenAccessTests(HiveFixture hive)
             // the panel's own size (portrait), turned by the hive
             Assert.Equal(("240", "416", "3", "270"), (frame.Headers.GetValues("X-Frame-Width").Single(), frame.Headers.GetValues("X-Frame-Height").Single(),
                 frame.Headers.GetValues("X-Frame-Tabs").Single(), frame.Headers.GetValues("X-Frame-Rotation").Single()));
+            Assert.Equal("2,3,3", frame.Headers.GetValues("X-Frame-Tab-Weights").Single());  // the cells of the tab bar
             Assert.Equal(30 * 416, (await frame.Content.ReadAsByteArrayAsync()).Length);
             etags.Add(frame.Headers.ETag!.Tag);
         }

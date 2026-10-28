@@ -65,6 +65,32 @@ static void test_tabs() {
     TEST_ASSERT_EQUAL(22, cell.h);
 }
 
+static void test_tab_weights() {
+    uint8_t w[kMaxTabs] = {};
+    TEST_ASSERT_EQUAL(3, parseTabWeights("2,3,3", w, kMaxTabs));
+    TEST_ASSERT_EQUAL(2, w[0]);
+    TEST_ASSERT_EQUAL(3, w[2]);
+    TEST_ASSERT_EQUAL(3, parseTabWeights(" 2, 3 ,3 ", w, kMaxTabs));
+    TEST_ASSERT_EQUAL(0, parseTabWeights("", w, kMaxTabs));
+    TEST_ASSERT_EQUAL(0, parseTabWeights(nullptr, w, kMaxTabs));
+    TEST_ASSERT_EQUAL(0, parseTabWeights("2,,3", w, kMaxTabs));
+    TEST_ASSERT_EQUAL(0, parseTabWeights("2,x", w, kMaxTabs));
+    TEST_ASSERT_EQUAL(0, parseTabWeights("0,3,3", w, kMaxTabs));
+    TEST_ASSERT_EQUAL(0, parseTabWeights("1,1,1,1,1", w, kMaxTabs));  // more than the panel keeps
+    // the same cells the hive draws (ScreenTabs.CellEdges): 2:3:3 in 240 and in 416 pixels
+    const uint8_t weights[3] = {2, 3, 3};
+    TEST_ASSERT_EQUAL(0, tabCell(0, 3, 240, 416, weights).x);
+    TEST_ASSERT_EQUAL(60, tabCell(0, 3, 240, 416, weights).w);
+    TEST_ASSERT_EQUAL(60, tabCell(1, 3, 240, 416, weights).x);
+    TEST_ASSERT_EQUAL(90, tabCell(1, 3, 240, 416, weights).w);
+    TEST_ASSERT_EQUAL(150, tabCell(2, 3, 240, 416, weights).x);
+    TEST_ASSERT_EQUAL(90, tabCell(2, 3, 240, 416, weights).w);
+    TEST_ASSERT_EQUAL(104, tabCell(1, 3, 416, 240, weights).x);
+    TEST_ASSERT_EQUAL(156, tabCell(1, 3, 416, 240, weights).w);
+    TEST_ASSERT_EQUAL(260, tabCell(2, 3, 416, 240, weights).x);
+    TEST_ASSERT_EQUAL(156, tabCell(2, 3, 416, 240, weights).w);
+}
+
 static void test_clock_and_battery() {
     TEST_ASSERT_EQUAL_UINT32(1793133662u, httpDate("Tue, 27 Oct 2026 20:41:02 GMT"));
     TEST_ASSERT_EQUAL_UINT32(1772323200u, httpDate("Sun, 01 Mar 2026 00:00:00 GMT"));
@@ -84,6 +110,7 @@ int main() {
     RUN_TEST(test_banner_after_half_an_hour_then_hourly);
     RUN_TEST(test_answers);
     RUN_TEST(test_tabs);
+    RUN_TEST(test_tab_weights);
     RUN_TEST(test_clock_and_battery);
     return UNITY_END();
 }

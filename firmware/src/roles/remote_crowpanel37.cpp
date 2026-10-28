@@ -4,7 +4,7 @@
 // page and given a read-only token there, like the Waveshare 1.54" (remote_epd154.cpp, whose settings point and console it
 // shares).
 //
-// The rocker moves a cursor over the tab bar (the panel inverts the cell itself, and turns the shown tab's cell back to
+// The rocker moves a cursor over the tab bar (the panel inverts the cell itself, by X-Frame-Tab-Weights, and turns the shown tab's cell back to
 // white while the cursor is elsewhere), its press chooses the tab: it is shown at once from the flash and then read anew.
 // The tabs are kept in LittleFS, so flipping needs no Wi-Fi. In between the panel sleeps for its interval, or less while the
 // hive monitors it (X-Frame-Refresh). Every picture is a partial refresh from the one on the screen, with a full one now
@@ -113,6 +113,8 @@ tL4ndQavEi51mI38AjEAi/V3bNTIZargCyzuFJ0nN6T5U6VR5CmD1/iQMVtCnwr1
 // Kept across deep sleep (lost when the power goes). The pictures themselves are in LittleFS: too big for RTC memory.
 RTC_DATA_ATTR int currentTab = 0;
 RTC_DATA_ATTR int tabs = 3;              // how many the hive says (X-Frame-Tabs)
+RTC_DATA_ATTR uint8_t tabWeights[kMaxTabs] = {};  // how wide the cells of the tab bar are (X-Frame-Tab-Weights)
+RTC_DATA_ATTR int weightCount = 0;       // how many weights came: not as many as tabs = equal cells
 RTC_DATA_ATTR uint32_t refreshS = 0;     // the hive's monitoring: read this often (X-Frame-Refresh), 0 = own interval
 RTC_DATA_ATTR int rotation = 270;        // how the hive turned the picture (X-Frame-Rotation): the panel's marks follow it
 RTC_DATA_ATTR uint32_t clockUnix = 0;    // the hive's time at the last read, plus what was slept since
@@ -300,7 +302,7 @@ void beginMarks() {
 void endMarks() { memcpy(picture, canvas.getBuffer(), kFrameBytes); }
 
 void invertCell(int tab) {
-    const Cell cell = tabCell(tab, tabs, canvas.width(), canvas.height());
+    const Cell cell = tabCell(tab, tabs, canvas.width(), canvas.height(), weightCount == tabs ? tabWeights : nullptr);
     for (int y = cell.y + 1; y < cell.y + cell.h; y++)
         for (int x = cell.x; x < cell.x + cell.w; x++) canvas.drawPixel(x, y, canvas.getPixel(x, y) ? 0 : 1);
 }
@@ -683,8 +685,8 @@ Reply fetchTab(int tab, int batteryMv) {
     const String tag = readTag(tab);
     if (tag.length() && LittleFS.exists(tabPath(tab))) http.addHeader("If-None-Match", tag);
     if (batteryMv > 0) http.addHeader("X-Battery-mV", String(batteryMv));
-    const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Rotation", "Date", "X-Frame-Tabs", "X-Frame-Refresh"};
-    http.collectHeaders(keys, 7);
+    const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Rotation", "Date", "X-Frame-Tabs", "X-Frame-Refresh", "X-Frame-Tab-Weights"};
+    http.collectHeaders(keys, 8);
     reply.code = http.GET();
     size_t bytes = 0;
     if (reply.code == 200) {
@@ -698,6 +700,7 @@ Reply fetchTab(int tab, int batteryMv) {
         tabs = tabCount(http.header("X-Frame-Tabs").toInt(), tabs);
         refreshS = http.hasHeader("X-Frame-Refresh") ? static_cast<uint32_t>(http.header("X-Frame-Refresh").toInt()) : 0;
         if (currentTab >= tabs) currentTab = 0;
+        weightCount = http.hasHeader("X-Frame-Tab-Weights") ? parseTabWeights(http.header("X-Frame-Tab-Weights").c_str(), tabWeights, kMaxTabs) : 0;
     }
     reply.answer = classify(reply.code, bytes, http.header("X-Frame-Width").toInt(), http.header("X-Frame-Height").toInt(), kWidth, kHeight);
     if (reply.answer == Answer::Draw) {

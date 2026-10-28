@@ -314,6 +314,8 @@ public static class ScreenAccessEndpoints
             {
                 http.Response.Headers["X-Frame-Tabs"] = frame.Tabs.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 http.Response.Headers["X-Frame-Rotation"] = frame.Rotation.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (frame.Tabs == ScreenTabs.TabWeights.Length)
+                    http.Response.Headers["X-Frame-Tab-Weights"] = ScreenTabs.TabWeightsHeader;
             }
         }
         if (http.Request.Headers.IfNoneMatch.ToString() == frame.ETag)

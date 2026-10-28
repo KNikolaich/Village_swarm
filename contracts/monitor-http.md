@@ -44,10 +44,14 @@ MENU and EXIT) reads them one at a time: `GET /api/monitor/v1/frame.bin?tab=<n>`
 - `X-Frame-Rotation`: how the hive turned the picture (0, 90, 180, 270, clockwise; the board's default when the person did
   not choose: 270 for `crowpanel-epd37`, which stands landscape). One turn for all the tabs: each lays itself out in a
   landscape or a portrait screen. The panel draws its own marks (the tab cursor, the "нет связи" banner) in the same turn.
+- `X-Frame-Tab-Weights`: how wide the cells of the tab bar are relative to each other, left to right, e.g. `2,3,3`
+  (Weather, the shortest word, gets the least room). Absent: equal cells. The panel inverts the cell under its cursor by it:
+  the left edge of cell `i` is `width * (w0 + … + w(i-1)) / (w0 + … + w(n-1))` (integer division), its right edge that of
+  the next cell, the last one's the screen's.
 - The `ETag` is per tab.
 
-Every tab ends in a tab bar the panel can find without asking: the bottom 22 pixels of the turned screen, as many equal
-cells left to right as there are tabs, the shown tab drawn inverted (white on black). While the person moves the rocker,
+Every tab ends in a tab bar the panel can find without asking: the bottom 22 pixels of the turned screen, as many cells
+left to right as there are tabs (`X-Frame-Tab-Weights` says how wide), the shown tab drawn inverted (white on black). While the person moves the rocker,
 the panel shows only its cursor inverted: it inverts the cell under the cursor and turns the shown tab's cell back to white
 (the panel knows which tab it shows). The press shows the chosen tab from its memory at once and then reads it anew. Every
 tab is read at the panel's own interval. Times are the hive's time zone.
