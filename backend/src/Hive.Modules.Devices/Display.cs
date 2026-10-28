@@ -26,9 +26,16 @@ namespace Hive.Modules.Devices;
 /// as <see cref="Format"/> says, then <see cref="Metric"/> is empty too). With <see cref="Size"/> the item is placed: <see cref="X"/>,
 /// <see cref="Y"/> in pixels, <see cref="Align"/> left (absent), center or right. On screens the hive draws, <see cref="Font"/>
 /// (a family id), <see cref="Px"/> (6-120), <see cref="Bold"/> and <see cref="Italic"/> say how it is written.
+/// <see cref="State"/>: <see cref="Metric"/> is a state of the device (a relay, a switch) and not a reading; it is shown as
+/// <see cref="OnText"/> / <see cref="OffText"/> ("вкл" / "выкл" when absent), or, on a screen the hive draws and with the items
+/// placed, as the picture <see cref="OnImage"/> / <see cref="OffImage"/> (ids from display/images, at most 100x100 pixels).
 /// </summary>
 public sealed record DisplayItemDto(string? Device, string Metric, string? Label, int? X = null, int? Y = null, int? Size = null, string? Align = null,
-    string? Text = null, string? Font = null, int? Px = null, bool? Bold = null, bool? Italic = null, string? Clock = null, string? Format = null);
+    string? Text = null, string? Font = null, int? Px = null, bool? Bold = null, bool? Italic = null, string? Clock = null, string? Format = null,
+    bool? State = null, string? OnText = null, string? OffText = null, string? OnImage = null, string? OffImage = null);
+
+/// <summary>A picture kept for a state item (display/images): its id and size.</summary>
+public sealed record DisplayImageDto(string Id, int Width, int Height);
 
 /// <summary>
 /// Size of a screen in pixels as the person sees it (turned by the rotation): where items can be placed and what size a background
@@ -168,6 +175,31 @@ public static class DisplayText
     /// <summary>Whether the screen is placed by x, y, size: any item has a size.</summary>
     public static bool Placed(IReadOnlyList<DisplayItemDto> items) => items.Any(i => i.Size is not null);
 
+    public const int MaxStateText = 12;
+    private static readonly Regex ImageId = new("^[0-9a-f]{16}$");
+
+    /// <summary>The state fields of an item: only on a state, texts short, the two pictures together and only where they can be drawn.</summary>
+    private static string? StateError(DisplayItemDto item, DisplayScreenDto? screen)
+    {
+        var extras = item.OnText is not null || item.OffText is not null || item.OnImage is not null || item.OffImage is not null;
+        if (item.State != true)
+            return extras ? "вкл/выкл и картинки: только у состояния реле или переключателя" : null;
+        if (item.Clock is not null || item.Text is { Length: > 0 })
+            return "состояние: без часов и без текста";
+        if (item.OnText is { Length: > MaxStateText } || item.OffText is { Length: > MaxStateText })
+            return $"вкл/выкл: не длиннее {MaxStateText} знаков";
+        if ((item.OnImage is null) != (item.OffImage is null))
+            return "картинки: нужны обе, для «вкл» и для «выкл»";
+        if (item.OnImage is not null)
+        {
+            if (!ImageId.IsMatch(item.OnImage) || !ImageId.IsMatch(item.OffImage!))
+                return "картинки: неверный id";
+            if (screen is not { Rendered: true } || item.Size is null)
+                return "картинки: только у экранов, которые рисует Улей, и при ручной расстановке";
+        }
+        return null;
+    }
+
     public static string? Validate(IReadOnlyList<DisplayItemDto> items, DisplayScreenDto? screen = null)
     {
         var placed = Placed(items);
@@ -212,6 +244,8 @@ public static class DisplayText
                 if (item.Device is { Length: > 0 } d && (d.Length > 32 || !DeviceId.IsMatch(d)))
                     return "device: неверный id устройства";
             }
+            if (StateError(item, screen) is { } stateError)
+                return stateError;
             if (item.Label is { Length: > MaxLabel })
                 return $"label: не длиннее {MaxLabel} знаков";
             if (item.Px is < MinPx or > MaxPx)
@@ -323,7 +357,12 @@ public sealed class DisplayFeedService(
                 i.TryGetProperty("font", out var font) ? font.GetString() : null,
                 Int(i, "px"), Bool(i, "bold"), Bool(i, "italic"),
                 i.TryGetProperty("clock", out var clock) ? clock.GetString() : null,
-                i.TryGetProperty("format", out var format) ? format.GetString() : null))
+                i.TryGetProperty("format", out var format) ? format.GetString() : null,
+                Bool(i, "state"),
+                i.TryGetProperty("on_text", out var onText) ? onText.GetString() : null,
+                i.TryGetProperty("off_text", out var offText) ? offText.GetString() : null,
+                i.TryGetProperty("on_image", out var onImage) ? onImage.GetString() : null,
+                i.TryGetProperty("off_image", out var offImage) ? offImage.GetString() : null))
             .ToList();
     }
 
@@ -352,6 +391,12 @@ public sealed class DisplayFeedService(
             return (ConfigUpdateStatus.BadRequest, error);
         // A placed screen keeps every item placed; the automatic one drops the placement fields.
         var placed = DisplayText.Placed(items);
+        var wanted = items.Where(i => i.State == true && placed).SelectMany(i => new[] { i.OnImage, i.OffImage }).OfType<string>().Distinct().ToList();
+        if (wanted.Count > 0 && await db.DisplayImages.CountAsync(i => i.DeviceId == deviceId && wanted.Contains(i.Id), ct) != wanted.Count)
+            return (ConfigUpdateStatus.BadRequest, "картинки: одной из них нет в Улье, загрузите её заново");
+        // what the screen no longer uses goes, except what was uploaded a moment ago and is about to be chosen
+        var stale = time.GetUtcNow().AddHours(-1);
+        db.DisplayImages.RemoveRange(db.DisplayImages.Where(i => i.DeviceId == deviceId && i.CreatedAt < stale && !wanted.Contains(i.Id)));
         var config = device.Config is { } current
             ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
             : new JsonObject { ["v"] = 1, ["name"] = device.Name, ["health_interval_s"] = 60 };
@@ -375,6 +420,19 @@ public sealed class DisplayFeedService(
                     o["metric"] = i.Metric;
                     if (!string.IsNullOrEmpty(i.Device) && i.Device != deviceId)
                         o["device"] = i.Device;
+                    if (i.State == true)
+                    {
+                        o["state"] = true;
+                        if (!string.IsNullOrWhiteSpace(i.OnText))
+                            o["on_text"] = i.OnText.Trim();
+                        if (!string.IsNullOrWhiteSpace(i.OffText))
+                            o["off_text"] = i.OffText.Trim();
+                        if (placed && i.OnImage is not null && i.OffImage is not null)
+                        {
+                            o["on_image"] = i.OnImage;
+                            o["off_image"] = i.OffImage;
+                        }
+                    }
                 }
                 if (!string.IsNullOrWhiteSpace(i.Label))
                     o["label"] = i.Label.Trim();
@@ -441,18 +499,22 @@ public sealed class DisplayFeedService(
     {
         var items = ItemsOf(device);
         var now = time.GetUtcNow();
-        var values = items.Count == 0 ? [] : await telemetry.LatestAsync(null, ct);
+        var values = items.Count == 0 || items.All(i => i.State == true) ? [] : await telemetry.LatestAsync(null, ct);
         var names = await db.Devices.AsNoTracking().Select(d => new { d.DeviceId, d.Name }).ToDictionaryAsync(d => d.DeviceId, d => d.Name, ct);
         var placed = DisplayText.Placed(items);
+        var states = await StatesAsync(device, items, ct);
         var lines = new List<DisplayItem>();
         foreach (var item in items)
         {
             var source = string.IsNullOrEmpty(item.Device) ? device.DeviceId : item.Device;
             var clock = item.Clock is { } kind && DisplayText.ClockFormats.TryGetValue(kind, out var formats) ? item.Format ?? formats[0] : null;
             var caption = item.Text is { Length: > 0 } || clock is not null;
-            var value = caption ? null : values.FirstOrDefault(v => v.DeviceId == source && v.Metric == item.Metric);
+            var isState = item.State == true && !caption;
+            var value = caption || isState ? null : values.FirstOrDefault(v => v.DeviceId == source && v.Metric == item.Metric);
             var text = clock is not null ? DisplayText.ClockText(clock, hive.Value.ToLocal(now))
-                : caption ? item.Text!.Trim() : value is null || now - value.Ts > DisplayText.Stale ? "--" : DisplayText.Format(item.Metric, value.Value);
+                : caption ? item.Text!.Trim()
+                : isState ? StateText(item, states.GetValueOrDefault(item))
+                : value is null || now - value.Ts > DisplayText.Stale ? "--" : DisplayText.Format(item.Metric, value.Value);
             // Another device is named by its own name unless the person chose a label; the hornet's own readings need none.
             // A placed screen has its own place for names (a background, say): only a typed label goes there.
             var label = caption ? null : !string.IsNullOrWhiteSpace(item.Label) ? item.Label.Trim()
@@ -484,13 +546,26 @@ public sealed class DisplayFeedService(
             return null;
         var set = await fonts.LoadAsync(message.Items.Select(i => i.Font), ct);
         using var background = device.ScreenBackground is { } png ? SKBitmap.Decode(png) : null;
-        var bitmap = DisplayRender.Render(message, screen, set, background);
-        return InvertOf(device) ? DisplayRender.Invert(bitmap) : bitmap;
+        var images = await ImagesAsync(device, ct);
+        try
+        {
+            var bitmap = DisplayRender.Render(message, screen, set, background, images);
+            return InvertOf(device) ? DisplayRender.Invert(bitmap) : bitmap;
+        }
+        finally
+        {
+            foreach (var picture in images.Values)
+                picture.Dispose();
+        }
     }
 
     /// <summary>What besides the items makes the picture what it is (background, turn, fonts): a panel redraws when it changes.</summary>
     public async Task<string> PictureTagAsync(Device device, CancellationToken ct) =>
-        $"{device.ScreenBackgroundSha}/{RotationOf(device)}{(InvertOf(device) ? "/dark" : "")}/{await fonts.VersionAsync(ct)}";
+        $"{device.ScreenBackgroundSha}/{RotationOf(device)}{(InvertOf(device) ? "/dark" : "")}/{await fonts.VersionAsync(ct)}/{ImageIds(device)}";
+
+    /// <summary>The pictures the state items of the screen are drawn with: another choice is another picture.</summary>
+    private static string ImageIds(Device device) =>
+        string.Join(",", ItemsOf(device).Where(i => i.OnImage is not null).Select(i => $"{i.OnImage}{i.OffImage}"));
 
     /// <summary>The frame as PNG (the preview in the UI), one tab of a panel with tabs; null without a screen the hive draws.</summary>
     public async Task<byte[]?> PreviewAsync(string deviceId, int? tab, CancellationToken ct)
@@ -551,8 +626,17 @@ public sealed class DisplayFeedService(
         var set = await fonts.LoadAsync(message.Items.Select(i => i.Font).Concat(ScreenTabs.Families), ct);
         using var background = tab == ScreenTabs.Measure && device.ScreenBackground is { } png ? SKBitmap.Decode(png) : null;
         var context = new TabContext(now, options.ToLocal, await BatteryAsync(device.DeviceId, ct), weather, events, asleep);
-        var bitmap = ScreenTabs.Draw(tab, screen, context, set, message, background);
-        return InvertOf(device) ? DisplayRender.Invert(bitmap) : bitmap;
+        var images = tab == ScreenTabs.Measure ? await ImagesAsync(device, ct) : new Dictionary<int, SKBitmap>();
+        try
+        {
+            var bitmap = ScreenTabs.Draw(tab, screen, context, set, message, background, images);
+            return InvertOf(device) ? DisplayRender.Invert(bitmap) : bitmap;
+        }
+        finally
+        {
+            foreach (var picture in images.Values)
+                picture.Dispose();
+        }
     }
 
     /// <summary>The panel's battery in percent from its last word on it (X-Battery-mV), when that is under two hours old.</summary>
@@ -564,6 +648,118 @@ public sealed class DisplayFeedService(
             .OrderByDescending(t => t.Ts).Select(t => (double?)t.Value).FirstOrDefaultAsync(ct);
         return volts is { } v ? ScreenTabs.BatteryPercent(v) : null;
     }
+
+    /// <summary>"вкл" and "выкл" unless the person wrote their own; "--" while the device has not said.</summary>
+    internal static string StateText(DisplayItemDto item, bool? on) =>
+        on is null ? "--" : on.Value ? item.OnText is { Length: > 0 } onText ? onText : "вкл" : item.OffText is { Length: > 0 } offText ? offText : "выкл";
+
+    /// <summary>
+    /// A state as on or off: "on", "true", "1", a true or a non-zero number are on; "off", "false", "0", a false or zero are off.
+    /// Null for what is not said or not understood.
+    /// </summary>
+    public static bool? IsOn(JsonDocument? state, string channel)
+    {
+        if (state is null || state.RootElement.ValueKind != JsonValueKind.Object || !state.RootElement.TryGetProperty(channel, out var v))
+            return null;
+        switch (v.ValueKind)
+        {
+            case JsonValueKind.True: return true;
+            case JsonValueKind.False: return false;
+            case JsonValueKind.Number: return v.TryGetDouble(out var n) ? n != 0 : null;
+            case JsonValueKind.String:
+                return v.GetString()?.Trim().ToLowerInvariant() switch
+                {
+                    "on" or "true" or "1" or "open" => true,
+                    "off" or "false" or "0" or "closed" => false,
+                    _ => null,
+                };
+            default: return null;
+        }
+    }
+
+    /// <summary>The state of every state item of the screen, by item: null while its device has not said.</summary>
+    private async Task<Dictionary<DisplayItemDto, bool?>> StatesAsync(Device device, IReadOnlyList<DisplayItemDto> items, CancellationToken ct)
+    {
+        var wanted = items.Where(i => i.State == true).ToList();
+        var result = new Dictionary<DisplayItemDto, bool?>();
+        if (wanted.Count == 0)
+            return result;
+        var ids = wanted.Select(i => string.IsNullOrEmpty(i.Device) ? device.DeviceId : i.Device).Distinct().ToList();
+        var docs = await db.Devices.AsNoTracking().Where(d => ids.Contains(d.DeviceId)).Select(d => new { d.DeviceId, d.State }).ToDictionaryAsync(d => d.DeviceId, d => d.State, ct);
+        foreach (var item in wanted)
+        {
+            var source = string.IsNullOrEmpty(item.Device) ? device.DeviceId : item.Device;
+            result[item] = IsOn(docs.GetValueOrDefault(source), item.Metric);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// The pictures of the state items that have them, by the item's place in the screen: the one for its state now. A state not
+    /// said yet has none (the text "--" is drawn). The caller disposes them.
+    /// </summary>
+    private async Task<Dictionary<int, SKBitmap>> ImagesAsync(Device device, CancellationToken ct)
+    {
+        var items = ItemsOf(device);
+        var images = new Dictionary<int, SKBitmap>();
+        if (!DisplayText.Placed(items) || items.All(i => i.State != true || i.OnImage is null))
+            return images;
+        var states = await StatesAsync(device, items, ct);
+        var ids = items.Where(i => i.OnImage is not null).SelectMany(i => new[] { i.OnImage!, i.OffImage! }).Distinct().ToList();
+        var pngs = await db.DisplayImages.AsNoTracking().Where(i => i.DeviceId == device.DeviceId && ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.Png, ct);
+        for (var n = 0; n < items.Count; n++)
+        {
+            var item = items[n];
+            if (item.State != true || item.OnImage is null || states.GetValueOrDefault(item) is not { } on)
+                continue;
+            if (pngs.TryGetValue(on ? item.OnImage : item.OffImage!, out var png) && SKBitmap.Decode(png) is { } bitmap)
+                images[n] = bitmap;
+        }
+        return images;
+    }
+
+    public const int MaxImageBytes = 256 * 1024;
+    public const int MaxImageSide = 100;
+
+    /// <summary>
+    /// A picture for a state item: PNG, JPEG, BMP or GIF, at most 100x100 pixels (any proportions), kept as PNG. Its id is what the
+    /// item's config holds.
+    /// </summary>
+    public async Task<(ConfigUpdateStatus Status, string? Error, DisplayImageDto? Image)> AddImageAsync(string deviceId, byte[] image, string by, CancellationToken ct)
+    {
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && (d.Driver == Drivers.Hornet || d.Driver == Drivers.Http), ct);
+        if (device is null)
+            return (ConfigUpdateStatus.NotFound, null, null);
+        if (DisplayScreens.For(device.Hw, RotationOf(device)) is not { Rendered: true })
+            return (ConfigUpdateStatus.BadRequest, "картинки бывают только у экранов, которые рисует Улей", null);
+        using var codec = SKCodec.Create(new SKMemoryStream(image));
+        using var bitmap = codec is null ? null : SKBitmap.Decode(codec);
+        if (bitmap is null)
+            return (ConfigUpdateStatus.BadRequest, "это не картинка: нужен PNG (лучше всего), JPEG, BMP или GIF", null);
+        if (bitmap.Width > MaxImageSide || bitmap.Height > MaxImageSide)
+            return (ConfigUpdateStatus.BadRequest, $"размер картинки {bitmap.Width}×{bitmap.Height}, а можно не больше {MaxImageSide}×{MaxImageSide}", null);
+        // a transparent corner is white on the screen
+        using var flat = new SKBitmap(new SKImageInfo(bitmap.Width, bitmap.Height, SKColorType.Rgba8888, SKAlphaType.Opaque));
+        using (var canvas = new SKCanvas(flat))
+        {
+            canvas.Clear(SKColors.White);
+            canvas.DrawBitmap(bitmap, 0, 0);
+        }
+        using var picture = SKImage.FromBitmap(flat);
+        using var png = picture.Encode(SKEncodedImageFormat.Png, 100);
+        var bytes = png.ToArray();
+        var id = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes))[..16];
+        if (!await db.DisplayImages.AnyAsync(i => i.DeviceId == deviceId && i.Id == id, ct))
+        {
+            db.DisplayImages.Add(new DisplayImage { DeviceId = deviceId, Id = id, Png = bytes, Width = flat.Width, Height = flat.Height, CreatedAt = time.GetUtcNow() });
+            Audit.Record(db, time.GetUtcNow(), by, "device_display_image", deviceId);
+            await db.SaveChangesAsync(ct);
+        }
+        return (ConfigUpdateStatus.Updated, null, new DisplayImageDto(id, flat.Width, flat.Height));
+    }
+
+    public async Task<byte[]?> ImageAsync(string deviceId, string imageId, CancellationToken ct) =>
+        await db.DisplayImages.AsNoTracking().Where(i => i.DeviceId == deviceId && i.Id == imageId).Select(i => i.Png).FirstOrDefaultAsync(ct);
 
     public const int MaxBackgroundBytes = 1024 * 1024;
 

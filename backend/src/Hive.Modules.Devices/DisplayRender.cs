@@ -35,7 +35,8 @@ public static class DisplayRender
     /// The frame as a greyscale bitmap the size of the screen (as it is turned: <see cref="Rotate"/> makes it the panel's):
     /// the background image when there is one and it is the screen's size, then the items.
     /// </summary>
-    public static SKBitmap Render(DisplayMessage message, DisplayScreenDto screen, FontSet? fonts = null, SKBitmap? background = null)
+    public static SKBitmap Render(DisplayMessage message, DisplayScreenDto screen, FontSet? fonts = null, SKBitmap? background = null,
+        IReadOnlyDictionary<int, SKBitmap>? images = null)
     {
         fonts ??= FontSet.Empty;
         var bitmap = new SKBitmap(new SKImageInfo(screen.Width, screen.Height, SKColorType.Gray8, SKAlphaType.Opaque));
@@ -46,7 +47,7 @@ public static class DisplayRender
         using var ink = new SKPaint { Color = SKColors.Black, IsAntialias = false };
         var items = message.Items;
         if (items.Any(i => i.Size is not null))
-            DrawPlaced(canvas, ink, items, screen, fonts);
+            DrawPlaced(canvas, ink, items, screen, fonts, images);
         else
             DrawAuto(canvas, ink, items, screen, fonts);
         return bitmap;
@@ -127,14 +128,28 @@ public static class DisplayRender
         return cap;
     }
 
-    private static void DrawPlaced(SKCanvas canvas, SKPaint ink, IReadOnlyList<DisplayItem> items, DisplayScreenDto screen, FontSet fonts)
+    private static void DrawPlaced(SKCanvas canvas, SKPaint ink, IReadOnlyList<DisplayItem> items, DisplayScreenDto screen, FontSet fonts,
+        IReadOnlyDictionary<int, SKBitmap>? images)
     {
         var label = LabelHeight(screen.Height);
         var fallback = fonts.Fallback;
-        foreach (var item in items)
+        for (var n = 0; n < items.Count; n++)
         {
+            var item = items[n];
             var face = fonts.Resolve(item.Font, item.Bold == true, item.Italic == true);
             float y = item.Y ?? 0;
+            if (images is not null && images.TryGetValue(n, out var picture))
+            {
+                // a picture instead of the text: from x, y as the text would stand (its x is the middle or the right edge when aligned so)
+                if (!string.IsNullOrEmpty(item.Label))
+                {
+                    var cap = Text(canvas, ink, item.Label, item.X ?? 0, y, face, fallback, label, true, item.Align);
+                    y += cap + Math.Max(2, label / 3);
+                }
+                var left = item.Align switch { "center" => (item.X ?? 0) - picture.Width / 2f, "right" => (item.X ?? 0) - picture.Width, _ => item.X ?? 0 };
+                canvas.DrawBitmap(picture, MathF.Round(left), MathF.Round(y));
+                continue;
+            }
             if (item.Px is { } px)
             {
                 // font size in pixels: the label in half of it (at least 6)

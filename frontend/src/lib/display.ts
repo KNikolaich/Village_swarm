@@ -30,6 +30,29 @@ export function screenText(metric: string, value: number | null | undefined): st
   return value.toFixed(1)
 }
 
+/** A state of a device as on (true), off (false) or unknown (null): the same words as the hive's DisplayFeedService.IsOn. */
+export function isOn(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value !== 'string') return null
+  const v = value.trim().toLowerCase()
+  if (['on', 'true', '1', 'open'].includes(v)) return true
+  if (['off', 'false', '0', 'closed'].includes(v)) return false
+  return null
+}
+
+/** The states of a device that are a switch (a relay: on or off): what a screen can show as "вкл" and "выкл" or as two pictures. */
+export function switchChannels(state: unknown): string[] {
+  if (state === null || typeof state !== 'object') return []
+  return Object.entries(state as Record<string, unknown>).filter(([, v]) => isOn(v) !== null).map(([k]) => k).sort()
+}
+
+/** What a state item shows in words: the person's own or вкл / выкл; -- while the device has not said. */
+export function stateText(on: boolean | null, onText: string, offText: string): string {
+  if (on === null) return '--'
+  return on ? onText.trim() || 'вкл' : offText.trim() || 'выкл'
+}
+
 /** Keeps a point on the screen: x 0..width-1, y 0..height-1. */
 export function clampToScreen(x: number, y: number, screen: Screen): { x: number; y: number } {
   return {

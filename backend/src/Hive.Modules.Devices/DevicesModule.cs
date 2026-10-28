@@ -210,6 +210,25 @@ public static class DevicesModule
         devices.MapDelete("/{deviceId}/display/background", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
                 await feed.RemoveBackgroundAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
             .RequireAuthorization(HiveRoles.AdminOnly);
+        // Pictures of the state items (a relay lit or dark): at most 100x100, the file in the body; the answer is the id the item keeps.
+        devices.MapPost("/{deviceId}/display/images", async Task<Results<Ok<DisplayImageDto>, NotFound, ValidationProblem>> (
+                string deviceId, HttpRequest request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+            {
+                var image = await DisplayFontEndpoints.ReadBodyAsync(request, DisplayFeedService.MaxImageBytes, ct);
+                if (image is null)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = ["картинка: до 256 КБ"] });
+                var (status, error, saved) = await feed.AddImageAsync(deviceId, image, $"user:{user.Identity?.Name}", ct);
+                return status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = [error ?? "refused"] }),
+                    _ => TypedResults.Ok(saved!),
+                };
+            })
+            .WithBinaryBody()
+            .RequireAuthorization(HiveRoles.AdminOnly);
+        devices.MapGet("/{deviceId}/display/images/{imageId}.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, string imageId, DisplayFeedService feed, CancellationToken ct) =>
+            await feed.ImageAsync(deviceId, imageId, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());
         // The picture a panel shows while it sleeps (a long press of EXIT): any size up to the screen's.
         devices.MapGet("/{deviceId}/display/sleep.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
             await feed.SleepAsync(deviceId, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());

@@ -272,6 +272,7 @@ public sealed class ProvisioningService(
         if (device.LastSeenAt is not null)
             return PurgeStatus.WasSeen;
         db.EnrollmentCodes.RemoveRange(db.EnrollmentCodes.Where(c => c.DeviceId == deviceId));
+        db.DisplayImages.RemoveRange(db.DisplayImages.Where(i => i.DeviceId == deviceId));
         db.Devices.Remove(device);
         Audit.Record(db, time.GetUtcNow(), by, "device_purged", deviceId);
         var hornet = device.Driver == Drivers.Hornet;

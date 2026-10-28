@@ -6,6 +6,7 @@ using Hive.Domain;
 using Hive.Simulator;
 using Hive.Simulator.Roles;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hive.Tests.Integration;
 
@@ -125,6 +126,81 @@ public sealed class ScreenAccessTests(HiveFixture hive)
         bitmap.Erase(SkiaSharp.SKColors.Black);
         using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
         return image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100).ToArray();
+    }
+
+    [Fact]
+    public async Task A_relay_is_shown_as_words_or_as_two_pictures_that_follow_its_state()
+    {
+        var admin = await hive.LoginAsync();
+        using var added = await admin.PostAsJsonAsync("/api/devices/remote-monitors", new { deviceId = "monitor-st1", name = "Реле", board = "waveshare-s3-epaper-154" });
+        Assert.Equal(HttpStatusCode.Created, added.StatusCode);
+        using var issued = await admin.PostAsync("/api/devices/monitor-st1/screen-access", null);
+        var token = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+        var anonymous = hive.App.CreateClient();
+
+        async Task SetState(string? relay)
+        {
+            using var scope = hive.App.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<Hive.Infrastructure.Data.HiveDbContext>();
+            var device = await db.Devices.SingleAsync(d => d.DeviceId == "monitor-st1");
+            device.State = relay is null ? null : JsonDocument.Parse($"{{\"relay\":\"{relay}\"}}");
+            await db.SaveChangesAsync();
+        }
+        async Task<(string ETag, byte[] Body)> Read()
+        {
+            using var response = await anonymous.SendAsync(Bitmap(token));
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            return (response.Headers.ETag!.Tag, await response.Content.ReadAsByteArrayAsync());
+        }
+
+        // words: "вкл" / "выкл" unless the person wrote his own; "--" until the device has said
+        using var words = await admin.PutAsJsonAsync("/api/devices/monitor-st1/display", new
+        {
+            items = new object[] { new { metric = "relay", state = true, onText = "горит", x = 4, y = 4, size = 3 } },
+        });
+        Assert.Equal(HttpStatusCode.OK, words.StatusCode);
+        await SetState(null);
+        var unknown = await Read();
+        await SetState("on");
+        var on = await Read();
+        await SetState("off");
+        var off = await Read();
+        Assert.Equal(3, new[] { unknown.ETag, on.ETag, off.ETag }.Distinct().Count());
+
+        // pictures: at most 100x100, both of them, and ones the hive has
+        using var tooBig = await admin.PostAsync("/api/devices/monitor-st1/display/images", new ByteArrayContent(Png(120, 50)));
+        Assert.Equal(HttpStatusCode.BadRequest, tooBig.StatusCode);
+        using var notImage = await admin.PostAsync("/api/devices/monitor-st1/display/images", new ByteArrayContent([1, 2, 3]));
+        Assert.Equal(HttpStatusCode.BadRequest, notImage.StatusCode);
+        using var flameResponse = await admin.PostAsync("/api/devices/monitor-st1/display/images", new ByteArrayContent(Png(60, 40)));
+        var flame = (await flameResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        using var coldResponse = await admin.PostAsync("/api/devices/monitor-st1/display/images", new ByteArrayContent(Png(20, 20)));
+        var cold = (await coldResponse.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        Assert.NotEqual(flame, cold);
+        using (var shown = await admin.GetAsync($"/api/devices/monitor-st1/display/images/{flame}.png"))
+            Assert.Equal(HttpStatusCode.OK, shown.StatusCode);
+
+        Task<HttpResponseMessage> Save(string? onImage, string? offImage) => admin.PutAsJsonAsync("/api/devices/monitor-st1/display", new
+        {
+            items = new object[] { new { metric = "relay", state = true, onImage, offImage, x = 4, y = 4, size = 3 } },
+        });
+        using (var one = await Save(flame, null))
+            Assert.Equal(HttpStatusCode.BadRequest, one.StatusCode);
+        using (var missing = await Save(flame, "0123456789abcdef"))
+            Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+        using (var good = await Save(flame, cold))
+            Assert.Equal(HttpStatusCode.OK, good.StatusCode);
+
+        await SetState("on");
+        var lit = await Read();
+        await SetState("off");
+        var dark = await Read();
+        Assert.NotEqual(lit.ETag, dark.ETag);
+        // the lit picture is 60x40 black pixels, the dark one 20x20
+        Assert.True(lit.Body.Count(b => b == 0xFF) > dark.Body.Count(b => b == 0xFF));
+        using var settings = await admin.GetAsync("/api/devices/monitor-st1/display");
+        var item = (await settings.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("items")[0];
+        Assert.Equal((flame, cold, true), (item.GetProperty("onImage").GetString(), item.GetProperty("offImage").GetString(), item.GetProperty("state").GetBoolean()));
     }
 
     [Fact]

@@ -11,7 +11,7 @@ import { Input, Select } from '@/components/ui/primitives'
 import { metricLabel, t } from '@/i18n'
 import {
   type Align, backgroundSize, clampToScreen, type ClockKind, clockFormats, clockText, fontBadge, type FontInfo, labelHeight, maxAuto, maxPlaced,
-  moved, nearestSize, pixelHeight, rotations, type Screen, screenText, sizeForPx, stackedPlaces, textAnchor,
+  isOn, moved, nearestSize, pixelHeight, rotations, type Screen, screenText, sizeForPx, stackedPlaces, stateText, switchChannels, textAnchor,
 } from '@/lib/display'
 
 interface Row {
@@ -33,9 +33,21 @@ interface Row {
   /** The hive's clock instead of a reading (then device and metric are empty), written as `format` says. */
   clock: ClockKind | null
   format: string
+  /** `metric` is a state of the device (a relay, a switch), shown as words or, where the hive draws, as two pictures (ids). */
+  state: boolean
+  onText: string
+  offText: string
+  onImage: string | null
+  offImage: string | null
 }
 
-const noStyle = { text: null, font: '', px: null, bold: false, italic: false, clock: null, format: '' }
+const noStyle = {
+  text: null, font: '', px: null, bold: false, italic: false, clock: null, format: '',
+  state: false, onText: '', offText: '', onImage: null, offImage: null,
+}
+
+/** What the picker calls a state of a device: `state:relay`, apart from the readings. */
+const statePrefix = 'state:'
 
 /** The tab of a panel with tabs that shows the rows (contracts/monitor-http.md, tabs). */
 const measureTab = 1
@@ -129,6 +141,7 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
       x: i.x ?? 0, y: i.y ?? 0, size: i.size ?? 3, align: (i.align as Align | null) ?? 'left',
       text: i.text ?? null, font: i.font ?? '', px: i.px ?? null, bold: i.bold ?? false, italic: i.italic ?? false,
       clock: (i.clock as ClockKind | null | undefined) ?? null, format: i.format ?? (i.clock ? clockFormats[i.clock as ClockKind][0] : ''),
+      state: i.state ?? false, onText: i.onText ?? '', offText: i.offText ?? '', onImage: i.onImage ?? null, offImage: i.offImage ?? null,
     })))
     setPlaced(current.data.items.some((i) => i.size != null))
     setRotation(current.data.rotation ?? 0)
@@ -143,7 +156,13 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
   }, [latest.data])
   const valueOf = (id: string, metric: string) => (latest.data ?? []).find((v) => v.deviceId === id && v.metric === metric)?.value
   const nameOf = (id: string) => (devices.data ?? []).find((d) => d.deviceId === id)?.name ?? id
-  const sources = (devices.data ?? []).filter((d) => d.deviceId !== deviceId && metricsOf(d.deviceId).length > 0)
+  const stateOf = (id: string, channel: string) => isOn(((devices.data ?? []).find((d) => d.deviceId === id)?.state as Record<string, unknown> | null | undefined)?.[channel])
+  const switchesOf = (id: string) => switchChannels((devices.data ?? []).find((d) => d.deviceId === id)?.state)
+  const itemsOf = (id: string) => [
+    ...metricsOf(id).map((m) => ({ value: m, label: metricLabel(m) })),
+    ...switchesOf(id).map((c) => ({ value: statePrefix + c, label: `${t('display.state')}: ${c}` })),
+  ]
+  const sources = (devices.data ?? []).filter((d) => d.deviceId !== deviceId && itemsOf(d.deviceId).length > 0)
   const maxRows = placed ? maxPlaced : maxAuto
   const rendered = !!current.data?.screen?.rendered
   const tabs = current.data?.screen?.tabs ?? 0
@@ -154,20 +173,20 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
   const pxOf = (r: Row) => r.px ?? nearestSize(pixelHeight(r.size, screen.height), sizesOf(r.font))
   const thisName = (devices.data ?? []).find((d) => d.deviceId === deviceId)?.name ?? t('display.thisHornet')
   const groups: SourceGroup[] = [
-    ...(metricsOf(deviceId).length > 0 ? [{ id: '', title: thisName, items: metricsOf(deviceId).map((m) => ({ value: m, label: metricLabel(m) })) }] : []),
-    ...sources.map((d) => ({ id: d.deviceId, title: d.name, items: metricsOf(d.deviceId).map((m) => ({ value: m, label: metricLabel(m) })) })),
+    ...(itemsOf(deviceId).length > 0 ? [{ id: '', title: thisName, items: itemsOf(deviceId) }] : []),
+    ...sources.map((d) => ({ id: d.deviceId, title: d.name, items: itemsOf(d.deviceId) })),
     { id: clockSource, title: t('display.clock'), items: [{ value: 'time', label: t('display.clockTime') }, { value: 'date', label: t('display.clockDate') }] },
   ]
   const sourceText = (r: Row) => r.clock
     ? `${t('display.clock')} · ${t(r.clock === 'time' ? 'display.clockTime' : 'display.clockDate')}`
-    : r.metric ? `${r.device ? nameOf(r.device) : thisName} · ${metricLabel(r.metric)}` : t('display.pick')
+    : r.metric ? `${r.device ? nameOf(r.device) : thisName} · ${r.state ? `${t('display.state')}: ${r.metric}` : metricLabel(r.metric)}` : t('display.pick')
 
   function setRow(i: number, patch: Partial<Row>) {
     setRows((all) => all.map((r, k) => {
       if (k !== i) return r
       const next = { ...r, ...patch }
       // another device: the first reading it has, when the old choice does not exist there
-      if (patch.device !== undefined && next.clock === null && !metricsOf(patch.device || deviceId).includes(next.metric)) next.metric = metricsOf(patch.device || deviceId)[0] ?? ''
+      if (patch.device !== undefined && next.clock === null && !next.state && !metricsOf(patch.device || deviceId).includes(next.metric)) next.metric = metricsOf(patch.device || deviceId)[0] ?? ''
       return next
     }))
   }
@@ -197,9 +216,11 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
     }])
   }
 
-  const complete = rows.every((r) => (r.clock !== null || (r.text === null ? r.metric !== '' : r.text.trim() !== '')))
+  const complete = rows.every((r) => (r.clock !== null || (r.text === null ? r.metric !== '' && (r.onImage === null || (!!r.onImage && !!r.offImage)) : r.text.trim() !== '')))
   const now = new Date()
-  const texts = rows.map((r) => (r.clock ? clockText(r.format, now) : r.text ?? screenText(r.metric, valueOf(r.device || deviceId, r.metric))))
+  const texts = rows.map((r) => (r.clock ? clockText(r.format, now)
+    : r.state ? stateText(stateOf(r.device || deviceId, r.metric), r.onText, r.offText)
+    : r.text ?? screenText(r.metric, valueOf(r.device || deviceId, r.metric))))
   const number = (v: string, min: number, max: number) => Math.min(max, Math.max(min, Math.round(Number(v) || 0)))
 
   async function save() {
@@ -211,6 +232,10 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
         device: reading ? r.device || null : null, metric: reading ? r.metric : '', label: reading ? r.label.trim() || null : null,
         ...(r.text !== null ? { text: r.text.trim() } : {}),
         ...(r.clock !== null ? { clock: r.clock, format: r.format } : {}),
+        ...(reading && r.state ? {
+          state: true, onText: r.onText.trim() || null, offText: r.offText.trim() || null,
+          ...(styled && r.onImage && r.offImage ? { onImage: r.onImage, offImage: r.offImage } : {}),
+        } : {}),
         ...(placed ? { x: r.x, y: r.y, size: px !== null ? sizeForPx(px, screen.height) : r.size, align: r.align === 'left' ? null : r.align } : {}),
         ...(styled ? { font: r.font || null, px, bold: r.bold, italic: r.italic } : {}),
       }
@@ -238,6 +263,20 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
     }
     toast.success(t('display.backgroundSaved'))
     await qc.invalidateQueries({ queryKey: key })
+  }
+
+  /** A picture for a state item: the hive keeps it and answers with its id (at most 100x100). */
+  async function uploadImage(file: File): Promise<string | null> {
+    const { response, data, error } = await api.POST('/api/devices/{deviceId}/display/images', {
+      params: { path: { deviceId } }, body: file as unknown as string,
+      bodySerializer: (body) => body as unknown as Blob, headers: { 'Content-Type': 'application/octet-stream' },
+    })
+    if (!response.ok || !data) {
+      const why = (error as { errors?: Record<string, string[]> } | undefined)?.errors?.file?.[0]
+      toast.error(`${t('display.imageWrong')}: ${why ?? t('errors.generic')}`)
+      return null
+    }
+    return data.id
   }
 
   async function uploadSleep(file: File) {
@@ -425,10 +464,12 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
               ) : (<>
                 <div className="space-y-1">
                   <FieldLabel text={t('display.source')} help={t('display.sourceHelp')} />
-                  <SourcePicker groups={groups} source={row.clock ? clockSource : row.device} value={row.clock ?? row.metric} text={sourceText(row)} disabled={!editable}
+                  <SourcePicker groups={groups} source={row.clock ? clockSource : row.device} value={row.clock ?? (row.state ? statePrefix + row.metric : row.metric)} text={sourceText(row)} disabled={!editable}
                     onPick={(source, value) => source === clockSource
                       ? setRow(i, { clock: value as ClockKind, format: clockFormats[value as ClockKind][0], device: '', metric: '', label: '' })
-                      : setRow(i, { clock: null, format: '', device: source, metric: value })} />
+                      : value.startsWith(statePrefix)
+                        ? setRow(i, { clock: null, format: '', device: source, metric: value.slice(statePrefix.length), state: true })
+                        : setRow(i, { clock: null, format: '', device: source, metric: value, state: false, onImage: null, offImage: null })} />
                 </div>
                 {row.clock ? (
                   <label className="space-y-1">
@@ -466,6 +507,55 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
               </>)}
               {remove}
             </div>
+            {/* a state (relay, switch): in words, or where the hive draws and the rows are placed, as two pictures */}
+            {row.state && row.text === null && row.clock === null && (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {styled && (
+                  <label className="space-y-1 sm:col-span-2">
+                    <FieldLabel text={t('display.stateShow')} help={t('display.stateShowHelp')} />
+                    <Select className="w-full sm:w-64" value={row.onImage !== null ? 'images' : 'words'} disabled={!editable}
+                      onChange={(e) => setRow(i, e.target.value === 'images' ? { onImage: '', offImage: '' } : { onImage: null, offImage: null })}>
+                      <option value="words">{t('display.stateWords')}</option>
+                      <option value="images">{t('display.stateImages')}</option>
+                    </Select>
+                  </label>
+                )}
+                {row.onImage === null ? (<>
+                  <label className="space-y-1">
+                    <FieldLabel text={t('display.stateOn')} help={t('display.stateWordsHelp')} />
+                    <Input className="h-9 text-sm" value={row.onText} maxLength={12} placeholder="вкл" disabled={!editable} onChange={(e) => setRow(i, { onText: e.target.value })} />
+                  </label>
+                  <label className="space-y-1">
+                    <FieldLabel text={t('display.stateOff')} help={t('display.stateWordsHelp')} />
+                    <Input className="h-9 text-sm" value={row.offText} maxLength={12} placeholder="выкл" disabled={!editable} onChange={(e) => setRow(i, { offText: e.target.value })} />
+                  </label>
+                </>) : (['on', 'off'] as const).map((which) => {
+                  const id = which === 'on' ? row.onImage : row.offImage
+                  return (
+                    <div key={which} className="space-y-1">
+                      <FieldLabel text={t(which === 'on' ? 'display.stateOn' : 'display.stateOff')} help={t('display.stateImageHelp')} />
+                      <div className="flex items-center gap-2">
+                        <div className="flex size-[104px] shrink-0 items-center justify-center rounded border border-neutral-700 bg-white">
+                          {id ? <img src={`/api/devices/${encodeURIComponent(deviceId)}/display/images/${id}.png`} alt={t(which === 'on' ? 'display.stateOn' : 'display.stateOff')}
+                            className="max-h-[100px] max-w-[100px]" style={{ imageRendering: 'pixelated' }} /> : <span className="text-xs text-neutral-500">{t('display.imageNone')}</span>}
+                        </div>
+                        {editable && (
+                          <label className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-neutral-700 px-3 py-1.5 text-xs hover:bg-neutral-800">
+                            <ImagePlus className="size-4" />{t('display.imageUpload')}
+                            <input type="file" accept="image/png,image/jpeg,image/bmp,image/gif" className="sr-only"
+                              onChange={(e) => {
+                                const f = e.target.files?.[0]
+                                e.target.value = ''
+                                if (f) void uploadImage(f).then((newId) => { if (newId) setRow(i, which === 'on' ? { onImage: newId } : { offImage: newId }) })
+                              }} />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
             {/* second line: where and how big */}
             {placed && (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

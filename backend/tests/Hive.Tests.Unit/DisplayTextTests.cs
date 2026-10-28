@@ -94,4 +94,46 @@ public class DisplayTextTests
         Assert.NotNull(DisplayText.Validate([Clock("time", metric: "temperature")]));
         Assert.NotNull(DisplayText.Validate([new DisplayItemDto(null, "temperature", null, Format: "HH:mm")]));
     }
+
+    [Theory]
+    [InlineData("""{"relay":"on"}""", true)]
+    [InlineData("""{"relay":"ON"}""", true)]
+    [InlineData("""{"relay":"off"}""", false)]
+    [InlineData("""{"relay":true}""", true)]
+    [InlineData("""{"relay":0}""", false)]
+    [InlineData("""{"relay":2}""", true)]
+    [InlineData("""{"relay":"open"}""", true)]
+    [InlineData("""{"relay":"strange"}""", null)]
+    [InlineData("""{"other":"on"}""", null)]
+    public void A_state_is_on_or_off_or_not_known(string json, bool? expected)
+    {
+        using var state = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal(expected, DisplayFeedService.IsOn(state, "relay"));
+    }
+
+    [Fact]
+    public void A_state_is_written_in_words_of_the_person_or_vkl_and_vykl()
+    {
+        var plain = new DisplayItemDto(null, "relay", null, State: true);
+        Assert.Equal("вкл", DisplayFeedService.StateText(plain, true));
+        Assert.Equal("выкл", DisplayFeedService.StateText(plain, false));
+        Assert.Equal("--", DisplayFeedService.StateText(plain, null));
+        var own = plain with { OnText = "горит", OffText = "нет" };
+        Assert.Equal(("горит", "нет"), (DisplayFeedService.StateText(own, true), DisplayFeedService.StateText(own, false)));
+    }
+
+    [Fact]
+    public void Pictures_of_a_state_come_in_pairs_on_a_screen_the_hive_draws_with_the_items_placed()
+    {
+        var hive = new DisplayScreenDto(200, 200, Rendered: true);
+        var oled = new DisplayScreenDto(128, 64);
+        var pair = new DisplayItemDto(null, "relay", null, 0, 0, 3, State: true, OnImage: "0123456789abcdef", OffImage: "fedcba9876543210");
+        Assert.Null(DisplayText.Validate([pair], hive));
+        Assert.NotNull(DisplayText.Validate([pair with { OffImage = null }], hive));       // one picture is not a pair
+        Assert.NotNull(DisplayText.Validate([pair with { OnImage = "../etc" }], hive));    // an id is 16 hex digits
+        Assert.NotNull(DisplayText.Validate([pair], oled));                                // the small screen has no pictures
+        Assert.NotNull(DisplayText.Validate([pair with { Size = null, X = null, Y = null }], hive));  // placed by hand only
+        Assert.NotNull(DisplayText.Validate([new DisplayItemDto(null, "temperature", null, OnText: "x")]));  // words of a state only on a state
+        Assert.NotNull(DisplayText.Validate([new DisplayItemDto(null, "relay", null, State: true, OnText: new string('x', 13))]));
+    }
 }

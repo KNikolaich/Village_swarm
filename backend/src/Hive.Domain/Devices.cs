@@ -179,6 +179,20 @@ public class Device
 }
 
 /// <summary>
+/// A small picture of a screen's item (a relay shown as a picture: lit and dark): at most 100x100 pixels, kept as PNG, named by the
+/// first 16 hex digits of its SHA-256 so that the same file is one row.
+/// </summary>
+public class DisplayImage
+{
+    public required string DeviceId { get; set; }
+    public required string Id { get; set; }
+    public required byte[] Png { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
 /// A font a person uploaded for the screens the hive draws (TTF/OTF): one face (regular, bold, italic or bold italic) of a family.
 /// The fonts that come with the hive are not here; they are built into it.
 /// </summary>

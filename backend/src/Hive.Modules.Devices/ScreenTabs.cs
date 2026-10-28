@@ -95,10 +95,11 @@ public static class ScreenTabs
     }
 
     /// <summary>One tab as the person sees it (turned): the background and items for Measure, the hive's drawing for the others.</summary>
-    public static SKBitmap Draw(int tab, DisplayScreenDto screen, TabContext context, FontSet fonts, DisplayMessage items, SKBitmap? background)
+    public static SKBitmap Draw(int tab, DisplayScreenDto screen, TabContext context, FontSet fonts, DisplayMessage items, SKBitmap? background,
+        IReadOnlyDictionary<int, SKBitmap>? images = null)
     {
         var bitmap = tab == Measure
-            ? DisplayRender.Render(items, screen, fonts, background)
+            ? DisplayRender.Render(items, screen, fonts, background, images)
             : new SKBitmap(new SKImageInfo(screen.Width, screen.Height, SKColorType.Gray8, SKAlphaType.Opaque));
         using var canvas = new SKCanvas(bitmap);
         if (tab != Measure)

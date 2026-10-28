@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { backgroundSize, clampPx, clampToScreen, clockText, fontBadge, moved, nearestSize, pixelHeight, screenText, sizeForPx, stackedPlaces, textAnchor } from './display'
+import {
+  backgroundSize, clampPx, clampToScreen, clockText, fontBadge, isOn, moved, nearestSize, pixelHeight, screenText, sizeForPx, stackedPlaces, stateText, switchChannels,
+  textAnchor,
+} from './display'
 
 const oled = { width: 72, height: 40 }
 
@@ -96,5 +99,29 @@ describe('moved', () => {
     const all = ['a', 'b']
     expect(moved(all, 0, -1)).toBe(all)
     expect(moved(all, 1, 1)).toBe(all)
+  })
+})
+
+describe('states of a screen', () => {
+  it('reads on and off the way the hive does', () => {
+    expect(isOn('ON')).toBe(true)
+    expect(isOn('off')).toBe(false)
+    expect(isOn(true)).toBe(true)
+    expect(isOn(0)).toBe(false)
+    expect(isOn(3)).toBe(true)
+    expect(isOn('strange')).toBeNull()
+    expect(isOn(null)).toBeNull()
+  })
+
+  it('offers only the states that are a switch', () => {
+    expect(switchChannels({ relay2: 'off', relay: 'on', mode: 'auto', level: 'high', valve: true })).toEqual(['relay', 'relay2', 'valve'])
+    expect(switchChannels(null)).toEqual([])
+  })
+
+  it('writes a state in the words of the person or вкл and выкл', () => {
+    expect(stateText(true, '', '')).toBe('вкл')
+    expect(stateText(false, '', '')).toBe('выкл')
+    expect(stateText(true, ' горит ', 'нет')).toBe('горит')
+    expect(stateText(null, 'горит', 'нет')).toBe('--')
   })
 })

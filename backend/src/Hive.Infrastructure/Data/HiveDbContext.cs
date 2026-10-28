@@ -27,6 +27,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<EnrollmentCode> EnrollmentCodes => Set<EnrollmentCode>();
     public DbSet<DisplayFont> DisplayFonts => Set<DisplayFont>();
+    public DbSet<DisplayImage> DisplayImages => Set<DisplayImage>();
     public DbSet<WeatherSnapshot> WeatherSnapshots => Set<WeatherSnapshot>();
     public DbSet<BackupRun> BackupRuns => Set<BackupRun>();
     public DbSet<TelemetryHourly> TelemetryHourly => Set<TelemetryHourly>();
@@ -297,6 +298,14 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.Property(x => x.Family).HasMaxLength(64);
             e.Property(x => x.Sha).HasMaxLength(16);
             e.HasIndex(x => x.FamilyId);
+        });
+
+        b.Entity<DisplayImage>(e =>
+        {
+            e.ToTable("display_images");
+            e.HasKey(x => new { x.DeviceId, x.Id });
+            e.Property(x => x.DeviceId).HasMaxLength(32);
+            e.Property(x => x.Id).HasMaxLength(16);
         });
 
         b.Entity<EnrollmentCode>(e =>
