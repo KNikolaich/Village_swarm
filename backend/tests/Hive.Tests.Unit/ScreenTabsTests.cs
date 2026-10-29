@@ -35,6 +35,7 @@ public class ScreenTabsTests
             [ScreenTabs.LightFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("Roboto-Light") },
             [ScreenTabs.SerifFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("RobotoSerif-Regular"), [(true, false)] = Load("RobotoSerif-Bold") },
             [ScreenTabs.PixelFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("PublicPixel") },
+            [ScreenTabs.BookFamily] = new Dictionary<(bool, bool), SKTypeface> { [(false, false)] = Load("NotoSerif-Regular"), [(false, true)] = Load("NotoSerif-Italic") },
         });
     }
 

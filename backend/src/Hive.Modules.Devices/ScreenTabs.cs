@@ -444,7 +444,7 @@ public static class ScreenTabs
         var today = DateOnly.FromDateTime(now.Date);
         if (c.Weather?.Daily.FirstOrDefault(d => d.Date == today) is { } day)
         {
-            float rise = p.W - 84, set = p.W - 36;
+            float rise = p.W - 76, set = p.W - 30;
             if (day.Sunrise is { } up)
             {
                 WeatherIcons.SunOnHorizon(p.Canvas, rise - 16, rowsTop + 18, 32, rising: true);
