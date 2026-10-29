@@ -155,9 +155,10 @@ public class ScreenTabsTests
     public void The_weather_in_words_stands_on_the_dotted_line_and_erases_it_under_the_words()
     {
         using var bitmap = Draw(ScreenTabs.Forecast, screen: Portrait);
-        // the dotted line at y 116 runs at the edges and is wiped in the middle, where the words are drawn
-        Assert.True(Black(bitmap, new SKRectI(4, 115, 20, 118)) > 0, "the line is at the edge");
-        Assert.True(Black(bitmap, new SKRectI(60, 108, 180, 124)) > 60, "the words");
+        // the dotted line at y 116 starts at the left edge; the words end at its right end and wipe the line under them
+        Assert.True(Black(bitmap, new SKRectI(4, 115, 20, 118)) > 0, "the line is at the left edge");
+        Assert.True(Black(bitmap, new SKRectI(150, 106, 236, 126)) > 40, "the words are pressed to the right end");
+        Assert.True(Black(bitmap, new SKRectI(236, 106, 240, 126)) == 0, "a margin is left at the right edge");
     }
 
     [Fact]

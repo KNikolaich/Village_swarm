@@ -57,7 +57,9 @@ public static class ScreenTabs
     public const string LightFamily = "roboto-light";
     public const string SerifFamily = "roboto-serif";
     public const string PixelFamily = "public-pixel";
-    public static readonly string[] Families = [TextFamily, LightFamily, SerifFamily, PixelFamily];
+    /// <summary>The book face of the weather in words and its details: Noto Serif, the heir of Droid Serif with Cyrillic.</summary>
+    public const string BookFamily = "noto-serif";
+    public static readonly string[] Families = [TextFamily, LightFamily, SerifFamily, PixelFamily, BookFamily];
 
     // Written out: the hive's image may run without culture data.
     private static readonly string[] Weekdays = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"];
@@ -134,6 +136,8 @@ public static class ScreenTabs
             LightBold = fonts.Resolve(LightFamily, true, false);
             Serif = fonts.Resolve(SerifFamily, false, false);
             Pixel = fonts.Resolve(PixelFamily, false, false);
+            Book = fonts.Resolve(BookFamily, false, false);
+            BookItalic = fonts.Resolve(BookFamily, false, true);
             Fallback = fonts.Fallback;
         }
 
@@ -150,6 +154,8 @@ public static class ScreenTabs
         public FontFace LightBold { get; }
         public FontFace Serif { get; }
         public FontFace Pixel { get; }
+        public FontFace Book { get; }
+        public FontFace BookItalic { get; }
         public FontFace Fallback { get; }
         public SKPaint Ink { get; } = new() { Color = SKColors.Black, IsAntialias = false, StrokeWidth = 1, Style = SKPaintStyle.Fill };
         public SKPaint Paper { get; } = new() { Color = SKColors.White, IsAntialias = false, Style = SKPaintStyle.Fill };
@@ -400,18 +406,16 @@ public static class ScreenTabs
         {
             var feels = "Ощущается: " + Degrees(apparent);
             var feelsPx = 16f;
-            while (feelsPx > 12 && p.Width(feels, feelsPx, p.Bold) > p.W - 84 - 6)
+            while (feelsPx > 12 && p.Width(feels, feelsPx, p.BookItalic) > p.W - 84 - 6)
                 feelsPx--;
-            p.Text(feels, 6, 86, feelsPx, null, p.Bold);
+            p.Text(feels, 6, 86, feelsPx, null, p.BookItalic);
         }
-        // the weather in words stands on the dotted line, which the words erase
+        // the weather in words stands on the right end of the dotted line, which the words erase
         const float lineY = 116;
-        var words = Fit(p, WeatherIcons.Describe(current.WeatherCode), p.W - 40, 14, p.Bold);
-        var wordsW = p.Width(words, 14, p.Bold);
-        var wordsLeft = (p.W - wordsW) / 2;
+        var words = Fit(p, WeatherIcons.Describe(current.WeatherCode), p.W - 40, 16, p.BookItalic);
+        var wordsLeft = p.W - 4 - p.Width(words, 16, p.BookItalic);
         p.Dotted(4, lineY, wordsLeft - 6, lineY);
-        p.Dotted(wordsLeft + wordsW + 6, lineY, p.W - 4, lineY);
-        p.Text(words, p.W / 2f, lineY - CapOf(p.Bold, 14) / 2, 14, "center", p.Bold);
+        p.Text(words, p.W - 4, lineY - CapOf(p.BookItalic, 16) / 2, 16, "right", p.BookItalic);
 
         const float rowsTop = 126;
         var rows = new List<(string Label, string Value)>();
@@ -423,14 +427,17 @@ public static class ScreenTabs
             rows.Add(("Давлен", Math.Round(hpa * 0.750062).ToString(CultureInfo.InvariantCulture) + " мм"));
         if (current.WindSpeed is { } wind)
             rows.Add(("Ветер", wind.ToString("0.0", CultureInfo.InvariantCulture) + " м/с"));
+        // the labels share one column: the colon and the values follow the widest of them
+        var colon = 6 + rows.Select(r => p.Width(r.Label, 14, p.Book)).DefaultIfEmpty(0).Max() + 2;
+        var valueLeft = colon + p.Width(":", 14, p.Book) + 5;
         for (var i = 0; i < rows.Count; i++)
         {
             var y = rowsTop + 18 * i;
-            p.Text(rows[i].Label, 6, y, 13);
-            p.Text(":", 54, y, 13);
-            p.Text(rows[i].Value, 62, y, 13);
+            p.Text(rows[i].Label, 6, y, 14, null, p.Book);
+            p.Text(":", colon, y, 14, null, p.Book);
+            p.Text(rows[i].Value, valueLeft, y, 14, null, p.Book);
             if (rows[i].Label == "Ветер" && current.WindDirection is { } from)
-                WindArrow(p, 62 + p.Width(rows[i].Value, 13) + 12, y + 5, from);
+                WindArrow(p, valueLeft + p.Width(rows[i].Value, 14, p.Book) + 12, y + 5, from);
         }
 
         // the sun today, by the hive's clock
@@ -441,12 +448,12 @@ public static class ScreenTabs
             if (day.Sunrise is { } up)
             {
                 WeatherIcons.SunOnHorizon(p.Canvas, rise - 16, rowsTop + 18, 32, rising: true);
-                p.Text(c.Local(up).ToString("H:mm", CultureInfo.InvariantCulture), rise, rowsTop + 48, 13, "center");
+                p.Text(c.Local(up).ToString("H:mm", CultureInfo.InvariantCulture), rise, rowsTop + 48, 14, "center", p.Book);
             }
             if (day.Sunset is { } down)
             {
                 WeatherIcons.SunOnHorizon(p.Canvas, set - 16, rowsTop + 18, 32, rising: false);
-                p.Text(c.Local(down).ToString("H:mm", CultureInfo.InvariantCulture), set, rowsTop + 48, 13, "center");
+                p.Text(c.Local(down).ToString("H:mm", CultureInfo.InvariantCulture), set, rowsTop + 48, 14, "center", p.Book);
             }
         }
         return Math.Max(190, rowsTop + 18 * rows.Count + 2);
