@@ -411,11 +411,11 @@ public static class ScreenTabs
             p.Text(feels, 6, 86, feelsPx, null, p.BookItalic);
         }
         // the weather in words stands on the right end of the dotted line, which the words erase
-        const float lineY = 116;
-        var words = Fit(p, WeatherIcons.Describe(current.WeatherCode), p.W - 40, 16, p.BookItalic);
-        var wordsLeft = p.W - 4 - p.Width(words, 16, p.BookItalic);
+        const float lineY = 111;
+        var words = Fit(p, WeatherIcons.Describe(current.WeatherCode), p.W - 40, 14, p.BookItalic);
+        var wordsLeft = p.W - 4 - p.Width(words, 14, p.BookItalic);
         p.Dotted(4, lineY, wordsLeft - 6, lineY);
-        p.Text(words, p.W - 4, lineY - CapOf(p.BookItalic, 16) / 2, 16, "right", p.BookItalic);
+        p.Text(words, p.W - 4, lineY - CapOf(p.BookItalic, 14) / 2, 14, "right", p.BookItalic);
 
         const float rowsTop = 126;
         var rows = new List<(string Label, string Value)>();
@@ -795,12 +795,12 @@ public static class WeatherIcons
         canvas.DrawPath(path, ink);
     }
 
-    /// <summary>Two drops slanting across each other (the rain row), in a box <paramref name="size"/> tall at x, y.</summary>
+    /// <summary>Two upright drops apart from each other, the second lower (the rain row), in a box <paramref name="size"/> tall at x, y.</summary>
     public static void Drops(SKCanvas canvas, float x, float y, float size)
     {
-        var w = size * 0.625f;
-        Tear(canvas, x + w * 0.37f, y + size * 0.49f, x + w * 0.70f, y + size * 0.21f, w * 0.22f);
-        Tear(canvas, x + w * 0.17f, y + size * 0.42f, x + w * 0.62f, y + size * 0.75f, w * 0.21f);
+        var r = size * 0.17f;
+        Drop(canvas, x + size * 0.2f, y + size * 0.5f, r);
+        Drop(canvas, x + size * 0.55f, y + size * 0.83f, r);
     }
 
     private static void Flake(SKCanvas canvas, float cx, float cy, float r)
