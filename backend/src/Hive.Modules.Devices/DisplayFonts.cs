@@ -90,6 +90,7 @@ public sealed class DisplayFontCatalog(HiveDbContext db, TimeProvider time)
         new("dseg7", "DSEG7 Classic (цифры как на табло)", false, true, "DSEG7Classic-Regular", "DSEG7Classic-Bold", "DSEG7Classic-Italic", "DSEG7Classic-BoldItalic"),
         new("roboto", "Roboto", true, false, "Roboto-Regular", "Roboto-Bold", null, null),
         new("roboto-light", "Roboto Light (тонкий)", true, false, "Roboto-Light", null, null, null),
+        new("noto-serif", "Noto Serif (с засечками, наследник Droid Serif)", true, false, "NotoSerif-Regular", null, "NotoSerif-Italic", null),
         new("roboto-serif", "Roboto Serif (с засечками)", true, false, "RobotoSerif-Regular", "RobotoSerif-Bold", null, null),
         new("pixellari", "Pixellari (пиксельный, 16 px)", true, false, "Pixellari-Regular", null, null, null, Grid: 16),
         new("public-pixel", "Public Pixel (пиксельный, 8 px)", true, false, "PublicPixel", null, null, null, Grid: 8),
