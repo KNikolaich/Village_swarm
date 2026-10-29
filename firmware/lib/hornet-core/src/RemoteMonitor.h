@@ -106,10 +106,14 @@ inline uint32_t nextReadSeconds(int intervalMin, uint32_t refreshS) {
     return monitored < own ? monitored : own;
 }
 
-/// How long a tab that was read counts as fresh when the person only switches to it (no need to ask the hive again): five minutes,
-/// or the pace of the monitoring while the hive monitors the panel (X-Frame-Refresh, at least a minute).
+/// How long a tab that was read counts as fresh when the person only switches to it (no need to ask the hive again): five minutes at most,
+/// less when the hive monitors the panel quicker (X-Frame-Refresh, at least a minute). Monitored every 10 minutes, a tab read 7 minutes ago is still not fresh.
 constexpr uint32_t kFreshSeconds = 300;
-inline uint32_t freshSeconds(uint32_t refreshS) { return refreshS == 0 ? kFreshSeconds : refreshS < 60 ? 60 : refreshS; }
+inline uint32_t freshSeconds(uint32_t refreshS) {
+    if (refreshS == 0) return kFreshSeconds;
+    const uint32_t pace = refreshS < 60 ? 60 : refreshS;
+    return pace < kFreshSeconds ? pace : kFreshSeconds;
+}
 
 /// A tab read less than <fresh> seconds ago (both times in the hive's unix seconds; 0 = not known: then it is not fresh).
 inline bool isFresh(uint32_t now, uint32_t readAt, uint32_t fresh) { return now != 0 && readAt != 0 && now >= readAt && now - readAt < fresh; }

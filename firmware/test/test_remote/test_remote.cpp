@@ -109,6 +109,7 @@ static void test_a_tab_read_lately_is_not_asked_for_again() {
     TEST_ASSERT_EQUAL_UINT32(300u, freshSeconds(0));   // the panel's own pace: five minutes
     TEST_ASSERT_EQUAL_UINT32(120u, freshSeconds(120)); // monitored: as often as the hive asks
     TEST_ASSERT_EQUAL_UINT32(60u, freshSeconds(20));
+    TEST_ASSERT_EQUAL_UINT32(300u, freshSeconds(600)); // monitored slower: still five minutes at most
     TEST_ASSERT_TRUE(isFresh(1000u, 800u, 300u));
     TEST_ASSERT_FALSE(isFresh(1000u, 700u, 300u));     // exactly as old as the limit is not fresh
     TEST_ASSERT_FALSE(isFresh(0u, 800u, 300u));        // no clock: ask
