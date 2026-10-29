@@ -36,7 +36,7 @@ public enum ScreenAccessStatus
 /// Read-only access of a monitor to its own screen from anywhere (contracts/monitor-http.md): a token per monitor, issued and
 /// revoked on its page. The token opens only the texts the hive would publish to vs/v1/hive/display/{id}.
 /// </summary>
-public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService feed, NodeState node, IngestQueue ingest, TimeProvider time)
+public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService feed, NodeState node, IngestQueue ingest, TimeProvider time, FrameCache cache)
 {
     public const string MonitorType = "monitor";
     public const string FramePath = "/api/monitor/v1/frame";
@@ -149,10 +149,7 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
         var shown = tab ?? 0;
         if (bitmap && tabs > 0 && (shown < 0 || shown >= tabs))
             return new ScreenFrame([], "", "", NoPicture: true);
-        var items = JsonSerializer.Serialize(message.Items, ContractJson.Options);
-        // the picture is also what is behind and around the items: the background, the turn, the fonts
-        var basis = bitmap ? items + "|" + await feed.PictureTagAsync(device, ct) : items;
-        var etag = "\"" + (bitmap ? "b" : "j") + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(basis)))[..16] + "\"";
+        var (basis, etag) = await BasisAsync(device, message, bitmap, ct);
 
         // The city only watches (its copy of the database is not written): it answers but does not note the read.
         if (!node.ReadOnly && (device.ScreenReadAt is not { } last || now - last >= NoteEvery || device.ScreenReadFrom != from || device.ScreenReadExternal != external
@@ -173,18 +170,70 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
         if (!bitmap)
             return new ScreenFrame(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(message, ContractJson.Options)), "application/json", etag, RefreshS: refresh);
         var rotation = DisplayFeedService.RotationOf(device);
-        // Asleep (?sleep=1): the person's sleep picture, else the tab the panel was showing with "спит" in place of the time it was drawn.
+        // A monitored panel reads every few minutes: the frame was drawn a little before it asked (FrameCache).
+        var monitored = DisplayFeedService.MonitorOf(device, now);
+        var every = TimeSpan.FromSeconds(refresh);
+        if (monitored is not null && cache.Find(device.DeviceId, shown, sleep, basis, now, every) is { } hit)
+        {
+            cache.Plan(device.DeviceId, shown, sleep, now, every, monitored.Until);
+            return new ScreenFrame(hit.Bits, "application/octet-stream", hit.ETag, screen!.Width, screen.Height, Tabs: tabs, Rotation: rotation, RefreshS: refresh);
+        }
+        var (bits, tag) = await RenderAsync(device, message, tabs, shown, sleep, etag, ct);
+        if (bits is null)
+            return new ScreenFrame([], "", "", NoPicture: true);
+        if (monitored is not null)
+        {
+            cache.Put(device.DeviceId, shown, sleep, basis, now, bits, tag);
+            cache.Plan(device.DeviceId, shown, sleep, now, every, monitored.Until);
+        }
+        return new ScreenFrame(bits, "application/octet-stream", tag, screen!.Width, screen.Height, Tabs: tabs, Rotation: rotation, RefreshS: refresh);
+    }
+
+    /// <summary>What the frame is made of (the items, and for a picture the background, the turn, the fonts, the state pictures) and its ETag before the picture is drawn.</summary>
+    private async Task<(string Basis, string ETag)> BasisAsync(Device device, DisplayMessage message, bool bitmap, CancellationToken ct)
+    {
+        var items = JsonSerializer.Serialize(message.Items, ContractJson.Options);
+        // the picture is also what is behind and around the items: the background, the turn, the fonts
+        var basis = bitmap ? items + "|" + await feed.PictureTagAsync(device, ct) : items;
+        return (basis, "\"" + (bitmap ? "b" : "j") + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(basis)))[..16] + "\"");
+    }
+
+    /// <summary>
+    /// The picture of a frame, turned and packed. Asleep (?sleep=1): the person's sleep picture, else the tab the panel was showing with
+    /// "спит" in place of the time it was drawn. A tab holds the clock and the weather besides the items: its ETag is the picture itself;
+    /// the sleeping picture has its own. Without a picture the hive draws: null bits.
+    /// </summary>
+    private async Task<(byte[]? Bits, string ETag)> RenderAsync(Device device, DisplayMessage message, int tabs, int shown, bool sleep, string basisETag, CancellationToken ct)
+    {
         using var drawn = sleep && tabs > 0
             ? feed.DrawSleep(device) ?? await feed.DrawTabAsync(device, message, shown, ct, asleep: true)
             : tabs > 0 ? await feed.DrawTabAsync(device, message, shown, ct) : await feed.DrawAsync(device, message, ct);
         if (drawn is null)
-            return new ScreenFrame([], "", "", NoPicture: true);
-        using var turned = DisplayRender.Rotate(drawn, rotation);
+            return (null, "");
+        using var turned = DisplayRender.Rotate(drawn, DisplayFeedService.RotationOf(device));
         var bits = DisplayRender.Pack(turned);
-        // A tab holds the clock and the weather besides the items: its ETag is the picture itself. The sleeping picture has its own.
-        if (tabs > 0)
-            etag = $"\"{(sleep ? "s" : "t" + shown)}" + Convert.ToHexStringLower(SHA256.HashData(bits))[..16] + "\"";
-        return new ScreenFrame(bits, "application/octet-stream", etag, screen!.Width, screen.Height, Tabs: tabs, Rotation: rotation, RefreshS: refresh);
+        return (bits, tabs > 0 ? $"\"{(sleep ? "s" : "t" + shown)}" + Convert.ToHexStringLower(SHA256.HashData(bits))[..16] + "\"" : basisETag);
+    }
+
+    /// <summary>Draws the frame a monitored panel asked for last, ahead of its next read (<see cref="FrameCache"/>); a monitoring that is over forgets it.</summary>
+    public async Task WarmAsync(string deviceId, FrameCache.Watch watch, CancellationToken ct)
+    {
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId && (d.Driver == Drivers.Hornet || d.Driver == Drivers.Http)
+            && d.Status != DeviceStatus.Disabled && d.TypeCode == MonitorType && d.ScreenTokenHash != null, ct);
+        var now = time.GetUtcNow();
+        if (device is null || DisplayFeedService.MonitorOf(device, now) is null || DisplayScreens.For(device.Hw) is not { Rendered: true } screen)
+        {
+            cache.Forget(deviceId);
+            return;
+        }
+        var tabs = screen.Tabs;
+        if (tabs > 0 && (watch.Tab < 0 || watch.Tab >= tabs))
+            return;
+        var message = await feed.BuildAsync(device, ct);
+        var (basis, etag) = await BasisAsync(device, message, true, ct);
+        var (bits, tag) = await RenderAsync(device, message, tabs, watch.Tab, watch.Sleep, etag, ct);
+        if (bits is not null)
+            cache.Put(deviceId, watch.Tab, watch.Sleep, basis, now, bits, tag);
     }
 
     private static readonly System.Text.RegularExpressions.Regex DeviceIdPattern = new("^[a-z][a-z0-9]*(-[a-z0-9]+)*$");
@@ -243,6 +292,8 @@ public static class ScreenAccessEndpoints
     {
         var readsPerMinute = int.TryParse(configuration["Screen:ReadsPerMinute"], out var n) && n > 0 ? n : ReadsPerMinute;
         services.AddScoped<ScreenAccessService>();
+        services.AddSingleton<FrameCache>();
+        services.AddHostedService<FrameWarmer>();
         services.AddRateLimiter(o => o.AddPolicy(RateLimit, ctx => RateLimitPartition.GetFixedWindowLimiter(
             ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             _ => new FixedWindowRateLimiterOptions { PermitLimit = readsPerMinute, Window = TimeSpan.FromMinutes(1) })));

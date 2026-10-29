@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Hive.Domain;
+using Hive.Modules.Devices;
 using Hive.Simulator;
 using Hive.Simulator.Roles;
 using Microsoft.EntityFrameworkCore;
@@ -406,8 +407,18 @@ public sealed class ScreenAccessTests(HiveFixture hive)
             Assert.Equal(HttpStatusCode.OK, on.StatusCode);
             Assert.Equal(2, (await on.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("monitor").GetProperty("everyMin").GetInt32());
         }
+        string monitoredTag;
         using (var monitored = await anonymous.SendAsync(Tab(1)))
+        {
             Assert.Equal("120", monitored.Headers.GetValues("X-Frame-Refresh").Single());
+            monitoredTag = monitored.Headers.ETag!.Tag;
+        }
+        // while monitored the frame of the tab it asked for is kept for its next read (and only then)
+        var frames = hive.App.Services.GetRequiredService<FrameCache>();
+        var served = frames.Hits;
+        using (var warm = await anonymous.SendAsync(Tab(1)))
+            Assert.Equal(monitoredTag, warm.Headers.ETag!.Tag);
+        Assert.Equal(served + 1, frames.Hits);
         // a clock on the Measure tab keeps the monitoring (the person's layout and the monitoring live side by side)
         using (var clock = await admin.PutAsJsonAsync("/api/devices/monitor-crow1/display",
             new { items = new object[] { new { metric = "", clock = "time", x = 10, y = 20, size = 5, px = 96 }, new { metric = "", clock = "date", format = "d MMMM", x = 10, y = 150, size = 2, px = 24 } } }))
@@ -420,6 +431,7 @@ public sealed class ScreenAccessTests(HiveFixture hive)
             Assert.Equal(HttpStatusCode.NoContent, off.StatusCode);
         using (var free = await anonymous.SendAsync(Tab(1)))
             Assert.False(free.Headers.Contains("X-Frame-Refresh"));
+        Assert.Equal(served + 1, frames.Hits);  // not monitored: drawn at every read, nothing kept
         using var preview = await admin.GetAsync("/api/devices/monitor-crow1/display/preview.png?tab=1");
         Assert.Equal(HttpStatusCode.OK, preview.StatusCode);
 

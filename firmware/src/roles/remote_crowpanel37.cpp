@@ -32,6 +32,10 @@
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
+#include <esp_timer.h>
+#include <soc/gpio_reg.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include "../../lib/hornet-core/src/RemoteMonitor.h"
 
@@ -53,6 +57,7 @@ constexpr gpio_num_t kPinMenu = GPIO_NUM_2;
 constexpr gpio_num_t kPinDown = GPIO_NUM_4;
 constexpr gpio_num_t kPinConf = GPIO_NUM_5;
 constexpr gpio_num_t kPinUp = GPIO_NUM_6;
+const char kLoadingText[] = "загрузка...";  // the mark on a tab while it is being read
 constexpr int kPinBattery = 8;  // ADC1, through the divider the person solders (see above)
 
 constexpr uint32_t kWifiTimeoutMs = 15000;
@@ -122,6 +127,11 @@ RTC_DATA_ATTR uint32_t offlineMin = 0;
 RTC_DATA_ATTR uint32_t bannerAtMin = 0;
 RTC_DATA_ATTR int partials = kPartialsBeforeFull;  // full refresh first after power-on
 RTC_DATA_ATTR bool messageShown = false;
+RTC_DATA_ATTR uint32_t tabReadAt[kMaxTabs] = {};  // the hive's unix time at the last read of each tab (0: not known)
+RTC_DATA_ATTR bool loadingShown = false;           // the "загрузка..." mark is on the screen: the result must take it off
+RTC_DATA_ATTR uint8_t apBssid[6] = {};  // the access point of the last connection: the next one skips the scan
+RTC_DATA_ATTR int apChannel = 0;
+RTC_DATA_ATTR int apSsid = -1;
 RTC_DATA_ATTR bool asleep = false;       // put to sleep by a long EXIT: the next button only wakes the panel
 
 struct Settings {
@@ -197,7 +207,10 @@ void writeTag(int tab, const String& tag) {
 }
 
 void forgetTabs() {
-    for (int t = 0; t < kMaxTabs; t++) LittleFS.remove(tagPath(t));
+    for (int t = 0; t < kMaxTabs; t++) {
+        LittleFS.remove(tagPath(t));
+        tabReadAt[t] = 0;
+    }
 }
 
 // ------------------------------------------------------------------ UC8253 (as the Elecrow examples drive it)
@@ -345,6 +358,7 @@ void showMessage(const char* title, std::initializer_list<String> lines) {
     endMarks();
     present();
     messageShown = true;
+    loadingShown = false;
 }
 
 /// A tab from the flash on the screen, with the cursor or a banner when asked.
@@ -358,12 +372,13 @@ bool showTab(int tab, int cursor, const String& banner) {
     }
     present();
     messageShown = false;
+    loadingShown = banner == kLoadingText;
     return true;
 }
 
 // ------------------------------------------------------------------ console over USB
 
-[[noreturn]] void readAndSleep();
+[[noreturn]] void readAndSleep(bool loading = false);
 
 String consoleLine;
 
@@ -434,6 +449,50 @@ Order pollConsole(bool& activity) {
 constexpr uint32_t kHelpTimeoutMs = 30000;  // the help screen waits this long for a button
 
 constexpr gpio_num_t kButtons[] = {kPinExit, kPinMenu, kPinDown, kPinConf, kPinUp};
+
+// Presses that come while the panel is busy (Wi-Fi, the hive's answer, the screen refresh) are counted by interrupts, so none is lost:
+// the rocker's up and down and the press. A falling edge counts when the button had been up for 40 ms (bounce is not a press).
+// The handler runs from IRAM and may come while the flash is written, so it touches only DRAM and IRAM-safe calls
+// (the input register, esp_timer_get_time), and the counters are shared under a spinlock.
+volatile uint8_t pendingPress[3] = {0, 0, 0};  // up, down, press
+volatile int64_t lastEdgeUs[3] = {0, 0, 0};
+DRAM_ATTR const gpio_num_t kWatched[3] = {kPinUp, kPinDown, kPinConf};  // all below GPIO 32
+portMUX_TYPE pressMux = portMUX_INITIALIZER_UNLOCKED;
+
+void IRAM_ATTR onEdge(void* arg) {
+    const int i = static_cast<int>(reinterpret_cast<intptr_t>(arg));
+    const int64_t now = esp_timer_get_time();
+    const bool down = (REG_READ(GPIO_IN_REG) & (1UL << kWatched[i])) == 0;
+    portENTER_CRITICAL_ISR(&pressMux);
+    if (down && now - lastEdgeUs[i] > 40000 && pendingPress[i] < 8) pendingPress[i] = pendingPress[i] + 1;
+    lastEdgeUs[i] = now;
+    portEXIT_CRITICAL_ISR(&pressMux);
+}
+
+void watchButtons() {
+    for (int i = 0; i < 3; i++) attachInterruptArg(kWatched[i], onEdge, reinterpret_cast<void*>(static_cast<intptr_t>(i)), CHANGE);
+}
+
+/// Steps of the cursor asked for meanwhile: down minus up; takes them.
+int takeSteps() {
+    portENTER_CRITICAL(&pressMux);
+    const int steps = static_cast<int>(pendingPress[1]) - static_cast<int>(pendingPress[0]);
+    pendingPress[0] = 0;
+    pendingPress[1] = 0;
+    portEXIT_CRITICAL(&pressMux);
+    return steps;
+}
+
+bool takePress() {
+    portENTER_CRITICAL(&pressMux);
+    const bool was = pendingPress[2] > 0;
+    pendingPress[2] = 0;
+    portEXIT_CRITICAL(&pressMux);
+    return was;
+}
+
+/// The person moved the rocker while the panel was busy: what it is busy with may no longer be wanted.
+bool movedMeanwhile() { return pendingPress[0] != pendingPress[1]; }
 
 void powerOn() {
     for (gpio_num_t pin : {kPinEpdPower, kPinLed, kPinSdPower}) gpio_hold_dis(pin);
@@ -619,19 +678,43 @@ void startPortal() {
 
 bool wifiUp = false;
 
+/// Waits for the connection to come up (or the time to pass); true when it is up, and then remembers the access point.
+bool connectedWithin(uint32_t limitMs, int ssidIndex) {
+    const uint32_t started = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - started < limitMs) delay(50);
+    if (WiFi.status() != WL_CONNECTED) {
+        WiFi.disconnect(true);
+        return false;
+    }
+    memcpy(apBssid, WiFi.BSSID(), sizeof apBssid);
+    apChannel = WiFi.channel();
+    apSsid = ssidIndex;
+    return wifiUp = true;
+}
+
+/// Connects to the first network that answers. The access point of the last connection is tried first by its channel and address (no
+/// scan: a second or two instead of five), and forgotten when it does not answer.
 bool joinWifi() {
     if (wifiUp && WiFi.status() == WL_CONNECTED) return true;
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
     for (int i = 0; i < 2; i++) {
         if (settings.ssid[i].isEmpty()) continue;
+        if (apSsid == i && apChannel > 0) {
+            WiFi.begin(settings.ssid[i].c_str(), settings.pass[i].c_str(), apChannel, apBssid);
+            if (connectedWithin(4000, i)) return true;
+            apChannel = 0;  // it moved or is gone: scan next time
+        }
         WiFi.begin(settings.ssid[i].c_str(), settings.pass[i].c_str());
-        const uint32_t started = millis();
-        while (WiFi.status() != WL_CONNECTED && millis() - started < kWifiTimeoutMs) delay(50);
-        if (WiFi.status() == WL_CONNECTED) return wifiUp = true;
-        WiFi.disconnect(true);
+        if (connectedWithin(kWifiTimeoutMs, i)) return true;
     }
     return false;
+}
+
+/// The hive's unix time now, or 0 while the clock has not been set from a reply (the system clock runs through deep sleep).
+uint32_t nowUnix() {
+    const time_t t = time(nullptr);
+    return t > 1700000000 ? static_cast<uint32_t>(t) : 0;
 }
 
 class FrameSink : public Stream {
@@ -672,8 +755,8 @@ Reply fetchTab(int tab, int batteryMv, bool sleep = false) {
     WiFiClientSecure secure;
     WiFiClient plain;
     HTTPClient http;
-    http.setTimeout(15000);
-    http.setConnectTimeout(10000);
+    http.setTimeout(10000);
+    http.setConnectTimeout(8000);
     http.setReuse(false);
     bool begun;
     if (isHttps(url)) {
@@ -697,7 +780,11 @@ Reply fetchTab(int tab, int batteryMv, bool sleep = false) {
         http.writeToStream(&sink);
         bytes = sink.size();
     }
-    if (const uint32_t now = httpDate(http.header("Date").c_str())) clockUnix = now - millis() / 1000;
+    if (const uint32_t now = httpDate(http.header("Date").c_str())) {
+        clockUnix = now - millis() / 1000;
+        const timeval tv = {static_cast<time_t>(now), 0};
+        settimeofday(&tv, nullptr);  // the system clock keeps counting through deep sleep: how old a tab is
+    }
     if (http.hasHeader("X-Frame-Rotation")) rotation = http.header("X-Frame-Rotation").toInt() % 360;
     if (reply.code == 200 || reply.code == 304) {
         tabs = tabCount(http.header("X-Frame-Tabs").toInt(), tabs);
@@ -710,16 +797,24 @@ Reply fetchTab(int tab, int batteryMv, bool sleep = false) {
         writeFile(tabPath(tab), incoming, kFrameBytes);
         writeTag(tab, http.header("ETag"));
     }
+    if (!sleep && (reply.answer == Answer::Draw || reply.answer == Answer::Keep)) tabReadAt[tab] = nowUnix();
     http.end();
     return reply;
 }
 
-/// Reads the shown tab and puts it on the screen when it changed; then sleeps until its next read.
-[[noreturn]] void readAndSleep() {
+/// The person moved the rocker while the panel was reading: the cursor goes on from here, this reading is of no use any more.
+[[noreturn]] void chooseTab(int firstStep);
+
+/// Reads the shown tab and puts it on the screen when it changed; then sleeps until its next read. <loading>: the person is waiting
+/// (a button was pressed): the screen says so at once.
+[[noreturn]] void readAndSleep(bool loading) {
     const int battery = readBatteryMv();
     const uint32_t intervalS = nextReadSeconds();
     const uint32_t missedMin = intervalS / 60 > 0 ? intervalS / 60 : 1;
+    if (loading && !loadingShown) showTab(currentTab, -1, String(kLoadingText));  // no tab in the flash yet: nothing to mark
+    const uint32_t startedMs = millis();
     if (!joinWifi()) {
+        if (movedMeanwhile()) chooseTab(0);
         // no Wi-Fi: no use waking every minute while monitored
         const uint32_t retryS = intervalS < 300 ? 300 : intervalS;
         Serial.println("[monitor] wifi failed");
@@ -728,22 +823,30 @@ Reply fetchTab(int tab, int batteryMv, bool sleep = false) {
             showMessage("Нет Wi-Fi", {"Сеть " + settings.ssid[0] + " не отвечает.", "Повтор через " + String(settings.intervalMin) + " мин.", "MENU 2 с — настройка"});
             sleepFor(static_cast<uint32_t>(settings.intervalMin) * 60);
         }
-        if (bannerDue(offlineMin, bannerAtMin)) {
+        if (bannerDue(offlineMin, bannerAtMin) || loadingShown) {
             bannerAtMin = offlineMin;
             showTab(currentTab, -1, "нет Wi-Fi ~" + String(offlineMin) + " мин");
         }
         sleepFor(retryS);
     }
+    const uint32_t wifiMs = millis() - startedMs;
+    if (movedMeanwhile()) chooseTab(0);  // the connection is up for the tab the person chooses next
 
     const Reply reply = fetchTab(currentTab, battery);
+    const uint32_t gotMs = millis() - startedMs - wifiMs;
     Serial.printf("[monitor] frame %d\n", reply.code);  // the hive's page waits for this line after flashing
+    // chosen another tab meanwhile: this one is in the flash now, but it is not worth a screen refresh
+    if ((reply.answer == Answer::Draw || reply.answer == Answer::Keep) && movedMeanwhile()) {
+        offlineMin = bannerAtMin = 0;
+        chooseTab(0);
+    }
     switch (reply.answer) {
         case Answer::Draw:
             offlineMin = bannerAtMin = 0;
             showTab(currentTab, -1, String());
             break;
         case Answer::Keep:
-            if ((offlineMin > 0 && bannerAtMin > 0) || messageShown) showTab(currentTab, -1, String());  // take the banner off
+            if ((offlineMin > 0 && bannerAtMin > 0) || messageShown || loadingShown) showTab(currentTab, -1, String());  // take the banner off
             offlineMin = bannerAtMin = 0;
             break;
         case Answer::BadToken:
@@ -756,41 +859,50 @@ Reply fetchTab(int tab, int batteryMv, bool sleep = false) {
             offlineMin += missedMin;
             if (!LittleFS.exists(tabPath(currentTab))) {
                 showMessage("Нет связи с Ульем", {"Ответ: " + String(reply.code), "Повтор через " + String(settings.intervalMin) + " мин.", "MENU 2 с — настройка"});
-            } else if (bannerDue(offlineMin, bannerAtMin)) {
+            } else if (bannerDue(offlineMin, bannerAtMin) || loadingShown) {
                 bannerAtMin = offlineMin;
                 showTab(currentTab, -1, "нет связи ~" + String(offlineMin) + " мин");
             }
             break;
     }
-    sleepFor(nextReadSeconds());
+    Serial.printf("[monitor] timing: wifi %lu ms, hive %lu ms, screen %lu ms\n", static_cast<unsigned long>(wifiMs), static_cast<unsigned long>(gotMs),
+                  static_cast<unsigned long>(millis() - startedMs - wifiMs - gotMs));
+    sleepFor(secondsToDue(nextReadSeconds(), nowUnix(), tabReadAt[currentTab]));
 }
 
 // ------------------------------------------------------------------ the rocker
 
-/// The cursor over the tab bar: up/down move it, the press chooses (shown from the flash at once, then read), EXIT or
-/// a few quiet seconds leave it.
+/// The tab the person chose: from the flash at once; read again unless it was read lately (switching between tabs needs no trip to the
+/// hive each time). The same tab chosen again is a request to refresh it.
+[[noreturn]] void chosen(int tab) {
+    const bool same = tab == currentTab;
+    currentTab = tab;
+    const bool have = LittleFS.exists(tabPath(tab));
+    if (!same && have && isFresh(nowUnix(), tabReadAt[tab], freshSeconds(refreshS))) {
+        showTab(tab, -1, String());
+        sleepFor(secondsToDue(nextReadSeconds(), nowUnix(), tabReadAt[tab]));
+    }
+    if (have) showTab(tab, -1, String(kLoadingText));
+    else showMessage("Загрузка", {String("Вкладка ") + (tab + 1)});
+    readAndSleep();
+}
+
+/// The cursor over the tab bar: up/down move it, the press chooses, EXIT or a few quiet seconds leave it. Presses that came while the
+/// panel was busy (even during the screen refresh) are counted by interrupts and taken here, so none is lost.
 [[noreturn]] void chooseTab(int firstStep) {
     int cursor = stepTab(currentTab, firstStep, tabs);
+    cursor = stepTab(cursor, takeSteps(), tabs);
+    if (takePress()) chosen(cursor);
     showTab(currentTab, cursor, String());
-    waitRelease();
     uint32_t lastInput = millis();
     while (millis() - lastInput < kCursorTimeoutMs) {
-        int step = 0;
-        if (pressed(kPinDown)) step = 1;
-        else if (pressed(kPinUp)) step = -1;
-        if (step != 0) {
+        if (const int step = takeSteps(); step != 0) {
             cursor = stepTab(cursor, step, tabs);
             showTab(currentTab, cursor, String());
-            waitRelease();
             lastInput = millis();
             continue;
         }
-        if (pressed(kPinConf)) {
-            waitRelease();
-            currentTab = cursor;
-            if (!showTab(currentTab, -1, String())) showMessage("Загрузка", {String("Вкладка ") + (currentTab + 1)});
-            readAndSleep();
-        }
+        if (takePress()) chosen(cursor);
         if (pressed(kPinExit)) {
             waitRelease();
             break;
@@ -828,6 +940,7 @@ bool menuHeld() { return held(kPinMenu); }
     // no Wi-Fi: the shown tab from the flash with the word on it
     if (!drawn && !showTab(currentTab, -1, "спит")) showMessage("Спит", {"Любая кнопка будит панель"});
     partials = kPartialsBeforeFull;  // whatever comes next is a different picture: wipe the screen
+    loadingShown = false;
     asleep = true;
     sleepFor(0);
 }
@@ -845,15 +958,14 @@ bool showHelp() {
         }
         if (pressed(kPinMenu)) {
             if (menuHeld()) return true;
-            readAndSleep();
+            readAndSleep(true);
         }
-        if (pressed(kPinDown)) chooseTab(1);
-        if (pressed(kPinUp)) chooseTab(-1);
-        if (pressed(kPinConf)) chooseTab(0);
+        if (const int step = takeSteps(); step != 0) chooseTab(step);
+        if (takePress()) chooseTab(0);
         delay(20);
     }
     if (!showTab(currentTab, -1, String())) readAndSleep();
-    sleepFor(nextReadSeconds());
+    sleepFor(secondsToDue(nextReadSeconds(), nowUnix(), tabReadAt[currentTab]));
 }
 
 [[noreturn]] void saveAndSleep() {
@@ -902,11 +1014,12 @@ void setup() {
         startPortal();
         return;
     }
+    watchButtons();  // from here on a press that comes while the panel is busy is counted, not lost
     if (asleep && buttons) {
         // the panel was put to sleep: any button only wakes it, with the tab it had
         asleep = false;
-        showTab(currentTab, -1, String());
-        readAndSleep();
+        loadingShown = false;
+        readAndSleep(true);
     }
     if (buttons & (1ULL << kPinExit)) {
         if (held(kPinExit)) sleepUntilButton();
@@ -919,7 +1032,7 @@ void setup() {
     if (buttons & (1ULL << kPinDown)) chooseTab(1);
     if (buttons & (1ULL << kPinUp)) chooseTab(-1);
     if (buttons & (1ULL << kPinConf)) chooseTab(0);
-    readAndSleep();  // the timer, EXIT, a short MENU, power-on
+    readAndSleep((buttons & (1ULL << kPinMenu)) != 0);  // the timer, EXIT, a short MENU, power-on
 }
 
 void loop() {
