@@ -496,9 +496,10 @@ struct Reply {
     String etag;
 };
 
-Reply fetchFrame() {
+/// Reads the picture; <sleep>: the person's sleep picture for a panel being switched off (not kept, no monitoring interval).
+Reply fetchFrame(bool sleep = false) {
     Reply reply;
-    const std::string url = frameUrl(settings.url.c_str());
+    const std::string url = sleep ? sleepUrl(settings.url.c_str()) : frameUrl(settings.url.c_str());
     WiFiClientSecure secure;
     WiFiClient plain;
     HTTPClient http;
@@ -515,11 +516,11 @@ Reply fetchFrame() {
     }
     if (!begun) return reply;
     http.addHeader("Authorization", "Bearer " + settings.token);
-    if (lastEtag[0] && haveFrame) http.addHeader("If-None-Match", lastEtag);
+    if (!sleep && lastEtag[0] && haveFrame) http.addHeader("If-None-Match", lastEtag);
     const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Refresh"};
     http.collectHeaders(keys, 4);
     reply.code = http.GET();
-    if (reply.code == 200 || reply.code == 304)
+    if (!sleep && (reply.code == 200 || reply.code == 304))
         refreshS = http.hasHeader("X-Frame-Refresh") ? static_cast<uint32_t>(http.header("X-Frame-Refresh").toInt()) : 0;
     size_t bytes = 0;
     if (reply.code == 200) {
@@ -632,7 +633,20 @@ void setup() {
 
     const uint64_t buttons = cause == ESP_SLEEP_WAKEUP_EXT1 ? esp_sleep_get_ext1_wakeup_status() : 0;
     if (buttons & (1ULL << kPinPwr)) {
-        showMessage("Выключено", {"Включение — кнопкой PWR"});
+        // the person's sleep picture when the hive has one, else the panel's own words
+        bool drawn = false;
+        if (joinWifi()) {
+            const Reply reply = fetchFrame(true);
+            Serial.printf("[monitor] sleep frame %d\n", reply.code);
+            if (reply.answer == Answer::Draw) {
+                memcpy(lastFrame, incoming, kFrameBytes);
+                haveFrame = false;  // not the picture to keep: the next wake reads the frame anew
+                lastEtag[0] = '\0';
+                showFrame(String());
+                drawn = true;
+            }
+        }
+        if (!drawn) showMessage("Выключено", {"Включение — кнопкой PWR"});
         display.hibernate();
         digitalWrite(kPinPowerHold, LOW);  // on battery the board switches off here
         sleepFor(0);                        // on USB it keeps power: sleep until a button

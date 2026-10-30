@@ -200,19 +200,20 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
 
     /// <summary>
     /// The picture of a frame, turned and packed. Asleep (?sleep=1): the person's sleep picture, else the tab the panel was showing with
-    /// "спит" in place of the time it was drawn. A tab holds the clock and the weather besides the items: its ETag is the picture itself;
-    /// the sleeping picture has its own. Without a picture the hive draws: null bits.
+    /// "спит" in place of the time it was drawn (a panel without tabs gets no picture then and writes its own words). A tab holds the
+    /// clock and the weather besides the items: its ETag is the picture itself; the sleeping picture has its own, never the awake
+    /// frame's. Without a picture the hive draws: null bits.
     /// </summary>
     private async Task<(byte[]? Bits, string ETag)> RenderAsync(Device device, DisplayMessage message, int tabs, int shown, bool sleep, string basisETag, CancellationToken ct)
     {
-        using var drawn = sleep && tabs > 0
-            ? feed.DrawSleep(device) ?? await feed.DrawTabAsync(device, message, shown, ct, asleep: true)
+        using var drawn = sleep
+            ? feed.DrawSleep(device) ?? (tabs > 0 ? await feed.DrawTabAsync(device, message, shown, ct, asleep: true) : null)
             : tabs > 0 ? await feed.DrawTabAsync(device, message, shown, ct) : await feed.DrawAsync(device, message, ct);
         if (drawn is null)
             return (null, "");
         using var turned = DisplayRender.Rotate(drawn, DisplayFeedService.RotationOf(device));
         var bits = DisplayRender.Pack(turned);
-        return (bits, tabs > 0 ? $"\"{(sleep ? "s" : "t" + shown)}" + Convert.ToHexStringLower(SHA256.HashData(bits))[..16] + "\"" : basisETag);
+        return (bits, sleep || tabs > 0 ? $"\"{(sleep ? "s" : "t" + shown)}" + Convert.ToHexStringLower(SHA256.HashData(bits))[..16] + "\"" : basisETag);
     }
 
     /// <summary>Draws the frame a monitored panel asked for last, ahead of its next read (<see cref="FrameCache"/>); a monitoring that is over forgets it.</summary>

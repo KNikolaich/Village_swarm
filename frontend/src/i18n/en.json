@@ -1356,7 +1356,7 @@
     "backgroundRemoved": "Background removed",
     "backgroundWrong": "The background was refused",
     "sleep": "Sleep picture",
-    "sleepHelp": "Shown when the panel is put to sleep with a long press of EXIT.\nAny size up to the screen ({w}x{h}); it is centred on white.\nPNG (best), JPEG, BMP or GIF, up to 1 MB. The panel is black and white: anything darker than half grey turns black.\nWithout a picture the panel keeps its screen and says \"спит\" in place of the update time.",
+    "sleepHelp": "Shown when the panel is put to sleep (a short press of EXIT; PWR on the small monitor).\nAny size up to the screen ({w}x{h}); it is centred on white.\nPNG (best), JPEG, BMP or GIF, up to 1 MB. The panel is black and white: anything darker than half grey turns black.\nWithout a picture a panel with tabs keeps its screen and says \"спит\" in place of the update time; the small monitor says \"Выключено\".",
     "sleepNone": "No picture: the panel shows its own screen saying \"спит\".",
     "sleepUpload": "Choose a picture",
     "sleepRemove": "Remove the picture",
