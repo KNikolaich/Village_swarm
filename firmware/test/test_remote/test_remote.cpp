@@ -50,6 +50,9 @@ static void test_tabs() {
     TEST_ASSERT_EQUAL_STRING("", tabUrl("h", 2).c_str());
     // the sleeping picture is asked for beside the tab it follows
     TEST_ASSERT_EQUAL_STRING("https://h/api/monitor/v1/frame.bin?tab=1&sleep=1", tabUrl("https://h/", 1, true).c_str());
+    // a panel without tabs asks for the sleeping picture alone
+    TEST_ASSERT_EQUAL_STRING("https://h/api/monitor/v1/frame.bin?sleep=1", sleepUrl("https://h/").c_str());
+    TEST_ASSERT_EQUAL_STRING("", sleepUrl("h").c_str());
     TEST_ASSERT_EQUAL(1, stepTab(0, 1, 4));
     TEST_ASSERT_EQUAL(3, stepTab(0, -1, 4));  // round at the ends
     TEST_ASSERT_EQUAL(0, stepTab(3, 1, 4));

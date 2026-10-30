@@ -86,6 +86,12 @@ inline std::string tabUrl(const std::string& base, int tab, bool sleep = false) 
     return url.empty() ? url : url + "?tab=" + std::to_string(tab) + (sleep ? "&sleep=1" : "");
 }
 
+/// The address of the picture for a panel without tabs that is switched off: the person's sleep picture, 404 without one.
+inline std::string sleepUrl(const std::string& base) {
+    const std::string url = frameUrl(base);
+    return url.empty() ? url : url + "?sleep=1";
+}
+
 /// The tab a step of the rocker leads to, going round at the ends.
 inline int stepTab(int tab, int step, int count) {
     if (count <= 0) return 0;

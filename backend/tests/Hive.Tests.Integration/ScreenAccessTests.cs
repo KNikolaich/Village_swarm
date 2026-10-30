@@ -205,6 +205,37 @@ public sealed class ScreenAccessTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task A_panel_without_tabs_switched_off_reads_the_sleep_picture_or_nothing()
+    {
+        var admin = await hive.LoginAsync();
+        using var added = await admin.PostAsJsonAsync("/api/devices/remote-monitors", new { deviceId = "monitor-zz1", name = "Сон", board = "waveshare-s3-epaper-154" });
+        Assert.Equal(HttpStatusCode.Created, added.StatusCode);
+        using var issued = await admin.PostAsync("/api/devices/monitor-zz1/screen-access", null);
+        var token = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+        var anonymous = hive.App.CreateClient();
+        HttpRequestMessage Sleep()
+        {
+            var request = Bitmap(token);
+            request.RequestUri = new Uri("/api/monitor/v1/frame.bin?sleep=1", UriKind.Relative);
+            return request;
+        }
+
+        // without a sleep picture the panel writes its own words
+        using (var none = await anonymous.SendAsync(Sleep()))
+            Assert.Equal(HttpStatusCode.NotFound, none.StatusCode);
+
+        using (var put = await admin.PutAsync("/api/devices/monitor-zz1/display/sleep", new ByteArrayContent(Png(60, 40))))
+            Assert.Equal(HttpStatusCode.NoContent, put.StatusCode);
+        using var asleep = await anonymous.SendAsync(Sleep());
+        Assert.Equal(HttpStatusCode.OK, asleep.StatusCode);
+        Assert.StartsWith("\"s", asleep.Headers.ETag!.Tag);
+        var body = await asleep.Content.ReadAsByteArrayAsync();
+        Assert.Equal(200 * 25, body.Length);
+        // the 60x40 black picture in the middle of a white screen
+        Assert.InRange(body.Count(b => b == 0xFF), 100, 400);
+    }
+
+    [Fact]
     public async Task A_background_of_the_right_size_a_turn_and_a_caption_change_the_frame_a_panel_reads()
     {
         var admin = await hive.LoginAsync();

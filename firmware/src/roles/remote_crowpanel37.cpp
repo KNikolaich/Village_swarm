@@ -10,7 +10,8 @@
 // hive monitors it (X-Frame-Refresh). Every picture is a partial refresh from the one on the screen, with a full one now
 // and then against ghosting.
 //
-// Buttons: rocker up/down = cursor, rocker press = choose, EXIT = read now (or leave the cursor), MENU short = read now,
+// Buttons: rocker up/down = cursor, rocker press = choose, EXIT short = sleep until a button (or leave the cursor), EXIT for
+// 2 s = the help screen, MENU short = read now,
 // MENU for 2 s = the settings point (Wi-Fi "VillageSwarm-xxxx", http://192.168.4.1).
 // Console (115200, lines): set ssid|pass|ssid2|pass2|url|token|interval|insecure <value>, show, go, save; as remote_epd154.cpp.
 //
@@ -132,7 +133,7 @@ RTC_DATA_ATTR bool loadingShown = false;           // the "загрузка..." 
 RTC_DATA_ATTR uint8_t apBssid[6] = {};  // the access point of the last connection: the next one skips the scan
 RTC_DATA_ATTR int apChannel = 0;
 RTC_DATA_ATTR int apSsid = -1;
-RTC_DATA_ATTR bool asleep = false;       // put to sleep by a long EXIT: the next button only wakes the panel
+RTC_DATA_ATTR bool asleep = false;       // put to sleep by a short EXIT: the next button only wakes the panel
 
 struct Settings {
     String ssid[2], pass[2], url, token;
@@ -913,7 +914,7 @@ Reply fetchTab(int tab, int batteryMv, bool sleep = false) {
     sleepFor(nextReadSeconds());
 }
 
-/// Woken by a button: held for 2 s = the long press (MENU: the settings point, EXIT: sleep).
+/// Woken by a button: held for 2 s = the long press (MENU: the settings point, EXIT: the help screen).
 bool held(gpio_num_t pin) {
     const uint32_t started = millis();
     while (millis() - started < 2000) {
@@ -925,8 +926,9 @@ bool held(gpio_num_t pin) {
 
 bool menuHeld() { return held(kPinMenu); }
 
-/// A long EXIT: the sleeping picture from the hive (the person's own, or the shown tab saying "спит"), then deep sleep until any button.
+/// A short EXIT: the "засыпаю..." mark at once (Wi-Fi and the hive take seconds), then the sleeping picture from the hive (the person's own, or the shown tab saying "спит"), then deep sleep until any button.
 [[noreturn]] void sleepUntilButton() {
+    showTab(currentTab, -1, String("засыпаю..."));  // the screen answers at once
     bool drawn = false;
     if (joinWifi()) {
         const Reply reply = fetchTab(currentTab, -1, true);
@@ -945,10 +947,10 @@ bool menuHeld() { return held(kPinMenu); }
     sleepFor(0);
 }
 
-/// A short EXIT: what the buttons do. EXIT again gives the screen back; a few quiet seconds do the same. True: MENU held, the settings point is up.
+/// EXIT held for 2 s: what the buttons do. EXIT again gives the screen back; a few quiet seconds do the same. True: MENU held, the settings point is up.
 bool showHelp() {
     showMessage("Кнопки", {"Вверх/вниз: вкладки", "Нажать: выбрать вкладку", "MENU: обновить сейчас", "MENU 2 с: настройки", "  http://192.168.4.1",
-                           "EXIT 2 с: сон до кнопки", "EXIT: назад"});
+                           "EXIT: сон до кнопки", "EXIT 2 с: эта справка", "здесь EXIT: назад"});
     waitRelease();
     const uint32_t started = millis();
     while (millis() - started < kHelpTimeoutMs) {
@@ -1022,7 +1024,7 @@ void setup() {
         readAndSleep(true);
     }
     if (buttons & (1ULL << kPinExit)) {
-        if (held(kPinExit)) sleepUntilButton();
+        if (!held(kPinExit)) sleepUntilButton();  // a short press puts the panel to sleep, held 2 s shows the help
         if (showHelp()) {
             portalMode = true;
             startPortal();
@@ -1032,7 +1034,7 @@ void setup() {
     if (buttons & (1ULL << kPinDown)) chooseTab(1);
     if (buttons & (1ULL << kPinUp)) chooseTab(-1);
     if (buttons & (1ULL << kPinConf)) chooseTab(0);
-    readAndSleep((buttons & (1ULL << kPinMenu)) != 0);  // the timer, EXIT, a short MENU, power-on
+    readAndSleep((buttons & (1ULL << kPinMenu)) != 0);  // the timer, a short MENU, power-on
 }
 
 void loop() {
