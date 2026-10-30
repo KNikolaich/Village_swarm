@@ -157,7 +157,10 @@ public sealed class OnvifClient : IDisposable
             throw new NvrAuthException(_logins.Explain(block), block: block);
         using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
         limit.CancelAfter(timeout ?? RequestTimeout);
-        var url = Uri.TryCreate(pathOrUrl, UriKind.Absolute, out var absolute) ? absolute : new Uri(Endpoint.BaseUri, pathOrUrl);
+        // On Linux "/onvif/..." parses as an absolute file:// URI: only http(s) counts as a full address.
+        var url = Uri.TryCreate(pathOrUrl, UriKind.Absolute, out var absolute) && absolute.Scheme is "http" or "https"
+            ? absolute
+            : new Uri(Endpoint.BaseUri, pathOrUrl);
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
             Content = new StringContent(Envelope(body, secure, action, url), Encoding.UTF8, "application/soap+xml"),
