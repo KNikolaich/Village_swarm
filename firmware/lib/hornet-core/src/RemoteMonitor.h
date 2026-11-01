@@ -11,9 +11,6 @@ namespace hornet::remote {
 constexpr int kDefaultIntervalMin = 10;
 constexpr int kMinIntervalMin = 5;
 constexpr int kMaxIntervalMin = 120;
-// Offline for this long: the old picture gets a "no link" banner, then again every kBannerEveryMin.
-constexpr uint32_t kBannerAfterMin = 30;
-constexpr uint32_t kBannerEveryMin = 60;
 
 /// Bytes of a frame.bin: one bit a pixel, rows padded to whole bytes.
 constexpr size_t frameBytes(int width, int height) {
@@ -48,11 +45,78 @@ inline int clampInterval(int minutes) {
     return minutes < kMinIntervalMin ? kMinIntervalMin : minutes > kMaxIntervalMin ? kMaxIntervalMin : minutes;
 }
 
-/// Whether the old picture should be redrawn with the "no link" banner now. bannerAtMin: offline minutes when it was
-/// last drawn, 0 = not yet.
-inline bool bannerDue(uint32_t offlineMin, uint32_t bannerAtMin) {
-    if (offlineMin < kBannerAfterMin) return false;
-    return bannerAtMin == 0 || offlineMin - bannerAtMin >= kBannerEveryMin;
+// ------------------------------------------------------------------ no link (docs/display.md, "Нет связи")
+
+/// Why a read failed, as the screen says it.
+enum class Offline : uint8_t {
+    None,
+    NoWifi,      // no network of the panel's answered
+    NoHive,      // Wi-Fi is up, the hive does not answer (timeout, TLS, 429, 5xx)
+    WrongFrame,  // the hive answered with a picture of another size (another board chosen on the monitor's page)
+};
+
+inline const char* causeText(Offline cause) {
+    switch (cause) {
+        case Offline::NoWifi: return "нет Wi-Fi";
+        case Offline::NoHive: return "Улей не отвечает";
+        case Offline::WrongFrame: return "не тот кадр";
+        default: return "";
+    }
+}
+
+/// Minutes to the next try after <failures> failed reads in a row (1 = the first): 5, 10, 20, then 30, and never longer than
+/// the panel's own interval. The first success starts it over.
+inline uint32_t retryMinutes(uint32_t failures, int intervalMin) {
+    const uint32_t step = failures <= 1 ? 5 : failures == 2 ? 10 : failures == 3 ? 20 : 30;
+    const uint32_t own = static_cast<uint32_t>(clampInterval(intervalMin));
+    return step < own ? step : own;
+}
+
+/// How old the picture on the screen is.
+struct Age {
+    uint32_t minutes;
+    bool exact;  // from the clock; else counted from the minutes slept offline (roughly)
+};
+
+/// From the clock when both times are known (unix seconds, 0 = not known), else the minutes counted offline.
+inline Age dataAge(uint32_t now, uint32_t lastOk, uint32_t offlineMin) {
+    if (now != 0 && lastOk != 0 && now >= lastOk) return {(now - lastOk) / 60, true};
+    return {offlineMin, false};
+}
+
+/// "40 мин", "3 ч", "2 дн"; "~" in front when the age is only counted.
+inline std::string ageText(Age age) {
+    const std::string about = age.exact ? "" : "~";
+    if (age.minutes < 60) return about + std::to_string(age.minutes) + " мин";
+    if (age.minutes < 48 * 60) return about + std::to_string(age.minutes / 60) + " ч";
+    return about + std::to_string(age.minutes / (24 * 60)) + " дн";
+}
+
+/// The banner over the old picture: "нет Wi-Fi, данные 40 мин назад"; <brief> for a narrow screen: "нет Wi-Fi, 40 мин".
+inline std::string offlineBanner(Offline cause, Age age, bool brief) {
+    return std::string(causeText(cause)) + (brief ? ", " : ", данные ") + ageText(age) + (brief ? "" : " назад");
+}
+
+/// The banner (or the full message) is redrawn at most this often while the cause stays the same: e-ink flashes on every refresh.
+constexpr uint32_t kBannerEveryMin = 30;
+
+/// Whether the screen should say it now: nothing said yet (<shown> None), another cause, or what it says is kBannerEveryMin behind.
+/// <shownAgeMin>: the age the screen shows.
+inline bool bannerDue(Offline cause, Offline shown, uint32_t ageMin, uint32_t shownAgeMin) {
+    if (cause == Offline::None) return false;
+    if (shown != cause) return true;
+    return ageMin >= shownAgeMin + kBannerEveryMin || ageMin < shownAgeMin;
+}
+
+/// A Li-ion cell's charge from its voltage, roughly (no load), 0..100; -1 when the voltage is not known.
+inline int batteryPercent(int mv) {
+    if (mv <= 0) return -1;
+    static const int kMv[] = {3300, 3600, 3700, 3800, 3900, 4000, 4100, 4200};
+    static const int kPct[] = {0, 10, 30, 55, 70, 80, 90, 100};
+    if (mv <= kMv[0]) return 0;
+    for (int i = 1; i < 8; i++)
+        if (mv <= kMv[i]) return kPct[i - 1] + (kPct[i] - kPct[i - 1]) * (mv - kMv[i - 1]) / (kMv[i] - kMv[i - 1]);
+    return 100;
 }
 
 enum class Answer {

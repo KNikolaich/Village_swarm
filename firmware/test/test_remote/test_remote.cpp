@@ -25,11 +25,54 @@ static void test_interval_stays_sane() {
     TEST_ASSERT_EQUAL(120, clampInterval(1000));
 }
 
-static void test_banner_after_half_an_hour_then_hourly() {
-    TEST_ASSERT_FALSE(bannerDue(20, 0));
-    TEST_ASSERT_TRUE(bannerDue(30, 0));
-    TEST_ASSERT_FALSE(bannerDue(40, 30));
-    TEST_ASSERT_TRUE(bannerDue(90, 30));
+static void test_offline_banner_at_once_then_on_change_or_every_half_hour() {
+    TEST_ASSERT_TRUE(bannerDue(Offline::NoWifi, Offline::None, 5, 0));     // the first failure says so at once
+    TEST_ASSERT_FALSE(bannerDue(Offline::NoWifi, Offline::NoWifi, 20, 5)); // the next tries do not flash the screen
+    TEST_ASSERT_TRUE(bannerDue(Offline::NoWifi, Offline::NoWifi, 35, 5));  // half an hour behind: the age is redrawn
+    TEST_ASSERT_TRUE(bannerDue(Offline::NoHive, Offline::NoWifi, 6, 5));   // another cause: at once
+    TEST_ASSERT_TRUE(bannerDue(Offline::NoWifi, Offline::NoWifi, 2, 40));  // the clock went back: say it again
+    TEST_ASSERT_FALSE(bannerDue(Offline::None, Offline::NoWifi, 50, 5));
+}
+
+static void test_retry_backs_off_to_half_an_hour() {
+    TEST_ASSERT_EQUAL_UINT32(5u, retryMinutes(1, 60));
+    TEST_ASSERT_EQUAL_UINT32(10u, retryMinutes(2, 60));
+    TEST_ASSERT_EQUAL_UINT32(20u, retryMinutes(3, 60));
+    TEST_ASSERT_EQUAL_UINT32(30u, retryMinutes(4, 60));
+    TEST_ASSERT_EQUAL_UINT32(30u, retryMinutes(500, 60));
+    TEST_ASSERT_EQUAL_UINT32(30u, retryMinutes(9, 120));
+    TEST_ASSERT_EQUAL_UINT32(10u, retryMinutes(3, 10));  // never longer than the panel's own interval
+    TEST_ASSERT_EQUAL_UINT32(5u, retryMinutes(4, 5));
+    TEST_ASSERT_EQUAL_UINT32(5u, retryMinutes(0, 10));
+}
+
+static void test_age_of_the_data() {
+    const Age exact = dataAge(10000u, 10000u - 40 * 60, 99);
+    TEST_ASSERT_TRUE(exact.exact);
+    TEST_ASSERT_EQUAL_UINT32(40u, exact.minutes);
+    const Age counted = dataAge(0u, 5000u, 25);  // no clock: the minutes slept offline
+    TEST_ASSERT_FALSE(counted.exact);
+    TEST_ASSERT_EQUAL_UINT32(25u, counted.minutes);
+    TEST_ASSERT_FALSE(dataAge(1000u, 0u, 7).exact);     // never read
+    TEST_ASSERT_FALSE(dataAge(1000u, 2000u, 7).exact);  // the clock went back
+    TEST_ASSERT_EQUAL_STRING("40 мин", ageText({40, true}).c_str());
+    TEST_ASSERT_EQUAL_STRING("~40 мин", ageText({40, false}).c_str());
+    TEST_ASSERT_EQUAL_STRING("3 ч", ageText({200, true}).c_str());
+    TEST_ASSERT_EQUAL_STRING("47 ч", ageText({47 * 60 + 59, true}).c_str());
+    TEST_ASSERT_EQUAL_STRING("2 дн", ageText({48 * 60, true}).c_str());
+    TEST_ASSERT_EQUAL_STRING("нет Wi-Fi, данные 40 мин назад", offlineBanner(Offline::NoWifi, {40, true}, false).c_str());
+    TEST_ASSERT_EQUAL_STRING("Улей не отвечает, ~3 ч", offlineBanner(Offline::NoHive, {180, false}, true).c_str());
+    TEST_ASSERT_EQUAL_STRING("не тот кадр", causeText(Offline::WrongFrame));
+    TEST_ASSERT_EQUAL_STRING("", causeText(Offline::None));
+}
+
+static void test_battery_percent() {
+    TEST_ASSERT_EQUAL(-1, batteryPercent(-1));
+    TEST_ASSERT_EQUAL(0, batteryPercent(3000));
+    TEST_ASSERT_EQUAL(100, batteryPercent(4300));
+    TEST_ASSERT_EQUAL(100, batteryPercent(4200));
+    TEST_ASSERT_EQUAL(55, batteryPercent(3800));
+    TEST_ASSERT_EQUAL(42, batteryPercent(3750));  // between 30 and 55
 }
 
 static void test_answers() {
@@ -127,7 +170,10 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_frame_url_from_what_people_paste);
     RUN_TEST(test_interval_stays_sane);
-    RUN_TEST(test_banner_after_half_an_hour_then_hourly);
+    RUN_TEST(test_offline_banner_at_once_then_on_change_or_every_half_hour);
+    RUN_TEST(test_retry_backs_off_to_half_an_hour);
+    RUN_TEST(test_age_of_the_data);
+    RUN_TEST(test_battery_percent);
     RUN_TEST(test_answers);
     RUN_TEST(test_tabs);
     RUN_TEST(test_tab_weights);
