@@ -136,4 +136,12 @@ public class DisplayTextTests
         Assert.NotNull(DisplayText.Validate([new DisplayItemDto(null, "temperature", null, OnText: "x")]));  // words of a state only on a state
         Assert.NotNull(DisplayText.Validate([new DisplayItemDto(null, "relay", null, State: true, OnText: new string('x', 13))]));
     }
+
+    [Theory]
+    [InlineData(-3.2, 0.0, null, "low")]
+    [InlineData(31.0, null, 30.0, "high")]
+    [InlineData(30.0, 0.0, 30.0, null)] // on the line is inside, as on the site
+    [InlineData(12.0, null, null, null)]
+    public void A_reading_outside_its_normal_range_is_marked_for_the_screen(double value, double? min, double? max, string? range) =>
+        Assert.Equal(range, DisplayText.RangeOf(value, min, max));
 }

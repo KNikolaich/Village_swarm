@@ -99,6 +99,13 @@ public static class DisplayText
     public const int MaxItems = 4;
     public const int MaxPlaced = 8;
     public const int MaxLabel = 16;
+
+    /// <summary>
+    /// Where a reading stands against its normal range (ValueRangeStore): "low" below, "high" above, null inside or with no
+    /// limit on that side. The same test as the site's rangeState (frontend lib/valueRange.ts).
+    /// </summary>
+    public static string? RangeOf(double value, double? min, double? max) =>
+        min is { } lo && value < lo ? "low" : max is { } hi && value > hi ? "high" : null;
     public const int MaxText = 24;
     public const int MinPx = 6;
     public const int MaxPx = 120;
@@ -503,6 +510,9 @@ public sealed class DisplayFeedService(
         var names = await db.Devices.AsNoTracking().Select(d => new { d.DeviceId, d.Name }).ToDictionaryAsync(d => d.DeviceId, d => d.Name, ct);
         var placed = DisplayText.Placed(items);
         var states = await StatesAsync(device, items, ct);
+        var ranges = items.Any(i => !string.IsNullOrEmpty(i.Metric))
+            ? (await new ValueRangeStore(db, time).ListAsync(ct)).ToDictionary(r => (r.DeviceId, r.Metric))
+            : [];
         var lines = new List<DisplayItem>();
         foreach (var item in items)
         {
@@ -515,6 +525,8 @@ public sealed class DisplayFeedService(
                 : caption ? item.Text!.Trim()
                 : isState ? StateText(item, states.GetValueOrDefault(item))
                 : value is null || now - value.Ts > DisplayText.Stale ? "--" : DisplayText.Format(item.Metric, value.Value);
+            var fresh = value is not null && now - value.Ts <= DisplayText.Stale;
+            var range = fresh && item.Metric is { } metric && ranges.TryGetValue((source, metric), out var r) ? DisplayText.RangeOf(value!.Value, r.Min, r.Max) : null;
             // Another device is named by its own name unless the person chose a label; the hornet's own readings need none.
             // A placed screen has its own place for names (a background, say): only a typed label goes there.
             var label = caption ? null : !string.IsNullOrWhiteSpace(item.Label) ? item.Label.Trim()
@@ -531,6 +543,7 @@ public sealed class DisplayFeedService(
                 Px = placed ? item.Px : null,
                 Bold = placed && item.Bold == true ? true : null,
                 Italic = placed && item.Italic == true ? true : null,
+                Range = range,
             });
         }
         return new DisplayMessage { Ts = now.ToUnixTimeMilliseconds(), Items = lines };
@@ -705,6 +718,9 @@ public sealed class DisplayFeedService(
         if (!DisplayText.Placed(items) || items.All(i => i.State != true || i.OnImage is null))
             return images;
         var states = await StatesAsync(device, items, ct);
+        var ranges = items.Any(i => !string.IsNullOrEmpty(i.Metric))
+            ? (await new ValueRangeStore(db, time).ListAsync(ct)).ToDictionary(r => (r.DeviceId, r.Metric))
+            : [];
         var ids = items.Where(i => i.OnImage is not null).SelectMany(i => new[] { i.OnImage!, i.OffImage! }).Distinct().ToList();
         var pngs = await db.DisplayImages.AsNoTracking().Where(i => i.DeviceId == device.DeviceId && ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id, i => i.Png, ct);
         for (var n = 0; n < items.Count; n++)

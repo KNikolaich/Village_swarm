@@ -199,6 +199,9 @@ public sealed class DeviceConfigTests(HiveFixture hive)
             new { items = Enumerable.Range(0, 5).Select(_ => new { metric = "temperature" }).ToArray() });
         Assert.Equal(HttpStatusCode.BadRequest, tooMany.StatusCode);
 
+        // -3.2 under a normal range from 0: the site paints it light blue, the screen is told "low"
+        using var range = await admin.PutAsJsonAsync("/api/ranges/meteo-disp-b/temperature", new { min = 0.0 });
+        Assert.Equal(HttpStatusCode.NoContent, range.StatusCode);
         using var saved = await admin.PutAsJsonAsync("/api/devices/meteo-disp-a/display",
             new { items = new object[] { new { device = "meteo-disp-b", metric = "temperature", label = "Улица" }, new { metric = "humidity" } } });
         Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
@@ -213,7 +216,9 @@ public sealed class DeviceConfigTests(HiveFixture hive)
         var message = Last();
         var items = message.GetProperty("items").EnumerateArray().ToList();
         Assert.Equal(("Улица", "-3.2°"), (items[0].GetProperty("label").GetString(), items[0].GetProperty("text").GetString()));
+        Assert.Equal("low", items[0].GetProperty("range").GetString());
         Assert.Equal("--", items[1].GetProperty("text").GetString());   // no humidity of its own yet: no number is better than a wrong one
+        Assert.False(items[1].TryGetProperty("range", out _));
         Assert.False(items[1].TryGetProperty("label", out _));
 
         var back = await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-disp-a/display");

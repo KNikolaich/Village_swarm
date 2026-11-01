@@ -275,6 +275,12 @@ public sealed record DisplayItem
 
     public bool? Bold { get; init; }
     public bool? Italic { get; init; }
+
+    /// <summary>
+    /// "low" or "high": the reading is below or above the normal range set for it (the site's light blue and pink).
+    /// Absent: inside it, no range, or not a reading. The 0.42" OLED draws it on a white plate with an arrow up or down.
+    /// </summary>
+    public string? Range { get; init; }
 }
 
 /// <summary>Role ble: the Bluetooth LE thermometer the hornet is a bridge for.</summary>

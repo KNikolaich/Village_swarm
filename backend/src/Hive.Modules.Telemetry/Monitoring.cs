@@ -52,8 +52,11 @@ public sealed class MonitoringService(HiveDbContext db, MqttGateway mqtt, TimePr
     public static readonly double[] Hours = [0.5, 1, 2, 3, 4, 6, 8, 12];
     public static readonly int[] Intervals = [5, 10, 15, 30];
 
-    /// <summary>Our firmware roles that read and send at tele_interval_s. Tasmota and Zigbee devices keep their own timing.</summary>
-    public static readonly string[] Types = ["meteo", "heat", "ble"];
+    /// <summary>
+    /// Our firmware roles that read and send at tele_interval_s (monitor: its own NTC). Tasmota and Zigbee devices keep
+    /// their own timing.
+    /// </summary>
+    public static readonly string[] Types = ["meteo", "heat", "ble", "monitor"];
 
     public static string? Validate(StartMonitoringRequest r)
     {
@@ -70,7 +73,7 @@ public sealed class MonitoringService(HiveDbContext db, MqttGateway mqtt, TimePr
 
     /// <summary>Why this device cannot be monitored, or null when it can.</summary>
     public static string? Unsupported(Device d) =>
-        d.Driver != Drivers.Hornet || !Types.Contains(d.TypeCode) ? "Мониторинг умеют только наши термометры (meteo, heat, ble)"
+        d.Driver != Drivers.Hornet || !Types.Contains(d.TypeCode) ? "Мониторинг умеют только наши термометры (meteo, heat, ble, monitor)"
         : d.Status == DeviceStatus.Disabled ? "Шершень удалён"
         : d.Config?.RootElement.TryGetProperty("sleep_s", out var s) == true && s.TryGetInt32(out var v) && v > 0 ? "Шершень спит между замерами: мониторинг не для батарейных"
         : null;

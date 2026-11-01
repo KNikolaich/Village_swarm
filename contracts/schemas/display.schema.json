@@ -24,7 +24,8 @@
           "font": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 40, "description": "Screens the hive draws (e-ink): the id of the font family (GET /api/display/fonts). Absent: the standard font. The panel only shows the picture; the small OLED ignores it" },
           "px": { "type": "integer", "minimum": 6, "maximum": 120, "description": "Screens the hive draws: the size of the font in pixels. Absent: derived from size. Ignored by the small OLED" },
           "bold": { "type": "boolean", "description": "Screens the hive draws: bold (a family without a bold face is emboldened)" },
-          "italic": { "type": "boolean", "description": "Screens the hive draws: italic (a family without an italic face is slanted)" }
+          "italic": { "type": "boolean", "description": "Screens the hive draws: italic (a family without an italic face is slanted)" },
+          "range": { "enum": ["low", "high"], "description": "The value is below (low) or above (high) the normal range set for this reading in the hive, the one the site paints light blue and pink. Absent: inside the range, no range set, or not a reading. The 0.42\" OLED draws it black on a white plate with an arrow up (high) or down (low)" }
         },
         "additionalProperties": false
       }
