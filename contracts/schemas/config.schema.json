@@ -229,6 +229,49 @@
           "exclusiveMinimum": 0,
           "description": "Divider ratio (R1+R2)/R2, e.g. 5.7 for 47k/10k: battery V = pin V x ratio"
         },
+        "ntc_pin": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 48,
+          "description": "Roles meteo and monitor: ADC pin with an NTC thermistor behind a divider, published as metric temperature_ntc (docs/ntc-thermistor.md). ADC1 only (ESP32-C3: GPIO0..GPIO4); ESP8266 always reads A0 = 17"
+        },
+        "ntc_side": {
+          "enum": [
+            "high",
+            "low"
+          ],
+          "description": "Where the NTC sits in the divider. high (default): 3V3 - NTC - pin - ntc_r_series - GND, good from -40 to about +50 C; low: 3V3 - ntc_r_series - pin - NTC - GND, good from about 0 to +120 C"
+        },
+        "ntc_r_series": {
+          "type": "number",
+          "minimum": 100,
+          "maximum": 1000000,
+          "description": "Ohm, the fixed resistor of the divider (default 10000); a measured value makes the reading more exact"
+        },
+        "ntc_r_nominal": {
+          "type": "number",
+          "minimum": 100,
+          "maximum": 1000000,
+          "description": "Ohm, the NTC at 25 C (default 10000)"
+        },
+        "ntc_beta": {
+          "type": "number",
+          "minimum": 1000,
+          "maximum": 10000,
+          "description": "K, the NTC's B coefficient (default 3950)"
+        },
+        "ntc_vcc": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 5.5,
+          "description": "V, the supply of the divider (default 3.3)"
+        },
+        "ntc_offset": {
+          "type": "number",
+          "minimum": -20,
+          "maximum": 20,
+          "description": "C added to the result: calibration against a reference thermometer (default 0)"
+        },
         "thermometer": {
           "enum": [
             "ds18b20",

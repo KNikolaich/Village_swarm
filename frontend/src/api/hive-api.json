@@ -7399,6 +7399,52 @@
           }
         }
       },
+      "NtcSettings": {
+        "type": "object",
+        "properties": {
+          "side": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rSeries": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "rNominal": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "beta": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "vcc": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "offset": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          }
+        }
+      },
       "NvrDto": {
         "required": [
           "id",
@@ -8007,6 +8053,23 @@
               "null",
               "string"
             ]
+          },
+          "ntcPin": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "ntc": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NtcSettings"
+              }
+            ]
           }
         }
       },
@@ -8046,6 +8109,16 @@
           "thermometerByHand": {
             "type": "boolean",
             "default": false
+          },
+          "ntc": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NtcSettings"
+              }
+            ]
           }
         }
       },

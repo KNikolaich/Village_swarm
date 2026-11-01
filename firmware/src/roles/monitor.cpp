@@ -1,7 +1,9 @@
 // Role monitor: a screen that shows what the hive sends it (docs/display.md). It measures nothing of its own: the hive
 // gathers the readings chosen in config display.items (any device of the hive) and publishes the ready texts to
 // vs/v1/hive/display/{id}; this role only draws them. With hw.vbat_pin set, a battery behind a voltage divider is
-// measured as battery_voltage (V).
+// measured as battery_voltage (V). With hw.ntc_pin set, an NTC thermistor behind a divider (GPIO0 = A0 on the 0.42"
+// board) is measured as temperature_ntc (C), smoothed (Ntc.h, docs/ntc-thermistor.md); the hive shows it like any
+// reading, on this screen too when display.items asks for it.
 //
 // Layout: without "size" on any item the role lays out up to four lines itself; with it every item is drawn where x, y
 // say, in the largest font not taller than size/10 of the screen height (DisplayLayout.h), its label in the smallest font
@@ -13,6 +15,7 @@
 #include <Battery.h>
 #include <DisplayLayout.h>
 #include <HornetCore.h>
+#include <Ntc.h>
 #include <U8g2lib.h>
 #include <Wire.h>
 
@@ -39,8 +42,10 @@ public:
     std::vector<const char*> caps() const override { return {"display.oled"}; }
 
     std::vector<const char*> metrics() const override {
-        if (battery_.enabled()) return {"battery_voltage"};
-        return {};
+        std::vector<const char*> m;
+        if (battery_.enabled()) m.push_back("battery_voltage");
+        if (ntc_.enabled()) m.push_back("temperature_ntc");
+        return m;
     }
 
     void setup(Core&) override { initScreen(); }
@@ -49,7 +54,9 @@ public:
         teleIntervalMs_ = (config["tele_interval_s"] | 60U) * 1000UL;
         JsonObjectConst hw = config["hw"];
         const bool hadBattery = battery_.enabled();
+        const bool hadNtc = ntc_.enabled();
         battery_.configure(hw);
+        if (ntc_.configure(hw)) ntcSent_ = false;  // new settings: the next good reading goes out at once
         const int sda = hw["sda_pin"] | HW_SDA_PIN;
         const int scl = hw["scl_pin"] | HW_SCL_PIN;
         if (sda != sdaPin_ || scl != sclPin_) {
@@ -57,7 +64,7 @@ public:
             sclPin_ = scl;
             initScreen();
         }
-        if (battery_.enabled() != hadBattery) core.refreshInfo();  // metrics follow the battery
+        if (battery_.enabled() != hadBattery || ntc_.enabled() != hadNtc) core.refreshInfo();  // metrics follow the battery and the NTC
     }
 
     void loop(Core& core) override {
@@ -66,6 +73,19 @@ public:
             sent_ = true;
             lastBatteryMs_ = now;
             core.publishTele("battery_voltage", battery_.read(), "V");
+        }
+        ntc_.poll(now);
+        if (ntc_.enabled() && core.online() && (!ntcSent_ || now - lastNtcMs_ >= teleIntervalMs_)) {
+            const float t = ntc_.value();
+            if (!isnan(t)) {
+                ntcSent_ = true;
+                lastNtcMs_ = now;
+                core.publishTele("temperature_ntc", t, "C");
+                ntcWarned_ = false;
+            } else if (ntc_.failing() && !ntcWarned_) {
+                ntcWarned_ = true;
+                core.log(LogLevel::Warn, "NTC read failed: open or shorted divider");
+            }
         }
         // Redraw on new texts and when the online dot changes; nothing else moves on the screen.
         const bool online = core.online();
@@ -194,6 +214,10 @@ private:
     uint32_t teleIntervalMs_ = 60000;
     uint32_t lastBatteryMs_ = 0;
     bool sent_ = false;
+    NtcSensor ntc_;
+    uint32_t lastNtcMs_ = 0;
+    bool ntcSent_ = false;
+    bool ntcWarned_ = false;
     // SSD1306 72x40 on the ESP32-C3 0.42" board, hardware I2C.
     U8G2_SSD1306_72X40_ER_F_HW_I2C oled_{U8G2_R0, U8X8_PIN_NONE};
 };

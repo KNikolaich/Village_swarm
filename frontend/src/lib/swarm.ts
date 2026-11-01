@@ -86,7 +86,7 @@ export function splitChildren(devices: readonly DeviceDto[]): { top: DeviceDto[]
 }
 
 /** Readings shown in a swarm row, in this order; anything else the hornet reports follows by name. */
-const readingOrder = ['temperature', 'temperature_2', 'humidity', 'pressure', 'battery_voltage', 'cpu_temperature', 'disk_used_pct']
+const readingOrder = ['temperature', 'temperature_2', 'temperature_ntc', 'humidity', 'pressure', 'battery_voltage', 'cpu_temperature', 'disk_used_pct']
 
 /** The hornet's main readings (what it is used for, no diagnostics: signal and memory stay on its own page). */
 export function mainReadings(d: DeviceDto, latest: readonly LatestValueDto[]): LatestValueDto[] {

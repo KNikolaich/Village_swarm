@@ -158,18 +158,19 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
     /// Pins to override, keyed as in the config "hw" section (onewire_pin, sda_pin, …). Null keeps the board default.
     /// VbatRatio is the battery divider ratio (R1+R2)/R2 that turns the ADC voltage into the battery voltage.
     /// Thermometer is the sensor the feature "thermometer" reads (ds18b20, dht11, dht22); null keeps the board's.
+    /// NtcPin is the ADC pin of an NTC thermistor, Ntc its divider and calibration (null fields: the firmware defaults).
     /// </summary>
     public sealed record PinsRequest(int? OnewirePin = null, int? SdaPin = null, int? SclPin = null, int? RelayPin = null, int? ButtonPin = null, int? VbatPin = null, double? VbatRatio = null,
-        int? DhtPin = null, string? Thermometer = null);
+        int? DhtPin = null, string? Thermometer = null, int? NtcPin = null, BoardPins.NtcSettings? Ntc = null);
 
     /// <summary>Thermometer: the sensor the hornet reads as its thermometer, null for a role without one; ThermometerByHand: set in the config.</summary>
     public sealed record PinsResult(ConfigUpdateStatus Status, string? Error, IReadOnlyList<BoardPins.PinRow> Rows, IReadOnlyList<string> Conflicts, double? VbatRatio = null,
-        string? Thermometer = null, bool ThermometerByHand = false);
+        string? Thermometer = null, bool ThermometerByHand = false, BoardPins.NtcSettings? Ntc = null);
 
     private static PinsResult Pins(Device device, JsonElement? hw, IReadOnlyList<BoardPins.PinRow> rows, IReadOnlyList<string> conflicts, string? error = null) =>
         new(error is null ? ConfigUpdateStatus.Updated : ConfigUpdateStatus.BadRequest, error, rows, conflicts, BoardPins.VbatRatio(hw),
             DeviceFeatures.SupportedBy(device.TypeCode)?.Contains(DeviceFeatures.Thermometer) == true ? BoardPins.ThermometerSensor(device.Hw, hw) : null,
-            BoardPins.ThermometerByHand(hw) is not null);
+            BoardPins.ThermometerByHand(hw) is not null, BoardPins.Ntc(hw));
 
     /// <summary>
     /// Sets pins by hand (where a sensor is wired is not always the default). Rejected when a pin is out of range or
@@ -180,13 +181,15 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
         if (device is null)
             return new PinsResult(ConfigUpdateStatus.NotFound, null, [], []);
-        foreach (var pin in new[] { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin, r.DhtPin })
+        foreach (var pin in new[] { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin, r.DhtPin, r.NtcPin })
             if (pin is { } p && !BoardPins.ValidPin(p))
                 return new PinsResult(ConfigUpdateStatus.BadRequest, "pin: от 0 до 39", [], []);
         if (r.VbatRatio is { } ratio && !BoardPins.ValidVbatRatio(ratio))
             return new PinsResult(ConfigUpdateStatus.BadRequest, "Коэффициент делителя: больше 0 и не больше 100", [], []);
         if (r.Thermometer is { } sensor && !DeviceFeatures.ThermometerSensors.Contains(sensor))
             return new PinsResult(ConfigUpdateStatus.BadRequest, "Датчик термометра: ds18b20, dht11 или dht22", [], []);
+        if (r.Ntc is { } ntcSettings && BoardPins.ValidateNtc(ntcSettings) is { } ntcError)
+            return new PinsResult(ConfigUpdateStatus.BadRequest, ntcError, [], []);
 
         var config = device.Config is { } current
             ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
@@ -204,6 +207,20 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         Set("button_pin", r.ButtonPin);
         Set("vbat_pin", r.VbatPin);
         Set("dht_pin", r.DhtPin);
+        Set("ntc_pin", r.NtcPin);
+        void SetNum(string key, double? value)
+        {
+            if (value is { } v) hw[key] = v;
+            else hw.Remove(key);
+        }
+        var ntc = r.Ntc ?? new BoardPins.NtcSettings();
+        if (ntc.Side is { } side) hw["ntc_side"] = side;
+        else hw.Remove("ntc_side");
+        SetNum("ntc_r_series", ntc.RSeries);
+        SetNum("ntc_r_nominal", ntc.RNominal);
+        SetNum("ntc_beta", ntc.Beta);
+        SetNum("ntc_vcc", ntc.Vcc);
+        SetNum("ntc_offset", ntc.Offset);
         if (r.Thermometer is { } t) hw["thermometer"] = t;
         else hw.Remove("thermometer");
         if (r.VbatRatio is { } vr) hw["vbat_ratio"] = vr;
@@ -219,7 +236,7 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         device.ConfigRev++;
         config["rev"] = device.ConfigRev;
         device.Config = JsonDocument.Parse(config.ToJsonString());
-        Audit.Record(db, time.GetUtcNow(), by, "device_pins", deviceId, new { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin, r.VbatRatio, r.DhtPin, r.Thermometer });
+        Audit.Record(db, time.GetUtcNow(), by, "device_pins", deviceId, new { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin, r.VbatRatio, r.DhtPin, r.Thermometer, r.NtcPin, r.Ntc });
         await db.SaveChangesAsync(ct);
         if (mqtt.IsConnected)
             await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);

@@ -81,6 +81,38 @@ public sealed class PinsTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task Thermistor_pin_and_calibration_go_to_the_config()
+    {
+        await RegisterAsync("meteo-pins5");
+        var admin = await hive.LoginAsync();
+
+        using var badBeta = await admin.PutAsJsonAsync("/api/devices/meteo-pins5/pins", new { ntcPin = 0, ntc = new { beta = 20.0 } });
+        Assert.Equal(HttpStatusCode.BadRequest, badBeta.StatusCode);
+        using var badSide = await admin.PutAsJsonAsync("/api/devices/meteo-pins5/pins", new { ntcPin = 0, ntc = new { side = "middle" } });
+        Assert.Equal(HttpStatusCode.BadRequest, badSide.StatusCode);
+
+        using var ok = await admin.PutAsJsonAsync("/api/devices/meteo-pins5/pins",
+            new { ntcPin = 0, ntc = new { side = "low", rSeries = 9960.0, rNominal = 10200.0, beta = 3435.0, offset = -0.4 } });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        var body = await ok.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Contains(body.GetProperty("pins").EnumerateArray(), p => p.GetProperty("function").GetString() == "ntc" && p.GetProperty("pin").GetInt32() == 0);
+        Assert.Equal(-0.4, body.GetProperty("ntc").GetProperty("offset").GetDouble());
+
+        var device = await hive.QueryAsync(db => db.Devices.SingleAsync(d => d.DeviceId == "meteo-pins5"));
+        var hw = device.Config!.RootElement.GetProperty("hw");
+        Assert.Equal((0, "low", 9960.0, 10200.0, 3435.0, -0.4),
+            (hw.GetProperty("ntc_pin").GetInt32(), hw.GetProperty("ntc_side").GetString(), hw.GetProperty("ntc_r_series").GetDouble(),
+             hw.GetProperty("ntc_r_nominal").GetDouble(), hw.GetProperty("ntc_beta").GetDouble(), hw.GetProperty("ntc_offset").GetDouble()));
+        Assert.False(hw.TryGetProperty("ntc_vcc", out _));  // not given: the firmware default 3.3 V
+
+        // Without the thermistor nothing of it stays in the config.
+        using var reset = await admin.PutAsJsonAsync("/api/devices/meteo-pins5/pins", new { });
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+        device = await hive.QueryAsync(db => db.Devices.SingleAsync(d => d.DeviceId == "meteo-pins5"));
+        Assert.False(device.Config!.RootElement.TryGetProperty("hw", out _));
+    }
+
+    [Fact]
     public async Task The_thermometer_can_be_a_dht_on_its_own_pin()
     {
         await RegisterAsync("meteo-pins4");

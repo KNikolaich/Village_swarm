@@ -495,7 +495,8 @@
     "disk_used_pct": "Disk used",
     "battery_voltage": "Battery voltage",
     "pressure": "Pressure",
-    "temperature_2": "Temperature 2"
+    "temperature_2": "Temperature 2",
+    "temperature_ntc": "NTC temperature"
   },
   "settings": {
     "title": "Settings",
@@ -771,7 +772,11 @@
       "ratio": "Voltage divider ratio: (R1 + R2) / R2, R1 being the upper leg (to +), R2 the lower one (to ground). Voltage = pin reading × ratio. Empty = 1.\nExample: up to 15 V with R1 = 47 kΩ, R2 = 10 kΩ, ratio 5.7.\n+12V → R1 47k → A0 → R2 10k → ground.\nKeep the pin at or below 3.2 V (NodeMCU, D1 mini) or 3.3 V (ESP32).\nFine tuning: new ratio = current × (multimeter / hive reading).",
       "dht": "Data pin of a DHT11/DHT22 (roles meteo and heat, when the thermometer is a DHT). GPIO number.",
       "dhtEsp8266": "Usually GPIO2 on the ESP-01. On NodeMCU and D1 mini, D5 = GPIO14 or D7 = GPIO13 will do.",
-      "thermometer": "What the thermometer is: DS18B20s (one or more on the 1-Wire bus) or one DHT11/DHT22, which also gives humidity. DHT11 and DHT22 are read differently: pick the wrong one and the log says \"DHT read failed\". \"The board's\" is a DHT11 on the ESP-01S DHT11 module and a DS18B20 elsewhere."
+      "thermometer": "What the thermometer is: DS18B20s (one or more on the 1-Wire bus) or one DHT11/DHT22, which also gives humidity. DHT11 and DHT22 are read differently: pick the wrong one and the log says \"DHT read failed\". \"The board's\" is a DHT11 on the ESP-01S DHT11 module and a DS18B20 elsewhere.",
+      "ntc": "NTC thermistor behind a divider (roles meteo and monitor), reported as \"NTC temperature\" and shown on any monitor and dashboard. GPIO with an ADC; an empty field turns it off.",
+      "ntcEsp32c3": "On the ESP32-C3 only GPIO0–GPIO4 (ADC1): GPIO0 = A0 is the best. GPIO5 is ADC2, which does not work with Wi-Fi on; GPIO2 is a boot pin, leave it alone. GPIO3 on the SuperMini is the 1-Wire bus.",
+      "ntcEsp8266": "The ESP8266 has one analog input, A0: type 17. The battery voltage needs it too, so not both.",
+      "ntcSettings": "Wiring (recommended \"to 3.3 V\"):\n3V3 → NTC 10k → A0 → 10k resistor → GND.\nThe warmer, the higher the voltage on A0. Good from −40 to +50 °C: outdoors, rooms, cellar.\n\"to GND\" (the other way): 3V3 → 10k → A0 → NTC → GND. Good from 0 to +120 °C: boiler, sauna, tank.\n\nR series is the exact resistance of the fixed resistor (measure it). R NTC at 25 °C and B come from the thermistor datasheet (usually 10000 and 3950, sometimes 3435).\nOffset is added to the result. Easiest: put a reference thermometer next to it, wait 10 minutes, type its reading and press \"Fit\".\nReadings are smoothed: the median of 9 reads every 2 s and a moving average (about 20 s for a step)."
     },
     "rename": "Rename",
     "renamed": "Name saved",
@@ -878,7 +883,26 @@
     "purge": "Delete for good",
     "purgeHint": "The board never came online and has no history: remove it entirely so its id is free",
     "purgeConfirm": "Delete \"{name}\" for good? The board was never online, so nothing is lost, and its id becomes free again.",
-    "purged": "Deleted for good"
+    "purged": "Deleted for good",
+    "ntc": {
+      "title": "NTC thermistor",
+      "side": "Divider wiring",
+      "sideDefault": "Firmware default: NTC to 3.3 V",
+      "side_high": "NTC to 3.3 V, 10k to GND",
+      "side_low": "10k to 3.3 V, NTC to GND",
+      "rSeries": "R series, Ω",
+      "rNominal": "R NTC at 25 °C, Ω",
+      "beta": "B, K",
+      "vcc": "Supply, V",
+      "offset": "Offset, °C",
+      "reference": "Reference, °C",
+      "fit": "Fit",
+      "fitNow": "The hive sees {value} now ({ago}). What does a reference thermometer next to it show?",
+      "fitNoReading": "Fitting to a reference appears once the thermistor sends its first reading (save the pin and wait a minute).",
+      "fitBadReference": "Type the reference reading as a number, e.g. 22.8",
+      "fitDone": "Offset {offset} °C filled in, press \"Save pins\"",
+      "invalid": "{field}: number out of range"
+    }
   },
   "add": {
     "step1": "Hornet and code",

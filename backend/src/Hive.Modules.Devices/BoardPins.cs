@@ -26,11 +26,11 @@ public static class BoardPins
     /// <summary>Roles and the functions they use: a pin is checked for conflicts only among these.</summary>
     private static readonly Dictionary<string, string[]> RoleFunctions = new()
     {
-        ["meteo"] = ["onewire", "sda", "scl", "vbat", "dht"],
+        ["meteo"] = ["onewire", "sda", "scl", "vbat", "dht", "ntc"],
         ["relay"] = ["relay", "button", "vbat"],
         ["heat"] = ["onewire", "sda", "scl", "relay", "button", "vbat", "dht"],
         ["guard-cam"] = ["relay"],
-        ["monitor"] = ["sda", "scl", "vbat"],  // the screen on I2C
+        ["monitor"] = ["sda", "scl", "vbat", "ntc"],  // the screen on I2C
     };
 
     /// <summary>
@@ -88,6 +88,7 @@ public static class BoardPins
             new("button", "button_pin", Pick("button_pin", d.Button), Source(hw, "button_pin"), "local toggle"),
             new("vbat", "vbat_pin", Pick("vbat_pin", null), Source(hw, "vbat_pin"), "battery divider (ADC)"),
             new("dht", "dht_pin", Pick("dht_pin", d.Dht), Source(hw, "dht_pin"), "DHT11/22 data"),
+            new("ntc", "ntc_pin", Pick("ntc_pin", null), Source(hw, "ntc_pin"), "NTC thermistor divider (ADC)"),
         };
         return rows
             .Where(r => (r.Pin is not null || NeedPin.Contains(r.Function)) && Uses(type, features, r.Function))
@@ -110,13 +111,70 @@ public static class BoardPins
         var taken = board is not null && Reserved.TryGetValue(board, out var res)
             ? mine.Where(r => res.Pins.Contains(r.Pin!.Value)).Select(r => $"GPIO{r.Pin}: {r.Function} ({res.Owner})")
             : [];
-        return twice.Concat(taken).ToList();
+        // An ESP8266 has one ADC: the battery and the thermistor would both read A0, whatever pins the config gives them.
+        var adc = mine.Where(r => r.Function is "vbat" or "ntc").ToList();
+        var oneAdc = board is not null && Esp8266.Contains(board) && adc.Count == 2 && adc[0].Pin != adc[1].Pin
+            ? new[] { "A0: vbat, ntc (one ADC)" } : [];
+        var noAdc = mine.Where(r => r.Function == "ntc" && !AdcPin(board, r.Pin!.Value))
+            .Select(r => $"GPIO{r.Pin}: ntc (no ADC usable with Wi-Fi: {AdcPins(board)})");
+        return twice.Concat(taken).Concat(oneAdc).Concat(noAdc).ToList();
     }
+
+    /// <summary>ESP8266 boards: one ADC, A0 (GPIO17).</summary>
+    private static readonly string[] Esp8266 = ["wemos-d1-mini", "nodemcu-v3", "esp-01", "esp-01-dht11"];
+
+    /// <summary>
+    /// Whether the thermistor can be read on this pin with Wi-Fi on: ADC1 only (ADC2 belongs to the radio). ESP32-C3:
+    /// GPIO0..GPIO4; ESP32: GPIO32..GPIO39; ESP8266: A0 whatever the number; an unknown board: any.
+    /// </summary>
+    public static bool AdcPin(string? board, int pin) => board switch
+    {
+        not null when board.StartsWith("esp32c3", StringComparison.Ordinal) => pin is >= 0 and <= 4,
+        "esp32cam-aithinker" => pin is >= 32 and <= 39,
+        _ => ValidPin(pin),
+    };
+
+    private static string AdcPins(string? board) => board switch
+    {
+        not null when board.StartsWith("esp32c3", StringComparison.Ordinal) => "GPIO0..GPIO4",
+        "esp32cam-aithinker" => "GPIO32..GPIO39",
+        _ => "ADC1",
+    };
 
     public static bool ValidPin(int pin) => pin is >= 0 and <= 39;
 
     /// <summary>Divider ratio (R1+R2)/R2: 5.7 for 47k over 10k. Above 100 the ADC step would be volts, not millivolts.</summary>
     public static bool ValidVbatRatio(double ratio) => ratio > 0 && ratio <= 100 && double.IsFinite(ratio);
+
+    /// <summary>
+    /// The thermistor's divider and calibration, as in the config "hw" (ntc_side, ntc_r_series...). Null fields keep the
+    /// firmware defaults: high side, 10 kOhm resistor, 10 kOhm at 25 C, B 3950, 3.3 V, no offset (firmware Thermistor.h).
+    /// </summary>
+    public sealed record NtcSettings(string? Side = null, double? RSeries = null, double? RNominal = null, double? Beta = null, double? Vcc = null, double? Offset = null);
+
+    public static readonly string[] NtcSides = ["high", "low"];
+
+    /// <summary>Why the thermistor settings make no sense, or null; the limits are those of contracts/schemas/config.schema.json.</summary>
+    public static string? ValidateNtc(NtcSettings n)
+    {
+        static bool In(double? v, double min, double max) => v is not { } x || (double.IsFinite(x) && x >= min && x <= max);
+        if (n.Side is { } side && !NtcSides.Contains(side)) return "Схема NTC: high (термистор к 3,3 В) или low (термистор к GND)";
+        if (!In(n.RSeries, 100, 1_000_000)) return "Резистор плеча: от 100 Ом до 1 МОм";
+        if (!In(n.RNominal, 100, 1_000_000)) return "Сопротивление NTC при 25 °C: от 100 Ом до 1 МОм";
+        if (!In(n.Beta, 1000, 10000)) return "Коэффициент B: от 1000 до 10000";
+        if (!In(n.Vcc, 1, 5.5)) return "Напряжение питания делителя: от 1 до 5,5 В";
+        if (!In(n.Offset, -20, 20)) return "Поправка: от −20 до +20 °C";
+        return null;
+    }
+
+    /// <summary>The thermistor settings of the config "hw"; every field null when none is set.</summary>
+    public static NtcSettings Ntc(System.Text.Json.JsonElement? hw)
+    {
+        if (hw is not { ValueKind: System.Text.Json.JsonValueKind.Object } h) return new();
+        double? Num(string key) => h.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetDouble() : null;
+        var side = h.TryGetProperty("ntc_side", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.String && NtcSides.Contains(s.GetString()) ? s.GetString() : null;
+        return new(side, Num("ntc_r_series"), Num("ntc_r_nominal"), Num("ntc_beta"), Num("ntc_vcc"), Num("ntc_offset"));
+    }
 
     /// <summary>The config "hw".vbat_ratio, or null when the firmware default (1.0) applies.</summary>
     public static double? VbatRatio(System.Text.Json.JsonElement? hw) =>

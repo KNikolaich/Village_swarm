@@ -4,7 +4,8 @@
 //
 // Metric names: humidity and pressure (hPa) from the BME280; temperatures are temperature, temperature_2,
 // temperature_3... with the BME280 first and the DS18B20s after it in bus order. With hw.vbat_pin set, a
-// battery behind a voltage divider is measured as battery_voltage (V).
+// battery behind a voltage divider is measured as battery_voltage (V). With hw.ntc_pin set, an NTC thermistor behind a
+// divider is measured as temperature_ntc (C), smoothed (Ntc.h, docs/ntc-thermistor.md).
 //
 // Config "features" (thermometer, bme280) limits which sensors are looked for: on the ESP-01 1-Wire and I2C share
 // GPIO2, so a hornet with only a DS18B20 leaves I2C alone. Absent: both.
@@ -19,6 +20,7 @@
 #include <DallasTemperature.h>
 #include <Features.h>
 #include <HornetCore.h>
+#include <Ntc.h>
 #include <OneWire.h>
 #include <Wire.h>
 
@@ -46,6 +48,7 @@ public:
         if (dsCount_ > 0) c.push_back("sensor.ds18b20");
         if (bmeOk_) c.push_back("sensor.bme280");
         if (dhtOk_) c.push_back(sensor_ == TempSensor::Dht22 ? "sensor.dht22" : "sensor.dht11");
+        if (ntc_.enabled()) c.push_back("sensor.ntc");
         return c;
     }
 
@@ -58,6 +61,7 @@ public:
         }
         if (dhtOk_) m.push_back(dhtHumidity_.c_str());
         if (battery_.enabled()) m.push_back("battery_voltage");
+        if (ntc_.enabled()) m.push_back("temperature_ntc");
         return m;
     }
 
@@ -72,6 +76,9 @@ public:
         const int dhtPin = hw["dht_pin"] | HW_DHT_PIN;
         const TempSensor sensor = parseTempSensor(hw["thermometer"].as<const char*>(), kDefaultSensor);
         battery_.configure(hw);
+        const bool hadNtc = ntc_.enabled();
+        ntc_.configure(hw);
+        if (ntc_.enabled() != hadNtc) core.refreshInfo();  // caps and metrics follow the thermistor
         Features features{kThermometer | kBme280};
         if (config["features"].is<JsonArrayConst>()) {
             features.bits = 0;
@@ -94,6 +101,7 @@ public:
         // Battery mode: one reading per wake-up, sent once the hornet is online (nothing is buffered for tele).
         if (core.sleepy() && (!core.online() || sent_)) return;
         const uint32_t now = millis();
+        if (!core.sleepy()) ntc_.poll(now);  // the average keeps running between readings
         if (!converting_ && (!started_ || now - lastReadMs_ >= core.readingIntervalMs(teleIntervalMs_))) {
             started_ = true;  // first reading right after boot
             lastReadMs_ = now;
@@ -158,8 +166,10 @@ private:
 
     void publish(Core& core) {
         if (battery_.enabled()) report(core, "battery_voltage", battery_.read(), "V");
+        if (ntc_.enabled()) publishNtc(core);
         if (!bmeOk_ && dsCount_ == 0 && !dhtOk_) {
-            if (!warned_ && !battery_.enabled() && features_.bits != 0) core.log(LogLevel::Warn, "no sensor found (DS18B20, DHT or BME280)");
+            if (!warned_ && !battery_.enabled() && !ntc_.enabled() && features_.bits != 0)
+                core.log(LogLevel::Warn, "no sensor found (DS18B20, DHT or BME280)");
             warned_ = true;
             return;
         }
@@ -197,6 +207,18 @@ private:
         report(core, dhtHumidity_.c_str(), v.humidity, "%");
     }
 
+    // The smoothed reading; a battery hornet has no time to average, it takes one long burst per wake-up.
+    void publishNtc(Core& core) {
+        const float t = core.sleepy() ? ntc_.readNow() : ntc_.value();
+        if (isnan(t)) {
+            if (!ntcWarned_ && (core.sleepy() || ntc_.failing())) core.log(LogLevel::Warn, "NTC read failed: open or shorted divider");
+            ntcWarned_ = true;
+            return;
+        }
+        ntcWarned_ = false;
+        report(core, "temperature_ntc", t, "C");
+    }
+
     void report(Core& core, const char* metric, float value, const char* unit) {
         core.publishTele(metric, value, unit);
     }
@@ -220,6 +242,8 @@ private:
     bool warned_ = false;
     std::vector<String> names_;
     Battery battery_;
+    NtcSensor ntc_;
+    bool ntcWarned_ = false;
     uint32_t teleIntervalMs_ = 60000;
     uint32_t lastReadMs_ = 0;
     uint32_t conversionStartMs_ = 0;

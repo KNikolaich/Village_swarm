@@ -6692,6 +6692,19 @@ export interface components {
             snippet: string;
             path: components["schemas"]["NoteCrumbDto"][];
         };
+        NtcSettings: {
+            side?: null | string;
+            /** Format: double */
+            rSeries?: null | number;
+            /** Format: double */
+            rNominal?: null | number;
+            /** Format: double */
+            beta?: null | number;
+            /** Format: double */
+            vcc?: null | number;
+            /** Format: double */
+            offset?: null | number;
+        };
         NvrDto: {
             /** Format: int32 */
             id: number;
@@ -6839,6 +6852,9 @@ export interface components {
             /** Format: int32 */
             dhtPin?: null | number;
             thermometer?: null | string;
+            /** Format: int32 */
+            ntcPin?: null | number;
+            ntc?: null | components["schemas"]["NtcSettings"];
         };
         PinsView: {
             pins: components["schemas"]["PinRow"][];
@@ -6848,6 +6864,7 @@ export interface components {
             thermometer?: null | string;
             /** @default false */
             thermometerByHand: boolean;
+            ntc?: null | components["schemas"]["NtcSettings"];
         };
         ProbeChannelDto: {
             /** Format: int32 */
