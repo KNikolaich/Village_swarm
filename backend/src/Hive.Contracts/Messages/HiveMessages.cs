@@ -153,6 +153,27 @@ public sealed record HwConfig
 
     /// <summary>The sensor the feature "thermometer" reads: ds18b20, dht11 or dht22; null: the board's.</summary>
     public string? Thermometer { get; init; }
+
+    /// <summary>Roles meteo and monitor: ADC pin with an NTC thermistor behind a divider (metric temperature_ntc).</summary>
+    public int? NtcPin { get; init; }
+
+    /// <summary>high: 3V3 - NTC - pin - resistor - GND (default); low: 3V3 - resistor - pin - NTC - GND.</summary>
+    public string? NtcSide { get; init; }
+
+    /// <summary>Ohm, the fixed resistor of the divider; null: 10000.</summary>
+    public double? NtcRSeries { get; init; }
+
+    /// <summary>Ohm, the NTC at 25 C; null: 10000.</summary>
+    public double? NtcRNominal { get; init; }
+
+    /// <summary>K, the NTC's B coefficient; null: 3950.</summary>
+    public double? NtcBeta { get; init; }
+
+    /// <summary>V, the supply of the divider; null: 3.3.</summary>
+    public double? NtcVcc { get; init; }
+
+    /// <summary>C added to the result (calibration); null: 0.</summary>
+    public double? NtcOffset { get; init; }
 }
 
 /// <summary>Small local screen: up to two metrics shown large.</summary>

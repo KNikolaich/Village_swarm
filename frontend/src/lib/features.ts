@@ -10,7 +10,7 @@ export type Feature = (typeof allFeatures)[number]
 /** Sensors the thermometer can read (config hw.thermometer). */
 export const thermometerSensors = ['ds18b20', 'dht11', 'dht22'] as const
 
-/** Pin functions and the features that use them; vbat belongs to none and is always shown. */
+/** Pin functions and the features that use them; vbat and ntc belong to none and are always shown. */
 const pinOwners: Record<string, readonly Feature[]> = {
   onewire: ['thermometer'],
   dht: ['thermometer'],
@@ -42,6 +42,7 @@ export function normalizeFeatures(features: readonly string[]): Feature[] {
  */
 export function showsMetric(features: readonly string[] | null | undefined, metric: string, thermometer?: string | null): boolean {
   if (!features) return true
+  if (metric === 'temperature_ntc') return true  // the thermistor belongs to no feature: its pin turns it on
   if (metric.startsWith('temperature')) return features.includes('thermometer') || features.includes('bme280')
   if (metric.startsWith('humidity')) return features.includes('bme280') || (features.includes('thermometer') && !!thermometer?.startsWith('dht'))
   if (metric === 'pressure') return features.includes('bme280')

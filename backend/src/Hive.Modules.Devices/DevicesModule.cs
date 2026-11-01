@@ -27,7 +27,9 @@ public sealed record HeaterLimitsDto(double MinC, double MaxC, int MaxOnS);
 /// <summary>Device registry reads (spec 6.5). Editing, commands and provisioning come in later steps.</summary>
 /// <summary>Pins of a hornet: what each function uses, from the board default or the config, and conflicts. VbatRatio is the battery divider ratio set in the config (null: 1.0).</summary>
 /// Thermometer is the sensor its feature "thermometer" reads (ds18b20, dht11, dht22; null for a role without one), ThermometerByHand whether the config sets it.
-public sealed record PinsView(IReadOnlyList<BoardPins.PinRow> Pins, IReadOnlyList<string> Conflicts, double? VbatRatio, string? Thermometer = null, bool ThermometerByHand = false);
+/// Ntc: the thermistor's divider and calibration from the config (null fields: the firmware defaults).
+public sealed record PinsView(IReadOnlyList<BoardPins.PinRow> Pins, IReadOnlyList<string> Conflicts, double? VbatRatio, string? Thermometer = null, bool ThermometerByHand = false,
+    BoardPins.NtcSettings? Ntc = null);
 
 public sealed class DeviceQueries(HiveDbContext db)
 {
@@ -306,7 +308,7 @@ public static class DevicesModule
 
         devices.MapGet("/{deviceId}/pins", async Task<Results<Ok<PinsView>, NotFound>> (string deviceId, DeviceConfigService configs, CancellationToken ct) =>
             await configs.GetPinsAsync(deviceId, ct) is { Status: ConfigUpdateStatus.Updated } r
-                ? TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio, r.Thermometer, r.ThermometerByHand))
+                ? TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio, r.Thermometer, r.ThermometerByHand, r.Ntc))
                 : TypedResults.NotFound());
 
         devices.MapPut("/{deviceId}/pins", async Task<Results<Ok<PinsView>, NotFound, ValidationProblem>> (
@@ -317,7 +319,7 @@ public static class DevicesModule
                 {
                     ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
                     ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["pins"] = [r.Error ?? "bad pins"] }),
-                    _ => TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio, r.Thermometer, r.ThermometerByHand)),
+                    _ => TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio, r.Thermometer, r.ThermometerByHand, r.Ntc)),
                 };
             })
             .RequireAuthorization(HiveRoles.CanControl);

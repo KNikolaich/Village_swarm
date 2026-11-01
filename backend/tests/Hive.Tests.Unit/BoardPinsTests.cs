@@ -124,4 +124,51 @@ public class BoardPinsTests
         var rows = BoardPins.Rows("esp-01", "meteo", Hw("""{ "thermometer": "dht22", "dht_pin": 2 }"""), features);
         Assert.Contains(BoardPins.Conflicts("meteo", rows, "esp-01", features), c => c.StartsWith("GPIO2:"));
     }
+
+    [Theory]
+    [InlineData(0, true)]   // A0 on the SuperMini and the 0.42" OLED board
+    [InlineData(4, true)]
+    [InlineData(5, false)]  // ADC2: taken by Wi-Fi
+    [InlineData(10, false)] // no ADC at all
+    public void Thermistor_on_the_c3_needs_an_adc1_pin(int pin, bool clean)
+    {
+        var rows = BoardPins.Rows("esp32c3-oled-042", "monitor", Hw($$"""{ "ntc_pin": {{pin}} }"""));
+        Assert.Contains(rows, r => r.Function == "ntc" && r.Pin == pin && r.Source == "config");
+        var conflicts = BoardPins.Conflicts("monitor", rows, "esp32c3-oled-042");
+        Assert.Equal(clean, !conflicts.Any(c => c.Contains("ntc")));
+    }
+
+    [Fact]
+    public void Thermistor_on_the_1wire_pin_of_a_supermini_is_a_conflict()
+    {
+        var rows = BoardPins.Rows("esp32c3-mini", "meteo", Hw("""{ "ntc_pin": 3 }"""));
+        Assert.Contains(BoardPins.Conflicts("meteo", rows, "esp32c3-mini"), c => c.StartsWith("GPIO3") && c.Contains("onewire") && c.Contains("ntc"));
+    }
+
+    [Fact]
+    public void Esp8266_cannot_read_battery_and_thermistor_at_once()
+    {
+        var rows = BoardPins.Rows("wemos-d1-mini", "meteo", Hw("""{ "vbat_pin": 17, "ntc_pin": 16 }"""));
+        Assert.Contains(BoardPins.Conflicts("meteo", rows, "wemos-d1-mini"), c => c.StartsWith("A0"));
+    }
+
+    [Fact]
+    public void Thermistor_is_not_a_pin_of_a_relay()
+    {
+        var rows = BoardPins.Rows("esp32c3-mini", "relay", Hw("""{ "ntc_pin": 0 }"""));
+        Assert.DoesNotContain(rows, r => r.Function == "ntc");
+    }
+
+    [Fact]
+    public void Thermistor_settings_are_read_from_the_config_and_checked()
+    {
+        var ntc = BoardPins.Ntc(Hw("""{ "ntc_pin": 0, "ntc_side": "low", "ntc_r_series": 9960, "ntc_beta": 3435, "ntc_offset": -0.5 }"""));
+        Assert.Equal(new BoardPins.NtcSettings("low", 9960, null, 3435, null, -0.5), ntc);
+        Assert.Equal(new BoardPins.NtcSettings(), BoardPins.Ntc(null));
+        Assert.Null(BoardPins.ValidateNtc(ntc));
+        Assert.NotNull(BoardPins.ValidateNtc(new BoardPins.NtcSettings(Side: "sideways")));
+        Assert.NotNull(BoardPins.ValidateNtc(new BoardPins.NtcSettings(Beta: 50)));
+        Assert.NotNull(BoardPins.ValidateNtc(new BoardPins.NtcSettings(Offset: 30)));
+        Assert.NotNull(BoardPins.ValidateNtc(new BoardPins.NtcSettings(RSeries: double.NaN)));
+    }
 }

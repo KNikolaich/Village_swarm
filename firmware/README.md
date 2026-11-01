@@ -61,6 +61,9 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
   have the ADC). ESP8266 has one ADC, A0: set `vbat_pin` to 17 (any number turns the reading on, A0 is read).
   The NodeMCU / D1 mini A0 divider is in parallel with R2, so calibrate: new ratio = ratio × multimeter / reading.
   Published as `battery_voltage` (V) every `tele_interval_s`.
+- NTC thermistor (meteo and monitor): set `hw.ntc_pin` (ESP32-C3: GPIO0–4, ADC1 only; ESP8266: A0 = 17) and, if not
+  10k/10k/B3950/3.3 V, `hw.ntc_side`, `ntc_r_series`, `ntc_r_nominal`, `ntc_beta`, `ntc_vcc`, `ntc_offset`. Median of 9
+  reads every 2 s, moving average, published as `temperature_ntc` (°C). Wiring: docs/ntc-thermistor.md.
 - **monitor** (`monitor-c3oled`): a screen that measures nothing itself. It draws the texts the hive publishes to
   `vs/v1/hive/display/{id}` for the readings chosen on the device page, "Экран" (config `display.items`, up to four
   lines from any device; docs/display.md). A dot in the corner means it is online. A hornet on the old

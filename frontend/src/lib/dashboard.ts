@@ -88,8 +88,8 @@ export function toggled(d: DeviceDto, latest: readonly LatestValueDto[], key: st
   return [...shown].sort((a, b) => order.indexOf(a) - order.indexOf(b))
 }
 
-/** "t2" for the second probe of a hornet, "t1" for its first. */
-export const probeName = (metric: string) => `t${/^temperature_(\d+)$/.exec(metric)?.[1] ?? '1'}`
+/** "t2" for the second probe of a hornet, "t1" for its first, "NTC" for its thermistor. */
+export const probeName = (metric: string) => metric === 'temperature_ntc' ? 'NTC' : `t${/^temperature_(\d+)$/.exec(metric)?.[1] ?? '1'}`
 
 /** Whether the hornet reports several temperatures (a bridge with probes), so its tiles and lines say which. */
 const probes = (d: DeviceDto, latest: readonly LatestValueDto[]) =>
