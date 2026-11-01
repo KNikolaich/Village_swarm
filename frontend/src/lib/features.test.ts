@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { hasRelay, normalizeFeatures, showsMetric, usesPin } from './features'
+import { hasRelay, normalizeFeatures, ntcMetrics, showsMetric, thermometerSensorsFor, usesPin } from './features'
 
 describe('hornet features', () => {
   it('a thermometer-only hornet asks for no relay or I2C pins', () => {
@@ -33,5 +33,19 @@ describe('hornet features', () => {
     expect(showsMetric(['thermometer'], 'humidity', 'ds18b20')).toBe(false)
     expect(showsMetric([], 'temperature', 'dht11')).toBe(false)
     expect(showsMetric(null, 'pressure')).toBe(true)
+  })
+
+  it('offers the NTC as the thermometer only to the meteo firmware and hides the 1-Wire and DHT pins for it', () => {
+    expect(thermometerSensorsFor('meteo')).toContain('ntc')
+    expect(thermometerSensorsFor('heat')).not.toContain('ntc')
+    expect(usesPin(['thermometer'], 'onewire', 'ntc')).toBe(false)
+    expect(usesPin(['thermometer'], 'dht', 'ntc')).toBe(false)
+    expect(usesPin(['thermometer'], 'dht', 'dht22')).toBe(true)
+    expect(usesPin(['thermometer'], 'ntc', 'ntc')).toBe(true)
+  })
+
+  it('finds the NTC reading under the thermometer metric when the NTC is the thermometer', () => {
+    expect(ntcMetrics('ntc')).toEqual(['temperature_2', 'temperature'])
+    expect(ntcMetrics('ds18b20')).toEqual(['temperature_ntc'])
   })
 })

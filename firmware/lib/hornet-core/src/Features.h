@@ -37,15 +37,19 @@ struct Features {
     }
 };
 
-// The sensor the feature thermometer reads (config hw.thermometer): DS18B20s on 1-Wire, or one DHT on hw.dht_pin.
-enum class TempSensor : uint8_t { Ds18b20, Dht11, Dht22 };
+// The sensor the feature thermometer reads (config hw.thermometer): DS18B20s on 1-Wire, one DHT on hw.dht_pin, or an
+// NTC thermistor on hw.ntc_pin (role meteo only; Ntc.h).
+enum class TempSensor : uint8_t { Ds18b20, Dht11, Dht22, Ntc };
 
-// "ds18b20", "dht11", "dht22"; anything else (or nothing) keeps the build's default.
+inline bool isDht(TempSensor s) { return s == TempSensor::Dht11 || s == TempSensor::Dht22; }
+
+// "ds18b20", "dht11", "dht22", "ntc"; anything else (or nothing) keeps the build's default.
 inline TempSensor parseTempSensor(const char* name, TempSensor fallback) {
     if (!name) return fallback;
     if (std::strcmp(name, "ds18b20") == 0) return TempSensor::Ds18b20;
     if (std::strcmp(name, "dht11") == 0) return TempSensor::Dht11;
     if (std::strcmp(name, "dht22") == 0) return TempSensor::Dht22;
+    if (std::strcmp(name, "ntc") == 0) return TempSensor::Ntc;
     return fallback;
 }
 

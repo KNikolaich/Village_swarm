@@ -171,4 +171,36 @@ public class BoardPinsTests
         Assert.NotNull(BoardPins.ValidateNtc(new BoardPins.NtcSettings(Offset: 30)));
         Assert.NotNull(BoardPins.ValidateNtc(new BoardPins.NtcSettings(RSeries: double.NaN)));
     }
+
+    [Fact]
+    public void Ntc_thermometer_takes_a0_of_the_c3_and_hides_the_1wire_pin()
+    {
+        var rows = BoardPins.Rows("esp32c3-mini", "meteo", Hw("""{ "thermometer": "ntc" }"""), ["thermometer"]);
+        Assert.Contains(rows, r => r.Function == "ntc" && r.Pin == 0 && r.Source == "default");
+        Assert.DoesNotContain(rows, r => r.Function is "onewire" or "dht");
+        Assert.Empty(BoardPins.Conflicts("meteo", rows, "esp32c3-mini", ["thermometer"]));
+    }
+
+    [Fact]
+    public void Ntc_thermometer_keeps_a_pin_set_by_hand()
+    {
+        var rows = BoardPins.Rows("esp32c3-mini", "meteo", Hw("""{ "thermometer": "ntc", "ntc_pin": 2 }"""), ["thermometer"]);
+        Assert.Contains(rows, r => r.Function == "ntc" && r.Pin == 2 && r.Source == "config");
+    }
+
+    [Fact]
+    public void Ntc_thermometer_on_an_esp8266_reads_a0_and_leaves_no_room_for_the_battery()
+    {
+        var rows = BoardPins.Rows("wemos-d1-mini", "meteo", Hw("""{ "thermometer": "ntc", "vbat_pin": 16 }"""), ["thermometer"]);
+        Assert.Contains(rows, r => r.Function == "ntc" && r.Pin == 17);
+        Assert.Contains(BoardPins.Conflicts("meteo", rows, "wemos-d1-mini", ["thermometer"]), c => c.StartsWith("A0"));
+    }
+
+    [Fact]
+    public void Ntc_thermometer_is_off_without_the_thermometer_feature()
+    {
+        var rows = BoardPins.Rows("esp32c3-mini", "meteo", Hw("""{ "thermometer": "ntc" }"""), ["bme280"]);
+        Assert.DoesNotContain(rows, r => r.Function == "ntc");
+        Assert.False(BoardPins.NtcThermometer("heat", "wemos-d1-mini", Hw("""{ "thermometer": "ntc" }"""), ["thermometer"]));
+    }
 }

@@ -2,13 +2,15 @@ namespace Hive.Simulator.Roles;
 
 /// <summary>
 /// meteo: outdoor temperature as a sine wave with noise, humidity in antiphase. With config hw.ntc_pin an NTC thermistor
-/// indoors too (temperature_ntc): about 22 C, smoothed like the firmware's, moved by hw.ntc_offset.
+/// indoors too (temperature_ntc): about 22 C, smoothed like the firmware's, moved by hw.ntc_offset. With hw.thermometer
+/// "ntc" the NTC is the thermometer: temperature itself is moved by hw.ntc_offset and there is no temperature_ntc.
 /// </summary>
 public sealed class MeteoRole(TemperatureSpec temperature, int teleIntervalS) : HornetRole
 {
     private DateTimeOffset _lastTele = DateTimeOffset.MinValue;
     private int _teleIntervalS = teleIntervalS;
     private bool _ntc;
+    private bool _ntcThermometer;
     private double _ntcOffset;
 
     public override string Type => "meteo";
@@ -22,7 +24,8 @@ public sealed class MeteoRole(TemperatureSpec temperature, int teleIntervalS) : 
     public override void ApplyConfig(Hive.Contracts.Messages.DeviceConfig config, DateTimeOffset now)
     {
         _teleIntervalS = config.TeleIntervalS ?? _teleIntervalS;
-        _ntc = config.Hw?.NtcPin is not null;
+        _ntcThermometer = config.Hw?.Thermometer == "ntc";
+        _ntc = config.Hw?.NtcPin is not null && !_ntcThermometer;
         _ntcOffset = config.Hw?.NtcOffset ?? 0;
     }
 
@@ -33,7 +36,7 @@ public sealed class MeteoRole(TemperatureSpec temperature, int teleIntervalS) : 
         _lastTele = now;
 
         var noise = (Hornet.Random.NextDouble() - 0.5) * 2 * temperature.Noise;
-        var t = Temperature(temperature, now) + noise;
+        var t = Temperature(temperature, now) + noise + (_ntcThermometer ? _ntcOffset : 0);
         var phase = (t - temperature.Base) / Math.Max(temperature.Amplitude, 0.1);
         var humidity = Math.Clamp(75 - 15 * phase + noise * 10, 0, 100);
 

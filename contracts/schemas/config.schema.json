@@ -233,7 +233,7 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 48,
-          "description": "Roles meteo and monitor: ADC pin with an NTC thermistor behind a divider, published as metric temperature_ntc (docs/ntc-thermistor.md). ADC1 only (ESP32-C3: GPIO0..GPIO4); ESP8266 always reads A0 = 17"
+          "description": "Roles meteo and monitor: ADC pin with an NTC thermistor behind a divider, published as metric temperature_ntc, or as the thermometer's temperature when thermometer is ntc (docs/ntc-thermistor.md). ADC1 only (ESP32-C3: GPIO0..GPIO4); ESP8266 always reads A0 = 17"
         },
         "ntc_side": {
           "enum": [
@@ -276,9 +276,10 @@
           "enum": [
             "ds18b20",
             "dht11",
-            "dht22"
+            "dht22",
+            "ntc"
           ],
-          "description": "Which sensor the feature thermometer reads (roles meteo and heat). ds18b20: one or more on 1-Wire (onewire_pin); dht11 or dht22: one DHT on dht_pin, which also gives humidity. Absent: the board's (dht11 on the esp-01-dht11 module, ds18b20 elsewhere)"
+          "description": "Which sensor the feature thermometer reads (roles meteo and heat). ds18b20: one or more on 1-Wire (onewire_pin); dht11 or dht22: one DHT on dht_pin, which also gives humidity; ntc (role meteo only): an NTC thermistor on ntc_pin (default: GPIO0 on the ESP32-C3, A0 on the ESP8266) with the ntc_* settings, published as the thermometer's temperature instead of temperature_ntc. Absent: the board's (dht11 on the esp-01-dht11 module, ds18b20 elsewhere)"
         }
       },
       "additionalProperties": false

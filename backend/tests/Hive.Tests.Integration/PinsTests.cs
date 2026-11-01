@@ -12,9 +12,9 @@ namespace Hive.Tests.Integration;
 [Collection(HiveCollection.Name)]
 public sealed class PinsTests(HiveFixture hive)
 {
-    private async Task RegisterAsync(string id)
+    private async Task RegisterAsync(string id, string type = "meteo")
     {
-        var spec = new HornetSpec { Id = id, Type = "meteo" };
+        var spec = new HornetSpec { Id = id, Type = type };
         var hornet = new VirtualHornet(spec, HornetRole.Create(spec, "no-photos"));
         hornet.Start(DateTimeOffset.UtcNow.AddMinutes(-1));
         await using var link = new MqttHornetLink(new BrokerOptions { Host = hive.MqttHost, Port = hive.MqttPort });
@@ -110,6 +110,37 @@ public sealed class PinsTests(HiveFixture hive)
         Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
         device = await hive.QueryAsync(db => db.Devices.SingleAsync(d => d.DeviceId == "meteo-pins5"));
         Assert.False(device.Config!.RootElement.TryGetProperty("hw", out _));
+    }
+
+    [Fact]
+    public async Task Ntc_thermometer_reads_a0_and_keeps_its_calibration()
+    {
+        await RegisterAsync("meteo-pins-ntc");
+        var admin = await hive.LoginAsync();
+
+        // The pin is left to the board (GPIO0 = A0 on the C3); the settings go with it even so.
+        using var ok = await admin.PutAsJsonAsync("/api/devices/meteo-pins-ntc/pins",
+            new { thermometer = "ntc", ntc = new { side = "low", offset = 0.6 } });
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        var body = await ok.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("ntc", body.GetProperty("thermometer").GetString());
+        var pins = body.GetProperty("pins").EnumerateArray().ToList();
+        Assert.Contains(pins, p => p.GetProperty("function").GetString() == "ntc" && p.GetProperty("pin").GetInt32() == 0 && p.GetProperty("source").GetString() == "default");
+        Assert.DoesNotContain(pins, p => p.GetProperty("function").GetString() == "onewire");
+
+        var device = await hive.QueryAsync(db => db.Devices.SingleAsync(d => d.DeviceId == "meteo-pins-ntc"));
+        var hw = device.Config!.RootElement.GetProperty("hw");
+        Assert.Equal(("ntc", "low", 0.6), (hw.GetProperty("thermometer").GetString(), hw.GetProperty("ntc_side").GetString(), hw.GetProperty("ntc_offset").GetDouble()));
+        Assert.False(hw.TryGetProperty("ntc_pin", out _));
+    }
+
+    [Fact]
+    public async Task Heat_firmware_cannot_take_an_ntc_thermometer()
+    {
+        await RegisterAsync("heat-pins-ntc", "heat");
+        var admin = await hive.LoginAsync();
+        using var bad = await admin.PutAsJsonAsync("/api/devices/heat-pins-ntc/pins", new { thermometer = "ntc" });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
     }
 
     [Fact]

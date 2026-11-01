@@ -147,6 +147,9 @@ static void test_thermometer_sensor_from_config() {
     TEST_ASSERT_TRUE(hornet::parseTempSensor("ds18b20", TempSensor::Dht11) == TempSensor::Ds18b20);
     TEST_ASSERT_TRUE(hornet::parseTempSensor(nullptr, TempSensor::Dht11) == TempSensor::Dht11);  // the build's default
     TEST_ASSERT_TRUE(hornet::parseTempSensor("dht21", TempSensor::Ds18b20) == TempSensor::Ds18b20);
+    TEST_ASSERT_TRUE(hornet::parseTempSensor("ntc", TempSensor::Ds18b20) == TempSensor::Ntc);
+    TEST_ASSERT_TRUE(hornet::isDht(TempSensor::Dht11) && hornet::isDht(TempSensor::Dht22));
+    TEST_ASSERT_FALSE(hornet::isDht(TempSensor::Ntc) || hornet::isDht(TempSensor::Ds18b20));
 }
 
 int main(int, char**) {

@@ -7,8 +7,21 @@
 export const allFeatures = ['thermometer', 'bme280', 'relay', 'heater'] as const
 export type Feature = (typeof allFeatures)[number]
 
-/** Sensors the thermometer can read (config hw.thermometer). */
-export const thermometerSensors = ['ds18b20', 'dht11', 'dht22'] as const
+/** Sensors the thermometer can read (config hw.thermometer); ntc only with the meteo firmware (backend NtcThermometerRoles). */
+export const thermometerSensors = ['ds18b20', 'dht11', 'dht22', 'ntc'] as const
+
+/** The thermometer's sensors a role's firmware can read. */
+export function thermometerSensorsFor(type: string | null | undefined): readonly string[] {
+  return type === 'meteo' ? thermometerSensors : thermometerSensors.filter((s) => s !== 'ntc')
+}
+
+/**
+ * Metrics an NTC thermistor may be published as, the likelier first: temperature_ntc next to another thermometer; as
+ * the thermometer itself temperature_2 after a BME280 the hornet found, else temperature (firmware meteo.cpp).
+ */
+export function ntcMetrics(thermometer: string | null | undefined): readonly string[] {
+  return thermometer === 'ntc' ? ['temperature_2', 'temperature'] : ['temperature_ntc']
+}
 
 /** Pin functions and the features that use them; vbat and ntc belong to none and are always shown. */
 const pinOwners: Record<string, readonly Feature[]> = {
@@ -23,7 +36,7 @@ const pinOwners: Record<string, readonly Feature[]> = {
 /** Whether a pin is used; with the thermometer's sensor known, 1-Wire goes with DS18B20s and the DHT pin with a DHT. */
 export function usesPin(features: readonly string[] | null | undefined, fn: string, thermometer?: string | null): boolean {
   if (thermometer && fn === 'onewire' && thermometer !== 'ds18b20') return false
-  if (thermometer && fn === 'dht' && thermometer === 'ds18b20') return false
+  if (thermometer && fn === 'dht' && !thermometer.startsWith('dht')) return false
   const owners = pinOwners[fn]
   return !features || !owners || owners.some((f) => features.includes(f))
 }
