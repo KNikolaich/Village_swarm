@@ -99,4 +99,14 @@ public sealed class MonitoringUnitTests
         Assert.Contains("Термометр замолчал", silent);
         Assert.Contains("нет данных 35 с (ждали каждые 10 с)", silent);
     }
+
+    [Theory]
+    [InlineData("meteo", true)]
+    [InlineData("monitor", true)] // a screen with its own NTC
+    [InlineData("relay", false)]
+    public void Our_thermometers_and_screens_with_an_ntc_can_be_monitored(string type, bool can)
+    {
+        var device = new Device { DeviceId = "x", TypeCode = type, Driver = Drivers.Hornet, Name = "x" };
+        Assert.Equal(can, MonitoringService.Unsupported(device) is null);
+    }
 }

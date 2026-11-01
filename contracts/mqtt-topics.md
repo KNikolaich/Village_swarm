@@ -47,6 +47,8 @@ An item may also be a **caption** (config `text` instead of `device` + `metric`)
 For screens the hive draws itself (e-ink, `frame.bin` in monitor-http.md) an item may carry `font` (family id), `px` (6-120, the size of the font in pixels), `bold`
 and `italic`; config `display.rotation` (0, 90, 180, 270) turns the picture, so items, coordinates and the background image are laid out in the turned screen.
 The small OLED draws its own fonts and ignores these fields.
+A reading outside the normal range set for it in the hive (the one the site paints light blue below and pink above) carries `range`: `low` or `high`.
+The 0.42" OLED draws such a value black on a white plate with an arrow: up for `high`, down for `low`.
 
 Infrared (roles `irrx` and `irtx`, ESP-01 on the WS2812 connector, GPIO2; `hw.ir_pin`): the **receiver** keeps the last code it saw in its retained state
 `ir_last` = `"NEC 32 0x02FD807F"` (protocol, bits, data as hex; repeats and codes it cannot name are ignored), so a remote's button can be learned from the hive.

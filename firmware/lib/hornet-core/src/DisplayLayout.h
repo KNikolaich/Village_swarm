@@ -4,6 +4,7 @@
 // a font about size/10 of the screen height, so "5" looks the same on a 0.42" OLED and on a 4" panel. Arduino-free.
 
 #include <cstdint>
+#include <cstring>
 
 namespace hornet {
 namespace display {
@@ -32,6 +33,41 @@ inline Align parseAlign(const char* s) {
     if (s[0] == 'c') return Align::Center;
     if (s[0] == 'r') return Align::Right;
     return Align::Left;
+}
+
+// Where a reading stands against the normal range set for it in the hive (display items[].range). The site paints the
+// number pink above and light blue below; the monochrome OLED draws it black on a white plate with an arrow up or down.
+enum class Mark : uint8_t { None, High, Low };
+
+inline Mark parseMark(const char* s) {
+    if (s == nullptr) return Mark::None;
+    if (std::strcmp(s, "high") == 0) return Mark::High;
+    if (std::strcmp(s, "low") == 0) return Mark::Low;
+    return Mark::None;
+}
+
+struct Box {
+    int x;
+    int y;
+    int w;
+    int h;
+};
+
+// The plate or frame around a text whose top-left corner is (left, top): 1 px of room on each side, kept on the screen.
+inline Box markBox(int left, int top, int width, int height, int screenWidth, int screenHeight) {
+    int x0 = left - 1, y0 = top - 1, x1 = left + width + 1, y1 = top + height + 1;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > screenWidth) x1 = screenWidth;
+    if (y1 > screenHeight) y1 = screenHeight;
+    return {x0, y0, x1 > x0 ? x1 - x0 : 0, y1 > y0 ? y1 - y0 : 0};
+}
+
+// Width of the arrow drawn after a marked value, the gap before it included; it grows with the font (ascent: the
+// height of the digits). Nothing for an unmarked value.
+inline int arrowWidth(Mark mark, int ascent) {
+    if (mark == Mark::None) return 0;
+    return (ascent >= 16 ? 7 : 5) + 1;
 }
 
 // Left edge of a text of the given width whose anchor is x.

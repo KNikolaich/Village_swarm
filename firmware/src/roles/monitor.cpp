@@ -9,6 +9,9 @@
 // say, in the largest font not taller than size/10 of the screen height (DisplayLayout.h), its label in the smallest font
 // above it.
 //
+// A reading outside the normal range set for it in the hive (display items[].range; pink or light blue on the site) is
+// drawn black on a white plate with an arrow: up when above the range, down when below it.
+//
 // Board: ESP32-C3 with the 0.42" SSD1306 OLED (72x40) on I2C (monitor-c3oled, GPIO5/GPIO6). A dot in the top right
 // corner shows that the monitor is online.
 
@@ -106,7 +109,8 @@ public:
         for (JsonObjectConst item : message["items"].as<JsonArrayConst>()) {
             if (rows_.size() >= (placed_ ? 8U : 4U)) break;
             rows_.push_back({String(item["label"] | ""), String(item["text"] | "--"), item["x"] | 0, item["y"] | 0,
-                             item["size"] | 3, display::parseAlign(item["align"] | "left")});
+                             item["size"] | 3, display::parseAlign(item["align"] | "left"),
+                             display::parseMark(item["range"].as<const char*>())});
         }
         received_ = true;
         dirty_ = true;
@@ -120,6 +124,7 @@ private:
         }
         Wire.begin(sdaPin_, sclPin_);
         screenOk_ = oled_.begin();
+        oled_.setFontMode(1);  // transparent: a text drawn in black on a white plate leaves the plate around the glyphs
         if (!screenOk_) Serial.printf("[monitor] no screen on i2c %d/%d\n", sdaPin_, sclPin_);
         // The height of each font is what its digits take from the top: measured, not guessed.
         for (int i = 0; i < kFontCount; ++i) {
@@ -141,7 +146,7 @@ private:
             }
             const int font = display::pickFont(fontHeights_, kFontCount, display::pixelHeight(row.size, kHeight));
             oled_.setFont(kFonts[font]);
-            oled_.drawUTF8(display::leftEdge(row.x, oled_.getUTF8Width(row.text.c_str()), row.align), y, row.text.c_str());
+            drawValue(display::leftEdge(row.x, valueWidth(row.text.c_str(), row.mark), row.align), y, true, row.text.c_str(), row.mark);
         }
         oled_.setFontPosBaseline();
     }
@@ -172,7 +177,7 @@ private:
                     oled_.drawUTF8(0, 8, row.label.c_str());
                 }
                 oled_.setFont(u8g2_font_logisoso16_tf);
-                oled_.drawUTF8(0, y, row.text.c_str());
+                drawValue(row.mark == display::Mark::None ? 0 : 1, y, false, row.text.c_str(), row.mark);  // marked: room for the plate
                 y += 20;
             }
         } else {
@@ -181,16 +186,47 @@ private:
             for (const auto& row : rows_) {
                 String label = row.label;
                 // 14 characters of 5 px across: the text keeps its place, the label gives way
-                const int room = 14 - static_cast<int>(row.text.length()) - 1;
+                const int room = 14 - static_cast<int>(row.text.length()) - 1 - (row.mark == display::Mark::None ? 0 : 2);
                 if (room <= 0) label = "";
                 else if (static_cast<int>(label.length()) > room) label = label.substring(0, room);
                 oled_.drawUTF8(0, y, label.c_str());
-                oled_.drawUTF8(kWidth - oled_.getUTF8Width(row.text.c_str()), y, row.text.c_str());
+                drawValue(kWidth - (row.mark == display::Mark::None ? 0 : 1) - valueWidth(row.text.c_str(), row.mark), y, false,
+                          row.text.c_str(), row.mark);
                 y += 10;
             }
         }
         if (online) oled_.drawDisc(kWidth - 3, 2, 2);
         oled_.sendBuffer();
+    }
+
+    // Width of a value in the current font, its arrow included.
+    int valueWidth(const char* text, display::Mark mark) {
+        return oled_.getUTF8Width(text) + display::arrowWidth(mark, oled_.getAscent());
+    }
+
+    // A value in the current font at left, y (y: the top of the text when top is true, else its baseline). Outside its
+    // range: black on a white plate, with an arrow after it pointing up (above the range) or down (below it).
+    void drawValue(int left, int y, bool top, const char* text, display::Mark mark) {
+        if (mark == display::Mark::None) {
+            oled_.drawUTF8(left, y, text);
+            return;
+        }
+        const int ascent = oled_.getAscent();
+        const int textTop = top ? y : y - ascent;
+        const int textWidth = oled_.getUTF8Width(text);
+        const int arrow = display::arrowWidth(mark, ascent) - 1;  // without the gap
+        const display::Box b = display::markBox(left, textTop, textWidth + 1 + arrow, ascent, kWidth, kHeight);
+        oled_.drawBox(b.x, b.y, b.w, b.h);
+        oled_.setDrawColor(0);
+        oled_.drawUTF8(left, y, text);
+        // The arrow: a triangle as wide as `arrow`, half as tall plus one, in the middle of the digits' height.
+        const int ax = left + textWidth + 1;
+        const int half = arrow / 2;
+        const int h = half + 1;
+        const int cy = textTop + ascent / 2;
+        if (mark == display::Mark::High) oled_.drawTriangle(ax, cy + h / 2, ax + arrow, cy + h / 2, ax + half, cy - h / 2 - 1);
+        else oled_.drawTriangle(ax, cy - h / 2, ax + arrow, cy - h / 2, ax + half, cy + h / 2 + 1);
+        oled_.setDrawColor(1);
     }
 
     struct Row {
@@ -200,6 +236,7 @@ private:
         int y;
         int size;
         display::Align align;
+        display::Mark mark;
     };
     std::vector<Row> rows_;  // the hive's display message
     bool placed_ = false;    // the items carry x, y, size
