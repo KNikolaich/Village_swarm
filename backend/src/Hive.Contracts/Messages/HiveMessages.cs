@@ -151,7 +151,7 @@ public sealed record HwConfig
     /// <summary>Divider ratio (R1+R2)/R2: battery V = pin V x ratio.</summary>
     public double? VbatRatio { get; init; }
 
-    /// <summary>The sensor the feature "thermometer" reads: ds18b20, dht11 or dht22; null: the board's.</summary>
+    /// <summary>The sensor the feature "thermometer" reads: ds18b20, dht11, dht22 or ntc (meteo: the NTC on NtcPin or A0, as temperature); null: the board's.</summary>
     public string? Thermometer { get; init; }
 
     /// <summary>Roles meteo and monitor: ADC pin with an NTC thermistor behind a divider (metric temperature_ntc).</summary>

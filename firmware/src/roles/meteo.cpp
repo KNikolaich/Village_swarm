@@ -5,12 +5,14 @@
 // Metric names: humidity and pressure (hPa) from the BME280; temperatures are temperature, temperature_2,
 // temperature_3... with the BME280 first and the DS18B20s after it in bus order. With hw.vbat_pin set, a
 // battery behind a voltage divider is measured as battery_voltage (V). With hw.ntc_pin set, an NTC thermistor behind a
-// divider is measured as temperature_ntc (C), smoothed (Ntc.h, docs/ntc-thermistor.md).
+// divider is measured as temperature_ntc (C), smoothed (Ntc.h, docs/ntc-thermistor.md). With hw.thermometer = "ntc" the
+// thermistor is the thermometer instead: read on hw.ntc_pin or the board's A0, published as temperature (temperature_2
+// next to a BME280) like any other thermometer.
 //
 // Config "features" (thermometer, bme280) limits which sensors are looked for: on the ESP-01 1-Wire and I2C share
 // GPIO2, so a hornet with only a DS18B20 leaves I2C alone. Absent: both.
 //
-// The thermometer is DS18B20s on 1-Wire or one DHT11/DHT22 on hw.dht_pin, as config hw.thermometer says; a DHT also
+// The thermometer is DS18B20s on 1-Wire, one DHT11/DHT22 on hw.dht_pin or an NTC, as config hw.thermometer says; a DHT also
 // gives humidity (humidity_2 next to a BME280). Builds with HW_DHT_PIN/HW_DHT_TYPE (meteo-esp01dht: the "ESP-01S
 // DHT11" module) take that DHT as the default; elsewhere the default is DS18B20s.
 
@@ -61,7 +63,7 @@ public:
         }
         if (dhtOk_) m.push_back(dhtHumidity_.c_str());
         if (battery_.enabled()) m.push_back("battery_voltage");
-        if (ntc_.enabled()) m.push_back("temperature_ntc");
+        if (ntc_.enabled() && !ntcThermometer_) m.push_back("temperature_ntc");  // as the thermometer it is in names_
         return m;
     }
 
@@ -75,16 +77,19 @@ public:
         const int scl = hw["scl_pin"] | HW_SCL_PIN;
         const int dhtPin = hw["dht_pin"] | HW_DHT_PIN;
         const TempSensor sensor = parseTempSensor(hw["thermometer"].as<const char*>(), kDefaultSensor);
-        battery_.configure(hw);
-        const bool hadNtc = ntc_.enabled();
-        ntc_.configure(hw);
-        if (ntc_.enabled() != hadNtc) core.refreshInfo();  // caps and metrics follow the thermistor
         Features features{kThermometer | kBme280};
         if (config["features"].is<JsonArrayConst>()) {
             features.bits = 0;
             for (JsonVariantConst f : config["features"].as<JsonArrayConst>()) features.bits |= Features::parseOne(f.as<const char*>());
         }
-        if (onewire != onewirePin_ || sda != sdaPin_ || scl != sclPin_ || dhtPin != dhtPin_ || sensor != sensor_ ||
+        battery_.configure(hw);
+        const bool hadNtc = ntc_.enabled();
+        const bool ntcThermometer = features.has(kThermometer) && sensor == TempSensor::Ntc;
+        ntc_.configure(hw, ntcThermometer);
+        // The thermistor's metric name (the thermometer's or temperature_ntc) is set by initSensors().
+        const bool ntcChanged = ntc_.enabled() != hadNtc || ntcThermometer != ntcThermometer_;
+        ntcThermometer_ = ntcThermometer;
+        if (ntcChanged || onewire != onewirePin_ || sda != sdaPin_ || scl != sclPin_ || dhtPin != dhtPin_ || sensor != sensor_ ||
             features.bits != features_.bits) {
             features_ = features;
             onewirePin_ = onewire;
@@ -127,8 +132,9 @@ private:
             sclPin_ = HW_SCL_PIN;
         }
         // On boards where 1-Wire and I2C share pins (ESP-01), only one kind can be wired; config features says which.
-        // The thermometer is either DS18B20s or a DHT (hw.thermometer), never both.
-        const bool dht = features_.has(kThermometer) && sensor_ != TempSensor::Ds18b20;
+        // The thermometer is DS18B20s, a DHT or an NTC (hw.thermometer), never two of them.
+        const bool dht = features_.has(kThermometer) && isDht(sensor_);
+        const bool ds = features_.has(kThermometer) && sensor_ == TempSensor::Ds18b20;
         dsCount_ = 0;
         dhtOk_ = false;
         if (dht && dhtPin_ >= 0) {
@@ -136,7 +142,7 @@ private:
             dhtOk_ = true;
             dhtFailures_ = 0;
         }
-        if (features_.has(kThermometer) && !dht && onewirePin_ >= 0) {
+        if (ds && onewirePin_ >= 0) {
             oneWire_.begin(onewirePin_);
             dallas_.setOneWire(&oneWire_);
             dallas_.begin();
@@ -157,11 +163,16 @@ private:
             dhtName_ = names_.back();
             dhtHumidity_ = bmeOk_ ? "humidity_2" : "humidity";
         }
+        ntcName_ = "temperature_ntc";
+        if (ntcThermometer_ && ntc_.enabled()) {
+            names_.push_back(names_.empty() ? String("temperature") : String("temperature_2"));
+            ntcName_ = names_.back();
+        }
         for (uint8_t i = 0; i < dsCount_; ++i)
             names_.push_back(names_.empty() ? String("temperature") : "temperature_" + String(names_.size() + 1));
-        Serial.printf("[meteo] ds18b20=%u dht=%s bme280=%s (1-wire %d, dht %d, i2c %d/%d)\n", dsCount_,
-                      dhtOk_ ? (sensor_ == TempSensor::Dht22 ? "dht22" : "dht11") : "no", bmeOk_ ? "yes" : "no", onewirePin_,
-                      dhtPin_, sdaPin_, sclPin_);
+        Serial.printf("[meteo] ds18b20=%u dht=%s bme280=%s ntc=%s (1-wire %d, dht %d, i2c %d/%d)\n", dsCount_,
+                      dhtOk_ ? (sensor_ == TempSensor::Dht22 ? "dht22" : "dht11") : "no", bmeOk_ ? "yes" : "no", ntcName_.c_str(),
+                      onewirePin_, dhtPin_, sdaPin_, sclPin_);
     }
 
     void publish(Core& core) {
@@ -216,7 +227,7 @@ private:
             return;
         }
         ntcWarned_ = false;
-        report(core, "temperature_ntc", t, "C");
+        report(core, ntcName_.c_str(), t, "C");
     }
 
     void report(Core& core, const char* metric, float value, const char* unit) {
@@ -243,6 +254,8 @@ private:
     std::vector<String> names_;
     Battery battery_;
     NtcSensor ntc_;
+    bool ntcThermometer_ = false;  // hw.thermometer = "ntc": the thermistor is the thermometer
+    String ntcName_ = "temperature_ntc";
     bool ntcWarned_ = false;
     uint32_t teleIntervalMs_ = 60000;
     uint32_t lastReadMs_ = 0;

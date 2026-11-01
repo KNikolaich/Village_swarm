@@ -26,7 +26,7 @@ public sealed record HeaterLimitsDto(double MinC, double MaxC, int MaxOnS);
 
 /// <summary>Device registry reads (spec 6.5). Editing, commands and provisioning come in later steps.</summary>
 /// <summary>Pins of a hornet: what each function uses, from the board default or the config, and conflicts. VbatRatio is the battery divider ratio set in the config (null: 1.0).</summary>
-/// Thermometer is the sensor its feature "thermometer" reads (ds18b20, dht11, dht22; null for a role without one), ThermometerByHand whether the config sets it.
+/// Thermometer is the sensor its feature "thermometer" reads (ds18b20, dht11, dht22, ntc; null for a role without one), ThermometerByHand whether the config sets it.
 /// Ntc: the thermistor's divider and calibration from the config (null fields: the firmware defaults).
 public sealed record PinsView(IReadOnlyList<BoardPins.PinRow> Pins, IReadOnlyList<string> Conflicts, double? VbatRatio, string? Thermometer = null, bool ThermometerByHand = false,
     BoardPins.NtcSettings? Ntc = null);

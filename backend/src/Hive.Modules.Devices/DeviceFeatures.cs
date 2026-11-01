@@ -14,11 +14,20 @@ public static class DeviceFeatures
     public const string Relay = "relay";
     public const string Heater = "heater";
 
-    /// <summary>Sensors the feature "thermometer" can read (config "hw".thermometer): DS18B20s on 1-Wire, or one DHT.</summary>
+    /// <summary>
+    /// Sensors the feature "thermometer" can read (config "hw".thermometer): DS18B20s on 1-Wire, one DHT, or an NTC
+    /// thermistor on an ADC pin (role meteo only, <see cref="NtcThermometerRoles"/>).
+    /// </summary>
     public const string Ds18b20 = "ds18b20";
     public const string Dht11 = "dht11";
     public const string Dht22 = "dht22";
-    public static readonly string[] ThermometerSensors = [Ds18b20, Dht11, Dht22];
+    public const string Ntc = "ntc";
+    public static readonly string[] ThermometerSensors = [Ds18b20, Dht11, Dht22, Ntc];
+
+    /// <summary>Roles whose firmware can read an NTC as the thermometer (heat cannot).</summary>
+    public static readonly string[] NtcThermometerRoles = ["meteo"];
+
+    public static bool IsDht(string? sensor) => sensor is Dht11 or Dht22;
 
     /// <summary>Failsafe defaults the firmware uses when the config has no failsafe.heater (HeaterFailsafe.h).</summary>
     public const double DefaultMinC = 5.0;

@@ -187,7 +187,9 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         if (r.VbatRatio is { } ratio && !BoardPins.ValidVbatRatio(ratio))
             return new PinsResult(ConfigUpdateStatus.BadRequest, "Коэффициент делителя: больше 0 и не больше 100", [], []);
         if (r.Thermometer is { } sensor && !DeviceFeatures.ThermometerSensors.Contains(sensor))
-            return new PinsResult(ConfigUpdateStatus.BadRequest, "Датчик термометра: ds18b20, dht11 или dht22", [], []);
+            return new PinsResult(ConfigUpdateStatus.BadRequest, "Датчик термометра: ds18b20, dht11, dht22 или ntc", [], []);
+        if (r.Thermometer == DeviceFeatures.Ntc && !DeviceFeatures.NtcThermometerRoles.Contains(device.TypeCode))
+            return new PinsResult(ConfigUpdateStatus.BadRequest, "NTC как термометр умеет только прошивка meteo", [], []);
         if (r.Ntc is { } ntcSettings && BoardPins.ValidateNtc(ntcSettings) is { } ntcError)
             return new PinsResult(ConfigUpdateStatus.BadRequest, ntcError, [], []);
 

@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
 import { formatAgo, formatValue } from '@/lib/format'
-import { thermometerSensors, usesPin } from '@/lib/features'
+import { ntcMetrics, thermometerSensorsFor, usesPin } from '@/lib/features'
 import { calibratedOffset, ntcDefaults, ntcNumberFields, ntcSides, parseNtcNumber, type NtcSettings } from '@/lib/ntc'
 import { candidates, newerBuild as newerBuildFor } from '@/lib/otaRollout'
 import { groupDevices, groupings, mainReadings, quickControls, type Grouping, splitChildren } from '@/lib/swarm'
@@ -74,11 +74,14 @@ export function PinsPanel({ deviceId, editable, board, type, features }: { devic
   const sensor = draft.thermometer !== undefined ? draft.thermometer || null : (pins.data?.thermometer ?? null)
   const keys = pinFields.filter(([, fn]) => (!used || used.includes(fn)) && usesPin(features, fn, sensor))
   const showRatio = keys.some(([, fn]) => fn === 'vbat')
-  // The thermistor's divider and calibration: shown once it has a pin (set or being typed).
+  // The thermistor's divider and calibration: shown once it has a pin (set or being typed) or is the thermometer (A0 by default).
   const ntcRow = pins.data?.pins.find((r) => r.function === 'ntc')
-  const showNtc = keys.some(([, fn]) => fn === 'ntc') && (draft.ntcPin !== undefined ? draft.ntcPin.trim() !== '' : ntcRow?.pin != null)
+  const ntcThermometer = showSensor && sensor === 'ntc'
+  const showNtc = keys.some(([, fn]) => fn === 'ntc') && (ntcThermometer || (draft.ntcPin !== undefined ? draft.ntcPin.trim() !== '' : ntcRow?.pin != null))
   const ntc: NtcSettings = pins.data?.ntc ?? {}
-  const ntcReading = latest.data?.find((v) => v.deviceId === deviceId && v.metric === 'temperature_ntc')
+  const ntcReading = ntcMetrics(ntcThermometer ? 'ntc' : null)
+    .map((m) => latest.data?.find((v) => v.deviceId === deviceId && v.metric === m))
+    .find((v) => v !== undefined)
 
   function fitToReference() {
     const ref = Number(reference.trim().replace(',', '.').replace('−', '-'))
@@ -117,8 +120,9 @@ export function PinsPanel({ deviceId, editable, board, type, features }: { devic
       toast.error(t('swarm.ratioInvalid'))
       return
     } else body.vbatRatio = Number(ratioText)
+    const thermometer = draft.thermometer !== undefined ? draft.thermometer || null : pins.data?.thermometerByHand ? (pins.data.thermometer ?? null) : null
     let ntcBody: NtcSettings | null = null
-    if (body.ntcPin != null) {
+    if (body.ntcPin != null || thermometer === 'ntc') {
       ntcBody = { side: draft['ntc.side'] !== undefined ? draft['ntc.side'] || null : (ntc.side ?? null) }
       for (const f of ntcNumberFields) {
         const text = draft[`ntc.${f}`]
@@ -134,7 +138,6 @@ export function PinsPanel({ deviceId, editable, board, type, features }: { devic
         ntcBody[f] = v
       }
     }
-    const thermometer = draft.thermometer !== undefined ? draft.thermometer || null : pins.data?.thermometerByHand ? (pins.data.thermometer ?? null) : null
     try {
       await call(api.PUT('/api/devices/{deviceId}/pins', { params: { path: { deviceId } }, body: { ...body, thermometer, ntc: ntcBody } }))
       setDraft({})
@@ -186,7 +189,7 @@ export function PinsPanel({ deviceId, editable, board, type, features }: { devic
                 className="h-8 w-full text-xs"
               >
                 <option value="">{t('swarm.sensorBoard').replace('{sensor}', t(`swarm.sensor.${pins.data?.thermometerByHand ? 'unknown' : pins.data?.thermometer}`))}</option>
-                {thermometerSensors.map((s) => <option key={s} value={s}>{t(`swarm.sensor.${s}`)}</option>)}
+                {thermometerSensorsFor(type).map((s) => <option key={s} value={s}>{t(`swarm.sensor.${s}`)}</option>)}
               </Select>
             </label>
           )}

@@ -16,6 +16,16 @@
 #ifndef HW_NTC_PIN
 #define HW_NTC_PIN -1
 #endif
+// Where an NTC thermometer (config hw.thermometer = "ntc") is read when hw.ntc_pin does not say: A0 of the board.
+#ifndef HW_NTC_THERMOMETER_PIN
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+#define HW_NTC_THERMOMETER_PIN 0  // GPIO0 = A0 (ADC1)
+#elif defined(ESP8266)
+#define HW_NTC_THERMOMETER_PIN 17  // A0
+#else
+#define HW_NTC_THERMOMETER_PIN HW_NTC_PIN
+#endif
+#endif
 // ESP8266 A0: volts at analogRead() = 1023 (1.0 on a bare ESP-12/ESP-01, 3.2 with the D1 mini / NodeMCU divider).
 #ifndef HW_ADC_FULL_SCALE
 #define HW_ADC_FULL_SCALE 3.2
@@ -28,9 +38,10 @@ public:
     static constexpr uint32_t kSampleMs = 2000;
 
     // From the config "hw" section. True when the sensor came or went (the metrics change) or its settings did.
+    // thermometer: the NTC is the hornet's thermometer (hw.thermometer = "ntc"), read on A0 when hw.ntc_pin is absent.
     template <typename Hw>
-    bool configure(const Hw& hw) {
-        int pin = hw["ntc_pin"] | HW_NTC_PIN;
+    bool configure(const Hw& hw, bool thermometer = false) {
+        int pin = hw["ntc_pin"] | (thermometer ? HW_NTC_THERMOMETER_PIN : HW_NTC_PIN);
         if (pin >= 0 && !adcPin(pin)) {
             Serial.printf("[ntc] GPIO%d has no ADC usable with Wi-Fi, NTC off\n", pin);
             pin = -1;

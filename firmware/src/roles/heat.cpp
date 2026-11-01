@@ -89,7 +89,9 @@ public:
         if (topics::isValidSegment(ch)) channel_ = ch;
         maxOnS_ = relay["max_on_s"] | 0U;
 
-        const TempSensor sensor = parseTempSensor(hw["thermometer"].as<const char*>(), TempSensor::Ds18b20);
+        // No NTC thermometer here (the hive refuses it for heat): an "ntc" falls back to DS18B20s.
+        TempSensor sensor = parseTempSensor(hw["thermometer"].as<const char*>(), TempSensor::Ds18b20);
+        if (sensor == TempSensor::Ntc) sensor = TempSensor::Ds18b20;
         const bool changed = configure(features, sensor, hw["onewire_pin"] | HW_ONEWIRE_PIN, hw["dht_pin"] | HW_DHT_PIN,
                                        hw["sda_pin"] | HW_SDA_PIN, hw["scl_pin"] | HW_SCL_PIN, hw["relay_pin"] | HW_RELAY_PIN,
                                        hw["relay_active_low"] | (HW_RELAY_ACTIVE_LOW != 0), hw["button_pin"] | HW_BUTTON_PIN);
@@ -167,7 +169,7 @@ private:
 
     void initSensors() {
         // The thermometer is either DS18B20s or a DHT (hw.thermometer), never both.
-        const bool dht = features_.has(kThermometer) && sensor_ != TempSensor::Ds18b20;
+        const bool dht = features_.has(kThermometer) && isDht(sensor_);
         dsCount_ = 0;
         bmeOk_ = false;
         dhtOk_ = false;

@@ -1,0 +1,6 @@
+{
+  "v": 1, "rev": 3, "name": "Спальня",
+  "health_interval_s": 60, "tele_interval_s": 60,
+  "features": ["thermometer"],
+  "hw": { "thermometer": "ntc", "ntc_side": "high", "ntc_r_series": 9960, "ntc_offset": -0.4 }
+}

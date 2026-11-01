@@ -70,11 +70,14 @@ public static class BoardPins
     /// <summary>
     /// Effective pins of the functions the hornet uses: the config "hw" override where given, else the board default.
     /// A pin the hornet needs but neither gives is listed with no pin (Source "none"), so a missing default shows.
-    /// The thermometer uses the 1-Wire pin for DS18B20s and the DHT pin for a DHT11/DHT22, never both.
+    /// The thermometer uses the 1-Wire pin for DS18B20s, the DHT pin for a DHT11/DHT22 and the NTC pin (A0 unless set) for
+    /// an NTC, one of them only.
     /// </summary>
     public static IReadOnlyList<PinRow> Rows(string? board, string type, System.Text.Json.JsonElement? hw, IReadOnlyCollection<string>? features = null)
     {
-        var dht = ThermometerSensor(board, hw) != DeviceFeatures.Ds18b20;
+        var sensor = ThermometerSensor(board, hw);
+        var dht = DeviceFeatures.IsDht(sensor);
+        var ntcThermometer = NtcThermometer(type, board, hw, features);
         var d = For(board) ?? new Defaults(null, null, null, null, null, null, false, "unknown board: pins are whatever the config says");
         int? Pick(string key, int? fallback) =>
             hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
@@ -88,11 +91,13 @@ public static class BoardPins
             new("button", "button_pin", Pick("button_pin", d.Button), Source(hw, "button_pin"), "local toggle"),
             new("vbat", "vbat_pin", Pick("vbat_pin", null), Source(hw, "vbat_pin"), "battery divider (ADC)"),
             new("dht", "dht_pin", Pick("dht_pin", d.Dht), Source(hw, "dht_pin"), "DHT11/22 data"),
-            new("ntc", "ntc_pin", Pick("ntc_pin", null), Source(hw, "ntc_pin"), "NTC thermistor divider (ADC)"),
+            ntcThermometer
+                ? new("ntc", "ntc_pin", Pick("ntc_pin", NtcThermometerPin(board)), Source(hw, "ntc_pin"), "NTC thermometer (ADC)")
+                : new("ntc", "ntc_pin", Pick("ntc_pin", null), Source(hw, "ntc_pin"), "NTC thermistor divider (ADC)"),
         };
         return rows
-            .Where(r => (r.Pin is not null || NeedPin.Contains(r.Function)) && Uses(type, features, r.Function))
-            .Where(r => r.Function switch { "onewire" => !dht, "dht" => dht, _ => true })
+            .Where(r => (r.Pin is not null || NeedPin.Contains(r.Function) || (r.Function == "ntc" && ntcThermometer)) && Uses(type, features, r.Function))
+            .Where(r => r.Function switch { "onewire" => sensor == DeviceFeatures.Ds18b20, "dht" => dht, _ => true })
             .Select(r => r.Pin is null ? r with { Source = "none" } : r)
             .ToList();
     }
@@ -119,6 +124,19 @@ public static class BoardPins
             .Select(r => $"GPIO{r.Pin}: ntc (no ADC usable with Wi-Fi: {AdcPins(board)})");
         return twice.Concat(taken).Concat(oneAdc).Concat(noAdc).ToList();
     }
+
+    /// <summary>Whether the hornet's thermometer is an NTC: hw.thermometer = "ntc", a role that can read it, the feature on.</summary>
+    public static bool NtcThermometer(string type, string? board, System.Text.Json.JsonElement? hw, IReadOnlyCollection<string>? features) =>
+        DeviceFeatures.NtcThermometerRoles.Contains(type) && ThermometerSensor(board, hw) == DeviceFeatures.Ntc
+        && (features is null || features.Contains(DeviceFeatures.Thermometer));
+
+    /// <summary>Where the firmware reads an NTC thermometer without hw.ntc_pin (Ntc.h HW_NTC_THERMOMETER_PIN): the board's A0.</summary>
+    public static int? NtcThermometerPin(string? board) => board switch
+    {
+        not null when board.StartsWith("esp32c3", StringComparison.Ordinal) => 0,
+        not null when Esp8266.Contains(board) => 17,
+        _ => null,
+    };
 
     /// <summary>ESP8266 boards: one ADC, A0 (GPIO17).</summary>
     private static readonly string[] Esp8266 = ["wemos-d1-mini", "nodemcu-v3", "esp-01", "esp-01-dht11"];
