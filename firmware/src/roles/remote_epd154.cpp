@@ -4,15 +4,17 @@
 //
 // It sleeps almost all the time: wake by the timer, join Wi-Fi, ask the hive for frame.bin with the last ETag, draw a new
 // picture only when it changed (304 = keep the old one), back to deep sleep. The e-paper keeps the picture without power.
-// When the hive cannot be reached for half an hour, the last picture gets a "нет связи" banner, so an old number is never
-// taken for a fresh one.
+// When a read fails, the last picture gets a banner at once ("нет Wi-Fi, 40 мин": the cause and how old the picture is), so an old
+// number is never taken for a fresh one; it is redrawn only when the cause changes or every half hour, and the next try comes later
+// each time (5, 10, 20, then 30 min). With no picture at all the whole screen says what is wrong (docs/display.md, "Нет связи").
 //
 // Settings (two Wi-Fi networks, the hive's address, the token, how often to read) come in two ways:
 //  - over USB, from the hive's page right after flashing: the console commands below. Nothing is typed by hand;
 //  - on the panel's own Wi-Fi point: hold BOOT for 2 s (or start it with nothing set), join "VillageSwarm-xxxx", open
 //    192.168.4.1. The hive's page shows a QR code with the address and the token: scan it with the phone's camera once
 //    joined and the form opens filled in.
-// A short press of BOOT reads the picture now; PWR turns the panel off (on battery).
+// A short press of BOOT reads the picture now; PWR turns the panel off (on battery) and shows the sleep picture: the hive's,
+// kept in the flash for the times there is no link; with none, a white screen saying so.
 //
 // Console (115200, lines): set ssid|pass|ssid2|pass2|url|token|interval|rot|insecure <value>, show, go, save. "go" saves
 // and reads the picture at once, answering "[monitor] frame <http code>" (200 new, 304 same) or "[monitor] wifi failed".
@@ -25,6 +27,7 @@
 #include <DNSServer.h>
 #include <GxEPD2_BW.h>
 #include <HTTPClient.h>
+#include <LittleFS.h>
 #include <Preferences.h>
 #include <SPI.h>
 #include <U8g2_for_Adafruit_GFX.h>
@@ -34,6 +37,8 @@
 #include <driver/gpio.h>
 #include <driver/rtc_io.h>
 #include <esp_sleep.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include "../../lib/hornet-core/src/RemoteMonitor.h"
 
@@ -54,6 +59,7 @@ constexpr gpio_num_t kPinPwr = GPIO_NUM_18;
 constexpr int kPinBattery = 4;  // ADC through a 1:2 divider
 
 constexpr uint32_t kWifiTimeoutMs = 15000;
+constexpr uint32_t kSleepWifiMs = 7000;  // switching off: one short try for Wi-Fi
 constexpr uint32_t kPortalTimeoutMs = 10UL * 60 * 1000;
 constexpr uint32_t kBadTokenSleepMin = 6 * 60;  // a new token needs the settings point anyway: just look now and then
 constexpr int kLowBatteryMv = 3450;
@@ -115,8 +121,15 @@ SPIClass epdSpi(FSPI);
 RTC_DATA_ATTR uint8_t lastFrame[kFrameBytes];
 RTC_DATA_ATTR bool haveFrame = false;
 RTC_DATA_ATTR char lastEtag[72] = "";
-RTC_DATA_ATTR uint32_t offlineMin = 0;  // minutes without a picture from the hive
-RTC_DATA_ATTR uint32_t bannerAtMin = 0; // offlineMin when the banner was last drawn
+RTC_DATA_ATTR uint32_t offlineMin = 0;  // minutes slept since the last read that worked: the picture's age while the clock is not known
+RTC_DATA_ATTR uint32_t failures = 0;    // failed reads in a row: the next try is later each time (retryMinutes)
+RTC_DATA_ATTR uint32_t lastOkUnix = 0;  // the hive's time of the last read that worked (0: not known)
+RTC_DATA_ATTR Offline bannerCause = Offline::None;  // what the screen says about the link now (None: nothing)
+RTC_DATA_ATTR uint32_t bannerAgeMin = 0;            // the picture's age it says
+RTC_DATA_ATTR uint8_t apBssid[6] = {};  // the access point of the last connection: the next one skips the scan
+RTC_DATA_ATTR int apChannel = 0;
+RTC_DATA_ATTR int apSsid = -1;
+RTC_DATA_ATTR bool switchedOff = false;  // PWR put it to sleep on USB power: the next PWR switches it on
 RTC_DATA_ATTR bool messageShown = false; // a message replaced the picture: draw the picture again even on 304
 RTC_DATA_ATTR uint32_t refreshS = 0;     // the hive's monitoring: read this often (X-Frame-Refresh), 0 = own interval
 
@@ -246,6 +259,12 @@ int batteryMv() {
     return static_cast<int>(analogReadMilliVolts(kPinBattery)) * 2;
 }
 
+/// The battery for a message: "Батарея 80%", or nothing when the reading makes no sense.
+String batteryLine() {
+    const int percent = batteryPercent(hornet::remote::batteryMv(static_cast<int>(analogReadMilliVolts(kPinBattery))));
+    return percent < 0 ? String() : "Батарея " + String(percent) + "%";
+}
+
 /// Deep sleep until the timer (minutes, 0 = none) or a button. The e-paper keeps its picture without power.
 [[noreturn]] void sleepFor(uint32_t minutes) {
     display.hibernate();
@@ -281,7 +300,7 @@ void initScreen() {
 
 void drawBanner(const String& line) {
     display.fillRect(0, kHeight - 22, kWidth, 22, GxEPD_BLACK);
-    text.setFont(u8g2_font_9x15_t_cyrillic);
+    text.setFont(u8g2_font_7x13_t_cyrillic);  // 28 characters fit: "Улей не отвечает, ~3 ч"
     text.setForegroundColor(GxEPD_WHITE);
     text.setBackgroundColor(GxEPD_BLACK);
     text.setCursor(4, kHeight - 6);
@@ -290,14 +309,19 @@ void drawBanner(const String& line) {
     text.setBackgroundColor(GxEPD_WHITE);
 }
 
-void showFrame(const String& banner) {
+void showBits(const uint8_t* bits, const String& banner) {
     display.setFullWindow();
     display.firstPage();
     do {
         display.fillScreen(GxEPD_WHITE);
-        display.drawBitmap(0, 0, lastFrame, kWidth, kHeight, GxEPD_BLACK);
+        display.drawBitmap(0, 0, bits, kWidth, kHeight, GxEPD_BLACK);
         if (banner.length()) drawBanner(banner);
     } while (display.nextPage());
+    bannerCause = Offline::None;
+}
+
+void showFrame(const String& banner) {
+    showBits(lastFrame, banner);
     messageShown = false;
 }
 
@@ -320,6 +344,7 @@ void showMessage(const char* title, std::initializer_list<String> lines) {
         }
     } while (display.nextPage());
     messageShown = true;
+    bannerCause = Offline::None;
 }
 
 String batteryNote() {
@@ -449,18 +474,55 @@ bool portalMode = false;
 
 // ------------------------------------------------------------------ reading the picture
 
-bool joinWifi() {
+/// Waits for the connection to come up (or the time to pass); true when it is up, and then remembers the access point. A network that
+/// is plainly not there (no such name after a scan) is given up after 5 s.
+bool connectedWithin(uint32_t limitMs, int ssidIndex) {
+    const uint32_t started = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - started < limitMs) {
+        if (WiFi.status() == WL_NO_SSID_AVAIL && millis() - started > 5000) break;
+        delay(50);
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.printf("[monitor] wifi %s: status %d after %lu ms\n", settings.ssid[ssidIndex].c_str(), static_cast<int>(WiFi.status()),
+                      static_cast<unsigned long>(millis() - started));
+        WiFi.disconnect(true);
+        return false;
+    }
+    memcpy(apBssid, WiFi.BSSID(), sizeof apBssid);
+    apChannel = WiFi.channel();
+    apSsid = ssidIndex;
+    return true;
+}
+
+/// Connects to the first network that answers within <budgetMs> in all: the access point of the last connection first, by its channel
+/// and address (no scan), then each network by name. An empty second network is skipped.
+bool joinWifi(uint32_t budgetMs = 2 * kWifiTimeoutMs) {
     WiFi.persistent(false);
     WiFi.mode(WIFI_STA);
+    const uint32_t started = millis();
+    auto left = [&](uint32_t want) -> uint32_t {
+        const uint32_t used = millis() - started;
+        return used >= budgetMs ? 0 : (budgetMs - used < want ? budgetMs - used : want);
+    };
+    if (apSsid >= 0 && apSsid < 2 && apChannel > 0 && settings.ssid[apSsid].length()) {
+        WiFi.begin(settings.ssid[apSsid].c_str(), settings.pass[apSsid].c_str(), apChannel, apBssid);
+        if (connectedWithin(left(4000), apSsid)) return true;
+        apChannel = 0;  // it moved or is gone: scan next time
+    }
     for (int i = 0; i < 2; i++) {
         if (settings.ssid[i].isEmpty()) continue;
+        const uint32_t limit = left(kWifiTimeoutMs);
+        if (limit < 1000) break;
         WiFi.begin(settings.ssid[i].c_str(), settings.pass[i].c_str());
-        const uint32_t started = millis();
-        while (WiFi.status() != WL_CONNECTED && millis() - started < kWifiTimeoutMs) delay(50);
-        if (WiFi.status() == WL_CONNECTED) return true;
-        WiFi.disconnect(true);
+        if (connectedWithin(limit, i)) return true;
     }
     return false;
+}
+
+/// The hive's unix time now, or 0 while the clock has not been set from a reply (the system clock runs through deep sleep).
+uint32_t nowUnix() {
+    const time_t t = time(nullptr);
+    return t > 1700000000 ? static_cast<uint32_t>(t) : 0;
 }
 
 /// Collects the body of a 200 into lastFrame-sized memory, chunked or not (HTTPClient::writeToStream).
@@ -494,17 +556,18 @@ struct Reply {
     int code = -1;
     Answer answer = Answer::Retry;
     String etag;
+    int width = 0, height = 0;  // the size the hive said
 };
 
-/// Reads the picture; <sleep>: the person's sleep picture for a panel being switched off (not kept, no monitoring interval).
+/// Reads the picture; <sleep>: the person's sleep picture for a panel being switched off (no monitoring interval, short timeouts).
 Reply fetchFrame(bool sleep = false) {
     Reply reply;
     const std::string url = sleep ? sleepUrl(settings.url.c_str()) : frameUrl(settings.url.c_str());
     WiFiClientSecure secure;
     WiFiClient plain;
     HTTPClient http;
-    http.setTimeout(15000);
-    http.setConnectTimeout(10000);
+    http.setTimeout(sleep ? 6000 : 15000);
+    http.setConnectTimeout(sleep ? 5000 : 10000);
     http.setReuse(false);
     bool begun;
     if (isHttps(url)) {
@@ -517,11 +580,15 @@ Reply fetchFrame(bool sleep = false) {
     if (!begun) return reply;
     http.addHeader("Authorization", "Bearer " + settings.token);
     if (!sleep && lastEtag[0] && haveFrame) http.addHeader("If-None-Match", lastEtag);
-    const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Refresh"};
-    http.collectHeaders(keys, 4);
+    const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Refresh", "Date"};
+    http.collectHeaders(keys, 5);
     reply.code = http.GET();
     if (!sleep && (reply.code == 200 || reply.code == 304))
         refreshS = http.hasHeader("X-Frame-Refresh") ? static_cast<uint32_t>(http.header("X-Frame-Refresh").toInt()) : 0;
+    if (const uint32_t now = httpDate(http.header("Date").c_str())) {
+        const timeval tv = {static_cast<time_t>(now), 0};
+        settimeofday(&tv, nullptr);  // the system clock keeps counting through deep sleep: how old the picture is
+    }
     size_t bytes = 0;
     if (reply.code == 200) {
         FrameSink sink(incoming);
@@ -529,23 +596,68 @@ Reply fetchFrame(bool sleep = false) {
         bytes = sink.size();
         reply.etag = http.header("ETag");
     }
-    reply.answer = classify(reply.code, bytes, http.header("X-Frame-Width").toInt(), http.header("X-Frame-Height").toInt(), kWidth, kHeight);
+    reply.width = http.header("X-Frame-Width").toInt();
+    reply.height = http.header("X-Frame-Height").toInt();
+    reply.answer = classify(reply.code, bytes, reply.width, reply.height, kWidth, kHeight);
+    if (reply.code == 200 && reply.answer != Answer::Draw)
+        Serial.printf("[monitor] frame of %dx%d, %u bytes: expected %dx%d\n", reply.width, reply.height, static_cast<unsigned>(bytes), kWidth, kHeight);
     http.end();
     return reply;
 }
 
+const char* const kCauseNames[] = {"none", "no wifi", "hive does not answer", "wrong frame size"};
+
+/// No picture to put a banner on (a fresh panel, or the power was lost): the whole screen says what is wrong and what to do.
+void showOfflineMessage(Offline cause, const Reply& reply, uint32_t retryMin) {
+    const String retry = "Пробую снова через " + String(retryMin) + " мин";
+    switch (cause) {
+        case Offline::NoWifi:
+            showMessage("Нет Wi-Fi", {"Сеть " + settings.ssid[0], "не отвечает.", "Проверьте роутер 2,4 ГГц.", retry, "BOOT 2 с — настройка", batteryLine()});
+            break;
+        case Offline::WrongFrame:
+            showMessage("Не тот кадр", {"Улей прислал " + String(reply.width) + "x" + String(reply.height) + ".", "На странице монитора", "выберите плату",
+                                        "Waveshare 1,54\".", retry, batteryLine()});
+            break;
+        default:
+            showMessage("Нет связи с Ульем", {"Wi-Fi есть, Улей", "не отвечает" + (reply.code > 0 ? " (" + String(reply.code) + ")." : String(".")),
+                                              "Проверьте Улей и интернет.", retry, "BOOT 2 с — настройка", batteryLine()});
+            break;
+    }
+}
+
+/// The read failed: the screen says so at once (on the old picture, or the whole screen when there is none), then only when the cause
+/// changes or every half hour (e-ink flashes); the next try comes later each time (5, 10, 20, 30 min).
+[[noreturn]] void offline(Offline cause, const Reply& reply) {
+    failures++;
+    const uint32_t retryMin = retryMinutes(failures, settings.intervalMin);
+    const Age age = dataAge(nowUnix(), lastOkUnix, offlineMin);
+    const bool due = bannerDue(cause, bannerCause, age.minutes, bannerAgeMin) || (haveFrame && messageShown);
+    Serial.printf("[monitor] offline: %s (http %d), failure %lu, picture %lu min old%s, next try in %lu min, %s\n", kCauseNames[static_cast<int>(cause)],
+                  reply.code, static_cast<unsigned long>(failures), static_cast<unsigned long>(age.minutes), age.exact ? "" : " (counted)",
+                  static_cast<unsigned long>(retryMin), due ? "screen redrawn" : "screen kept");
+    if (due) {
+        if (haveFrame) showFrame(String(offlineBanner(cause, age, true).c_str()));
+        else showOfflineMessage(cause, reply, retryMin);
+        bannerCause = cause;
+        bannerAgeMin = age.minutes;
+    }
+    offlineMin += retryMin;
+    sleepFor(retryMin);
+}
+
+/// A read that worked: the next failure starts the backoff over, and the picture's age counts from now.
+void readWorked() {
+    failures = 0;
+    offlineMin = 0;
+    lastOkUnix = nowUnix();
+}
+
 [[noreturn]] void readAndSleep() {
     const String battery = batteryNote();
+    switchedOff = false;
     if (!joinWifi()) {
         Serial.println("[monitor] wifi failed");
-        offlineMin += settings.intervalMin;
-        if (!haveFrame) {
-            showMessage("Нет Wi-Fi", {"Сеть " + settings.ssid[0], "не отвечает.", "", "Повтор через " + String(settings.intervalMin) + " мин.", "BOOT 2 с — настройка"});
-        } else if (bannerDue(offlineMin, bannerAtMin)) {
-            bannerAtMin = offlineMin;
-            showFrame("нет Wi-Fi ~" + String(offlineMin) + " мин");
-        }
-        sleepFor(settings.intervalMin);
+        offline(Offline::NoWifi, Reply());
     }
 
     const Reply reply = fetchFrame();
@@ -555,31 +667,97 @@ Reply fetchFrame(bool sleep = false) {
             memcpy(lastFrame, incoming, kFrameBytes);
             haveFrame = true;
             snprintf(lastEtag, sizeof lastEtag, "%s", reply.etag.c_str());
-            offlineMin = bannerAtMin = 0;
+            readWorked();
             showFrame(battery);
             break;
         case Answer::Keep:
-            if (offlineMin > 0 && bannerAtMin > 0) showFrame(battery);  // take the banner off
-            else if (messageShown) showFrame(battery);
-            offlineMin = bannerAtMin = 0;
+            if (bannerCause != Offline::None || messageShown) showFrame(battery);  // take the banner off
+            readWorked();
             break;
         case Answer::BadToken:
-            showMessage("Токен не принят", {"Выдайте новый на", "странице монитора", "в Улье и введите его:", "BOOT 2 с — настройка"});
+            showMessage("Токен не принят", {"Выдайте новый на", "странице монитора", "в Улье и введите его:", "BOOT 2 с — настройка", "", batteryLine()});
             sleepFor(kBadTokenSleepMin);
         case Answer::NotDrawn:
-            showMessage("Нет картинки", {"Улей не рисует этот", "экран: на странице", "монитора выберите", "плату Waveshare 1,54\"."});
+            showMessage("Нет картинки", {"Улей не рисует этот", "экран: на странице", "монитора выберите", "плату Waveshare 1,54\".", "", batteryLine()});
             sleepFor(kBadTokenSleepMin);
         case Answer::Retry:
-            offlineMin += settings.intervalMin;
-            if (!haveFrame) {
-                showMessage("Нет связи с Ульем", {"Ответ: " + String(reply.code), "Повтор через " + String(settings.intervalMin) + " мин.", "", "BOOT 2 с — настройка"});
-            } else if (bannerDue(offlineMin, bannerAtMin)) {
-                bannerAtMin = offlineMin;
-                showFrame("нет связи ~" + String(offlineMin) + " мин");
-            }
-            break;
+            offline(reply.code == 200 ? Offline::WrongFrame : Offline::NoHive, reply);
     }
     sleepFor(nextReadSeconds(settings.intervalMin, refreshS) / 60);  // sooner while the hive monitors the panel
+}
+
+// ------------------------------------------------------------------ switched off (PWR)
+
+const char* kSleepPath = "/sleep.bin";  // the person's sleep picture as the hive last sent it: shown when switched off offline
+
+/// The flash for the sleep picture (the spiffs partition of huge_app.csv, as LittleFS), mounted only when switching off.
+bool mountFlash() {
+    static bool mounted = false;
+    if (!mounted && !(mounted = LittleFS.begin(true))) Serial.println("[monitor] flash: no file system, the sleep picture is not kept");
+    return mounted;
+}
+
+bool readSleepPicture(uint8_t* into) {
+    if (!mountFlash() || !LittleFS.exists(kSleepPath)) return false;
+    File f = LittleFS.open(kSleepPath, "r");
+    const bool ok = f && f.size() == kFrameBytes && f.read(into, kFrameBytes) == kFrameBytes;
+    if (f) f.close();
+    return ok;
+}
+
+/// Keeps the sleep picture for the times there is no link; written only when it changed (the flash wears).
+void keepSleepPicture(const uint8_t* bits) {
+    static uint8_t kept[kFrameBytes];
+    if (readSleepPicture(kept) && memcmp(kept, bits, kFrameBytes) == 0) return;
+    if (!mountFlash()) return;
+    File f = LittleFS.open(kSleepPath, "w");
+    const bool ok = f && f.write(bits, kFrameBytes) == kFrameBytes;
+    if (f) f.close();
+    if (ok) Serial.println("[monitor] off: the sleep picture is kept for offline");
+    else LittleFS.remove(kSleepPath);
+}
+
+/// PWR: the sleep picture, then off. Online, the hive's (kept in the flash too) or, without one, "Выключено"; offline, the kept one, or
+/// a white screen that says there is no link. Wi-Fi gets one short try. On battery the board switches off; on USB it sleeps until a
+/// button (PWR then switches it on again).
+[[noreturn]] void switchOff() {
+    Serial.println("[monitor] off: PWR");
+    Offline cause = settings.ready() ? Offline::NoWifi : Offline::None;  // not set up: nothing to ask, nothing to say about the link
+    bool drawn = false;
+    if (cause != Offline::None && joinWifi(kSleepWifiMs)) {
+        const Reply reply = fetchFrame(true);
+        Serial.printf("[monitor] sleep frame %d\n", reply.code);
+        if (reply.answer == Answer::Draw) {
+            keepSleepPicture(incoming);
+            showBits(incoming, String());
+            drawn = true;
+        } else if (reply.answer == Answer::NotDrawn || reply.answer == Answer::BadToken) {
+            cause = Offline::None;  // the hive answered: the link is there
+            if (reply.answer == Answer::NotDrawn && mountFlash()) LittleFS.remove(kSleepPath);  // the person took the picture away
+        } else {
+            cause = reply.code == 200 ? Offline::WrongFrame : Offline::NoHive;
+        }
+    }
+    if (!drawn && cause != Offline::None && readSleepPicture(incoming)) {
+        Serial.println("[monitor] off: offline, the kept sleep picture");
+        showBits(incoming, String());
+        drawn = true;
+    }
+    if (!drawn && cause != Offline::None) {
+        Serial.printf("[monitor] off: offline (%s), no kept picture\n", kCauseNames[static_cast<int>(cause)]);
+        showMessage("Нет связи", {cause == Offline::NoWifi ? String("Нет Wi-Fi.") : String("Улей не отвечает."), "", "Панель выключается.",
+                                  "Включение — кнопка PWR.", "", batteryLine()});
+        drawn = true;
+    }
+    if (!drawn) showMessage("Выключено", {"Включение — кнопкой PWR", "", batteryLine()});
+    messageShown = true;  // the picture is not on the screen: the next read draws it even on 304
+    switchedOff = true;
+    pinMode(kPinPwr, INPUT_PULLUP);
+    for (const uint32_t started = millis(); digitalRead(kPinPwr) == LOW && millis() - started < 3000;) delay(10);  // still down: it would wake the board at once
+    display.hibernate();
+    digitalWrite(kPinPowerHold, LOW);  // on battery the board switches off here
+    Serial.println("[monitor] off: asleep until a button (on USB power)");
+    sleepFor(0);                        // on USB it keeps power: sleep until a button
 }
 
 /// Woken by BOOT: held for 2 s = the settings point, a short press = read now.
@@ -632,24 +810,11 @@ void setup() {
     if (order == Order::Save) saveAndSleep();
 
     const uint64_t buttons = cause == ESP_SLEEP_WAKEUP_EXT1 ? esp_sleep_get_ext1_wakeup_status() : 0;
+    Serial.printf("[monitor] wake: cause %d, buttons 0x%llx, offline tries %lu%s\n", static_cast<int>(cause), static_cast<unsigned long long>(buttons),
+                  static_cast<unsigned long>(failures), switchedOff ? ", was switched off" : "");
     if (buttons & (1ULL << kPinPwr)) {
-        // the person's sleep picture when the hive has one, else the panel's own words
-        bool drawn = false;
-        if (joinWifi()) {
-            const Reply reply = fetchFrame(true);
-            Serial.printf("[monitor] sleep frame %d\n", reply.code);
-            if (reply.answer == Answer::Draw) {
-                memcpy(lastFrame, incoming, kFrameBytes);
-                haveFrame = false;  // not the picture to keep: the next wake reads the frame anew
-                lastEtag[0] = '\0';
-                showFrame(String());
-                drawn = true;
-            }
-        }
-        if (!drawn) showMessage("Выключено", {"Включение — кнопкой PWR"});
-        display.hibernate();
-        digitalWrite(kPinPowerHold, LOW);  // on battery the board switches off here
-        sleepFor(0);                        // on USB it keeps power: sleep until a button
+        if (!switchedOff) switchOff();
+        switchedOff = false;  // on USB power PWR sleeps the panel and wakes it again: on as after BOOT
     }
     const bool wantPortal = !settings.ready() || ((buttons & (1ULL << kPinBoot)) && bootHeld());
     if (wantPortal) {
@@ -675,8 +840,14 @@ void loop() {
     }
     if (restartAtMs && static_cast<int32_t>(millis() - restartAtMs) >= 0) ESP.restart();
     if (millis() - portalStartedMs > kPortalTimeoutMs) {
-        if (haveFrame) showFrame(String());
-        sleepFor(settings.ready() ? settings.intervalMin : 0);
+        server.stop();
+        dns.stop();
+        WiFi.softAPdisconnect(true);
+        portalMode = false;
+        if (settings.ready()) readAndSleep();  // the old settings stay: read with them (says so if there is no link)
+        // nothing set: the "Настройка" screen must not stay as if the point were still up
+        showMessage("Не настроено", {"Панель не знает Wi-Fi", "и адрес Улья.", "", "BOOT 2 с — настройка", "с телефона, или прошейте", "со страницы монитора."});
+        sleepFor(0);
     }
     delay(2);
 }
