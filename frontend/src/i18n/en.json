@@ -1561,7 +1561,6 @@
     "codecUnsupported": "The browser cannot play this stream's codec (most likely H.265).",
     "codecHint": "Switch the camera's sub-stream to H.264 in the NVR settings, or choose \"Snapshots\".",
     "connectionFailed": "Could not connect to the video",
-    "connectionClosed": "The video stopped. Press \"Stop\" and \"Watch\" again.",
     "ptz": {
       "title": "Camera turning",
       "up": "Up",
@@ -1570,9 +1569,17 @@
       "right": "Right",
       "zoomIn": "Zoom in",
       "zoomOut": "Zoom out",
-      "preset": "Turn to the preset",
-      "failed": "The camera did not turn"
-    }
+      "preset": "Preset",
+      "failed": "The camera did not turn",
+      "pause": "Pause at each preset",
+      "seconds": "{s} s",
+      "tour": "Tour presets 1–16",
+      "tourShort": "Tour",
+      "tourStop": "Stop the tour"
+    },
+    "lost": "Connection to the camera lost",
+    "playAgain": "Watch again",
+    "exitFullscreen": "Leave full screen"
   },
   "range": {
     "hint": "Normal range: below it the number is light blue on screens, above it pink, inside it white. Empty: no colouring (a temperature below 0° is light blue and above 28° orange, as before). One end alone is fine.",

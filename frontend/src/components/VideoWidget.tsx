@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Maximize2, Play, Square, Video } from 'lucide-react'
+import { Maximize2, Minimize2, Play, Square, Video, WifiOff } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, call, type EventDto } from '@/api/client'
 import { PtzControls } from '@/components/PtzControls'
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Select } from '@/components/ui/primitives'
 import { t } from '@/i18n'
 import {
-  alarmCamera, codecList, codecName, groupCameras, idleAfterMs, isCodecMismatch, kbps, loadChoice, qualities, saveChoice, shouldPlay,
+  alarmCamera, codecList, codecName, groupCameras, idleAfterMs, isCodecMismatch, isStalled, kbps, loadChoice, qualities, saveChoice, shouldPlay,
   type Quality, type VideoCamera, type VideoChoice,
 } from '@/lib/video'
 
@@ -26,6 +26,8 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
   const [visible, setVisible] = useState(() => document.visibilityState === 'visible')
   const [inView, setInView] = useState(true)
   const [idle, setIdle] = useState(false)
+  const [lost, setLost] = useState(false)
+  const [full, setFull] = useState(false)
   const lastTouch = useRef(Date.now())
 
   const camera = cameras.find((c) => c.deviceId === choice.camera) ?? null
@@ -33,6 +35,12 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
     setChoice(next)
     saveChoice(next)
     if (!next.camera) setWanted(false)
+    setLost(false)
+  }
+  const play = () => {
+    touch()
+    setLost(false)
+    setWanted(true)
   }
   const touch = useCallback(() => {
     lastTouch.current = Date.now()
@@ -56,14 +64,34 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
     return () => clearInterval(timer)
   }, [wanted])
 
+  useEffect(() => {
+    const onChange = () => setFull(document.fullscreenElement !== null && document.fullscreenElement === box.current)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
   const playing = camera !== null && shouldPlay({ wanted, visible, inView, idle })
   const alarm = alarmCamera(events, cameras)
 
+  // Whatever stopped the picture (stop, lost connection, idle, hidden tab) also leaves the whole screen.
+  useEffect(() => {
+    if (!playing && document.fullscreenElement === box.current) void document.exitFullscreen?.().catch(() => {})
+  }, [playing])
+
   function fullscreen() {
     touch()
+    if (full) {
+      void document.exitFullscreen?.().catch(() => {})
+      return
+    }
     void box.current?.requestFullscreen?.().catch(() => {})
     if (choice.quality === 'sd') choose({ ...choice, quality: 'hd' }) // the detailed stream is worth it on the whole screen
   }
+
+  const lose = useCallback(() => {
+    setWanted(false)
+    setLost(true)
+  }, [])
 
   if (streams.data && !streams.data.enabled) return null
 
@@ -94,7 +122,7 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
       <CardContent className="space-y-2">
         {alarm && alarm.deviceId !== choice.camera && (
           <Button variant="outline" size="sm" className="border-red-900/70 text-red-300"
-            onClick={() => { choose({ camera: alarm.deviceId, quality: choice.quality === 'snapshots' ? 'sd' : choice.quality }); touch(); setWanted(true) }}>
+            onClick={() => { choose({ camera: alarm.deviceId, quality: choice.quality === 'snapshots' ? 'sd' : choice.quality }); play() }}>
             {t('video.showAlarm').replace('{camera}', alarm.name)}
           </Button>
         )}
@@ -102,17 +130,21 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
           {!camera && <p className="flex h-full items-center justify-center text-sm text-neutral-500">{t('video.pick')}</p>}
           {camera && playing && (choice.quality === 'snapshots'
             ? <Snapshots camera={camera} />
-            : <LivePlayer key={`${camera.deviceId}-${choice.quality}`} stream={choice.quality === 'hd' ? camera.main : camera.sub} quality={choice.quality} />)}
+            : <LivePlayer key={`${camera.deviceId}-${choice.quality}`} stream={choice.quality === 'hd' ? camera.main : camera.sub} quality={choice.quality} onLost={lose} />)}
           {camera && !playing && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-neutral-400">
               {idle && <p>{t('video.stillWatching')}</p>}
-              <Button onClick={() => { touch(); setWanted(true) }}><Play />{idle ? t('video.continue') : t('video.play')}</Button>
+              {lost && <p className="flex items-center gap-1.5 text-red-300"><WifiOff className="size-4" />{t('video.lost')}</p>}
+              <Button onClick={play}><Play />{lost ? t('video.playAgain') : idle ? t('video.continue') : t('video.play')}</Button>
             </div>
           )}
           {camera && playing && <PtzControls deviceId={camera.deviceId} onTouch={touch} />}
           {camera && playing && (
             <div className="absolute right-2 top-2 flex gap-1">
-              <Button variant="secondary" size="icon" className="size-8 opacity-80" onClick={fullscreen} title={t('video.fullscreen')} aria-label={t('video.fullscreen')}><Maximize2 /></Button>
+              <Button variant="secondary" size="icon" className="size-8 opacity-80" onClick={fullscreen}
+                title={full ? t('video.exitFullscreen') : t('video.fullscreen')} aria-label={full ? t('video.exitFullscreen') : t('video.fullscreen')}>
+                {full ? <Minimize2 /> : <Maximize2 />}
+              </Button>
               <Button variant="secondary" size="icon" className="size-8 opacity-80" onClick={() => setWanted(false)} title={t('video.stop')} aria-label={t('video.stop')}><Square /></Button>
             </div>
           )}
@@ -164,7 +196,7 @@ function Snapshots({ camera }: { camera: VideoCamera }) {
  * stream's MIME type and then sends fragmented MP4. A camera whose codec the browser lacks (H.265 on most desktops)
  * gets a plain explanation instead of a black box.
  */
-function LivePlayer({ stream, quality }: { stream: string; quality: Quality }) {
+function LivePlayer({ stream, quality, onLost }: { stream: string; quality: Quality; onLost: () => void }) {
   const video = useRef<HTMLVideoElement>(null)
   const [state, setState] = useState<{ codec?: string; kbps?: number; error?: string; mismatch?: boolean }>({})
 
@@ -183,11 +215,15 @@ function LivePlayer({ stream, quality }: { stream: string; quality: Quality }) {
     const queue: ArrayBuffer[] = []
     let bytes = 0
     let since = performance.now()
+    let lastData: number | null = null
+    let codecProblem = false
+    // A stream that started and then stopped coming (camera gone, Wi-Fi dropped, go2rtc stuck) is stopped here and said so.
     const meter = setInterval(() => {
       const now = performance.now()
       setState((s) => ({ ...s, kbps: kbps(bytes, now - since) }))
       bytes = 0
       since = now
+      if (isStalled(lastData, now)) onLost()
     }, 2000)
 
     const pump = () => {
@@ -223,22 +259,29 @@ function LivePlayer({ stream, quality }: { stream: string; quality: Quality }) {
               buffer.addEventListener('updateend', pump)
               pump()
             } catch {
+              codecProblem = true
               setState((s) => ({ ...s, error: t('video.codecUnsupported'), mismatch: true }))
             }
           }, { once: true })
           void element.play().catch(() => {})
         } else if (msg.type === 'error') {
+          codecProblem = true // go2rtc said why (a codec, an unreachable camera): shown as it is, not as a lost connection
           setState((s) => ({ ...s, error: msg.value, mismatch: isCodecMismatch(msg.value) }))
         }
         return
       }
       bytes += (ev.data as ArrayBuffer).byteLength
+      lastData = performance.now()
       queue.push(ev.data as ArrayBuffer)
       pump()
     }
-    ws.onerror = () => setState((s) => ({ ...s, error: s.error ?? t('video.connectionFailed') }))
+    ws.onerror = () => {
+      if (lastData === null) setState((s) => ({ ...s, error: s.error ?? t('video.connectionFailed') }))
+    }
     ws.onclose = (ev) => {
-      if (ev.code !== 1000) setState((s) => ({ ...s, error: s.error ?? t('video.connectionClosed') }))
+      // Dropped after the picture came: the connection is lost. Before it, the reason stays on the picture.
+      if (ev.code !== 1000 && lastData !== null && !codecProblem) onLost()
+      else if (ev.code !== 1000) setState((s) => ({ ...s, error: s.error ?? t('video.connectionFailed') }))
     }
 
     return () => {
@@ -251,7 +294,7 @@ function LivePlayer({ stream, quality }: { stream: string; quality: Quality }) {
         element.load()
       }
     }
-  }, [stream])
+  }, [stream, onLost])
 
   return (
     <>

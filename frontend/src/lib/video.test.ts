@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EventDto } from '@/api/client'
-import { alarmCamera, codecList, codecName, defaultChoice, groupCameras, isCodecMismatch, kbps, loadChoice, ptzMove, ptzRepeatMs, saveChoice, shouldPlay, type VideoCamera } from './video'
+import { alarmCamera, codecList, codecName, defaultChoice, groupCameras, isCodecMismatch, isStalled, kbps, loadChoice, loadTourPause, nextTourIndex, ptzMove, ptzRepeatMs, saveChoice, saveTourPause, shouldPlay, tourPresets, tourStepMs, type VideoCamera } from './video'
 
 const camera = (deviceId: string, zone: string | null, name = deviceId) =>
   ({ deviceId, name, zone, zoneId: zone ? 1 : null, nvrId: 1, channel: 1, sub: `${deviceId}-sub`, main: `${deviceId}-main`, status: 'online' }) as VideoCamera
@@ -83,5 +83,41 @@ describe('PTZ controls', () => {
 
   it('repeats a held move well within the hive\'s 1 s stop', () => {
     expect(ptzRepeatMs).toBeLessThan(1000 / 2)
+  })
+})
+
+describe('preset tour', () => {
+  const presets = Array.from({ length: 255 }, (_, i) => ({ token: String(i + 1), name: String(i + 1) }))
+
+  it('offers 16 presets: the camera\'s first, or 1..16 when it lists none', () => {
+    expect(tourPresets(presets).map((p) => p.token)).toEqual(Array.from({ length: 16 }, (_, i) => String(i + 1)))
+    expect(tourPresets([{ token: 'a', name: 'Двор' }])).toEqual([{ token: 'a', name: 'Двор' }])
+    expect(tourPresets([])).toHaveLength(16)
+  })
+
+  it('goes round and round, travel plus pause per step', () => {
+    expect(nextTourIndex(0, 16)).toBe(1)
+    expect(nextTourIndex(15, 16)).toBe(0)
+    expect(nextTourIndex(3, 0)).toBe(0)
+    expect(tourStepMs(3)).toBe(5000)
+  })
+
+  it('remembers the pause per browser and survives closed storage', () => {
+    const store = new Map<string, string>()
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) }
+    expect(loadTourPause(storage)).toBe(3)
+    saveTourPause(10, storage)
+    expect(loadTourPause(storage)).toBe(10)
+    expect(loadTourPause({ getItem: () => '7' })).toBe(3)
+    expect(loadTourPause({ getItem: () => { throw new Error('denied') } })).toBe(3)
+    expect(() => saveTourPause(5, { setItem: () => { throw new Error('denied') } })).not.toThrow()
+  })
+})
+
+describe('stall', () => {
+  it('is a stream that started and then got nothing for 8 s', () => {
+    expect(isStalled(null, 100_000)).toBe(false)
+    expect(isStalled(10_000, 17_999)).toBe(false)
+    expect(isStalled(10_000, 18_000)).toBe(true)
   })
 })
