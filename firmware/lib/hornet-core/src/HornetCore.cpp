@@ -440,6 +440,7 @@ void Core::onMqttConnected() {
     mqtt.subscribe(topics::cmdWildcard(dev).c_str(), 1);
     mqtt.subscribe(topics::config(dev).c_str(), 1);
     if (role_.wantsDisplay()) mqtt.subscribe(topics::display(dev).c_str(), 1);
+    if (role_.wantsDrive()) mqtt.subscribe(topics::drive(dev).c_str(), 0);
     mqtt.publish(willTopic.c_str(), 1, true, "online");
     if (settings_.otaPending.length() || settings_.otaRolledBack.length()) {
         JsonDocument outcome;
@@ -498,6 +499,11 @@ void Core::handleMessage(const String& topic, const String& payload) {
     if (role_.wantsDisplay() && topic == String(topics::display(dev.c_str()).c_str())) {
         JsonDocument message;
         if (!deserializeJson(message, payload)) role_.applyDisplay(*this, message.as<JsonObjectConst>());
+        return;
+    }
+    if (role_.wantsDrive() && topic == String(topics::drive(dev.c_str()).c_str())) {
+        JsonDocument message;
+        if (!deserializeJson(message, payload)) role_.applyDrive(*this, message.as<JsonObjectConst>());
         return;
     }
     const String cmdPrefix = String(topics::device(dev.c_str()).c_str()) + "/cmd/";

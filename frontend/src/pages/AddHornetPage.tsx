@@ -15,7 +15,7 @@ import { SetupStages } from '@/components/SetupStages'
 import { SetupError, type SetupStage, setupHornet, setupStages } from '@/lib/hornetSetup'
 import { type SerialPortLike, serialSupported } from '@/lib/serial'
 
-const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant', 'ble', 'irrx', 'irtx', 'monitor']
+const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant', 'ble', 'irrx', 'irtx', 'monitor', 'car']
 const types = typeCodes.map((code) => ({ code, get title() { return t(`deviceTypes.${code}`) } }))
 
 const idPattern = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/

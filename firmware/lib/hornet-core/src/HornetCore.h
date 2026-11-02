@@ -79,6 +79,9 @@ struct Role {
     // vs/v1/hive/display/{id}): what to show, as ready texts. An empty list means "show your own readings".
     virtual bool wantsDisplay() const { return false; }
     virtual void applyDisplay(Core& core, JsonObjectConst message) {}
+    // A car: wheel speeds from vs/v1/hive/drive/{id} (QoS 0, no ack), repeated while a control is held.
+    virtual bool wantsDrive() const { return false; }
+    virtual void applyDrive(Core& core, JsonObjectConst message) {}
 };
 
 using CommandHandler = std::function<AckResult(JsonObjectConst payload)>;

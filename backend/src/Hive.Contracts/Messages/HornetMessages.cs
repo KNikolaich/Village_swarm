@@ -50,6 +50,9 @@ public sealed record HealthMessage : HornetMessage
     public required string ResetReason { get; init; }
     public int? Outbox { get; init; }
     public BrokerNode? Broker { get; init; }
+
+    /// <summary>Role car: why its motors stopped last (boot, deadman, link, max_run, hive).</summary>
+    public string? StoppedBy { get; init; }
 }
 
 /// <summary>vs/v1/dev/{id}/tele/{metric}</summary>

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Maximize2, Minimize2, Play, Square, Video, WifiOff } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, call, type EventDto } from '@/api/client'
+import { CarControls } from '@/components/CarControls'
 import { PtzControls } from '@/components/PtzControls'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Select } from '@/components/ui/primitives'
@@ -138,7 +139,9 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
               <Button onClick={play}><Play />{lost ? t('video.playAgain') : idle ? t('video.continue') : t('video.play')}</Button>
             </div>
           )}
-          {camera && playing && <PtzControls deviceId={camera.deviceId} onTouch={touch} />}
+          {camera && playing && (camera.kind === 'car'
+            ? <CarControls deviceId={camera.deviceId} onTouch={touch} />
+            : <PtzControls deviceId={camera.deviceId} onTouch={touch} />)}
           {camera && playing && (
             <div className="absolute right-2 top-2 flex gap-1">
               <Button variant="secondary" size="icon" className="size-8 opacity-80" onClick={fullscreen}
@@ -163,7 +166,9 @@ function Snapshots({ camera }: { camera: VideoCamera }) {
     let current: string | null = null
     async function next() {
       try {
-        const response = await fetch(`/api/ipcams/${camera.nvrId}/snapshot?channel=${camera.channel}`, { credentials: 'same-origin' })
+        // A car has no snapshot of its own: a frame of its stream through go2rtc.
+        const url = camera.kind === 'car' ? `/streams/frame.jpeg?src=${encodeURIComponent(camera.sub)}` : `/api/ipcams/${camera.nvrId}/snapshot?channel=${camera.channel}`
+        const response = await fetch(url, { credentials: 'same-origin' })
         if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { detail?: string } | null)?.detail ?? `HTTP ${response.status}`)
         const blob = URL.createObjectURL(await response.blob())
         if (stop) return URL.revokeObjectURL(blob)
@@ -182,7 +187,7 @@ function Snapshots({ camera }: { camera: VideoCamera }) {
       clearTimeout(timer)
       if (current) URL.revokeObjectURL(current)
     }
-  }, [camera.nvrId, camera.channel])
+  }, [camera.nvrId, camera.channel, camera.kind, camera.sub])
   return (
     <>
       {url && <img src={url} alt={camera.name} className="h-full w-full object-contain" />}

@@ -299,6 +299,14 @@ public sealed class ProvisioningService(
             config["guard"]!["armed"] = armed;
             config["camera"] ??= new JsonObject { ["frame"] = "SVGA", ["quality"] = 12, ["burst"] = 3, ["burst_interval_ms"] = 700 };
         }
+        if (device.TypeCode == Cars.Type)
+        {
+            config["camera"] ??= new JsonObject { ["frame"] = "VGA", ["quality"] = 14 };
+            config["relay"] ??= new JsonObject { ["channel"] = "light", ["max_on_s"] = 600 };
+            config["car"] ??= new JsonObject { ["max_run_s"] = 60, ["max_speed"] = 100 };
+            // The camera's stream is opened only by the hive's go2rtc, with this key.
+            config["car"]!["stream_key"] ??= RandomNumberGenerator.GetString("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", 24);
+        }
         config["upload"] = new JsonObject { ["primary"] = uploadUrl };
         return config;
     }

@@ -589,6 +589,133 @@
         }
       }
     },
+    "/api/cars/{deviceId}/drive": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cars/{deviceId}/setup": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CarSetupDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CarSetupDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CarSetupDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/devices/{deviceId}/replace": {
       "post": {
         "tags": [
@@ -5347,6 +5474,52 @@
           }
         }
       },
+      "CarSetupDto": {
+        "type": "object",
+        "properties": {
+          "motorPins": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "motorPwm": {
+            "type": "boolean",
+            "default": true
+          },
+          "invertLeft": {
+            "type": "boolean",
+            "default": false
+          },
+          "invertRight": {
+            "type": "boolean",
+            "default": false
+          },
+          "swapSides": {
+            "type": "boolean",
+            "default": false
+          },
+          "maxSpeed": {
+            "type": "integer",
+            "format": "int32",
+            "default": 100
+          },
+          "maxRunS": {
+            "type": "integer",
+            "format": "int32",
+            "default": 60
+          },
+          "lightPin": {
+            "type": "integer",
+            "format": "int32",
+            "default": 4
+          }
+        }
+      },
       "CatalogCounts": {
         "required": [
           "zones",
@@ -6211,6 +6384,23 @@
           "sleep": {
             "type": "boolean",
             "default": false
+          }
+        }
+      },
+      "DriveRequest": {
+        "required": [
+          "left",
+          "right"
+        ],
+        "type": "object",
+        "properties": {
+          "left": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "right": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -9769,6 +9959,10 @@
           },
           "status": {
             "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "default": "ipcam"
           }
         }
       },

@@ -40,6 +40,7 @@ public class ContractExamplesTests
         ["heartbeat"] = typeof(HeartbeatMessage),
         ["active"] = typeof(ActiveNodeMessage),
         ["display"] = typeof(DisplayMessage),
+        ["drive"] = typeof(DriveMessage),
     };
 
     public static TheoryData<string, string> ValidExamples() => Examples(invalid: false);

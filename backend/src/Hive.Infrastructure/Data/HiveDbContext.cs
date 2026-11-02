@@ -112,7 +112,8 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
                 new DeviceType { Code = "monitor", Title = "Монитор (экран с показаниями)", OfflineAfterS = 180 },
                 new DeviceType { Code = "sensor", Title = "Датчик (движение, дверь, протечка, температура)", OfflineAfterS = 1800 },
                 new DeviceType { Code = "ipcam", Title = "IP-камера (через видеорегистратор)", OfflineAfterS = 180 },
-                new DeviceType { Code = "nvr", Title = "Видеорегистратор", OfflineAfterS = 180 });
+                new DeviceType { Code = "nvr", Title = "Видеорегистратор", OfflineAfterS = 180 },
+                new DeviceType { Code = "car", Title = "Машинка с камерой", OfflineAfterS = 180 });
             // A camera on its own is an ipcam device too: only its settings (nvrs.kind = camera) differ.
         });
 
