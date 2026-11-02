@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Threading.RateLimiting;
 
 namespace Hive.Modules.IpCams;
 
@@ -16,6 +17,9 @@ namespace Hive.Modules.IpCams;
 public static class IpCamsModule
 {
     public const string Name = "ipcams";
+
+    /// <summary>Rate limit of PTZ commands: per user, enough for a held arrow (a move each 400 ms) and a few clicks.</summary>
+    public const string PtzRateLimit = "ptz";
 
     public static IServiceCollection AddIpCamsModule(this IServiceCollection services, IConfiguration configuration)
     {
@@ -27,6 +31,10 @@ public static class IpCamsModule
         services.AddSingleton<Snapshots>();
         services.AddSingleton<NvrLogins>();
         services.AddSingleton<IpCamDiagnostics>();
+        services.AddSingleton<PtzControl>();
+        services.AddRateLimiter(o => o.AddPolicy(PtzRateLimit, ctx => RateLimitPartition.GetFixedWindowLimiter(
+            ctx.User.Identity?.Name ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromSeconds(1) })));
         services.Configure<VideoOptions>(configuration.GetSection(VideoOptions.Section));
         services.AddHttpClient(nameof(VideoStreams), (sp, c) =>
         {
@@ -52,6 +60,26 @@ public static class IpCamsModule
             .ExcludeFromDescription();
 
         var ipcams = app.MapGroup("/api/ipcams").WithTags("ipcams");
+
+        // PTZ of a camera on its own (contracts/ipcam.md "PTZ"): whether it turns and its presets, then moves, stops and presets.
+        ipcams.MapGet("/ptz/{deviceId}", async Task<Results<Ok<PtzStateDto>, NotFound>> (string deviceId, PtzControl ptz, CancellationToken ct) =>
+                await ptz.StateAsync(deviceId, ct) is (PtzResult.Ok, { } state) ? TypedResults.Ok(state) : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.CanControl);
+        ipcams.MapPost("/ptz/{deviceId}", async Task<Results<NoContent, NotFound, ValidationProblem, ProblemHttpResult>> (
+                string deviceId, PtzRequest r, ClaimsPrincipal user, PtzControl ptz, CancellationToken ct) =>
+            {
+                var (result, error) = await ptz.CommandAsync(deviceId, r, $"user:{user.Identity?.Name}", ct);
+                return result switch
+                {
+                    PtzResult.Ok => TypedResults.NoContent(),
+                    PtzResult.NotFound => TypedResults.NotFound(),
+                    PtzResult.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["request"] = [error!] }),
+                    PtzResult.NoPtz => TypedResults.Problem(error, title: "No PTZ", statusCode: StatusCodes.Status409Conflict),
+                    _ => TypedResults.Problem(error, title: "PTZ failed", statusCode: StatusCodes.Status502BadGateway),
+                };
+            })
+            .RequireAuthorization(HiveRoles.CanControl)
+            .RequireRateLimiting(PtzRateLimit);
 
         ipcams.MapGet("", async Task<Ok<IReadOnlyList<NvrDto>>> (IpCamService s, CancellationToken ct) => TypedResults.Ok(await s.ListAsync(ct)))
             .RequireAuthorization(HiveRoles.AdminOnly);

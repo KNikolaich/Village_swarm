@@ -94,3 +94,25 @@ export function alarmCamera(events: readonly EventDto[], cameras: readonly Video
 export function kbps(bytes: number, ms: number): number {
   return ms > 0 ? Math.round((bytes * 8) / ms) : 0
 }
+
+export type PtzRequest = Schemas['PtzRequest']
+
+/** While an arrow is held the move is repeated this often; the hive stops the camera 1 s after the last one. */
+export const ptzRepeatMs = 400
+
+/** Speed of the arrows and the zoom buttons: half, slow enough to aim with a long zoom. */
+export const ptzSpeed = 0.5
+
+export type PtzDirection = 'up' | 'down' | 'left' | 'right' | 'zoomIn' | 'zoomOut'
+
+/** The move an arrow or a zoom button sends (positive pan: right, tilt: up, zoom: in, as the contract says). */
+export function ptzMove(direction: PtzDirection, speed = ptzSpeed): PtzRequest {
+  switch (direction) {
+    case 'up': return { op: 'move', tilt: speed }
+    case 'down': return { op: 'move', tilt: -speed }
+    case 'left': return { op: 'move', pan: -speed }
+    case 'right': return { op: 'move', pan: speed }
+    case 'zoomIn': return { op: 'move', zoom: speed }
+    case 'zoomOut': return { op: 'move', zoom: -speed }
+  }
+}

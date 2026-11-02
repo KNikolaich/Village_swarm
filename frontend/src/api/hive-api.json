@@ -3881,6 +3881,81 @@
         }
       }
     },
+    "/api/ipcams/ptz/{deviceId}": {
+      "get": {
+        "tags": [
+          "ipcams"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PtzStateDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ipcams"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PtzRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ipcams": {
       "get": {
         "tags": [
@@ -8226,6 +8301,84 @@
             ]
           },
           "motion": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PtzPresetDto": {
+        "required": [
+          "token",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "PtzRequest": {
+        "required": [
+          "op"
+        ],
+        "type": "object",
+        "properties": {
+          "op": {
+            "type": "string"
+          },
+          "pan": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "tilt": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "zoom": {
+            "type": [
+              "null",
+              "number"
+            ],
+            "format": "double"
+          },
+          "preset": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PtzStateDto": {
+        "required": [
+          "available",
+          "presets",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "presets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PtzPresetDto"
+            }
+          },
+          "error": {
             "type": [
               "null",
               "string"

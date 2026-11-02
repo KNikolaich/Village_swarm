@@ -52,6 +52,7 @@ public sealed class IpCamWatch(
     NvrLogins logins,
     IpCamDiagnostics diagnostics,
     VideoStreams video,
+    PtzControl ptz,
     NodeState node,
     TimeProvider time,
     ILogger<IpCamWatch> logger) : BackgroundService, IDirectDriver
@@ -74,6 +75,7 @@ public sealed class IpCamWatch(
     {
         _reload.Writer.TryWrite(true);
         video.Changed(); // the live streams follow the cameras
+        ptz.Forget();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -367,6 +369,12 @@ public sealed class IpCamWatch(
                 lock (_lastMotion)
                 {
                     diagnostics.Motion(info.DeviceId, now);
+                    if (ptz.Quiet(info.DeviceId, now))
+                    {
+                        // The camera is turning (or just stopped): its picture moves, nobody walked by.
+                        logger.LogInformation("NVR {Nvr} channel {Channel} ({Device}): motion while the camera turns, ignored", run.Id, channel, info.DeviceId);
+                        return;
+                    }
                     var cooling = _lastMotion.TryGetValue(info.DeviceId, out var last) && now - last < TimeSpan.FromSeconds(options.Value.CooldownS);
                     // Said every time, so the log shows whether the NVR reports motion of a camera at all.
                     logger.LogInformation("NVR {Nvr} channel {Channel} ({Device}): motion{Cooldown}", run.Id, channel, info.DeviceId, cooling ? ", within the cooldown" : "");

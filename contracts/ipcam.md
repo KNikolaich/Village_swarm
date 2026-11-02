@@ -116,6 +116,35 @@ ONVIF (SOAP 1.2, WS-UsernameToken with PasswordDigest = Base64(SHA1(nonce + crea
   alarms do not; the settings say so.
 - A refused login (`ter:NotAuthorized` or 401) counts in the same lockout guard as Dahua's.
 
+## PTZ (a camera on its own)
+
+A camera on its own that can turn is turned from the hive; cameras behind an NVR are not (add the camera on its own for it).
+
+| Request | Answer |
+|---|---|
+| `GET /api/ipcams/ptz/{deviceId}` | `{available, presets: [{token, name}], error}`: whether it turns (asked once, kept 10 min or until the cameras change), its presets (a preset without a name is shown by its token), `error` when the camera did not answer (not kept). 404: not a camera on its own |
+| `POST /api/ipcams/ptz/{deviceId}` `{op: "move", pan?, tilt?, zoom?}` | speeds -1..1 (rounded to 0.01, at least one not 0; positive: right, up, zoom in). 204 |
+| `POST …` `{op: "stop"}` | stops pan, tilt and zoom. 204 |
+| `POST …` `{op: "preset", preset}` | goes to a preset by its token. 204 |
+
+- Both: users who may control (not viewers). Errors: 400 a bad command, 404, 409 the camera has no PTZ, 502 the camera
+  refused or did not answer (`detail` says why), 429 more than 10 commands a second from one user.
+- **A move always ends**: it lasts 1 s unless another move comes; the controls repeat it every 400 ms while held and send
+  `stop` on release. Without a new move the hive sends Stop itself (closed tab, lost connection). An ONVIF camera also gets
+  the second as the move's own timeout.
+- ONVIF: the PTZ service of `GetCapabilities` and the first media profile with a `PTZConfiguration` (the first profile when none
+  says so); `ContinuousMove` (`PanTilt x y`, `Zoom x`, an axis at 0 left out, `Timeout PT1S`), `Stop` (PanTilt and Zoom),
+  `GetPresets`, `GotoPreset`.
+- Dahua: `ptz.cgi?action=start&channel=1&code={Left|Right|Up|Down|LeftUp|RightUp|LeftDown|RightDown|ZoomTele|ZoomWide}&arg1&arg2&arg3=0`
+  (arg2 the speed 1..8, arg1 the vertical speed of a diagonal), `action=stop` with the same code; a new direction stops the
+  old one first. Presets: `action=getPresets` (`presets[i].Index`, `presets[i].Name`), `code=GotoPreset&arg2={index}`. An
+  error answer to getPresets: no PTZ.
+- **Quiet motion while turning**: motion of the camera is ignored (logged, no event) while it moves and 5 s after the stop,
+  and 15 s after a preset (the travel).
+- Audit: `ipcam.ptz.move` when a move starts (not each repeat), `ipcam.ptz.preset`.
+- The overview widget «Видео» shows arrows, zoom and the presets over the picture of a camera that turns, for users who may
+  control.
+
 ## "Едут хозяева" (guard mode arriving), for every camera
 
 The cameras stay armed while the family is on its way, so their motion is most likely the family. Such motion is a quiet

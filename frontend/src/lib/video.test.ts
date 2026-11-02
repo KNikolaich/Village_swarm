@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EventDto } from '@/api/client'
-import { alarmCamera, codecList, codecName, defaultChoice, groupCameras, isCodecMismatch, kbps, loadChoice, saveChoice, shouldPlay, type VideoCamera } from './video'
+import { alarmCamera, codecList, codecName, defaultChoice, groupCameras, isCodecMismatch, kbps, loadChoice, ptzMove, ptzRepeatMs, saveChoice, shouldPlay, type VideoCamera } from './video'
 
 const camera = (deviceId: string, zone: string | null, name = deviceId) =>
   ({ deviceId, name, zone, zoneId: zone ? 1 : null, nvrId: 1, channel: 1, sub: `${deviceId}-sub`, main: `${deviceId}-main`, status: 'online' }) as VideoCamera
@@ -68,5 +68,20 @@ describe('alarm button', () => {
     expect(alarmCamera([ev('ipcam1-ch2', 'info'), ev('ipcam1-ch1', 'alarm')], cams)?.deviceId).toBe('ipcam1-ch1')
     expect(alarmCamera([ev('ipcam1-ch1', 'alarm', '2026-10-24T10:00:00Z')], cams)).toBeNull()
     expect(alarmCamera([ev('guard-gate1', 'alarm')], cams)).toBeNull()
+  })
+})
+
+describe('PTZ controls', () => {
+  it('sends the contract directions: right, up and zoom in are positive', () => {
+    expect(ptzMove('right')).toEqual({ op: 'move', pan: 0.5 })
+    expect(ptzMove('left')).toEqual({ op: 'move', pan: -0.5 })
+    expect(ptzMove('up', 1)).toEqual({ op: 'move', tilt: 1 })
+    expect(ptzMove('down')).toEqual({ op: 'move', tilt: -0.5 })
+    expect(ptzMove('zoomIn')).toEqual({ op: 'move', zoom: 0.5 })
+    expect(ptzMove('zoomOut')).toEqual({ op: 'move', zoom: -0.5 })
+  })
+
+  it('repeats a held move well within the hive\'s 1 s stop', () => {
+    expect(ptzRepeatMs).toBeLessThan(1000 / 2)
   })
 })

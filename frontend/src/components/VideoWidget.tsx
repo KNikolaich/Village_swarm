@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Maximize2, Play, Square, Video } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, call, type EventDto } from '@/api/client'
+import { PtzControls } from '@/components/PtzControls'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Select } from '@/components/ui/primitives'
 import { t } from '@/i18n'
@@ -108,6 +109,7 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
               <Button onClick={() => { touch(); setWanted(true) }}><Play />{idle ? t('video.continue') : t('video.play')}</Button>
             </div>
           )}
+          {camera && playing && <PtzControls deviceId={camera.deviceId} onTouch={touch} />}
           {camera && playing && (
             <div className="absolute right-2 top-2 flex gap-1">
               <Button variant="secondary" size="icon" className="size-8 opacity-80" onClick={fullscreen} title={t('video.fullscreen')} aria-label={t('video.fullscreen')}><Maximize2 /></Button>

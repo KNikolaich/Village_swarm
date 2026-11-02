@@ -200,6 +200,40 @@ public sealed class DahuaClient : IDisposable
         return new ProbeResultDto(true, null, null, type, channels);
     }
 
+    /// <summary>
+    /// PTZ through ptz.cgi: a move starts with a direction code (Left, RightUp, ZoomTele…) and runs until a stop with the same
+    /// code; Dahua has no timeout of its own, the hive keeps one (<see cref="PtzControl"/>).
+    /// </summary>
+    public Task PtzStartAsync(int channel, string code, int arg1, int arg2, CancellationToken ct) =>
+        PtzAsync($"action=start&channel={I(channel)}&code={code}&arg1={I(arg1)}&arg2={I(arg2)}&arg3=0", ct);
+
+    public Task PtzStopAsync(int channel, string code, CancellationToken ct) =>
+        PtzAsync($"action=stop&channel={I(channel)}&code={code}&arg1=0&arg2=0&arg3=0", ct);
+
+    /// <summary>The presets of a channel; an error answer (a camera without PTZ) throws.</summary>
+    public async Task<IReadOnlyList<PtzPresetDto>> PtzPresetsAsync(int channel, CancellationToken ct) =>
+        ParsePresets(await PtzAsync($"action=getPresets&channel={I(channel)}", ct));
+
+    /// <summary>presets[i].Index and presets[i].Name lines; the index is what GotoPreset takes.</summary>
+    internal static IReadOnlyList<PtzPresetDto> ParsePresets(string text)
+    {
+        var values = Values(text);
+        var presets = new List<PtzPresetDto>();
+        for (var i = 0; values.TryGetValue($"presets[{I(i)}].Index", out var index); i++)
+            presets.Add(new PtzPresetDto(index, values.TryGetValue($"presets[{I(i)}].Name", out var name) && name.Length > 0 ? name : index));
+        return presets;
+    }
+
+    private async Task<string> PtzAsync(string query, CancellationToken ct)
+    {
+        var text = await GetTextAsync("/cgi-bin/ptz.cgi?" + query, ct);
+        if (text.TrimStart().StartsWith("Error", StringComparison.OrdinalIgnoreCase))
+            throw new HttpRequestException($"ptz.cgi: {Snapshots.Peek(System.Text.Encoding.UTF8.GetBytes(text))}");
+        return text;
+    }
+
+    private static string I(int value) => value.ToString(CultureInfo.InvariantCulture);
+
     private static bool Optional(Exception ex, CancellationToken ct) =>
         !ct.IsCancellationRequested && ex is HttpRequestException or NvrAuthException or OperationCanceledException or IOException;
 
