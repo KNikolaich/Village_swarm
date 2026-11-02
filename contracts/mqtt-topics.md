@@ -23,6 +23,7 @@ Prefix: `vs/v1/`. `{id}` is a hornet device_id, e.g. `guard-gate1`.
 | `vs/v1/hive/{node}/heartbeat` | hive → all | no | 1 | `heartbeat` |
 | `vs/v1/hive/active` | hive → dev | yes | 1 | `active` |
 | `vs/v1/hive/display/{id}` | hive → dev | yes | 1 | `display` |
+| `vs/v1/hive/drive/{id}` | hive → dev | no | 0 | `drive` |
 | `vs/v1/hive/broadcast/cmd/{name}` | hive → dev | no | 1 | `cmd-{name}` |
 | `vs/v1/prov/{mac}/...` | provisioning | — | — | step 10 |
 
@@ -70,6 +71,29 @@ Rules:
 - Commands from the hive carry `v, cid, ts, ttl_s, by`; `cid` is the idempotency key.
 - Field names are snake_case, enum values lowercase strings. Unknown fields are rejected,
   except on generic events (`event.schema.json`), which allow type-specific extras.
+
+## Car (role `car`, `vs/v1/hive/drive/{id}`)
+
+A car is an ESP32-CAM on two motors behind an L298N (type `car`, build `car-cam`). Driving does not use commands: a held
+control in the hive sends `drive` `{left, right}` (-100..100, percent of `car.max_speed`) every 200 ms, QoS 0, no ack, and
+`{0, 0}` on release. The hornet reads it like the display (it reads `vs/v1/hive/#`).
+
+- **The motors stop by themselves** (all pins low): 500 ms after the last `drive`; at once when Wi-Fi or MQTT drops; at boot
+  (the pins are set low before anything else, GPIO12 included, which must be low at power-up); and after `car.max_run_s`
+  (60 s) of moving without a pause, until a `{0, 0}` comes. A `drive` older than 1 s by its `ts` (clock synced) is ignored.
+- Wiring (config `hw`): `motor_pins` [IN1, IN2, IN3, IN4], IN1/IN2 the left motor (default 14, 15, 13, 12); `motor_pwm`
+  (default true) the speed by PWM on the IN pins, false full speed; `car.invert_left`, `car.invert_right`, `car.swap_sides`
+  for a motor mounted the other way. Pins the camera or PSRAM use are refused (the old ones stay, the journal says why).
+  No SD card on a car: its pins drive the motors.
+- The light: `cmd/relay` `{channel: "light"}` on `hw.relay_pin` (GPIO4, the white LED), off at boot, `relay.max_on_s`.
+- State (retained): `{"drive": "stopped" | "moving", "light": "on" | "off"}` on each change; health adds `stopped_by`
+  (`deadman`, `link`, `max_run`, `hive`) of the last stop.
+- Video: the camera's MJPEG stream at `http://{ip}:81/stream`, Basic login `hive` / `car.stream_key` (set by the hive at
+  enrollment); the hive's go2rtc is the only one that opens it. A frame: `http://{ip}:81/jpg`, the same login.
+- The hive: `POST /api/cars/{deviceId}/drive` `{left, right}` (users who may control, 15 a second per user, audit
+  `car.drive` when a move starts after a stop) publishes the message; `{0, 0}` is a stop. `GET`/`PUT /api/cars/{deviceId}/setup`
+  `{motorPins, motorPwm, invertLeft, invertRight, swapSides, maxSpeed, maxRunS, lightPin}` reads and sets the wiring and
+  limits in the config (PUT: administrators). Pins: the free ones of the ESP32-CAM, 2, 4, 12, 13, 14, 15, all different.
 
 ## Switching Wi-Fi (`cmd/wifi`, `event/wifi`)
 

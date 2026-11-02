@@ -13,6 +13,7 @@
     "vbat": { "type": "number", "minimum": 0, "description": "Supply/battery voltage, V" },
     "reset_reason": { "type": "string", "minLength": 1, "description": "Reason of the last reset, e.g. poweron, watchdog, panic" },
     "outbox": { "type": "integer", "minimum": 0, "description": "Events waiting in the local buffer" },
+    "stopped_by": { "enum": ["none", "boot", "deadman", "link", "max_run", "hive"], "description": "Role car: why its motors stopped last (contracts/mqtt-topics.md \"Car\")" },
     "broker": { "enum": ["home", "city"], "description": "Broker the hornet is connected to (spec 4.5)" }
   },
   "unevaluatedProperties": false

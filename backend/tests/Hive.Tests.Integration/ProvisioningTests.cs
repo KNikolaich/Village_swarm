@@ -186,6 +186,18 @@ public sealed class ProvisioningTests(DynSecFixture hive) : IClassFixture<DynSec
     }
 
     [Fact]
+    public async Task An_enrolled_car_gets_the_key_of_its_camera_stream_and_its_light()
+    {
+        var admin = await hive.AdminAsync();
+        await admin.EnrollAsync(new HornetSpec { Id = "car-prov1", Type = Cars.Type }, CancellationToken.None);
+        var device = await hive.QueryAsync(db => db.Devices.SingleAsync(d => d.DeviceId == "car-prov1"));
+        var config = device.Config!.RootElement;
+        Assert.Matches("^[A-Za-z0-9]{24}$", config.GetProperty("car").GetProperty("stream_key").GetString());
+        Assert.Equal(60, config.GetProperty("car").GetProperty("max_run_s").GetInt32());
+        Assert.Equal("light", config.GetProperty("relay").GetProperty("channel").GetString());
+    }
+
+    [Fact]
     public async Task Code_works_once()
     {
         var client = hive.App.CreateClient();

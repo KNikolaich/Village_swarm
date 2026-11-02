@@ -685,6 +685,12 @@ namespace Hive.Infrastructure.Data.Migrations
                             Code = "nvr",
                             OfflineAfterS = 180,
                             Title = "Видеорегистратор"
+                        },
+                        new
+                        {
+                            Code = "car",
+                            OfflineAfterS = 180,
+                            Title = "Машинка с камерой"
                         });
                 });
 

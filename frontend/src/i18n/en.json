@@ -1021,7 +1021,8 @@
     "nvr": "NVR",
     "irrx": "IR receiver (learns remote buttons)",
     "irtx": "IR transmitter (controls an appliance)",
-    "monitor": "Monitor (a screen with readings)"
+    "monitor": "Monitor (a screen with readings)",
+    "car": "Car with a camera"
   },
   "boards": {
     "esp32cam-aithinker": "ESP32-CAM AI-Thinker",
@@ -1642,5 +1643,36 @@
     "off": "The panel refreshes at its own interval.",
     "every": "every {n} min",
     "stopped": "Monitoring stopped, the panel goes back to its own interval"
+  },
+  "car": {
+    "controls": "Car controls",
+    "keysHint": "Arrow keys or WASD work while the buttons have the focus",
+    "forward": "Forward",
+    "back": "Back",
+    "left": "Spin left",
+    "right": "Spin right",
+    "forwardLeft": "Forward and left",
+    "forwardRight": "Forward and right",
+    "speed": "Speed",
+    "light": "Light",
+    "lightOn": "Turn the light on",
+    "lightOff": "Turn the light off",
+    "failed": "The car did not answer",
+    "setup": {
+      "title": "Car: pins and limits",
+      "hint": "The ESP32-CAM pins wired to IN1–IN4 of the L298N (free: 2, 4, 12, 13, 14, 15). If the car goes the wrong way, tick the boxes below. Drive it on the overview, in «Video», over its picture.",
+      "left": "left",
+      "right": "right",
+      "lightPin": "Light",
+      "motorPwm": "Speed by PWM (finer without the ENA/ENB jumpers)",
+      "swapSides": "Swap left and right",
+      "invertLeft": "Reverse the left motor",
+      "invertRight": "Reverse the right motor",
+      "maxSpeed": "Speed limit, %",
+      "maxRunS": "Non-stop for at most, s",
+      "save": "Save",
+      "saved": "Saved; the car takes it when it connects",
+      "refused": "Not saved"
+    }
   }
 }

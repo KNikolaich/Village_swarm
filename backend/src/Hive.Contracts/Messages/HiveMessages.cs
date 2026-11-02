@@ -111,6 +111,35 @@ public sealed record DeviceConfig
     public DisplayConfig? Display { get; init; }
     public BleConfig? Ble { get; init; }
     public IrConfig? Ir { get; init; }
+    public CarConfig? Car { get; init; }
+}
+
+/// <summary>Role car: how the motors are mounted and how far a move may go (the light is the relay, channel light).</summary>
+public sealed record CarConfig
+{
+    public bool? InvertLeft { get; init; }
+    public bool? InvertRight { get; init; }
+
+    /// <summary>IN1/IN2 drive the right wheels and IN3/IN4 the left.</summary>
+    public bool? SwapSides { get; init; }
+
+    /// <summary>The motors stop after moving this long without a pause; null: 60.</summary>
+    public int? MaxRunS { get; init; }
+
+    /// <summary>Speeds are scaled to at most this percent; null: 100.</summary>
+    public int? MaxSpeed { get; init; }
+
+    /// <summary>Set by the hive: the password of the camera's MJPEG stream (user hive), opened only by the hive's go2rtc.</summary>
+    public string? StreamKey { get; init; }
+}
+
+/// <summary>vs/v1/hive/drive/{id} (not retained, QoS 0): wheel speeds -100..100, repeated while a control is held.</summary>
+public sealed record DriveMessage
+{
+    public int V { get; init; } = 1;
+    public required long Ts { get; init; }
+    public required int Left { get; init; }
+    public required int Right { get; init; }
 }
 
 /// <summary>Roles irrx and irtx: the buttons of a remote, kept by the hive; the hornet does not read them.</summary>
@@ -135,6 +164,13 @@ public sealed record HwConfig
     public int? DhtPin { get; init; }
 
     public int? SdaPin { get; init; }
+
+    /// <summary>Role car: the L298N inputs IN1, IN2 (left motor), IN3, IN4 (right motor).</summary>
+    public IReadOnlyList<int>? MotorPins { get; init; }
+
+    /// <summary>Role car: speed by PWM on the IN pins; false: full speed only.</summary>
+    public bool? MotorPwm { get; init; }
+
     public int? SclPin { get; init; }
     public int? RelayPin { get; init; }
 

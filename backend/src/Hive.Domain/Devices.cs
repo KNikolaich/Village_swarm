@@ -83,6 +83,12 @@ public static class Cameras
     public static readonly string[] Types = [GuardCam, IpCam];
 }
 
+/// <summary>A car: an ESP32-CAM on two motors, driven from the hive (contracts/mqtt-topics.md "Car").</summary>
+public static class Cars
+{
+    public const string Type = "car";
+}
+
 /// <summary>A hornet. <see cref="DeviceId"/> is the MQTT id (guard-gate1), <see cref="Id"/> the surrogate key.</summary>
 public class Device
 {

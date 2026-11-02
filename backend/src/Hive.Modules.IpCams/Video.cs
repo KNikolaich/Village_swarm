@@ -24,9 +24,12 @@ public sealed class VideoOptions
     public int SyncEveryS { get; set; } = 60;
 }
 
-/// <summary>A camera that can be watched live: its stream names in go2rtc (sub: light, main: detailed).</summary>
+/// <summary>
+/// A camera that can be watched live: its stream names in go2rtc (sub: light, main: detailed). Kind ipcam (NvrId, Channel
+/// for its snapshots) or car (one MJPEG stream as both, NvrId and Channel 0).
+/// </summary>
 public sealed record VideoCameraDto(
-    string DeviceId, string Name, int? ZoneId, string? Zone, int NvrId, int Channel, string Sub, string Main, string Status);
+    string DeviceId, string Name, int? ZoneId, string? Zone, int NvrId, int Channel, string Sub, string Main, string Status, string Kind = Cameras.IpCam);
 
 /// <summary>Whether live video works on this hive (go2rtc configured), and the cameras.</summary>
 public sealed record VideoStreamsDto(bool Enabled, IReadOnlyList<VideoCameraDto> Cameras);
@@ -97,8 +100,23 @@ public sealed class VideoStreams(
     public static string Sub(string deviceId) => deviceId + SubSuffix;
     public static string Main(string deviceId) => deviceId + MainSuffix;
 
-    /// <summary>A stream the hive manages: one of an IP camera's two.</summary>
-    public static bool Ours(string name) => name.StartsWith("ipcam", StringComparison.Ordinal) && (name.EndsWith(SubSuffix, StringComparison.Ordinal) || name.EndsWith(MainSuffix, StringComparison.Ordinal));
+    /// <summary>A stream the hive manages: one of an IP camera's two, or one it pushed (a car's).</summary>
+    private bool Ours(string name) =>
+        (name.StartsWith("ipcam", StringComparison.Ordinal) && (name.EndsWith(SubSuffix, StringComparison.Ordinal) || name.EndsWith(MainSuffix, StringComparison.Ordinal)))
+        || _pushed.ContainsKey(name);
+
+    /// <summary>
+    /// A car's camera (contracts/mqtt-topics.md "Car"): its MJPEG stream with the key the hive gave it, or null without an
+    /// address or a key yet.
+    /// </summary>
+    public static string? CarSource(string? ip, System.Text.Json.JsonDocument? config)
+    {
+        if (string.IsNullOrEmpty(ip) || config is null
+            || !config.RootElement.TryGetProperty("car", out var car) || car.ValueKind != System.Text.Json.JsonValueKind.Object
+            || !car.TryGetProperty("stream_key", out var key) || key.GetString() is not { Length: > 0 } k)
+            return null;
+        return $"http://hive:{Uri.EscapeDataString(k)}@{ip}:81/stream";
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -156,6 +174,15 @@ public sealed class VideoStreams(
                 wanted[Main(c.DeviceId)] = endpoint.RtspUrlWithLogin(c.Channel, 0);
             }
         }
+        var cars = await db.Devices.AsNoTracking().Where(d => d.TypeCode == Cars.Type && d.Status != DeviceStatus.Disabled)
+            .Select(d => new { d.DeviceId, d.Ip, d.Config }).ToListAsync(ct);
+        foreach (var car in cars)
+            if (CarSource(car.Ip, car.Config) is { } source)
+            {
+                // One stream: the light and the detailed name lead to it alike.
+                wanted[Sub(car.DeviceId)] = source;
+                wanted[Main(car.DeviceId)] = source;
+            }
         return wanted;
     }
 
@@ -196,8 +223,12 @@ public sealed class VideoStreams(
             .Where(d => ids.Contains(d.DeviceId) && d.Status != DeviceStatus.Disabled).ToListAsync(ct);
         var cameras = devices.Join(channels, d => d.DeviceId, c => c.DeviceId, (d, c) => new VideoCameraDto(
                 d.DeviceId, d.Name, d.ZoneId, d.Zone?.Name, c.NvrId, c.Channel, Sub(d.DeviceId), Main(d.DeviceId), d.Status.ToString().ToLowerInvariant()))
-            .OrderBy(c => c.Zone ?? "￿").ThenBy(c => c.Name).ToList();
-        return new VideoStreamsDto(Enabled, cameras);
+            .ToList();
+        var cars = await db.Devices.AsNoTracking().Include(d => d.Zone)
+            .Where(d => d.TypeCode == Cars.Type && d.Status != DeviceStatus.Disabled).ToListAsync(ct);
+        cameras.AddRange(cars.Where(d => CarSource(d.Ip, d.Config) is not null).Select(d => new VideoCameraDto(
+            d.DeviceId, d.Name, d.ZoneId, d.Zone?.Name, 0, 0, Sub(d.DeviceId), Main(d.DeviceId), d.Status.ToString().ToLowerInvariant(), Cars.Type)));
+        return new VideoStreamsDto(Enabled, cameras.OrderBy(c => c.Zone ?? "￿").ThenBy(c => c.Name).ToList());
     }
 
     /// <summary>The src of a request as Caddy forwards it (X-Forwarded-Uri), only when there is exactly one.</summary>

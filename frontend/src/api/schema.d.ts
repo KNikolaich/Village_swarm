@@ -869,6 +869,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cars/{deviceId}/drive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["DriveRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cars/{deviceId}/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CarSetupDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CarSetupDto"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CarSetupDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/devices/{deviceId}/replace": {
         parameters: {
             query?: never;
@@ -6225,6 +6365,32 @@ export interface components {
             /** @default false */
             dump: boolean;
         };
+        CarSetupDto: {
+            motorPins?: null | number[];
+            /** @default true */
+            motorPwm: boolean;
+            /** @default false */
+            invertLeft: boolean;
+            /** @default false */
+            invertRight: boolean;
+            /** @default false */
+            swapSides: boolean;
+            /**
+             * Format: int32
+             * @default 100
+             */
+            maxSpeed: number;
+            /**
+             * Format: int32
+             * @default 60
+             */
+            maxRunS: number;
+            /**
+             * Format: int32
+             * @default 4
+             */
+            lightPin: number;
+        };
         CatalogCounts: {
             /** Format: int32 */
             zones: number;
@@ -6438,6 +6604,12 @@ export interface components {
             tabs: number;
             /** @default false */
             sleep: boolean;
+        };
+        DriveRequest: {
+            /** Format: int32 */
+            left: number;
+            /** Format: int32 */
+            right: number;
         };
         DryRunHit: {
             /** Format: date-time */
@@ -7364,6 +7536,8 @@ export interface components {
             sub: string;
             main: string;
             status: string;
+            /** @default ipcam */
+            kind: string;
         };
         VideoStreamsDto: {
             enabled: boolean;

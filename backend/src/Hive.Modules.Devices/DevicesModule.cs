@@ -84,6 +84,7 @@ public static class DevicesModule
     {
         services.Configure<ProvisioningOptions>(configuration.GetSection(ProvisioningOptions.Section));
         services.AddScoped<DeviceQueries>();
+        services.AddCars();
         services.TryAddSingleton<TasmotaPending>();
         services.AddScoped<CommandService>();
         services.AddScoped<ArmService>();
@@ -119,6 +120,7 @@ public static class DevicesModule
     {
         app.MapZigbeeEndpoints();
         app.MapScreenAccessEndpoints();
+        app.MapCarEndpoints();
         app.MapDisplayFontEndpoints();
         var devices = app.MapGroup("/api/devices").WithTags("devices");
         devices.MapGet("", (int? zone, string? type, string? status, DeviceQueries q, CancellationToken ct) =>
