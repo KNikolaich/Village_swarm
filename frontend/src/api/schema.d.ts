@@ -4716,6 +4716,89 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ipcams/ptz/{deviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PtzStateDto"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PtzRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ipcams": {
         parameters: {
             query?: never;
@@ -6886,6 +6969,25 @@ export interface components {
             rtspSub?: null | string;
             eventsUrl?: null | string;
             motion?: null | string;
+        };
+        PtzPresetDto: {
+            token: string;
+            name: string;
+        };
+        PtzRequest: {
+            op: string;
+            /** Format: double */
+            pan?: null | number;
+            /** Format: double */
+            tilt?: null | number;
+            /** Format: double */
+            zoom?: null | number;
+            preset?: null | string;
+        };
+        PtzStateDto: {
+            available: boolean;
+            presets: components["schemas"]["PtzPresetDto"][];
+            error: null | string;
         };
         QueueOtaRequest: {
             build: string;

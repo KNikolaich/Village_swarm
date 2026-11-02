@@ -31,6 +31,12 @@ public sealed class FakeOnvifCamera : IAsyncDisposable
     /// <summary>False: no event service (no PullPoint), the camera gives snapshots only.</summary>
     public bool Events { get; init; } = true;
 
+    /// <summary>True: a PTZ service (moves, stops, two presets); its calls are kept in <see cref="PtzCalls"/>.</summary>
+    public bool Ptz { get; init; }
+
+    /// <summary>"move {x} {y} {zoom} {timeout}", "stop", "goto {token}", in the order they came.</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<string> PtzCalls { get; } = new();
+
     public int Snapshots;
     public int Pulls;
     public int Subscriptions;
@@ -41,12 +47,12 @@ public sealed class FakeOnvifCamera : IAsyncDisposable
         _jpeg = jpeg;
     }
 
-    public static async Task<FakeOnvifCamera> StartAsync(bool events = true)
+    public static async Task<FakeOnvifCamera> StartAsync(bool events = true, bool ptz = false)
     {
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         var app = builder.Build();
-        var fake = new FakeOnvifCamera(app, await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "scenarios", "photos", "frame2.jpg"))) { Events = events };
+        var fake = new FakeOnvifCamera(app, await File.ReadAllBytesAsync(Path.Combine(AppContext.BaseDirectory, "scenarios", "photos", "frame2.jpg"))) { Events = events, Ptz = ptz };
         app.MapPost("/onvif/{service}", fake.SoapAsync);
         app.MapPost("/onvif/pull/{id}", (HttpContext ctx) => fake.SoapAsync(ctx, "pull"));
         app.MapGet("/snap.jpg", async (HttpContext ctx) =>
@@ -87,11 +93,15 @@ public sealed class FakeOnvifCamera : IAsyncDisposable
                 break;
             case "GetCapabilities":
                 var events = Events ? $"<tt:Events><tt:XAddr>{Own("/onvif/events")}</tt:XAddr></tt:Events>" : "";
-                await Reply(ctx, $"<tds:GetCapabilitiesResponse><tds:Capabilities><tt:Media><tt:XAddr>{Own("/onvif/media")}</tt:XAddr></tt:Media>{events}" +
+                var ptzService = Ptz ? $"<tt:PTZ><tt:XAddr>{Own("/onvif/ptz")}</tt:XAddr></tt:PTZ>" : "";
+                await Reply(ctx, $"<tds:GetCapabilitiesResponse><tds:Capabilities><tt:Media><tt:XAddr>{Own("/onvif/media")}</tt:XAddr></tt:Media>{events}{ptzService}" +
                                  "</tds:Capabilities></tds:GetCapabilitiesResponse>");
                 break;
             case "GetProfiles":
-                await Reply(ctx, "<trt:GetProfilesResponse><trt:Profiles token=\"main\" fixed=\"true\"/><trt:Profiles token=\"sub\" fixed=\"true\"/></trt:GetProfilesResponse>");
+                // A PTZ camera says so in its second profile here, so the hive has to look for it rather than take the first.
+                var ptzConfiguration = Ptz ? "<tt:PTZConfiguration token=\"ptz0\"/>" : "";
+                await Reply(ctx, "<trt:GetProfilesResponse><trt:Profiles token=\"main\" fixed=\"true\"/>" +
+                                 $"<trt:Profiles token=\"sub\" fixed=\"true\">{ptzConfiguration}</trt:Profiles></trt:GetProfilesResponse>");
                 break;
             case "GetSnapshotUri":
                 await Reply(ctx, $"<trt:GetSnapshotUriResponse><trt:MediaUri><tt:Uri>{Own("/snap.jpg")}</tt:Uri></trt:MediaUri></trt:GetSnapshotUriResponse>");
@@ -127,6 +137,26 @@ public sealed class FakeOnvifCamera : IAsyncDisposable
                 break;
             case "Renew":
                 await Reply(ctx, "<wsnt:RenewResponse><wsnt:TerminationTime>2026-10-24T09:02:00Z</wsnt:TerminationTime></wsnt:RenewResponse>");
+                break;
+            case "ContinuousMove" when Ptz && service == "ptz":
+                string? Axis(string axis, string attribute) =>
+                    (string?)body.Descendants().FirstOrDefault(e => e.Name.LocalName == axis)?.Attribute(attribute);
+                var timeout = body.Descendants().FirstOrDefault(e => e.Name.LocalName == "Timeout")?.Value;
+                var profileToken = body.Descendants().First(e => e.Name.LocalName == "ProfileToken").Value;
+                PtzCalls.Enqueue($"move {Axis("PanTilt", "x") ?? "-"} {Axis("PanTilt", "y") ?? "-"} {Axis("Zoom", "x") ?? "-"} {timeout} {profileToken}");
+                await Reply(ctx, "<tptz:ContinuousMoveResponse xmlns:tptz=\"http://www.onvif.org/ver20/ptz/wsdl\"/>");
+                break;
+            case "Stop" when Ptz && service == "ptz":
+                PtzCalls.Enqueue("stop");
+                await Reply(ctx, "<tptz:StopResponse xmlns:tptz=\"http://www.onvif.org/ver20/ptz/wsdl\"/>");
+                break;
+            case "GetPresets" when Ptz && service == "ptz":
+                await Reply(ctx, "<tptz:GetPresetsResponse xmlns:tptz=\"http://www.onvif.org/ver20/ptz/wsdl\">" +
+                                 "<tptz:Preset token=\"1\"><tt:Name>Ворота</tt:Name></tptz:Preset><tptz:Preset token=\"2\"/></tptz:GetPresetsResponse>");
+                break;
+            case "GotoPreset" when Ptz && service == "ptz":
+                PtzCalls.Enqueue("goto " + body.Descendants().First(e => e.Name.LocalName == "PresetToken").Value);
+                await Reply(ctx, "<tptz:GotoPresetResponse xmlns:tptz=\"http://www.onvif.org/ver20/ptz/wsdl\"/>");
                 break;
             case "Unsubscribe":
                 await Reply(ctx, "<wsnt:UnsubscribeResponse/>");

@@ -30,6 +30,12 @@ public sealed class FakeNvr : IAsyncDisposable
     public int Port { get; private set; }
 
     public int Snapshots;
+
+    /// <summary>True: ptz.cgi works (two presets); otherwise it answers an error, as a camera without PTZ does.</summary>
+    public volatile bool Ptz;
+
+    /// <summary>"{action} {code} {arg1} {arg2}" of each ptz.cgi start or stop, in the order they came.</summary>
+    public ConcurrentQueue<string> PtzCalls { get; } = new();
     public int StreamsOpened;
 
     /// <summary>snapshot.cgi takes this long (an NVR fetching a frame from a camera), so overlapping requests can be seen.</summary>
@@ -164,6 +170,14 @@ public sealed class FakeNvr : IAsyncDisposable
                 {
                     Interlocked.Decrement(ref _snapshotting);
                 }
+                break;
+            case "ptz.cgi" when Ptz && action == "getPresets":
+                await ctx.Response.WriteAsync("presets[0].Index=1\r\npresets[0].Name=Ворота\r\npresets[1].Index=3\r\npresets[1].Name=\r\n");
+                break;
+            case "ptz.cgi" when Ptz && action is "start" or "stop":
+                var q = ctx.Request.Query;
+                PtzCalls.Enqueue($"{action} {q["code"]} {q["arg1"]} {q["arg2"]}");
+                await ctx.Response.WriteAsync("OK\r\n");
                 break;
             case "eventManager.cgi" when action == "attach":
                 await StreamAsync(ctx);

@@ -9,6 +9,12 @@ namespace Hive.Modules.IpCams;
 /// <summary>What "Проверить" found on an ONVIF camera: who made it, where its snapshots and streams are, whether it tells motion.</summary>
 public sealed record OnvifCamera(string? Manufacturer, string? Model, string? SnapshotUrl, string? RtspMain, string? RtspSub, string? EventsUrl, bool Events);
 
+/// <summary>Where a camera turns: its PTZ service and the media profile its moves go to.</summary>
+public sealed record OnvifPtz(string Service, string Profile);
+
+/// <summary>A position stored on the camera: its token (sent back to go there) and the name the camera shows.</summary>
+public sealed record PtzPresetDto(string Token, string Name);
+
 /// <summary>One notification of a PullPoint: its topic and whether it says motion is on (null: not about motion).</summary>
 public sealed record OnvifEvent(string Topic, bool? Motion);
 
@@ -110,6 +116,58 @@ public sealed class OnvifClient : IDisposable
 
     public Task UnsubscribeAsync(string subscription, CancellationToken ct) =>
         CallAsync(subscription, "<wsnt:Unsubscribe/>", ct, action: "http://docs.oasis-open.org/wsn/bw-2/SubscriptionManager/UnsubscribeRequest");
+
+    /// <summary>
+    /// The camera's PTZ, or null when it has none: the PTZ service of GetCapabilities and the first media profile with a PTZ
+    /// configuration (the first profile when none says so).
+    /// </summary>
+    public async Task<OnvifPtz?> PtzAsync(CancellationToken ct)
+    {
+        var caps = await CallAsync(DevicePath, "<tds:GetCapabilities><tds:Category>All</tds:Category></tds:GetCapabilities>", ct);
+        if (Path(XAddr(caps, "PTZ")) is not { } service)
+            return null;
+        var media = Path(XAddr(caps, "Media")) ?? "/onvif/media";
+        var profiles = (await CallAsync(media, "<trt:GetProfiles/>", ct)).Descendants().Where(e => e.Name.LocalName == "Profiles").ToList();
+        var profile = profiles.FirstOrDefault(p => p.Descendants().Any(e => e.Name.LocalName == "PTZConfiguration")) ?? profiles.FirstOrDefault();
+        return (string?)profile?.Attribute("token") is { } token ? new OnvifPtz(service, token) : null;
+    }
+
+    /// <summary>
+    /// Turns and zooms at the given speeds (-1..1) until Stop, or until <paramref name="timeout"/> runs out: the camera stops by
+    /// itself if the hive does not say more. An axis at 0 is left out (some cameras refuse a zoom they do not have).
+    /// </summary>
+    public Task MoveAsync(OnvifPtz ptz, double pan, double tilt, double zoom, TimeSpan timeout, CancellationToken ct)
+    {
+        var velocity = new StringBuilder();
+        if (pan != 0 || tilt != 0)
+            velocity.Append(CultureInfo.InvariantCulture, $"<tt:PanTilt x=\"{pan:0.###}\" y=\"{tilt:0.###}\"/>");
+        if (zoom != 0)
+            velocity.Append(CultureInfo.InvariantCulture, $"<tt:Zoom x=\"{zoom:0.###}\"/>");
+        var seconds = Math.Max(1, (int)Math.Ceiling(timeout.TotalSeconds));
+        return CallAsync(ptz.Service,
+            $"<tptz:ContinuousMove><tptz:ProfileToken>{Esc(ptz.Profile)}</tptz:ProfileToken><tptz:Velocity>{velocity}</tptz:Velocity>" +
+            $"<tptz:Timeout>PT{seconds.ToString(CultureInfo.InvariantCulture)}S</tptz:Timeout></tptz:ContinuousMove>", ct);
+    }
+
+    public Task StopAsync(OnvifPtz ptz, CancellationToken ct) =>
+        CallAsync(ptz.Service,
+            $"<tptz:Stop><tptz:ProfileToken>{Esc(ptz.Profile)}</tptz:ProfileToken><tptz:PanTilt>true</tptz:PanTilt><tptz:Zoom>true</tptz:Zoom></tptz:Stop>", ct);
+
+    public async Task<IReadOnlyList<PtzPresetDto>> PresetsAsync(OnvifPtz ptz, CancellationToken ct) =>
+        ParsePresets(await CallAsync(ptz.Service, $"<tptz:GetPresets><tptz:ProfileToken>{Esc(ptz.Profile)}</tptz:ProfileToken></tptz:GetPresets>", ct));
+
+    public Task GotoPresetAsync(OnvifPtz ptz, string preset, CancellationToken ct) =>
+        CallAsync(ptz.Service,
+            $"<tptz:GotoPreset><tptz:ProfileToken>{Esc(ptz.Profile)}</tptz:ProfileToken><tptz:PresetToken>{Esc(preset)}</tptz:PresetToken></tptz:GotoPreset>", ct);
+
+    /// <summary>The presets of GetPresets; one without a name is shown by its token.</summary>
+    public static IReadOnlyList<PtzPresetDto> ParsePresets(XDocument answer) =>
+        answer.Descendants().Where(e => e.Name.LocalName == "Preset" && e.Attribute("token") is not null).Select(e =>
+        {
+            var token = (string)e.Attribute("token")!;
+            var name = e.Elements().FirstOrDefault(n => n.Name.LocalName == "Name")?.Value.Trim();
+            return new PtzPresetDto(token, string.IsNullOrEmpty(name) ? token : name);
+        }).ToList();
 
     /// <summary>A sign of life without a login (GetSystemDateAndTime needs none), so it never counts towards a lockout.</summary>
     public async Task AliveAsync(CancellationToken ct) => await CallAsync(DevicePath, "<tds:GetSystemDateAndTime/>", ct, secure: false);
@@ -213,7 +271,7 @@ public sealed class OnvifClient : IDisposable
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
                "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:tds=\"http://www.onvif.org/ver10/device/wsdl\" " +
                "xmlns:trt=\"http://www.onvif.org/ver10/media/wsdl\" xmlns:tev=\"http://www.onvif.org/ver10/events/wsdl\" " +
-               "xmlns:tt=\"http://www.onvif.org/ver10/schema\" xmlns:wsnt=\"http://docs.oasis-open.org/wsn/b-2\" " +
+               "xmlns:tt=\"http://www.onvif.org/ver10/schema\" xmlns:tptz=\"http://www.onvif.org/ver20/ptz/wsdl\" xmlns:wsnt=\"http://docs.oasis-open.org/wsn/b-2\" " +
                "xmlns:wsa=\"http://www.w3.org/2005/08/addressing\">" +
                $"<s:Header>{header}</s:Header><s:Body>{body}</s:Body></s:Envelope>";
     }
