@@ -143,7 +143,10 @@ A camera on its own that can turn is turned from the hive; cameras behind an NVR
   and 15 s after a preset (the travel).
 - Audit: `ipcam.ptz.move` when a move starts (not each repeat), `ipcam.ptz.preset`.
 - The overview widget «Видео» shows arrows, zoom and the presets over the picture of a camera that turns, for users who may
-  control.
+  control. Presets: the camera's first 16 (cameras report all their slots, set or not; 1..16 when none are listed) in a list,
+  and «Обход»: preset after preset, 2 s for the travel and a pause to look (2–30 s, 3 by default, kept per browser), round
+  and round. It stops on its button, an arrow or zoom, or when the picture stops; a preset that fails is skipped. Motion
+  stays quiet through a tour (each preset quiets it 15 s) and comes back 15 s after the last preset.
 
 ## "Едут хозяева" (guard mode arriving), for every camera
 
@@ -182,3 +185,6 @@ the docker network; no port is published and it has no RTSP or WebRTC server of 
   hidden, the widget is off screen, or after 5 minutes without a touch («Продолжить просмотр?»). It shows the codec and
   bitrate, and says so plainly when the browser cannot play the stream's codec (H.265: switch the sub-stream to H.264 or
   use «Снимки»). An unacknowledged alarm of a camera offers «Показать …», which never starts by itself.
+- A stream that started and then gets no data for 8 s, or whose connection drops, is stopped by the widget itself:
+  «Связь с камерой потеряна» and «Смотреть снова». The full-screen button leaves full screen too; stopping the picture
+  («Остановить», a lost connection, idle) leaves it as well.

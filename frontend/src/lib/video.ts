@@ -116,3 +116,58 @@ export function ptzMove(direction: PtzDirection, speed = ptzSpeed): PtzRequest {
     case 'zoomOut': return { op: 'move', zoom: -speed }
   }
 }
+
+type PtzPreset = Schemas['PtzPresetDto']
+
+/** At most this many presets are offered and toured: cameras often report all 255 slots, set or not. */
+export const tourPresetCount = 16
+
+/** The presets the widget offers: the camera's first 16, or 1..16 when it lists none (Dahua indexes, most ONVIF tokens). */
+export function tourPresets(presets: readonly PtzPreset[]): PtzPreset[] {
+  if (presets.length > 0) return presets.slice(0, tourPresetCount)
+  return Array.from({ length: tourPresetCount }, (_, i) => ({ token: String(i + 1), name: String(i + 1) }))
+}
+
+/** The pauses offered for a tour, in seconds; 3 by default. */
+export const tourPauses = [2, 3, 5, 10, 15, 30] as const
+export const defaultTourPause = 3
+
+/** Time a camera is given to reach a preset before the pause starts counting. */
+export const ptzTravelMs = 2000
+
+/** From one preset of a tour to the next: the travel, then the pause to look. */
+export function tourStepMs(pauseS: number): number {
+  return ptzTravelMs + pauseS * 1000
+}
+
+/** The next preset of a tour, round and round. */
+export function nextTourIndex(index: number, count: number): number {
+  return count > 0 ? (index + 1) % count : 0
+}
+
+const tourPauseKey = 'overview.ptzTourPause'
+
+export function loadTourPause(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): number {
+  try {
+    const value = Number(storage?.getItem(tourPauseKey))
+    return (tourPauses as readonly number[]).includes(value) ? value : defaultTourPause
+  } catch {
+    return defaultTourPause
+  }
+}
+
+export function saveTourPause(pauseS: number, storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage) {
+  try {
+    storage?.setItem(tourPauseKey, String(pauseS))
+  } catch {
+    // private window or storage full: just not remembered
+  }
+}
+
+/** No video data for this long while playing: the connection is taken as lost and the stream stopped. */
+export const stallAfterMs = 8000
+
+/** Whether a live stream stalled: it has started (data came once) and nothing came since for <see stallAfterMs>. */
+export function isStalled(lastDataAt: number | null, now: number): boolean {
+  return lastDataAt !== null && now - lastDataAt >= stallAfterMs
+}
