@@ -52,6 +52,9 @@ struct CarMount {
     bool swapSides = false;
     bool pwm = true;
     int maxSpeed = 100;  // percent
+    // Duty in percent where the motors start to turn (below it they only whine): any speed above 0 gets at least this,
+    // the rest of the range is spread over what is left. 0: plain scaling.
+    int minSpeed = 0;
 };
 
 // Duty of the four inputs, 0..255: IN1, IN2 (the motor on IN1/IN2), IN3, IN4.
@@ -68,7 +71,10 @@ inline void motorDuty(int speed, bool invert, const CarMount& m, uint8_t& a, uin
     a = b = 0;
     if (speed == 0) return;
     const int maxSpeed = m.maxSpeed < 10 ? 10 : m.maxSpeed > 100 ? 100 : m.maxSpeed;
-    const int duty = m.pwm ? (std::abs(speed) * maxSpeed * 255 + 5000) / 10000 : 255;
+    const int minSpeed = m.minSpeed < 0 ? 0 : m.minSpeed > 90 ? 90 : m.minSpeed;
+    // Percent of full duty in hundredths: the floor, then the asked speed (scaled by the limit) over the rest.
+    const int percent100 = minSpeed * 100 + (100 - minSpeed) * std::abs(speed) * maxSpeed / 100;
+    const int duty = m.pwm ? (percent100 * 255 + 5000) / 10000 : 255;
     const uint8_t d = static_cast<uint8_t>(duty < 1 ? 1 : duty > 255 ? 255 : duty);
     if (speed > 0) a = d; else b = d;
 }

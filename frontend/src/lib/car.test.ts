@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { carDrive, defaultCarSpeed, driveRepeatMs, keyDirection, loadCarSpeed, saveCarSpeed } from './car'
+import { carDrive, defaultCarSpeed, driveRepeatMs, keyDirection, loadCarSpeed, motorTestDrive, saveCarSpeed } from './car'
+
+describe('motor test', () => {
+  it('lights one input at a time: IN1/IN2 the left wheels, IN3/IN4 the right', () => {
+    expect(motorTestDrive('in1')).toEqual({ left: 60, right: 0 })
+    expect(motorTestDrive('in2')).toEqual({ left: -60, right: 0 })
+    expect(motorTestDrive('in3')).toEqual({ left: 0, right: 60 })
+    expect(motorTestDrive('in4')).toEqual({ left: 0, right: -60 })
+  })
+})
 
 describe('car controls', () => {
   it('turns a control into wheel speeds: turns spin on the spot, diagonals bend', () => {

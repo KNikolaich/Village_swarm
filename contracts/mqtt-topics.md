@@ -82,7 +82,8 @@ control in the hive sends `drive` `{left, right}` (-100..100, percent of `car.ma
   (the pins are set low before anything else, GPIO12 included, which must be low at power-up); and after `car.max_run_s`
   (60 s) of moving without a pause, until a `{0, 0}` comes. A `drive` older than 1 s by its `ts` (clock synced) is ignored.
 - Wiring (config `hw`): `motor_pins` [IN1, IN2, IN3, IN4], IN1/IN2 the left motor (default 14, 15, 13, 12); `motor_pwm`
-  (default true) the speed by PWM on the IN pins, false full speed; `car.invert_left`, `car.invert_right`, `car.swap_sides`
+  (default true) the speed by PWM on the IN pins (20 kHz, above hearing), false full speed; `car.min_speed` (40 %) the duty
+  where the motors start to turn, every speed above 0 gets at least that; `car.invert_left`, `car.invert_right`, `car.swap_sides`
   for a motor mounted the other way. Pins the camera or PSRAM use are refused (the old ones stay, the journal says why).
   No SD card on a car: its pins drive the motors.
 - The light: `cmd/relay` `{channel: "light"}` on `hw.relay_pin` (GPIO4, the white LED), off at boot, `relay.max_on_s`.

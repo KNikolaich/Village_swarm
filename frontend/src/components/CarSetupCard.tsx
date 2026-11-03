@@ -8,11 +8,46 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui/primitives'
 import { t } from '@/i18n'
 import { driveLink } from '@/lib/video'
+import { driveRepeatMs, motorInputs, motorTestDrive, stopDrive, type MotorInput } from '@/lib/car'
 
 type CarSetup = Schemas['CarSetupDto']
 
 const defaultPins = [14, 15, 13, 12]
 const pinLabels = ['IN1', 'IN2', 'IN3', 'IN4']
+
+/**
+ * One input of the L298N at a time, for 1 s at 60 %: shows which pin turns which wheels which way, so the pins and the
+ * boxes above can be set. It is an ordinary drive (left or right wheels only), so the deadman and the limits stay.
+ */
+function MotorTest({ deviceId }: { deviceId: string }) {
+  const [busy, setBusy] = useState(false)
+  async function pulse(input: MotorInput) {
+    setBusy(true)
+    const drive = motorTestDrive(input)
+    try {
+      // The car stops 500 ms after the last drive: repeated for the second, then a stop.
+      for (let i = 0; i < 5; i++) {
+        await call(api.POST('/api/cars/{deviceId}/drive', { params: { path: { deviceId } }, body: drive }))
+        await new Promise((r) => setTimeout(r, driveRepeatMs))
+      }
+    } catch (e) {
+      toast.error(`${t('car.failed')}: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      await call(api.POST('/api/cars/{deviceId}/drive', { params: { path: { deviceId } }, body: stopDrive })).catch(() => {})
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="space-y-2 border-t border-neutral-800 pt-3">
+      <p className="text-xs text-neutral-500">{t('car.test.hint')}</p>
+      <div className="flex flex-wrap gap-2">
+        {motorInputs.map((input) => (
+          <Button key={input} size="sm" variant="outline" disabled={busy} onClick={() => void pulse(input)}>{t(`car.test.${input}`)}</Button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 /**
  * A car's wiring and limits (contracts/mqtt-topics.md "Car"): which pins drive the L298N, which way each motor turns, how
@@ -81,12 +116,18 @@ export function CarSetupCard({ deviceId, editable }: { deviceId: string; editabl
               onChange={(e) => setDraft({ ...draft, maxSpeed: Number(e.target.value.replace(/\D/g, '') || 0) })} />
           </label>
           <label className="space-y-1">
+            <span className="text-neutral-500">{t('car.setup.minSpeed')}</span>
+            <Input className="h-8" inputMode="numeric" disabled={!editable} value={String(draft.minSpeed ?? 40)}
+              onChange={(e) => setDraft({ ...draft, minSpeed: Number(e.target.value.replace(/\D/g, '') || 0) })} />
+          </label>
+          <label className="space-y-1">
             <span className="text-neutral-500">{t('car.setup.maxRunS')}</span>
             <Input className="h-8" inputMode="numeric" disabled={!editable} value={String(draft.maxRunS ?? 60)}
               onChange={(e) => setDraft({ ...draft, maxRunS: Number(e.target.value.replace(/\D/g, '') || 0) })} />
           </label>
         </div>
         {editable && <Button size="sm" onClick={() => void save()}>{t('car.setup.save')}</Button>}
+        {editable && <MotorTest deviceId={deviceId} />}
       </CardContent>
     </Card>
   )

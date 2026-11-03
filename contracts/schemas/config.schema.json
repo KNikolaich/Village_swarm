@@ -402,6 +402,7 @@
         "swap_sides": { "type": "boolean", "description": "IN1/IN2 drive the right wheels and IN3/IN4 the left" },
         "max_run_s": { "type": "integer", "minimum": 1, "maximum": 600, "description": "The motors stop after moving this long without a pause (a stop or {0,0}), even while drive messages keep coming. Default 60" },
         "max_speed": { "type": "integer", "minimum": 10, "maximum": 100, "description": "Speeds are scaled to at most this percent. Default 100" },
+        "min_speed": { "type": "integer", "minimum": 0, "maximum": 90, "description": "PWM duty in percent where the motors start to turn: any speed above 0 gets at least this, the range spreads above it. Default 40" },
         "stream_key": { "type": "string", "pattern": "^[A-Za-z0-9]{16,64}$", "description": "Set by the hive: the password of the camera's MJPEG stream (user hive), which only the hive's go2rtc opens" }
       },
       "additionalProperties": false

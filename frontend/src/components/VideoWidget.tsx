@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Select } from '@/components/ui/primitives'
 import { t } from '@/i18n'
 import {
-  alarmCamera, codecList, codecName, groupCameras, idleAfterMs, isCodecMismatch, isStalled, kbps, linkedCamera, loadChoice, qualities, saveChoice, shouldPlay,
+  alarmCamera, codecList, codecName, groupCameras, idleAfterMs, isCodecMismatch, isStalled, kbps, linkedCamera, stallAfterMs, loadChoice, qualities, saveChoice, shouldPlay,
   type Quality, type VideoCamera, type VideoChoice,
 } from '@/lib/video'
 
@@ -134,7 +134,9 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
           {!camera && <p className="flex h-full items-center justify-center text-sm text-neutral-500">{t('video.pick')}</p>}
           {camera && playing && (choice.quality === 'snapshots'
             ? <Snapshots camera={camera} />
-            : <LivePlayer key={`${camera.deviceId}-${choice.quality}`} stream={choice.quality === 'hd' ? camera.main : camera.sub} quality={choice.quality} onLost={lose} />)}
+            : camera.kind === 'car'
+              ? <MjpegPlayer key={camera.deviceId} stream={camera.sub} onLost={lose} />
+              : <LivePlayer key={`${camera.deviceId}-${choice.quality}`} stream={choice.quality === 'hd' ? camera.main : camera.sub} quality={choice.quality} onLost={lose} />)}
           {camera && !playing && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-neutral-400">
               {idle && <p>{t('video.stillWatching')}</p>}
@@ -208,6 +210,26 @@ function Snapshots({ camera }: { camera: VideoCamera }) {
     <>
       {url && <img src={url} alt={camera.name} className="h-full w-full object-contain" />}
       {error && <p className="absolute inset-x-2 bottom-2 rounded bg-black/70 p-1 text-xs text-red-300">{t('video.snapshotFailed')}: {error}</p>}
+    </>
+  )
+}
+
+/**
+ * A car's camera: MJPEG, which MSE cannot play, shown as go2rtc's multipart stream in an image. A stream that never
+ * starts or breaks off is a lost connection, like a stalled live player.
+ */
+function MjpegPlayer({ stream, onLost }: { stream: string; onLost: () => void }) {
+  const [started, setStarted] = useState(false)
+  useEffect(() => {
+    if (started) return
+    const timer = setTimeout(onLost, stallAfterMs)
+    return () => clearTimeout(timer)
+  }, [started, onLost])
+  return (
+    <>
+      <img src={`/streams/stream.mjpeg?src=${encodeURIComponent(stream)}`} alt="" className="h-full w-full object-contain"
+        onLoad={() => setStarted(true)} onError={onLost} />
+      <p className="absolute bottom-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-neutral-300">MJPEG</p>
     </>
   )
 }

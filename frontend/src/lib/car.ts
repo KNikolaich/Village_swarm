@@ -37,6 +37,20 @@ export function keyDirection(key: string): CarDirection | null {
   }
 }
 
+/** The inputs of the L298N, in the order of the pins: IN1, IN2 the left wheels (forward, back), IN3, IN4 the right. */
+export const motorInputs = ['in1', 'in2', 'in3', 'in4'] as const
+export type MotorInput = (typeof motorInputs)[number]
+
+/** The drive that lights exactly one input (with no box ticked): one side's wheels, one way, at 60 %. */
+export function motorTestDrive(input: MotorInput): Drive {
+  switch (input) {
+    case 'in1': return { left: 60, right: 0 }
+    case 'in2': return { left: -60, right: 0 }
+    case 'in3': return { left: 0, right: 60 }
+    case 'in4': return { left: 0, right: -60 }
+  }
+}
+
 export const defaultCarSpeed = 60
 const speedKey = 'car.speed'
 

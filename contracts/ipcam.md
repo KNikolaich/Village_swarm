@@ -173,7 +173,7 @@ the docker network; no port is published and it has no RTSP or WebRTC server of 
   restarts). go2rtc keeps them in a config file in RAM (tmpfs): no camera password on the disk. A camera is opened only
   while someone watches.
 - The browser reaches go2rtc only through Caddy: `/streams/ws?src={stream}` (MSE over WebSocket, go2rtc's video-rtc
-  protocol) and `/streams/frame.jpeg?src={stream}`. Before each, Caddy asks the api (`forward_auth` → `GET
+  protocol), `/streams/frame.jpeg?src={stream}` and, for a car (MJPEG, which MSE cannot play), `/streams/stream.mjpeg?src={stream}`. Before each, Caddy asks the api (`forward_auth` → `GET
   /api/video/authorize`, `X-Forwarded-Uri`): 204 for a signed-in user and a stream of the list, 403 otherwise (an unknown
   name, an address given as src, two src), 401 when not signed in. Every other `/streams/*` is 404; go2rtc's API and page
   are never reachable.

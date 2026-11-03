@@ -66,7 +66,7 @@
 
 	# Live video (contracts/ipcam.md "Live video"): go2rtc's player socket and frames only, each after the api has said
 	# the user is signed in and the stream is one of the cameras'. Nothing else of go2rtc (its API, its page) is reachable.
-	@video path /streams/ws /streams/frame.jpeg
+	@video path /streams/ws /streams/frame.jpeg /streams/stream.mjpeg
 	handle @video {
 		route {
 			forward_auth api:8080 {
@@ -75,6 +75,7 @@
 			}
 			rewrite /streams/ws /api/ws
 			rewrite /streams/frame.jpeg /api/frame.jpeg
+			rewrite /streams/stream.mjpeg /api/stream.mjpeg
 			reverse_proxy go2rtc:1984
 		}
 	}
@@ -127,7 +128,7 @@ http://:8088 {
 
 	# Live video (contracts/ipcam.md "Live video"): go2rtc's player socket and frames only, each after the api has said
 	# the user is signed in and the stream is one of the cameras'. Nothing else of go2rtc (its API, its page) is reachable.
-	@video path /streams/ws /streams/frame.jpeg
+	@video path /streams/ws /streams/frame.jpeg /streams/stream.mjpeg
 	handle @video {
 		route {
 			forward_auth api:8080 {
@@ -138,6 +139,7 @@ http://:8088 {
 			}
 			rewrite /streams/ws /api/ws
 			rewrite /streams/frame.jpeg /api/frame.jpeg
+			rewrite /streams/stream.mjpeg /api/stream.mjpeg
 			reverse_proxy go2rtc:1984
 		}
 	}

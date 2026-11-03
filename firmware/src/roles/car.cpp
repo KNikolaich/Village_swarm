@@ -30,7 +30,9 @@ constexpr ledc_mode_t kPwmMode = LEDC_HIGH_SPEED_MODE;
 constexpr ledc_timer_t kPwmTimer = static_cast<ledc_timer_t>(kMotorLedcTimer);
 constexpr int kPwmChannel0 = kMotorLedcChannel0;
 static_assert(carLedcApart(), "the motor PWM must not share the camera clock's LEDC timer or channel");
-constexpr uint32_t kPwmHz = 2000;
+// Above hearing: at 2 kHz the motors whistled. 20 kHz with 8 bits is well inside the LEDC (80 MHz / 256 = 312 kHz) and
+// what the L298N switches.
+constexpr uint32_t kPwmHz = 20000;
 
 bool pwmTimerReady() {
     static bool ready = false;
@@ -155,6 +157,7 @@ public:
         mount_.invertRight = car["invert_right"] | false;
         mount_.swapSides = car["swap_sides"] | false;
         mount_.maxSpeed = car["max_speed"] | 100;
+        mount_.minSpeed = car["min_speed"] | 40;
         guard_.setMaxRunMs((car["max_run_s"] | 60U) * 1000UL);
         streamKey_ = car["stream_key"] | "";
         updateAuth();

@@ -1693,8 +1693,16 @@
       "maxRunS": "Non-stop for at most, s",
       "save": "Save",
       "saved": "Saved; the car takes it when it connects",
-      "refused": "Not saved"
+      "refused": "Not saved",
+      "minSpeed": "Start-up speed, %"
     },
-    "drive": "Drive (video and controls)"
+    "drive": "Drive (video and controls)",
+    "test": {
+      "hint": "Wiring check: each button turns on one L298N input for 1 s, wheels in the air, boxes unticked. See which wheels turn which way and set the pins above.",
+      "in1": "IN1 (left forward)",
+      "in2": "IN2 (left back)",
+      "in3": "IN3 (right forward)",
+      "in4": "IN4 (right back)"
+    }
   }
 }

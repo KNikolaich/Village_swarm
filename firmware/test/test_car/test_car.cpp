@@ -42,6 +42,19 @@ static void test_speed_scales_by_the_limit_and_pwm_off_is_full() {
     TEST_ASSERT_EQUAL_UINT8(255, carDuty(500, 0, m).in[0]);  // clamped, never more than full
 }
 
+static void test_any_speed_starts_at_the_floor_and_the_range_spreads_above_it() {
+    CarMount m;
+    m.minSpeed = 40;
+    TEST_ASSERT_EQUAL_UINT8(255, carDuty(100, 0, m).in[0]);
+    TEST_ASSERT_EQUAL_UINT8(104, carDuty(1, 0, m).in[0]);   // 40.6 %: the motors turn even at the slowest
+    TEST_ASSERT_EQUAL_UINT8(179, carDuty(50, 0, m).in[0]);  // 70 %
+    TEST_ASSERT_EQUAL_UINT8(0, carDuty(0, 0, m).in[0]);     // 0 stays a stop
+    m.maxSpeed = 50;
+    TEST_ASSERT_EQUAL_UINT8(179, carDuty(100, 0, m).in[0]); // the limit scales what is above the floor
+    // The slow side of a diagonal (35 % of the speed) still turns.
+    TEST_ASSERT_TRUE(carDuty(21, 60, m).in[0] >= 102);
+}
+
 static void test_mounting_swaps_and_inverts() {
     CarMount m;
     m.invertLeft = true;
@@ -132,6 +145,7 @@ int main(int, char**) {
     RUN_TEST(test_pins_are_the_free_ones_and_all_different);
     RUN_TEST(test_forward_drives_the_first_input_back_the_second);
     RUN_TEST(test_speed_scales_by_the_limit_and_pwm_off_is_full);
+    RUN_TEST(test_any_speed_starts_at_the_floor_and_the_range_spreads_above_it);
     RUN_TEST(test_mounting_swaps_and_inverts);
     RUN_TEST(test_the_car_stops_500_ms_after_the_last_drive);
     RUN_TEST(test_a_lost_link_stops_at_once);

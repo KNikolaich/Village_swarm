@@ -129,6 +129,9 @@ public sealed record CarConfig
     /// <summary>Speeds are scaled to at most this percent; null: 100.</summary>
     public int? MaxSpeed { get; init; }
 
+    /// <summary>PWM duty in percent where the motors start to turn; null: 40.</summary>
+    public int? MinSpeed { get; init; }
+
     /// <summary>Set by the hive: the password of the camera's MJPEG stream (user hive), opened only by the hive's go2rtc.</summary>
     public string? StreamKey { get; init; }
 }

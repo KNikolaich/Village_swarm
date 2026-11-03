@@ -6391,6 +6391,11 @@ export interface components {
              * @default 4
              */
             lightPin: number;
+            /**
+             * Format: int32
+             * @default 40
+             */
+            minSpeed: number;
         };
         CatalogCounts: {
             /** Format: int32 */

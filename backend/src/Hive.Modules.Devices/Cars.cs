@@ -105,7 +105,7 @@ public sealed class CarDrive(IServiceScopeFactory scopes, MqttGateway mqtt, Time
 /// </summary>
 public sealed record CarSetupDto(
     IReadOnlyList<int>? MotorPins = null, bool MotorPwm = true, bool InvertLeft = false, bool InvertRight = false, bool SwapSides = false,
-    int MaxSpeed = 100, int MaxRunS = 60, int LightPin = 4);
+    int MaxSpeed = 100, int MaxRunS = 60, int LightPin = 4, int MinSpeed = 40);
 
 /// <summary>Reads and sets a car's wiring and limits in its config (published like any config change).</summary>
 public sealed class CarSetup(HiveDbContext db, MqttGateway mqtt, TimeProvider time)
@@ -126,6 +126,8 @@ public sealed class CarSetup(HiveDbContext db, MqttGateway mqtt, TimeProvider ti
             return "Выводы моторов и фары не должны совпадать";
         if (r.MaxSpeed is < 10 or > 100)
             return "maxSpeed: от 10 до 100 %";
+        if (r.MinSpeed is < 0 or > 90)
+            return "minSpeed: от 0 до 90 %";
         return r.MaxRunS is < 1 or > 600 ? "maxRunS: от 1 до 600 с" : null;
     }
 
@@ -144,7 +146,7 @@ public sealed class CarSetup(HiveDbContext db, MqttGateway mqtt, TimeProvider ti
             ? p.EnumerateArray().Select(x => x.GetInt32()).ToList()
             : null;
         return new CarSetupDto(pins, Flag(hw, "motor_pwm", true), Flag(car, "invert_left", false), Flag(car, "invert_right", false),
-            Flag(car, "swap_sides", false), Number(car, "max_speed", 100), Number(car, "max_run_s", 60), Number(hw, "relay_pin", 4));
+            Flag(car, "swap_sides", false), Number(car, "max_speed", 100), Number(car, "max_run_s", 60), Number(hw, "relay_pin", 4), Number(car, "min_speed", 40));
     }
 
     public async Task<ConfigUpdateStatus> SetAsync(string deviceId, CarSetupDto r, string by, CancellationToken ct)
@@ -167,6 +169,7 @@ public sealed class CarSetup(HiveDbContext db, MqttGateway mqtt, TimeProvider ti
         car["invert_right"] = r.InvertRight;
         car["swap_sides"] = r.SwapSides;
         car["max_speed"] = r.MaxSpeed;
+        car["min_speed"] = r.MinSpeed;
         car["max_run_s"] = r.MaxRunS;
         config["car"] = car;
         device.ConfigRev++;
