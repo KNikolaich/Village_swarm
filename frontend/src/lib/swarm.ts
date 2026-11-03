@@ -107,18 +107,20 @@ export function announcedCommands(d: DeviceDto): string[] {
 
 /** Relay channel names come from the hornet's retained state ({channel: on|off}); "relay" ("heater" for a heater) is the firmware default. */
 export function relayChannels(d: DeviceDto): string[] {
+  // A car's state also says whether it moves ("drive"): only its light is a switch; it drives from the video.
+  if (d.type === 'car') return ['light']
   const keys = Object.keys((d.state as Record<string, unknown> | null) ?? {}).filter((k) => k !== 'ir_last')
   return keys.length > 0 ? keys : [d.features?.includes('heater') ? 'heater' : 'relay']
 }
 
 /** What a swarm row offers to press: relay channels (a relay the hornet is not used as gets none) and a snapshot. */
-export function quickControls(d: DeviceDto): { relays: { channel: string; on: boolean | null }[]; snapshot: boolean } {
+export function quickControls(d: DeviceDto): { relays: { channel: string; on: boolean | null }[]; snapshot: boolean; drive: boolean } {
   const commands = announcedCommands(d)
   const state = (d.state as Record<string, unknown> | null) ?? {}
   const relays = commands.includes('relay') && hasRelay(d.features)
     ? relayChannels(d).map((channel) => ({ channel, on: state[channel] === 'on' ? true : state[channel] === 'off' ? false : null }))
     : []
-  return { relays, snapshot: commands.includes('snapshot') }
+  return { relays, snapshot: commands.includes('snapshot'), drive: d.type === 'car' }
 }
 
 /** Capabilities a hornet announced in its info message (contracts/schemas/info.schema.json "caps"). */

@@ -103,6 +103,9 @@
 		root * /srv/web
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
+		# index.html, sw.js and the manifest change with every deploy: asked again each time, never kept by the browser.
+		@shell not path /assets/*
+		header @shell Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}
@@ -153,6 +156,9 @@ http://:8088 {
 		root * /srv/web
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
+		# index.html, sw.js and the manifest change with every deploy: asked again each time, never kept by the browser.
+		@shell not path /assets/*
+		header @shell Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}

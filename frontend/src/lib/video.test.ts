@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EventDto } from '@/api/client'
-import { alarmCamera, codecList, codecName, defaultChoice, groupCameras, isCodecMismatch, isStalled, kbps, loadChoice, loadTourPause, nextTourIndex, ptzMove, ptzRepeatMs, saveChoice, saveTourPause, shouldPlay, tourPresets, tourStepMs, type VideoCamera } from './video'
+import { alarmCamera, codecList, codecName, defaultChoice, driveLink, groupCameras, linkedCamera, isCodecMismatch, isStalled, kbps, loadChoice, loadTourPause, nextTourIndex, ptzMove, ptzRepeatMs, saveChoice, saveTourPause, shouldPlay, tourPresets, tourStepMs, type VideoCamera } from './video'
 
 const camera = (deviceId: string, zone: string | null, name = deviceId) =>
   ({ deviceId, name, zone, zoneId: zone ? 1 : null, nvrId: 1, channel: 1, sub: `${deviceId}-sub`, main: `${deviceId}-main`, status: 'online' }) as VideoCamera
@@ -119,5 +119,14 @@ describe('stall', () => {
     expect(isStalled(null, 100_000)).toBe(false)
     expect(isStalled(10_000, 17_999)).toBe(false)
     expect(isStalled(10_000, 18_000)).toBe(true)
+  })
+})
+
+describe('drive link', () => {
+  it('opens the video on the car and reads it back, nothing else', () => {
+    expect(driveLink('car-cam2')).toBe('/?video=car-cam2')
+    expect(linkedCamera('?video=car-cam2')).toBe('car-cam2')
+    expect(linkedCamera('?video=<script>')).toBeNull()
+    expect(linkedCamera('')).toBeNull()
   })
 })

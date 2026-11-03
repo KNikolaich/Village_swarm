@@ -44,11 +44,17 @@ function LiveDot({ state }: { state: LiveState }) {
 /** The hive's version beside its name, small and gold: the same as Settings shows (one cached request). */
 function HiveVersion({ className }: { className?: string }) {
   const version = useQuery({ queryKey: ['settings', 'version'], queryFn: () => call(api.GET('/api/settings/version')), staleTime: 60_000 })
-  const shown = brandVersion(version.data?.version)
-  if (!shown) return null
+  const label = brandLabel(version.data?.version, import.meta.env.VITE_HIVE_VERSION as string | undefined)
+  if (label.stale)
+    return (
+      <button type="button" className={cn('truncate font-mono text-[11px] text-amber-400 underline decoration-dotted', className)}
+        title={t('settings.pageStale')} onClick={() => window.location.reload()}>
+        {label.text} ?
+      </button>
+    )
   return (
-    <span className={cn('truncate font-mono text-[11px] text-amber-600/90', className)} title={t('settings.version').replace('{version}', version.data!.version)}>
-      {shown}
+    <span className={cn('truncate font-mono text-[11px] text-amber-600/90', className)} title={t('settings.version').replace('{version}', label.text)}>
+      {label.text}
     </span>
   )
 }

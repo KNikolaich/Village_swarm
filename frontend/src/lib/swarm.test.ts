@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DeviceDto, LatestValueDto, ZoneDto } from '@/api/client'
-import { groupDevices, mainReadings, quickControls, splitChildren } from './swarm'
+import { groupDevices, mainReadings, quickControls, relayChannels, splitChildren } from './swarm'
 
 const device = (deviceId: string, type: string, extra: Partial<DeviceDto> = {}) =>
   ({ deviceId, type, name: deviceId, status: 'online', rssi: -50, zoneId: null, sort: 0, ...extra }) as DeviceDto
@@ -58,9 +58,9 @@ describe('mainReadings', () => {
 describe('quickControls', () => {
   it('offer a relay toggle with its state and a snapshot when announced', () => {
     const relay = device('relay-1', 'relay', { info: { commands: ['relay', 'reboot'] }, state: { relay: 'on' }, features: ['relay'] })
-    expect(quickControls(relay)).toEqual({ relays: [{ channel: 'relay', on: true }], snapshot: false })
+    expect(quickControls(relay)).toEqual({ relays: [{ channel: 'relay', on: true }], snapshot: false, drive: false })
     const cam = device('cam-1', 'guard-cam', { info: { commands: ['snapshot'] }, state: null })
-    expect(quickControls(cam)).toEqual({ relays: [], snapshot: true })
+    expect(quickControls(cam)).toEqual({ relays: [], snapshot: true, drive: false })
   })
 
   it('offer no relay for a hornet not used as one', () => {
@@ -79,5 +79,16 @@ describe('splitChildren', () => {
     const { top, children } = splitChildren([ch2, nvr, orphan, meteo, ch1])
     expect(top.map((d) => d.deviceId)).toEqual(['nvr1', 'ipcam2-ch1', 'meteo-1'])
     expect(children.get('nvr1')?.map((d) => d.deviceId)).toEqual(['ipcam1-ch1', 'ipcam1-ch2'])
+  })
+})
+
+describe('a car on the swarm tile', () => {
+  const car = { deviceId: 'car-cam2', type: 'car', state: { drive: 'stopped', light: 'off' }, info: { commands: ['relay'] }, features: null } as unknown as DeviceDto
+
+  it('offers its light and a way to drive, never "drive" as a switch', () => {
+    expect(relayChannels(car)).toEqual(['light'])
+    const q = quickControls(car)
+    expect(q.relays).toEqual([{ channel: 'light', on: false }])
+    expect(q.drive).toBe(true)
   })
 })

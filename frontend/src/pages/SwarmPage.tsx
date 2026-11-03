@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, BatteryMedium, Camera, ChevronDown, ChevronRight, CircleHelp, CloudDownload, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Plus, Terminal, Thermometer, Usb, Wifi, WifiOff, type LucideIcon } from 'lucide-react'
+import { ArrowRightLeft, BatteryMedium, Camera, Car, ChevronDown, ChevronRight, CircleHelp, CloudDownload, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Plus, Terminal, Thermometer, Usb, Wifi, WifiOff, type LucideIcon } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { FlashButton } from '@/components/FlashButton'
@@ -16,6 +16,7 @@ import { calibratedOffset, ntcDefaults, ntcNumberFields, ntcSides, parseNtcNumbe
 import { candidates, newerBuild as newerBuildFor } from '@/lib/otaRollout'
 import { groupDevices, groupings, mainReadings, quickControls, type Grouping, splitChildren } from '@/lib/swarm'
 import { cn } from '@/lib/utils'
+import { driveLink } from '@/lib/video'
 import { rangeClass, rangeKey, rangeState } from '@/lib/valueRange'
 
 /** Battery intervals offered in the UI; the contract allows 60..86400 s. 0 = always awake. */
@@ -458,8 +459,9 @@ function QuickControls({ device }: { device: DeviceDto }) {
   const qc = useQueryClient()
   const send = useSendCommand(device.deviceId)
   const takeSnapshot = useSnapshot(device.deviceId)
-  const { relays, snapshot } = quickControls(device)
-  if (relays.length === 0 && !snapshot) return null
+  const navigate = useNavigate()
+  const { relays, snapshot, drive } = quickControls(device)
+  if (relays.length === 0 && !snapshot && !drive) return null
 
   async function toggle(channel: string, on: boolean | null) {
     await send('relay', { channel, set: on ? 'off' : 'on' })
@@ -483,6 +485,11 @@ function QuickControls({ device }: { device: DeviceDto }) {
       {snapshot && (
         <Button variant="outline" size="icon" title={t('swarm.snapshot')} aria-label={t('swarm.snapshot')} onClick={() => void takeSnapshot()}>
           <Camera />
+        </Button>
+      )}
+      {drive && (
+        <Button variant="outline" size="icon" title={t('car.drive')} aria-label={t('car.drive')} onClick={() => void navigate(driveLink(device.deviceId))}>
+          <Car />
         </Button>
       )}
     </div>

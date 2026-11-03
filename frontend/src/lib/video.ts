@@ -15,6 +15,17 @@ export interface VideoChoice {
 export const defaultChoice: VideoChoice = { camera: null, quality: 'snapshots' }
 const storageKey = 'overview.video'
 
+/** The overview with the video widget on this camera, playing (the car's "Ездить" button). */
+export function driveLink(deviceId: string): string {
+  return `/?video=${encodeURIComponent(deviceId)}`
+}
+
+/** The camera a link asks for (?video=…), or null. */
+export function linkedCamera(search: string): string | null {
+  const v = new URLSearchParams(search).get('video')
+  return v && /^[a-z0-9-]{1,32}$/.test(v) ? v : null
+}
+
 /** The choice kept in this browser; the default when there is none or storage is closed (private window). */
 export function loadChoice(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): VideoChoice {
   try {

@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Select } from '@/components/ui/primitives'
 import { t } from '@/i18n'
 import {
-  alarmCamera, codecList, codecName, groupCameras, idleAfterMs, isCodecMismatch, isStalled, kbps, loadChoice, qualities, saveChoice, shouldPlay,
+  alarmCamera, codecList, codecName, groupCameras, idleAfterMs, isCodecMismatch, isStalled, kbps, linkedCamera, loadChoice, qualities, saveChoice, shouldPlay,
   type Quality, type VideoCamera, type VideoChoice,
 } from '@/lib/video'
 
@@ -22,8 +22,10 @@ import {
 export function VideoWidget({ events }: { events: readonly EventDto[] }) {
   const streams = useQuery({ queryKey: ['video', 'streams'], queryFn: () => call(api.GET('/api/video/streams')), staleTime: 60_000 })
   const cameras = streams.data?.cameras ?? []
-  const [choice, setChoice] = useState<VideoChoice>(() => loadChoice())
-  const [wanted, setWanted] = useState(false)
+  // A link to a camera (?video=car-cam2, the car's «Ездить») picks it and plays at once.
+  const linked = linkedCamera(window.location.search)
+  const [choice, setChoice] = useState<VideoChoice>(() => linked ? { camera: linked, quality: 'sd' } : loadChoice())
+  const [wanted, setWanted] = useState(linked !== null)
   const box = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(() => document.visibilityState === 'visible')
   const [inView, setInView] = useState(true)

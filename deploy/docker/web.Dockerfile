@@ -6,6 +6,9 @@ WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
+# The page knows which hive build it belongs to: an old copy kept by a browser shows itself (sidebar, "↻").
+ARG HIVE_VERSION=dev
+ENV VITE_HIVE_VERSION=$HIVE_VERSION
 RUN npm run build
 
 FROM caddy:2-alpine

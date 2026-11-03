@@ -594,7 +594,8 @@
     "installDone": "The hive is already open as an app.",
     "installIos": "In Safari tap Share and choose Add to Home Screen.",
     "installManual": "Open the browser menu and choose Install app (Chrome, Edge, Yandex Browser) or Add to Home screen.",
-    "installHttps": "Installing needs trusted HTTPS: from outside through the KeenDNS address, at home after installing the hive certificate (/ca.crt)."
+    "installHttps": "Installing needs trusted HTTPS: from outside through the KeenDNS address, at home after installing the hive certificate (/ca.crt).",
+    "pageStale": "This page is older than the hive: the browser shows a kept copy. Click to reload."
   },
   "password": {
     "show": "Show password",
@@ -1693,6 +1694,7 @@
       "save": "Save",
       "saved": "Saved; the car takes it when it connects",
       "refused": "Not saved"
-    }
+    },
+    "drive": "Drive (video and controls)"
   }
 }

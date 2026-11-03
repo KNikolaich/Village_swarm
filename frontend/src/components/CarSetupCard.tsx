@@ -1,11 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Car } from 'lucide-react'
+import { Link } from 'react-router'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { api, call, type Schemas } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui/primitives'
 import { t } from '@/i18n'
+import { driveLink } from '@/lib/video'
 
 type CarSetup = Schemas['CarSetupDto']
 
@@ -47,6 +49,9 @@ export function CarSetupCard({ deviceId, editable }: { deviceId: string; editabl
     <Card>
       <CardHeader><CardTitle className="flex items-center gap-2"><Car className="size-4" />{t('car.setup.title')}</CardTitle></CardHeader>
       <CardContent className="space-y-3 text-sm">
+        <Link to={driveLink(deviceId)} className="inline-flex items-center gap-2 rounded-md bg-amber-500 px-3 py-1.5 text-sm font-medium text-neutral-950 hover:bg-amber-400">
+          <Car className="size-4" />{t('car.drive')}
+        </Link>
         <p className="text-xs text-neutral-500">{t('car.setup.hint')}</p>
         <div className="grid grid-cols-5 gap-2">
           {pinLabels.map((label, i) => (
