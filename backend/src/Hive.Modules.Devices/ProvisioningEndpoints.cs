@@ -105,13 +105,17 @@ public static class ProvisioningEndpoints
 
         // Images for the in-browser flasher (ESP Web Tools), one folder per build env (role-board).
         var firmware = app.MapGroup("/api/firmware").WithTags("firmware");
-        firmware.MapGet("/{build}/manifest.json", Results<JsonHttpResult<JsonObject>, NotFound> (string build, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
+        // Never from a cache: the same address carries a new image after each deploy, and a browser that kept the old one
+        // (no Cache-Control: heuristic freshness) flashed it again. The parts carry the version too.
+        firmware.MapGet("/{build}/manifest.json", Results<JsonHttpResult<JsonObject>, NotFound> (string build, HttpResponse response, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
         {
             if (ReadBuild(build, options.Value, env) is not { } b)
                 return TypedResults.NotFound();
+            response.Headers.CacheControl = "no-store";
+            var stamp = Uri.EscapeDataString(b.Version ?? b.Built.Ticks.ToString(CultureInfo.InvariantCulture));
             var parts = new JsonArray(b.Parts.Select(p => (JsonNode)new JsonObject
             {
-                ["path"] = $"/api/firmware/{build}/{p.File}",
+                ["path"] = $"/api/firmware/{build}/{p.File}?v={stamp}",
                 ["offset"] = p.Offset,
             }).ToArray());
             return TypedResults.Json(new JsonObject
@@ -122,11 +126,14 @@ public static class ProvisioningEndpoints
                 ["builds"] = new JsonArray { new JsonObject { ["chipFamily"] = b.ChipFamily, ["parts"] = parts } },
             });
         });
-        firmware.MapGet("/{build}/{file}", Results<PhysicalFileHttpResult, NotFound> (string build, string file, string? download, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
-            ReadBuild(build, options.Value, env) is { } b && b.Parts.Any(p => p.File == file)
-                // ?download=1 names the file after the build (meteo-esp01dht.bin) instead of firmware.bin.
-                ? TypedResults.PhysicalFile(Path.Combine(b.Dir, file), "application/octet-stream", download is "1" or "true" ? $"{build}-{file}" : null)
-                : TypedResults.NotFound());
+        firmware.MapGet("/{build}/{file}", Results<PhysicalFileHttpResult, NotFound> (string build, string file, string? download, HttpResponse response, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
+        {
+            if (ReadBuild(build, options.Value, env) is not { } b || !b.Parts.Any(p => p.File == file))
+                return TypedResults.NotFound();
+            response.Headers.CacheControl = "no-store";
+            // ?download=1 names the file after the build (meteo-esp01dht.bin) instead of firmware.bin.
+            return TypedResults.PhysicalFile(Path.Combine(b.Dir, file), "application/octet-stream", download is "1" or "true" ? $"{build}-{file}" : null);
+        });
         firmware.MapGet("", (IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
             ListBuilds(options.Value, env)
                 .Select(b => new FirmwareBuildDto(b.Name, b.Role, b.Board, b.ChipFamily, b.Built, b.Version, b.Signature is not null))

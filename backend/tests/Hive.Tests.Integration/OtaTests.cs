@@ -53,6 +53,23 @@ public sealed class OtaTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task The_flasher_never_gets_an_image_from_a_cache()
+    {
+        var image = AddBuild("car-flash1", "car", "esp32cam-aithinker", "0.2.1+5f514e4");
+        using var client = await hive.LoginAsync();
+        using var manifest = await client.GetAsync("/api/firmware/car-flash1/manifest.json");
+        Assert.True(manifest.Headers.CacheControl?.NoStore, "the manifest is never cached");
+        var path = JsonDocument.Parse(await manifest.Content.ReadAsStringAsync()).RootElement
+            .GetProperty("builds")[0].GetProperty("parts")[0].GetProperty("path").GetString();
+        Assert.Equal("/api/firmware/car-flash1/firmware.bin?v=0.2.1%2B5f514e4", path); // a new version is a new address
+
+        using var part = await client.GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, part.StatusCode);
+        Assert.True(part.Headers.CacheControl?.NoStore, "the image is never cached");
+        Assert.Equal(image, await part.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
     public async Task Update_command_carries_the_size_md5_version_and_download_address()
     {
         var image = AddBuild("meteo-ota1", "meteo", Board, "9.9.9+test");

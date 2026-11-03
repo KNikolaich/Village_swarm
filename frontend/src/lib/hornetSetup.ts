@@ -52,10 +52,11 @@ export type SetupOptions = {
 
 /** Writes a firmware build of the hive to the board on this port and restarts it. */
 export async function flashBoard(port: SerialPortLike, build: { build: string; chipFamily: string }, o: Pick<SetupOptions, 'onLog' | 'onProgress'>) {
-  const manifest = (await (await fetch(`/api/firmware/${build.build}/manifest.json`)).json()) as Manifest
+  // Never from the browser's cache: after a deploy the same address carries a new image.
+  const manifest = (await (await fetch(`/api/firmware/${build.build}/manifest.json`, { cache: 'no-store' })).json()) as Manifest
   const parts = manifest.builds[0]?.parts ?? []
   const files = await Promise.all(parts.map(async (p) => {
-    const response = await fetch(p.path)
+    const response = await fetch(p.path, { cache: 'no-store' })
     if (!response.ok) throw new SetupError('flash', 'download', `${p.path}: ${response.status}`)
     return { data: binaryString(new Uint8Array(await response.arrayBuffer())), address: p.offset }
   }))
