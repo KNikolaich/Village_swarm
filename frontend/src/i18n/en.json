@@ -975,7 +975,7 @@
       "noBootloader": "The board does not answer its bootloader. Check the cable (it must carry data) and the port; an ESP32-CAM without the MB adapter needs IO0 held while powering up.",
       "wrongChip": "The board has another chip: pick the board you actually have in step 1.",
       "portGone": "After the restart the board did not come back on USB. Replug the cable and press Retry with \"already flashed\" ticked.",
-      "noAnswer": "The board did not answer the settings. Open the USB console to see what it prints at start.",
+      "noAnswer": "The board did not answer the settings. Press RESET on the board or replug the USB cable (ESP32-CAM-MB adapters sometimes do not start the board after flashing) and press «Retry» with «The board is already flashed». What it prints at start is in the board's log below.",
       "enrollFailed": "The board could not join: check the Wi-Fi, the hive address (as the board sees it) and that the code has not expired. The reason is in the board log below.",
       "notOnline": "The board joined but did not come online within a minute and a half. Check in the USB console that its Wi-Fi reaches the hive (MQTT).",
       "other": "Something went wrong. Details are in the board log below; the USB console helps to find out more."
