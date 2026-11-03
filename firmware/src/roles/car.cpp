@@ -92,7 +92,7 @@ public:
         camera_config_t camera = cameraConfig();  // here, not at start-up: PSRAM is known only once the core runs
         cameraOk_ = esp_camera_init(&camera) == ESP_OK;
         if (!cameraOk_) Serial.println("[car] camera init failed");
-        startStream();
+        // The stream server starts in loop() once Wi-Fi is up: a socket here, before the network stack, panics the board.
         core.onCommand("relay", [this](JsonObjectConst p) { return lightCommand(p); });
     }
 
@@ -138,6 +138,11 @@ public:
     }
 
     void loop(Core& core) override {
+        if (carStreamMayStart(cameraOk_, server_ != nullptr, WiFi.status() == WL_CONNECTED, streamTried_, millis(), streamTriedMs_)) {
+            streamTried_ = true;
+            streamTriedMs_ = millis();
+            startStream();
+        }
         const CarStop stopped = guard_.tick(millis(), core.online() && WiFi.status() == WL_CONNECTED);
         if (stopped != CarStop::None) {
             writeMotors();
@@ -285,7 +290,8 @@ private:
         c.ctrl_port = kStreamPort + 1;
         c.stack_size = 6144;
         if (httpd_start(&server_, &c) != ESP_OK) {
-            Serial.println("[car] stream server not started");
+            server_ = nullptr;
+            core_->log(LogLevel::Warn, "camera stream server not started, trying again in 10 s");
             return;
         }
         httpd_uri_t s = {};
@@ -305,6 +311,8 @@ private:
     Core* core_ = nullptr;
     bool cameraOk_ = false;
     httpd_handle_t server_ = nullptr;
+    bool streamTried_ = false;
+    uint32_t streamTriedMs_ = 0;
     String streamKey_;
     String auth_;
     CarGuard guard_;
