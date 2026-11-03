@@ -1,3 +1,5 @@
+import { hiveUrl } from '@/lib/hiveUrl'
+import { joinQuestion } from '@/lib/joinHive'
 import { ArrowLeft, Eraser, PlugZap, RotateCcw, Send, Unplug } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
@@ -163,10 +165,12 @@ export function ConsolePage() {
         }
         code = issued.code
       }
-      if (!window.confirm(t('console.joinConfirm').replace('{url}', url).replace('{ssid}', secrets.ssid))) return
+      const hornet = (devices.data ?? []).find((d) => d.deviceId === join.deviceId) ?? null
+      const question = joinQuestion({ confirm: t('console.joinConfirm'), replaces: t('console.joinReplaces'), byCode: t('console.joinByCode') }, secrets.ssid, hiveUrl(url), hornet)
+      if (!window.confirm(question)) return
       await run(`set ssid ${secrets.ssid}`)
       await run(`set pass ${secrets.password}`)
-      await run(`enroll ${url} ${code}`)
+      await run(`enroll ${hiveUrl(url)} ${code}`)
       setJoin({ ...join, code: '' })
       toast.success(t('console.joinSent'))
     } finally {

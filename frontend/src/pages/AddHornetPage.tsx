@@ -14,6 +14,7 @@ import { getLanguage, t } from '@/i18n'
 import { SetupStages } from '@/components/SetupStages'
 import { SetupError, type SetupStage, setupHornet, setupStages } from '@/lib/hornetSetup'
 import { type SerialPortLike, serialSupported } from '@/lib/serial'
+import { hiveUrl } from '@/lib/hiveUrl'
 
 const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant', 'ble', 'irrx', 'irtx', 'monitor', 'car']
 const types = typeCodes.map((code) => ({ code, get title() { return t(`deviceTypes.${code}`) } }))
@@ -382,7 +383,8 @@ function SetupStep({ type, build, code, deviceId, onDone, doneLabel }: {
     setStage(s)
   }
 
-  const commands = [`set ssid ${ssid}`, `set pass ${pass}`, `enroll ${hive} ${code}`]
+  // A bare address (192.168.10.4) gets http://: older firmware could not take one without it.
+  const commands = [`set ssid ${ssid}`, `set pass ${pass}`, `enroll ${hiveUrl(hive)} ${code}`]
   const stages = setupStages.filter((s) => !(flashed && s === 'flash'))
 
   async function run() {

@@ -1,3 +1,4 @@
+#include "HiveUrl.h"
 #include "HornetCore.h"
 
 #include <espMqttClient.h>
@@ -784,8 +785,8 @@ bool Core::enroll(const String& hiveUrl, const String& code) {
     String body;
     serializeJson(request, body);
 
-    String url = hiveUrl;
-    if (url.endsWith("/")) url.remove(url.length() - 1);
+    // "192.168.10.4" works as well as "http://192.168.10.4" (HiveUrl.h).
+    const String url = hornet::hiveUrl(hiveUrl.c_str()).c_str();
     String response;
     const int status = platform::httpPost(url + "/api/provision/enroll", "application/json",
                                           reinterpret_cast<const uint8_t*>(body.c_str()), body.length(), {}, &response);
