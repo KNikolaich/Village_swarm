@@ -399,7 +399,7 @@ public static class ScreenTabs
     private static float DrawNowStanding(Pen p, TabContext c, WeatherCurrentDto current, DateTimeOffset now)
     {
         WeatherIcons.Thermometer(p.Canvas, 8, 36, 44);
-        p.Text(Degrees(current.Temperature), 30, 44, 36, null, p.Serif);
+        p.Text(Degrees(current.Temperature), 8 + WeatherIcons.ThermometerWidthAt(44) + 4, 44, 36, null, p.Serif);
         WeatherIcons.Draw(p.Canvas, current.WeatherCode, p.W - 76, 34, 70);
         // how warm it feels, bigger; beside the picture, not under it
         if (current.Apparent is { } apparent)
@@ -720,20 +720,35 @@ public static class WeatherIcons
         _ => "",
     };
 
-    /// <summary>A thermometer <paramref name="height"/> tall at x, y: a tube with marks, the bulb and its column filled.</summary>
+    // The thermometer drawn on a 512 square (viewBox of the vector the person chose, the sun left out): the tube with its bulb, the
+    // mercury in it, four marks to the right. Its ink spans x 171..420.5 and y 86.6..445.5.
+    private const string ThermometerTube =
+        "M317.38,279.33a6.83,6.83,0,0,1-2.94-5.53V137.61a51,51,0,1,0-102,0V273.8a6.46,6.46,0,0,1-2.6,5.28A91.92,91.92,0,0,0,262.07,445.5h1.37a91.84,91.84,0,0,0,91.83-91.85A92.18,92.18,0,0,0,317.38,279.33Z" +
+        "m-2.12,126.93a73.85,73.85,0,1,1-94.92-112.57,24.53,24.53,0,0,0,10.08-19.89V137.61a33,33,0,1,1,66,0V273.8a25,25,0,0,0,10.36,20.09,74.15,74.15,0,0,1,30.47,59.77A73.29,73.29,0,0,1,315.26,406.26Z";
+    private const string ThermometerMercury = "M275.43,307.31V202.62h-24V307.31a48.12,48.12,0,1,0,24,0Z";
+    private static readonly (float X, float Y, float Width)[] ThermometerMarks = [(343.62f, 105.39f, 47.67f), (343.62f, 146.96f, 76.87f), (343.62f, 188.53f, 47.67f), (343.62f, 230.09f, 76.87f)];
+    private const float ThermometerLeft = 171f, ThermometerTop = 86.6f, ThermometerHeight = 358.9f, ThermometerWidth = 249.5f;
+
+    /// <summary>The width of <see cref="Thermometer"/> when it is <paramref name="height"/> tall.</summary>
+    public static float ThermometerWidthAt(float height) => ThermometerWidth * height / ThermometerHeight;
+
+    /// <summary>A thermometer <paramref name="height"/> tall at x, y: a tube with its bulb, the mercury and marks beside it.</summary>
     public static void Thermometer(SKCanvas canvas, float x, float y, float height)
     {
-        var r = height * 0.16f;
-        var tube = height * 0.09f;
-        var cx = x + r;
-        using var line = new SKPaint { Color = SKColors.Black, IsAntialias = false, StrokeWidth = Math.Max(1.5f, height / 22), Style = SKPaintStyle.Stroke };
+        var scale = height / ThermometerHeight;
         using var ink = new SKPaint { Color = SKColors.Black, IsAntialias = false, Style = SKPaintStyle.Fill };
-        var bulbY = y + height - r;
-        canvas.DrawRoundRect(new SKRect(cx - tube, y, cx + tube, bulbY - r * 0.6f), tube, tube, line);
-        canvas.DrawCircle(cx, bulbY, r, ink);
-        canvas.DrawRect(new SKRect(cx - tube * 0.45f, y + height * 0.35f, cx + tube * 0.45f, bulbY), ink);
-        for (var i = 0; i < 3; i++)
-            canvas.DrawLine(cx + tube + 2, y + height * (0.18f + 0.14f * i), cx + tube + 5, y + height * (0.18f + 0.14f * i), line);
+        canvas.Save();
+        canvas.Translate(x, y);
+        canvas.Scale(scale);
+        canvas.Translate(-ThermometerLeft, -ThermometerTop);
+        foreach (var data in new[] { ThermometerTube, ThermometerMercury })
+        {
+            using var path = SKPath.ParseSvgPathData(data);
+            canvas.DrawPath(path, ink);
+        }
+        foreach (var (mx, my, mw) in ThermometerMarks)
+            canvas.DrawRect(new SKRect(mx, my, mx + mw, my + 16), ink);
+        canvas.Restore();
     }
 
     /// <summary>

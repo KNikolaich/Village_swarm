@@ -236,6 +236,25 @@ public class ScreenTabsTests
     }
 
     [Fact]
+    public void The_thermometer_is_a_tube_with_marks_and_stays_in_its_box()
+    {
+        using var bitmap = new SKBitmap(new SKImageInfo(60, 60, SKColorType.Gray8, SKAlphaType.Opaque));
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(SKColors.White);
+            WeatherIcons.Thermometer(canvas, 8, 6, 44);
+        }
+        var width = WeatherIcons.ThermometerWidthAt(44);
+        Assert.InRange(width, 28, 33);
+        Assert.InRange(Black(bitmap, new SKRectI(0, 0, 60, 60)), 300, 900);
+        Assert.Equal(0, Black(bitmap, new SKRectI(0, 0, 60, 5)));  // nothing above the tube
+        Assert.Equal(0, Black(bitmap, new SKRectI(0, 51, 60, 60)));  // nor under the bulb
+        Assert.Equal(0, Black(bitmap, new SKRectI(0, 0, 7, 60)));  // nor left of it
+        Assert.Equal(0, Black(bitmap, new SKRectI((int)Math.Ceiling(8 + width) + 1, 0, 60, 60)));  // nor right of the marks
+        Assert.True(Black(bitmap, new SKRectI(8 + (int)(width * 0.7f), 8, 8 + (int)width, 26)) > 20, "the marks are beside the tube");
+    }
+
+    [Fact]
     public void The_crowpanel_lies_landscape_unless_turned_otherwise()
     {
         Assert.Equal(270, DisplayScreens.DefaultRotation("crowpanel-epd37"));
