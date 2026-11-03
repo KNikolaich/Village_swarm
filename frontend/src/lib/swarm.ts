@@ -128,3 +128,6 @@ export const hasCap = (d: DeviceDto, cap: string) => {
   const caps = (d.info as { caps?: unknown } | null)?.caps
   return Array.isArray(caps) && caps.includes(cap)
 }
+
+/** Devices with a picture (their «Поворот картинки»): our guard-cams and cars, IP cameras. */
+export const hasPicture = (d: DeviceDto) => d.type === 'guard-cam' || d.type === 'car' || d.type === 'ipcam'

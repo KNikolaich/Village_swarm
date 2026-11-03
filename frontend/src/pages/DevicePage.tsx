@@ -29,13 +29,14 @@ import { ZoneSelect } from '@/pages/ClimatePage'
 import { DeviceName } from '@/components/DeviceName'
 import { PinsPanel } from '@/pages/SwarmPage'
 import { CarSetupCard } from '@/components/CarSetupCard'
+import { RotationCard } from '@/components/RotationCard'
 import { SortInput } from '@/components/SortInput'
 import { MonitoringPanel } from '@/components/MonitoringPanel'
 import { PanelMonitoring } from '@/components/PanelMonitoring'
 import { TimelapsePanel } from '@/components/TimelapsePanel'
 import { DashboardChecks } from '@/components/DashboardChecks'
 import { canMonitor } from '@/lib/monitoring'
-import { announcedCommands, hasCap, relayChannels } from '@/lib/swarm'
+import { announcedCommands, hasCap, hasPicture, relayChannels } from '@/lib/swarm'
 
 function MetricChart({ device, metric, hours }: { device: string; metric: string; hours: number }) {
   const series = useSeries(device, metric, hours)
@@ -376,6 +377,7 @@ export function DevicePage() {
       {device.type === 'ipcam' && typeof nvrId === 'number' && <IpCamChannelSettings deviceId={device.deviceId} nvrId={nvrId} isAdmin={isAdmin} />}
 
       {device.type === 'car' && canControl && <CarSetupCard deviceId={device.deviceId} editable={isAdmin} />}
+      {hasPicture(device) && canControl && device.status !== 'disabled' && <RotationCard device={device} />}
 
       {sensing && <Card>
         <CardHeader><CardTitle>{t('device.readings')}</CardTitle></CardHeader>

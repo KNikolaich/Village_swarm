@@ -173,6 +173,29 @@ public sealed class MediaTests(HiveFixture hive) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_camera_mounted_on_its_side_gets_its_photos_turned_once_when_stored()
+    {
+        await CameraAsync("guard-rot1");
+        await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == "guard-rot1"), "device registered");
+        var (width, height) = Hive.Modules.Media.ImageTools.Identify(TestJpeg)!.Value;
+
+        using (var refused = await _http.PutAsJsonAsync("/api/devices/guard-rot1/rotate", new { rotate = 45 }))
+            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        using (var set = await _http.PutAsJsonAsync("/api/devices/guard-rot1/rotate", new { rotate = 90 }))
+            Assert.Equal(HttpStatusCode.NoContent, set.StatusCode);
+        var device = await _http.GetFromJsonAsync<Hive.Modules.Devices.DeviceDto>("/api/devices/guard-rot1");
+        Assert.Equal(90, device!.Rotate);
+
+        var id = $"{Ulid.New()}-0";
+        using (var r = await _http.SendAsync(Upload(TestJpeg, id, "guard-rot1")))
+            Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        var stored = await hive.QueryAsync(db => db.Media.SingleAsync(m => m.Id == id));
+        Assert.Equal((height, width), (stored.Width, stored.Height));
+        var bytes = await _http.GetByteArrayAsync($"/api/media/{id}");
+        Assert.Equal((height, width), Hive.Modules.Media.ImageTools.Identify(bytes));
+    }
+
+    [Fact]
     public async Task Events_page_with_cursor_and_ack_once()
     {
         var (hornet, role, link) = await CameraAsync("guard-pag1");

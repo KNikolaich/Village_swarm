@@ -368,6 +368,9 @@ public sealed record CameraConfig
     public int? Burst { get; init; }
     public int? BurstIntervalMs { get; init; }
     public IrLedMode? IrLed { get; init; }
+
+    /// <summary>How the picture is turned clockwise (0, 90, 180, 270): the hive turns live video and photos, the hornet nothing.</summary>
+    public int? Rotate { get; init; }
 }
 
 public sealed record UploadConfig

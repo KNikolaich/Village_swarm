@@ -83,6 +83,22 @@ public static class Cameras
     public static readonly string[] Types = [GuardCam, IpCam];
 }
 
+/// <summary>
+/// How a camera's picture is turned clockwise (config camera.rotate: 0, 90, 180, 270), for any device with a picture: a
+/// guard-cam, a car, an IP camera. The browser turns live video; the hive turns photos when it stores them.
+/// </summary>
+public static class VideoRotation
+{
+    public static readonly int[] Allowed = [0, 90, 180, 270];
+
+    public static int Of(JsonDocument? config) =>
+        config is not null && config.RootElement.ValueKind == JsonValueKind.Object
+        && config.RootElement.TryGetProperty("camera", out var camera) && camera.ValueKind == JsonValueKind.Object
+        && camera.TryGetProperty("rotate", out var r) && r.TryGetInt32(out var deg) && Allowed.Contains(deg)
+            ? deg
+            : 0;
+}
+
 /// <summary>A car: an ESP32-CAM on two motors, driven from the hive (contracts/mqtt-topics.md "Car").</summary>
 public static class Cars
 {

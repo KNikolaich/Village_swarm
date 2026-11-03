@@ -15,6 +15,22 @@ export interface VideoChoice {
 export const defaultChoice: VideoChoice = { camera: null, quality: 'snapshots' }
 const storageKey = 'overview.video'
 
+export const rotations = [0, 90, 180, 270] as const
+
+/**
+ * Where the picture of a turned camera goes in its box (w x h): turned about the centre; at 90 and 270 its own box is
+ * h x w, so after the turn it fills the box without being cut. The arrows over it stay as they are: they drive the car
+ * or the camera, not the picture.
+ */
+export function rotatedBox(degrees: number, w: number, h: number): { width: number; height: number; transform: string } {
+  const side = degrees === 90 || degrees === 270
+  return {
+    width: side ? h : w,
+    height: side ? w : h,
+    transform: `translate(-50%, -50%) rotate(${degrees}deg)`,
+  }
+}
+
 /** The overview with the video widget on this camera, playing (the car's "Ездить" button). */
 export function driveLink(deviceId: string): string {
   return `/?video=${encodeURIComponent(deviceId)}`

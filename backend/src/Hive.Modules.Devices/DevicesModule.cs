@@ -19,7 +19,7 @@ public sealed record DeviceDto(
     string? Hw, string? Fw, string? Mac, string? Ip, int? Rssi, int? Boot, DateTimeOffset? LastSeenAt,
     JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev, int? SleepS, string SleepMode, string Driver,
     IReadOnlyList<string>? Features = null, IReadOnlyList<string>? SupportedFeatures = null, HeaterLimitsDto? Heater = null, int Sort = 0,
-    string? Thermometer = null, IReadOnlyList<string>? Dashboard = null, string? Parent = null);
+    string? Thermometer = null, IReadOnlyList<string>? Dashboard = null, string? Parent = null, int Rotate = 0);
 
 /// <summary>The limits a heater keeps by itself (config failsafe.heater, or the firmware defaults).</summary>
 public sealed record HeaterLimitsDto(double MinC, double MaxC, int MaxOnS);
@@ -55,7 +55,7 @@ public sealed class DeviceQueries(HiveDbContext db)
         d.Hw, d.FwVersion, d.Mac, d.Ip, d.Rssi, d.Boot, d.LastSeenAt,
         d.Info?.RootElement.Clone(), d.State?.RootElement.Clone(), d.ConfigRev, d.ConfigAppliedRev, DeviceConfigService.SleepS(d), DeviceConfigService.SleepMode(d), d.Driver,
         Features(d), d.Driver == Drivers.Hornet ? DeviceFeatures.SupportedBy(d.TypeCode) : null, HeaterLimits(d), d.Sort,
-        Thermometer(d), d.Dashboard, d.ParentId);
+        Thermometer(d), d.Dashboard, d.ParentId, VideoRotation.Of(d.Config));
 
     /// <summary>Features of a native hornet (Tasmota devices keep their own settings).</summary>
     private static IReadOnlyList<string>? Features(Device d) =>
@@ -169,6 +169,17 @@ public static class DevicesModule
                     ? TypedResults.Ok((await ir.GetAsync(deviceId, ct))!)
                     : TypedResults.NotFound();
             })
+            .RequireAuthorization(HiveRoles.CanControl);
+
+        // How a camera's picture is turned (config camera.rotate): live video in the browser, photos when stored.
+        devices.MapPut("/{deviceId}/rotate", async Task<Results<NoContent, NotFound, ValidationProblem>> (
+                string deviceId, DeviceConfigService.RotateRequest request, ClaimsPrincipal user, DeviceConfigService configs, CancellationToken ct) =>
+                await configs.SetRotateAsync(deviceId, request.Rotate, $"user:{user.Identity?.Name}", ct) switch
+                {
+                    ConfigUpdateStatus.Updated => TypedResults.NoContent(),
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    _ => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["rotate"] = ["0, 90, 180 или 270"] }),
+                })
             .RequireAuthorization(HiveRoles.CanControl);
 
         // The thermometer a Bluetooth bridge is paired with (docs/ble-thermometer.md).

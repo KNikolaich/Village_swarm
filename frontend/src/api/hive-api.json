@@ -2046,6 +2046,51 @@
         }
       }
     },
+    "/api/devices/{deviceId}/rotate": {
+      "put": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/devices/{deviceId}/ble": {
       "get": {
         "tags": [
@@ -6057,6 +6102,11 @@
               "null",
               "string"
             ]
+          },
+          "rotate": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
           }
         }
       },
@@ -8783,6 +8833,18 @@
           }
         }
       },
+      "RotateRequest": {
+        "required": [
+          "rotate"
+        ],
+        "type": "object",
+        "properties": {
+          "rotate": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "RuleAction": {
         "required": [
           "kind"
@@ -9975,6 +10037,11 @@
           "kind": {
             "type": "string",
             "default": "ipcam"
+          },
+          "rotate": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
           }
         }
       },

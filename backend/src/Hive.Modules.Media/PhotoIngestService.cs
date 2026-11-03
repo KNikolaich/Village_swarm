@@ -125,6 +125,17 @@ public sealed partial class PhotoIngestService(
 
     private async Task<PhotoIngestResult> SaveAsync(MediaItem media, byte[] body, CancellationToken ct)
     {
+        // A camera mounted on its side: the photo is turned once, here, so the gallery, the feed and Telegram show it right.
+        var config = await db.Devices.AsNoTracking().Where(d => d.DeviceId == media.DeviceId).Select(d => d.Config).FirstOrDefaultAsync(ct);
+        if (VideoRotation.Of(config) is var degrees and not 0 && ImageTools.Rotate(body, degrees) is var turned && turned != body
+            && ImageTools.Identify(turned) is { } size)
+        {
+            body = turned;
+            media.Width = size.Width;
+            media.Height = size.Height;
+            media.Bytes = body.LongLength;
+            media.Sha256 = Convert.ToHexStringLower(SHA256.HashData(body));
+        }
         await store.WriteAtomicAsync(media.Path, body, ct);
         db.Media.Add(media);
         try

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EventDto } from '@/api/client'
-import { alarmCamera, codecList, codecName, defaultChoice, driveLink, groupCameras, linkedCamera, isCodecMismatch, isStalled, kbps, loadChoice, loadTourPause, nextTourIndex, ptzMove, ptzRepeatMs, saveChoice, saveTourPause, shouldPlay, tourPresets, tourStepMs, type VideoCamera } from './video'
+import { alarmCamera, codecList, codecName, defaultChoice, driveLink, rotatedBox, groupCameras, linkedCamera, isCodecMismatch, isStalled, kbps, loadChoice, loadTourPause, nextTourIndex, ptzMove, ptzRepeatMs, saveChoice, saveTourPause, shouldPlay, tourPresets, tourStepMs, type VideoCamera } from './video'
 
 const camera = (deviceId: string, zone: string | null, name = deviceId) =>
   ({ deviceId, name, zone, zoneId: zone ? 1 : null, nvrId: 1, channel: 1, sub: `${deviceId}-sub`, main: `${deviceId}-main`, status: 'online' }) as VideoCamera
@@ -119,6 +119,15 @@ describe('stall', () => {
     expect(isStalled(null, 100_000)).toBe(false)
     expect(isStalled(10_000, 17_999)).toBe(false)
     expect(isStalled(10_000, 18_000)).toBe(true)
+  })
+})
+
+describe('turned picture', () => {
+  it('swaps the sides at 90 and 270 so the picture fills the box, keeps them at 0 and 180', () => {
+    expect(rotatedBox(90, 640, 360)).toEqual({ width: 360, height: 640, transform: 'translate(-50%, -50%) rotate(90deg)' })
+    expect(rotatedBox(270, 640, 360).width).toBe(360)
+    expect(rotatedBox(180, 640, 360)).toEqual({ width: 640, height: 360, transform: 'translate(-50%, -50%) rotate(180deg)' })
+    expect(rotatedBox(0, 640, 360).height).toBe(360)
   })
 })
 

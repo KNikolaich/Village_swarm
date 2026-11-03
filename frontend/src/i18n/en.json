@@ -1704,5 +1704,12 @@
       "in3": "IN3 (right forward)",
       "in4": "IN4 (right back)"
     }
+  },
+  "rotate": {
+    "title": "Picture rotation",
+    "degrees": "{d}°",
+    "saved": "Saved",
+    "refused": "Not saved",
+    "hint": "The camera is mounted on its side or upside down: live video is turned in the browser, new photos by the hive when it stores them (older ones stay as they were). The control arrows do not change: they drive the car or the camera, not the picture."
   }
 }

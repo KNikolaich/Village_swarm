@@ -73,6 +73,40 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         return ConfigUpdateStatus.Updated;
     }
 
+    /// <summary>How a camera's picture is turned (contracts: config camera.rotate).</summary>
+    public sealed record RotateRequest(int Rotate);
+
+    /// <summary>
+    /// Sets config camera.rotate of a device with a picture. A hornet gets its config published (the rotation is the
+    /// hive's to apply, the firmware ignores it); an IP camera keeps it in the hive only. The video list follows.
+    /// </summary>
+    public async Task<ConfigUpdateStatus> SetRotateAsync(string deviceId, int rotate, string by, CancellationToken ct)
+    {
+        if (!VideoRotation.Allowed.Contains(rotate))
+            return ConfigUpdateStatus.BadRequest;
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null)
+            return ConfigUpdateStatus.NotFound;
+        var config = device.Config is { } current
+            ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
+            : new JsonObject { ["v"] = 1, ["name"] = device.Name, ["health_interval_s"] = 60 };
+        var camera = config["camera"] as JsonObject ?? [];
+        camera["rotate"] = rotate;
+        config["camera"] = camera;
+        var hornet = device.Driver == Drivers.Hornet;
+        if (hornet)
+        {
+            device.ConfigRev++;
+            config["rev"] = device.ConfigRev;
+        }
+        device.Config = JsonDocument.Parse(config.ToJsonString());
+        Audit.Record(db, time.GetUtcNow(), by, "device_rotate", deviceId, new { rotate });
+        await db.SaveChangesAsync(ct);
+        if (hornet && mqtt.IsConnected)
+            await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
+        return ConfigUpdateStatus.Updated;
+    }
+
     public const int MaxNameLength = 128;
 
     /// <summary>The thermometer a Bluetooth bridge (type ble) talks to: its address, and whether raw frames go to the log.</summary>

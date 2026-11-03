@@ -142,6 +142,7 @@
           "type": "integer",
           "minimum": 0
         },
+        "rotate": { "enum": [0, 90, 180, 270], "description": "How the picture is turned clockwise, kept by the hive: it turns live video in the browser and photos when it stores them; the hornet does nothing with it" },
         "ir_led": {
           "enum": [
             "auto",

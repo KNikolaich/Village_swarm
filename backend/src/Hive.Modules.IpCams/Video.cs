@@ -29,7 +29,8 @@ public sealed class VideoOptions
 /// for its snapshots) or car (one MJPEG stream as both, NvrId and Channel 0).
 /// </summary>
 public sealed record VideoCameraDto(
-    string DeviceId, string Name, int? ZoneId, string? Zone, int NvrId, int Channel, string Sub, string Main, string Status, string Kind = Cameras.IpCam);
+    string DeviceId, string Name, int? ZoneId, string? Zone, int NvrId, int Channel, string Sub, string Main, string Status, string Kind = Cameras.IpCam,
+    int Rotate = 0);
 
 /// <summary>Whether live video works on this hive (go2rtc configured), and the cameras.</summary>
 public sealed record VideoStreamsDto(bool Enabled, IReadOnlyList<VideoCameraDto> Cameras);
@@ -222,12 +223,13 @@ public sealed class VideoStreams(
         var devices = await db.Devices.AsNoTracking().Include(d => d.Zone)
             .Where(d => ids.Contains(d.DeviceId) && d.Status != DeviceStatus.Disabled).ToListAsync(ct);
         var cameras = devices.Join(channels, d => d.DeviceId, c => c.DeviceId, (d, c) => new VideoCameraDto(
-                d.DeviceId, d.Name, d.ZoneId, d.Zone?.Name, c.NvrId, c.Channel, Sub(d.DeviceId), Main(d.DeviceId), d.Status.ToString().ToLowerInvariant()))
+                d.DeviceId, d.Name, d.ZoneId, d.Zone?.Name, c.NvrId, c.Channel, Sub(d.DeviceId), Main(d.DeviceId), d.Status.ToString().ToLowerInvariant(),
+                Rotate: VideoRotation.Of(d.Config)))
             .ToList();
         var cars = await db.Devices.AsNoTracking().Include(d => d.Zone)
             .Where(d => d.TypeCode == Cars.Type && d.Status != DeviceStatus.Disabled).ToListAsync(ct);
         cameras.AddRange(cars.Where(d => CarSource(d.Ip, d.Config) is not null).Select(d => new VideoCameraDto(
-            d.DeviceId, d.Name, d.ZoneId, d.Zone?.Name, 0, 0, Sub(d.DeviceId), Main(d.DeviceId), d.Status.ToString().ToLowerInvariant(), Cars.Type)));
+            d.DeviceId, d.Name, d.ZoneId, d.Zone?.Name, 0, 0, Sub(d.DeviceId), Main(d.DeviceId), d.Status.ToString().ToLowerInvariant(), Cars.Type, VideoRotation.Of(d.Config))));
         return new VideoStreamsDto(Enabled, cameras.OrderBy(c => c.Zone ?? "￿").ThenBy(c => c.Name).ToList());
     }
 

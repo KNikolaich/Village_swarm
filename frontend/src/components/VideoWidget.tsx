@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Select } from '@/components/ui/primitives'
 import { t } from '@/i18n'
 import {
-  alarmCamera, codecList, codecName, groupCameras, idleAfterMs, isCodecMismatch, isStalled, kbps, linkedCamera, stallAfterMs, loadChoice, qualities, saveChoice, shouldPlay,
+  alarmCamera, codecList, codecName, groupCameras, idleAfterMs, isCodecMismatch, isStalled, kbps, linkedCamera, rotatedBox, stallAfterMs, loadChoice, qualities, saveChoice, shouldPlay,
   type Quality, type VideoCamera, type VideoChoice,
 } from '@/lib/video'
 
@@ -132,11 +132,15 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
         )}
         <div ref={box} className="relative aspect-video w-full overflow-hidden rounded-md bg-neutral-950">
           {!camera && <p className="flex h-full items-center justify-center text-sm text-neutral-500">{t('video.pick')}</p>}
-          {camera && playing && (choice.quality === 'snapshots'
+          {camera && playing && (
+            <Turned degrees={camera.rotate ?? 0} box={box}>
+            {choice.quality === 'snapshots'
             ? <Snapshots camera={camera} />
             : camera.kind === 'car'
               ? <MjpegPlayer key={camera.deviceId} stream={camera.sub} onLost={lose} />
-              : <LivePlayer key={`${camera.deviceId}-${choice.quality}`} stream={choice.quality === 'hd' ? camera.main : camera.sub} quality={choice.quality} onLost={lose} />)}
+              : <LivePlayer key={`${camera.deviceId}-${choice.quality}`} stream={choice.quality === 'hd' ? camera.main : camera.sub} quality={choice.quality} onLost={lose} />}
+            </Turned>
+          )}
           {camera && !playing && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-neutral-400">
               {idle && <p>{t('video.stillWatching')}</p>}
@@ -211,6 +215,25 @@ function Snapshots({ camera }: { camera: VideoCamera }) {
       {url && <img src={url} alt={camera.name} className="h-full w-full object-contain" />}
       {error && <p className="absolute inset-x-2 bottom-2 rounded bg-black/70 p-1 text-xs text-red-300">{t('video.snapshotFailed')}: {error}</p>}
     </>
+  )
+}
+
+/** The picture of a camera mounted turned (config camera.rotate), turned back in its box; the overlays are outside it. */
+function Turned({ degrees, box, children }: { degrees: number; box: React.RefObject<HTMLDivElement | null>; children: React.ReactNode }) {
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null)
+  useEffect(() => {
+    const el = box.current
+    if (!el || degrees === 0 || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(([entry]) => setSize({ w: entry.contentRect.width, h: entry.contentRect.height }))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [box, degrees])
+  if (degrees === 0 || !size) return <>{children}</>
+  const r = rotatedBox(degrees, size.w, size.h)
+  return (
+    <div className="absolute left-1/2 top-1/2" style={{ width: r.width, height: r.height, transform: r.transform }}>
+      {children}
+    </div>
   )
 }
 

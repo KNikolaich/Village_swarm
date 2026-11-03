@@ -51,6 +51,26 @@ public static class ImageTools
         return new Flatness(mean, std, near);
     }
 
+    /// <summary>A JPEG turned clockwise by 90, 180 or 270 degrees (re-encoded at <paramref name="quality"/>); 0 gives it back as is.</summary>
+    public static byte[] Rotate(byte[] jpeg, int degrees, int quality = 92)
+    {
+        if (degrees is not (90 or 180 or 270))
+            return jpeg;
+        using var source = SKBitmap.Decode(jpeg) ?? throw new InvalidDataException("Not an image");
+        var swap = degrees != 180;
+        using var turned = new SKBitmap(swap ? source.Height : source.Width, swap ? source.Width : source.Height);
+        using (var canvas = new SKCanvas(turned))
+        {
+            canvas.Translate(turned.Width / 2f, turned.Height / 2f);
+            canvas.RotateDegrees(degrees);
+            canvas.Translate(-source.Width / 2f, -source.Height / 2f);
+            canvas.DrawBitmap(source, 0, 0);
+        }
+        using var image = SKImage.FromBitmap(turned);
+        using var data = image.Encode(SKEncodedImageFormat.Jpeg, quality);
+        return data.ToArray();
+    }
+
     /// <summary>Downscales to <paramref name="width"/> px wide (never upscales) and encodes WebP.</summary>
     public static byte[] Thumbnail(string sourcePath, int width, int quality = 75)
     {

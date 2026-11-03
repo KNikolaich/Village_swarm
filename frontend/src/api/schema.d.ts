@@ -2566,6 +2566,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/devices/{deviceId}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    deviceId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RotateRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/devices/{deviceId}/ble": {
         parameters: {
             query?: never;
@@ -6523,6 +6578,11 @@ export interface components {
             thermometer?: null | string;
             dashboard?: null | string[];
             parent?: null | string;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            rotate: number;
         };
         DeviceLogDto: {
             /** Format: int64 */
@@ -7233,6 +7293,10 @@ export interface components {
             /** Format: int64 */
             databaseBytes: number;
         };
+        RotateRequest: {
+            /** Format: int32 */
+            rotate: number;
+        };
         RuleAction: {
             kind: string;
             device?: null | string;
@@ -7544,6 +7608,11 @@ export interface components {
             status: string;
             /** @default ipcam */
             kind: string;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            rotate: number;
         };
         VideoStreamsDto: {
             enabled: boolean;

@@ -177,6 +177,11 @@ the docker network; no port is published and it has no RTSP or WebRTC server of 
   /api/video/authorize`, `X-Forwarded-Uri`): 204 for a signed-in user and a stream of the list, 403 otherwise (an unknown
   name, an address given as src, two src), 401 when not signed in. Every other `/streams/*` is 404; go2rtc's API and page
   are never reachable.
+- Rotation: `PUT /api/devices/{id}/rotate {rotate: 0|90|180|270}` (users who may control) sets config `camera.rotate` of
+  any device with a picture (guard-cam, car, IP camera; a hornet gets its config published, its firmware ignores it). The
+  widget turns the live picture in the browser (at 90/270 its box swapped so it is not cut; the arrows over it are not
+  turned: they drive the car or the camera); the hive turns photos once when it stores them (older ones stay). `rotate`
+  is in `GET /api/video/streams` and in the device.
 - `GET /api/video/streams`: `{enabled, cameras: [{deviceId, name, zoneId, zone, nvrId, channel, sub, main, status}]}`, no
   addresses, no logins. `enabled` is false when `Video:Go2RtcUrl` is empty.
 - The overview widget «Видео»: «Нет камеры» by default (no connection at all); a camera picked by zone; «Снимки» (a frame
