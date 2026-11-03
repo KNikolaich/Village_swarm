@@ -1,12 +1,13 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bell, Images, LayoutDashboard, LogOut, Network, NotebookPen, Settings, Thermometer, Workflow } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router'
-import { api } from '@/api/client'
+import { api, call } from '@/api/client'
 import { keys } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { t } from '@/i18n'
 import type { LiveState } from '@/lib/live'
 import { cn } from '@/lib/utils'
+import { brandVersion } from '@/lib/version'
 import { HoneycombLogo } from '@/components/HoneycombLogo'
 import { ClusterBanner } from '@/components/ClusterBanner'
 import { LanguageSwitch } from '@/components/LanguageSwitch'
@@ -37,6 +38,18 @@ function LiveDot({ state }: { state: LiveState }) {
   )
 }
 
+/** The hive's version beside its name, small and gold: the same as Settings shows (one cached request). */
+function HiveVersion({ className }: { className?: string }) {
+  const version = useQuery({ queryKey: ['settings', 'version'], queryFn: () => call(api.GET('/api/settings/version')), staleTime: 60_000 })
+  const shown = brandVersion(version.data?.version)
+  if (!shown) return null
+  return (
+    <span className={cn('truncate font-mono text-[11px] text-amber-600/90', className)} title={t('settings.version').replace('{version}', version.data!.version)}>
+      {shown}
+    </span>
+  )
+}
+
 /** Header + sidebar on desktop, bottom tab bar on the phone. */
 export function AppShell({ live }: { live: LiveState }) {
   const qc = useQueryClient()
@@ -55,6 +68,7 @@ export function AppShell({ live }: { live: LiveState }) {
         <div className="mb-6 flex items-center gap-2 px-2">
           <HoneycombLogo className="size-7" />
           <span className="font-semibold">{t('app.title')}</span>
+          <HiveVersion />
         </div>
         <nav className="space-y-1">
           {nav().map(({ to, label, icon: Icon, end }) => (
@@ -78,6 +92,7 @@ export function AppShell({ live }: { live: LiveState }) {
           <div className="flex items-center gap-2 md:hidden">
             <HoneycombLogo className="size-6" />
             <span className="font-semibold">{t('app.title')}</span>
+            <HiveVersion className="hidden sm:inline" />
           </div>
           <div className="hidden md:block" />
           <div className="flex items-center gap-3">
