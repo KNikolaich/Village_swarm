@@ -121,6 +121,12 @@ static void test_the_stream_starts_only_once_wifi_is_up_and_retries_every_10_s()
     TEST_ASSERT_FALSE(carStreamMayStart(false, false, true, false, 3000, 0));   // no camera, no stream
 }
 
+static void test_the_motor_pwm_keeps_off_the_camera_clock() {
+    TEST_ASSERT_TRUE(carLedcApart());
+    TEST_ASSERT_NOT_EQUAL(kCameraLedcTimer, kMotorLedcTimer);
+    for (int i = 0; i < 4; ++i) TEST_ASSERT_NOT_EQUAL(kCameraLedcChannel, kMotorLedcChannel0 + i);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_pins_are_the_free_ones_and_all_different);
@@ -133,5 +139,6 @@ int main(int, char**) {
     RUN_TEST(test_a_stale_drive_is_ignored_and_an_unsynced_clock_is_not_judged);
     RUN_TEST(test_millis_wraparound_keeps_the_deadman);
     RUN_TEST(test_the_stream_starts_only_once_wifi_is_up_and_retries_every_10_s);
+    RUN_TEST(test_the_motor_pwm_keeps_off_the_camera_clock);
     return UNITY_END();
 }

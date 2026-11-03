@@ -20,6 +20,20 @@ inline bool carPinAllowed(int pin) {
     }
 }
 
+// LEDC of the car: the camera's clock (XCLK) is timer 0 / channel 0, set by the camera driver; the motor PWM is timer 1,
+// channels 2..5, set by the car itself, never through Arduino's ledcAttach (which does not see the camera's timer).
+constexpr int kCameraLedcTimer = 0;
+constexpr int kCameraLedcChannel = 0;
+constexpr int kMotorLedcTimer = 1;
+constexpr int kMotorLedcChannel0 = 2;
+
+constexpr bool carLedcApart() {
+    if (kMotorLedcTimer == kCameraLedcTimer) return false;
+    for (int i = 0; i < 4; ++i)
+        if (kMotorLedcChannel0 + i == kCameraLedcChannel || kMotorLedcChannel0 + i > 7) return false;
+    return true;
+}
+
 // Four motor pins and the light: all allowed, all different.
 inline bool carPinsValid(const int motor[4], int light) {
     const int all[5] = {motor[0], motor[1], motor[2], motor[3], light};

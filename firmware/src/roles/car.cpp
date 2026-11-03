@@ -12,6 +12,7 @@
 #include <RelayTimer.h>
 #include <WiFi.h>
 #include <driver/gpio.h>
+#include <driver/ledc.h>
 #include <esp_camera.h>
 #include <esp_http_server.h>
 #include <mbedtls/base64.h>
@@ -22,10 +23,49 @@ using namespace hornet;
 
 constexpr int kDefaultMotorPins[4] = {14, 15, 13, 12};
 constexpr int kFreePins[6] = {2, 4, 12, 13, 14, 15};
-// LEDC channels 2..5 (timers 1 and 2): the camera's clock has channel 0 on timer 0.
-constexpr int kPwmChannel0 = 2;
+// Motor PWM straight on the ESP-IDF LEDC: timer 1, channels 2..5. The camera's clock runs on timer 0 / channel 0, set up
+// by the camera driver, which Arduino's ledcAttach does not know about: it took timer 0 as free and turned the camera's
+// 10 MHz clock into 2 kHz ("Detected camera not supported").
+constexpr ledc_mode_t kPwmMode = LEDC_HIGH_SPEED_MODE;
+constexpr ledc_timer_t kPwmTimer = static_cast<ledc_timer_t>(kMotorLedcTimer);
+constexpr int kPwmChannel0 = kMotorLedcChannel0;
+static_assert(carLedcApart(), "the motor PWM must not share the camera clock's LEDC timer or channel");
 constexpr uint32_t kPwmHz = 2000;
-constexpr uint8_t kPwmBits = 8;
+
+bool pwmTimerReady() {
+    static bool ready = false;
+    if (ready) return true;
+    ledc_timer_config_t t = {};
+    t.speed_mode = kPwmMode;
+    t.timer_num = kPwmTimer;
+    t.duty_resolution = LEDC_TIMER_8_BIT;
+    t.freq_hz = kPwmHz;
+    t.clk_cfg = LEDC_AUTO_CLK;
+    ready = ledc_timer_config(&t) == ESP_OK;
+    return ready;
+}
+
+bool pwmAttach(int pin, int index) {
+    if (!pwmTimerReady()) return false;
+    ledc_channel_config_t c = {};
+    c.gpio_num = pin;
+    c.speed_mode = kPwmMode;
+    c.channel = static_cast<ledc_channel_t>(kPwmChannel0 + index);
+    c.timer_sel = kPwmTimer;
+    c.duty = 0;
+    return ledc_channel_config(&c) == ESP_OK;
+}
+
+void pwmDetach(int pin, int index) {
+    ledc_stop(kPwmMode, static_cast<ledc_channel_t>(kPwmChannel0 + index), 0);
+    gpio_reset_pin(static_cast<gpio_num_t>(pin));
+}
+
+void pwmWrite(int index, uint8_t duty) {
+    const auto channel = static_cast<ledc_channel_t>(kPwmChannel0 + index);
+    ledc_set_duty(kPwmMode, channel, duty);
+    ledc_update_duty(kPwmMode, channel);
+}
 constexpr uint16_t kStreamPort = 81;
 
 // Every free pin low before anything else runs: the motors must not move while the hornet starts.
@@ -57,8 +97,8 @@ camera_config_t cameraConfig() {
     c.pin_href = 23;
     c.pin_pclk = 22;
     c.xclk_freq_hz = 10000000;
-    c.ledc_timer = LEDC_TIMER_0;
-    c.ledc_channel = LEDC_CHANNEL_0;
+    c.ledc_timer = static_cast<ledc_timer_t>(kCameraLedcTimer);
+    c.ledc_channel = static_cast<ledc_channel_t>(kCameraLedcChannel);
     c.pixel_format = PIXFORMAT_JPEG;
     c.frame_size = FRAMESIZE_VGA;
     c.jpeg_quality = 14;
@@ -88,10 +128,11 @@ public:
 
     void setup(Core& core) override {
         core_ = &core;
+        // The camera first, as guard-cam does: its clock (LEDC timer 0) and the sensor are set up before any motor PWM
+        // touches the LEDC; the motor pins are already low (constructor). A sensor that did not answer gets a power
+        // cycle and two more tries.
+        startCamera();
         configurePins(kDefaultMotorPins, HW_RELAY_PIN, true);
-        camera_config_t camera = cameraConfig();  // here, not at start-up: PSRAM is known only once the core runs
-        cameraOk_ = esp_camera_init(&camera) == ESP_OK;
-        if (!cameraOk_) Serial.println("[car] camera init failed");
         // The stream server starts in loop() once Wi-Fi is up: a socket here, before the network stack, panics the board.
         core.onCommand("relay", [this](JsonObjectConst p) { return lightCommand(p); });
     }
@@ -138,6 +179,12 @@ public:
     }
 
     void loop(Core& core) override {
+        // Said once the hive can hear it: a car without a picture still drives, the journal says why there is none.
+        if (!cameraOk_ && !cameraErrLogged_ && core.online()) {
+            cameraErrLogged_ = true;
+            core.log(LogLevel::Error, "camera init failed: 0x" + String(static_cast<unsigned>(cameraErr_), HEX) +
+                                      " (ribbon cable, power, or a sensor the driver does not know); the car drives without video");
+        }
         if (carStreamMayStart(cameraOk_, server_ != nullptr, WiFi.status() == WL_CONNECTED, streamTried_, millis(), streamTriedMs_)) {
             streamTried_ = true;
             streamTriedMs_ = millis();
@@ -166,7 +213,7 @@ private:
         for (int i = 0; i < 4; ++i) same = same && pins[i] == pins_[i];
         if (same && pinsReady_) return;
         for (int i = 0; i < 4 && pinsReady_; ++i) {
-            if (mount_.pwm) ledcDetach(pins_[i]);
+            if (mount_.pwm) pwmDetach(pins_[i], i);
             pinMode(pins_[i], OUTPUT);
             digitalWrite(pins_[i], LOW);
         }
@@ -175,7 +222,7 @@ private:
             pins_[i] = pins[i];
             pinMode(pins_[i], OUTPUT);
             digitalWrite(pins_[i], LOW);
-            if (pwm && !ledcAttachChannel(pins_[i], kPwmHz, kPwmBits, kPwmChannel0 + i)) {
+            if (pwm && !pwmAttach(pins_[i], i)) {
                 core_->log(LogLevel::Warn, "PWM not available on GPIO" + String(pins_[i]) + ": full speed only");
                 mount_.pwm = false;
             }
@@ -194,7 +241,7 @@ private:
         if (!pinsReady_) return;
         const MotorDuty d = carDuty(guard_.left(), guard_.right(), mount_);
         for (int i = 0; i < 4; ++i) {
-            if (mount_.pwm) ledcWrite(pins_[i], d.in[i]);
+            if (mount_.pwm) pwmWrite(i, d.in[i]);
             else digitalWrite(pins_[i], d.in[i] > 0 ? HIGH : LOW);
         }
     }
@@ -283,6 +330,24 @@ private:
         return ESP_OK;
     }
 
+    void startCamera() {
+        for (int attempt = 0; attempt < 3; ++attempt) {
+            if (attempt > 0) {
+                esp_camera_deinit();
+                pinMode(32, OUTPUT);  // PWDN: the sensor off for a moment
+                digitalWrite(32, HIGH);
+                delay(20);
+                digitalWrite(32, LOW);
+                delay(20);
+            }
+            camera_config_t camera = cameraConfig();  // here, not at start-up: PSRAM is known only once the core runs
+            cameraErr_ = esp_camera_init(&camera);
+            cameraOk_ = cameraErr_ == ESP_OK;
+            if (cameraOk_) return;
+            Serial.printf("[car] camera init failed: 0x%x (try %d)\n", static_cast<unsigned>(cameraErr_), attempt + 1);
+        }
+    }
+
     void startStream() {
         if (!cameraOk_) return;
         httpd_config_t c = HTTPD_DEFAULT_CONFIG();
@@ -310,6 +375,8 @@ private:
 
     Core* core_ = nullptr;
     bool cameraOk_ = false;
+    esp_err_t cameraErr_ = ESP_OK;
+    bool cameraErrLogged_ = false;
     httpd_handle_t server_ = nullptr;
     bool streamTried_ = false;
     uint32_t streamTriedMs_ = 0;
