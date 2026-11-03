@@ -72,6 +72,13 @@ inline MotorDuty carDuty(int left, int right, const CarMount& m) {
     return out;
 }
 
+// When the camera's stream server may be started: not in setup (the network stack does not exist yet, a socket then
+// asserts in lwIP), only once Wi-Fi is up; a failed start is tried again every 10 s.
+inline bool carStreamMayStart(bool cameraOk, bool started, bool wifiUp, bool triedBefore, uint32_t nowMs, uint32_t lastTryMs) {
+    if (!cameraOk || started || !wifiUp) return false;
+    return !triedBefore || nowMs - lastTryMs >= 10000;
+}
+
 // Why the motors stopped last.
 enum class CarStop { None, Boot, Deadman, Link, MaxRun, Hive };
 

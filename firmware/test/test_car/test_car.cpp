@@ -111,6 +111,16 @@ static void test_millis_wraparound_keeps_the_deadman() {
     TEST_ASSERT_EQUAL(CarStop::Deadman, g.tick(0x00000100u, true));
 }
 
+static void test_the_stream_starts_only_once_wifi_is_up_and_retries_every_10_s() {
+    // At boot (setup): no Wi-Fi yet, nothing may open a socket.
+    TEST_ASSERT_FALSE(carStreamMayStart(true, false, false, false, 100, 0));
+    TEST_ASSERT_TRUE(carStreamMayStart(true, false, true, false, 3000, 0));
+    TEST_ASSERT_FALSE(carStreamMayStart(true, false, true, true, 5000, 3000));   // failed 2 s ago
+    TEST_ASSERT_TRUE(carStreamMayStart(true, false, true, true, 13000, 3000));
+    TEST_ASSERT_FALSE(carStreamMayStart(true, true, true, true, 60000, 3000));   // running
+    TEST_ASSERT_FALSE(carStreamMayStart(false, false, true, false, 3000, 0));   // no camera, no stream
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_pins_are_the_free_ones_and_all_different);
@@ -122,5 +132,6 @@ int main(int, char**) {
     RUN_TEST(test_the_max_run_holds_the_car_until_a_stop_comes);
     RUN_TEST(test_a_stale_drive_is_ignored_and_an_unsynced_clock_is_not_judged);
     RUN_TEST(test_millis_wraparound_keeps_the_deadman);
+    RUN_TEST(test_the_stream_starts_only_once_wifi_is_up_and_retries_every_10_s);
     return UNITY_END();
 }
