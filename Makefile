@@ -18,7 +18,7 @@ firmware: firmware-test
 	cd firmware && pio run -e guard-cam
 
 firmware-test:
-	cd firmware && pio test -e native && python scripts/test_ota_sign.py
+	cd firmware && pio test -e native && python scripts/test_ota_sign.py && python scripts/test_fw_stale.py
 
 dev-up:
 	$(COMPOSE_DEV) up -d --wait
