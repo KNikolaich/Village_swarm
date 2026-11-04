@@ -18,7 +18,7 @@ export const keys = {
   otaRollout: ['firmware', 'rollout'] as const,
 }
 
-export type EventFilters = { type?: string; device?: string; severity?: string; limit?: number }
+export type EventFilters = { type?: string; device?: string; severity?: string; limit?: number; unacknowledged?: boolean }
 
 /** The firmware rollout on the hive ("update all outdated"): polled while it runs, so the page follows it. */
 export const useOtaRollout = (enabled: boolean) =>

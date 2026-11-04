@@ -23,7 +23,8 @@ public sealed record EventDto(
     string? PhotoProblem = null);
 
 public sealed record EventFilter(
-    string? Type, string? Device, int? Zone, string? Severity, DateTimeOffset? From, DateTimeOffset? To, string? Cursor, int? Limit);
+    string? Type, string? Device, int? Zone, string? Severity, DateTimeOffset? From, DateTimeOffset? To, string? Cursor, int? Limit,
+    bool? Unacknowledged = null);
 
 /// <summary>Event feed and acknowledgement (spec 6.5, 6.7).</summary>
 public sealed record AckAllRequest(string? Device = null, DateTimeOffset? From = null, DateTimeOffset? To = null);
@@ -46,6 +47,8 @@ public sealed class EventQueries(HiveDbContext db, TimeProvider time)
             query = query.Where(e => db.Devices.Any(d => d.DeviceId == e.DeviceId && d.ZoneId == zone));
         if (Enum.TryParse<EventSeverity>(f.Severity, ignoreCase: true, out var minSeverity))
             query = query.Where(e => e.Severity >= minSeverity);
+        if (f.Unacknowledged == true)
+            query = query.Where(e => e.AcknowledgedAt == null);
         if (f.From?.ToUniversalTime() is { } from)
             query = query.Where(e => e.Ts >= from);
         if (f.To?.ToUniversalTime() is { } to)
@@ -164,8 +167,8 @@ public static class EventsModule
     {
         var events = app.MapGroup("/api/events").WithTags("events");
         events.MapGet("", (string? type, string? device, int? zone, string? severity, DateTimeOffset? from, DateTimeOffset? to,
-                string? cursor, int? limit, EventQueries q, CancellationToken ct) =>
-            q.ListAsync(new EventFilter(type, device, zone, severity, from, to, cursor, limit), ct));
+                string? cursor, int? limit, bool? unacknowledged, EventQueries q, CancellationToken ct) =>
+            q.ListAsync(new EventFilter(type, device, zone, severity, from, to, cursor, limit, unacknowledged), ct));
         events.MapGet("/{id}", async Task<Results<Ok<EventDto>, NotFound>> (string id, EventQueries q, CancellationToken ct) =>
             await q.GetAsync(id, ct) is { } e ? TypedResults.Ok(e) : TypedResults.NotFound());
         events.MapPost("/{id}/ack", async Task<Results<Ok<EventDto>, NotFound>> (string id, ClaimsPrincipal user, EventQueries q, CancellationToken ct) =>

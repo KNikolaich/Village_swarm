@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Bot, Camera, ImageOff, Lightbulb, Power, PowerOff } from 'lucide-react'
+import { Bell, Bot, Camera, Images, ImageOff, Lightbulb, Power, PowerOff } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
@@ -37,7 +37,10 @@ export function CameraBanner({ device, shown, canControl }: { device: DeviceDto;
   return (
     <div className="flex gap-3 rounded-lg bg-neutral-800/50 p-3">
       <div className="min-w-0 flex-1 space-y-2">
-        <p className="truncate text-sm">{device.name}<span className="text-neutral-500"> · {p ? formatWhen(p.ts) : t('dashboard.noPhoto')}</span></p>
+        <p className="truncate text-sm">
+          <Link to={`/swarm/${encodeURIComponent(device.deviceId)}`} className="hover:text-amber-300 hover:underline">{device.name}</Link>
+          <span className="text-neutral-500"> · {p ? formatWhen(p.ts) : t('dashboard.noPhoto')}</span>
+        </p>
         {p ? (
           <button type="button" onClick={() => setOpen(true)} className="block w-full overflow-hidden rounded-md bg-neutral-900">
             <img src={p.thumbUrl} alt={device.name} className="aspect-video w-full object-cover" />
@@ -67,7 +70,16 @@ export function CameraBanner({ device, shown, canControl }: { device: DeviceDto;
           )}
         </div>
       )}
-      {open && p && <Lightbox photos={[p]} index={0} onIndex={() => {}} onClose={() => setOpen(false)} />}
+      {open && p && <Lightbox
+        photos={[p]}
+        index={0}
+        onIndex={() => {}}
+        onClose={() => setOpen(false)}
+        links={[
+          { to: `/photos?device=${encodeURIComponent(device.deviceId)}`, label: t('photos.archive'), icon: <Images /> },
+          { to: `/events?device=${encodeURIComponent(device.deviceId)}`, label: t('nav.events'), icon: <Bell /> },
+        ]}
+      />}
     </div>
   )
 }

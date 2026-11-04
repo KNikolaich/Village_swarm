@@ -52,7 +52,7 @@ export function OverviewPage() {
     { id: 'guard', w: 4, title: t('layout.widgets.guard'), node: <GuardCard className="h-full" /> },
     {
       id: 'swarm', w: 4, title: t('overview.swarm'), node: (
-        <Card className="h-full">
+        <LinkWhenIdle to="/swarm" editing={editing != null} label={t('overview.swarm')}><Card className="h-full transition-colors hover:border-neutral-600">
           <CardContent>
             <p className="text-sm text-neutral-400">{t('overview.swarm')}</p>
             {devices.isLoading ? <Skeleton className="mt-2 h-8 w-20" /> : (
@@ -62,17 +62,19 @@ export function OverviewPage() {
             )}
             <p className="text-xs text-neutral-500">{t('overview.online')}</p>
           </CardContent>
-        </Card>
+        </Card></LinkWhenIdle>
       ),
     },
     {
       id: 'alarms', w: 4, title: t('overview.unacknowledged'), node: (
-        <Card className={cn('h-full', openAlarms > 0 && 'border-red-900/70 bg-red-950/30')}>
-          <CardContent>
-            <p className="text-sm text-neutral-400">{t('overview.unacknowledged')}</p>
-            <p className={cn('mt-1 text-3xl font-semibold tabular-nums', openAlarms > 0 && 'text-red-400')}>{openAlarms}</p>
-          </CardContent>
-        </Card>
+        <LinkWhenIdle to="/events?severity=alarm&unacknowledged=1" editing={editing != null} label={t('overview.unacknowledged')}>
+          <Card className={cn('h-full transition-colors hover:border-neutral-600', openAlarms > 0 && 'border-red-900/70 bg-red-950/30 hover:border-red-700')}>
+            <CardContent>
+              <p className="text-sm text-neutral-400">{t('overview.unacknowledged')}</p>
+              <p className={cn('mt-1 text-3xl font-semibold tabular-nums', openAlarms > 0 && 'text-red-400')}>{openAlarms}</p>
+            </CardContent>
+          </Card>
+        </LinkWhenIdle>
       ),
     },
     { id: 'weather', w: 12, title: t('layout.widgets.weather'), node: <WeatherCard /> },
@@ -197,6 +199,12 @@ export function OverviewPage() {
       )}
     </div>
   )
+}
+
+/** A banner that leads somewhere; while the dashboard is being arranged it stays a plain card, so it can be dragged. */
+function LinkWhenIdle({ to, editing, label, children }: { to: string; editing: boolean; label: string; children: React.ReactNode }) {
+  if (editing) return <>{children}</>
+  return <Link to={to} aria-label={label} className="block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400/60">{children}</Link>
 }
 
 /** A widget per zone with readings (what each hornet is ticked to show), and one for hornets without a zone. */

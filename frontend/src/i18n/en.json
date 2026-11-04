@@ -406,6 +406,9 @@
     "allTypes": "All types",
     "allDevices": "All hornets",
     "allSeverities": "Any severity",
+    "status": "Status",
+    "allStatuses": "Any status",
+    "unacknowledged": "Unconfirmed",
     "photosPending": "Photos are uploading…",
     "photosMissing": "Photos did not reach the hive",
     "photoOld": "Old frame: taken {when}, the camera could not take a fresh one",
@@ -447,6 +450,7 @@
     "photosCount": "photos",
     "download": "Download",
     "pin": "Keep",
+    "archive": "Photo archive",
     "unpin": "Remove mark",
     "pinned": "Kept forever",
     "close": "Close"
@@ -1045,6 +1049,16 @@
     "fri": "Fri",
     "sat": "Sat",
     "sun": "Sun"
+  },
+  "tileChart": {
+    "open": "Show chart",
+    "offline": "No data for a long time: the hornet is offline",
+    "zoomIn": "Zoom in (shorter period)",
+    "zoomOut": "Zoom out (longer period)",
+    "full": "Full screen",
+    "exitFull": "Exit full screen",
+    "close": "Close",
+    "openHornet": "Go to hornet"
   },
   "common": {
     "copied": "Copied",
