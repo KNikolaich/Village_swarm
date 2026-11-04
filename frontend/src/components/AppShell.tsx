@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Bell, Images, LayoutDashboard, LogOut, Network, NotebookPen, Settings, Thermometer, Workflow } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Bell, ChevronLeft, ChevronRight, Images, LayoutDashboard, LogOut, Network, NotebookPen, Settings, Thermometer, Workflow } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { api, call } from '@/api/client'
 import { keys } from '@/api/queries'
@@ -7,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { t } from '@/i18n'
 import type { LiveState } from '@/lib/live'
 import { cn } from '@/lib/utils'
+import { useWideScreen } from '@/lib/layout'
+import { loadSidebarCollapsed, saveSidebarCollapsed, sidebarCollapsed } from '@/lib/sidebar'
 import { brandVersion } from '@/lib/version'
 import { HoneycombLogo } from '@/components/HoneycombLogo'
 import { ClusterBanner } from '@/components/ClusterBanner'
@@ -54,6 +57,19 @@ function HiveVersion({ className }: { className?: string }) {
 export function AppShell({ live }: { live: LiveState }) {
   const qc = useQueryClient()
   const { pathname } = useLocation()
+  const wide = useWideScreen()
+  const [saved, setSaved] = useState(() => loadSidebarCollapsed())
+  const [openedOnTablet, setOpenedOnTablet] = useState(false)
+  // Narrowing to a tablet folds the bar again, even if it was opened there before.
+  useEffect(() => setOpenedOnTablet(false), [wide])
+  const collapsed = sidebarCollapsed(wide, saved, openedOnTablet)
+
+  function toggleSidebar() {
+    if (wide) {
+      saveSidebarCollapsed(!saved)
+      setSaved(!saved)
+    } else setOpenedOnTablet(!openedOnTablet)
+  }
 
   async function logout() {
     await api.POST('/api/auth/logout')
@@ -64,24 +80,59 @@ export function AppShell({ live }: { live: LiveState }) {
 
   return (
     <div className="min-h-dvh md:flex">
-      <aside className="hidden w-56 shrink-0 border-r border-neutral-800 p-4 md:block">
-        <div className="mb-6 flex items-center gap-2 px-2">
-          <HoneycombLogo className="size-7" />
-          <span className="font-semibold">{t('app.title')}</span>
-          <HiveVersion />
-        </div>
+      <aside
+        className={cn(
+          'sticky top-0 hidden h-dvh shrink-0 flex-col overflow-y-auto border-r border-neutral-800 py-4 transition-[width] duration-200 md:flex',
+          collapsed ? 'w-16 px-2' : 'w-56 px-4',
+        )}
+      >
+        {collapsed ? (
+          <div className="mb-4 flex flex-col items-center gap-2">
+            <HoneycombLogo className="size-7" />
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="rounded-md p-1 text-neutral-500 hover:bg-neutral-900 hover:text-neutral-200"
+              aria-label={t('nav.expand')}
+              title={t('nav.expand')}
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="mb-6 flex items-center gap-2 pl-2">
+            <HoneycombLogo className="size-7 shrink-0" />
+            <span className="truncate font-semibold">{t('app.title')}</span>
+            <HiveVersion />
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="ml-auto shrink-0 rounded-md p-1 text-neutral-500 hover:bg-neutral-900 hover:text-neutral-200"
+              aria-label={t('nav.collapse')}
+              title={t('nav.collapse')}
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+          </div>
+        )}
         <nav className="space-y-1">
           {nav().map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
               end={end}
+              aria-label={collapsed ? label : undefined}
+              title={collapsed ? label : undefined}
               className={({ isActive }) =>
-                cn('flex items-center gap-3 rounded-lg px-3 py-2 text-sm', isActive ? 'bg-neutral-800 text-neutral-50' : 'text-neutral-400 hover:bg-neutral-900')
+                cn(
+                  'flex items-center rounded-lg text-sm',
+                  collapsed ? 'justify-center py-2.5' : 'gap-3 px-3 py-2',
+                  isActive ? 'bg-neutral-800 text-neutral-50' : 'text-neutral-400 hover:bg-neutral-900',
+                )
               }
             >
-              <Icon className="size-4" />
-              {label}
+              <Icon className={collapsed ? 'size-5' : 'size-4'} />
+              {!collapsed && label}
             </NavLink>
           ))}
         </nav>
