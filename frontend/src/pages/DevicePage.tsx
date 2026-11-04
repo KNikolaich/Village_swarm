@@ -10,12 +10,14 @@ import { rangeClass, rangeKey, rangeState } from '@/lib/valueRange'
 import { IrPanel, type IrReceiver } from '@/components/IrPanel'
 import { TasmotaConsole } from '@/components/TasmotaConsole'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Camera, ChevronDown, ChevronUp, Cpu, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { ArrowLeft, Camera, ChevronDown, ChevronRight, ChevronUp, Cpu, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
-import { chartWindow, keys, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useMonitoring, useRanges, useSendCommand, useSeries, useSnapshot, useTimelapse } from '@/api/queries'
+import { chartWindow, keys, useEvents, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useMonitoring, useRanges, useSendCommand, useSeries, useSnapshot, useTimelapse } from '@/api/queries'
+import { EventCard, type PhotoRef } from '@/components/EventCard'
+import { Lightbox } from '@/components/Lightbox'
 import { Chart, TimeAxis, type ChartPoint } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
@@ -209,6 +211,33 @@ function Logs({ device, name, canClear }: { device: string; name: string; canCle
   )
 }
 
+/** The newest events of this hornet (up to 16), folded, with a way on to the full feed filtered to it. */
+function HornetEvents({ deviceId }: { deviceId: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <FoldedCard title={t('device.events')} open={open} onOpen={setOpen} clearLabel="">
+      <CardContent><HornetEventsBody deviceId={deviceId} /></CardContent>
+    </FoldedCard>
+  )
+}
+
+function HornetEventsBody({ deviceId }: { deviceId: string }) {
+  const events = useEvents({ device: deviceId, limit: 16 })
+  const [viewer, setViewer] = useState<{ photos: PhotoRef[]; index: number } | null>(null)
+  const rows = (events.data?.pages[0]?.items ?? []).slice(0, 16)
+  return (
+    <div className="space-y-2">
+      {events.isLoading && <Skeleton className="h-16" />}
+      {!events.isLoading && rows.length === 0 && <p className="text-sm text-neutral-500">{t('events.empty')}</p>}
+      {rows.map((e) => <EventCard key={e.id} event={e} compact onOpenPhoto={(photos, index) => setViewer({ photos, index })} />)}
+      <Link to={`/events?device=${encodeURIComponent(deviceId)}`} className="flex items-center justify-end text-sm text-amber-400">
+        {t('device.allEvents')} <ChevronRight className="size-4" />
+      </Link>
+      {viewer && <Lightbox photos={viewer.photos} index={viewer.index} onIndex={(index) => setViewer({ ...viewer, index })} onClose={() => setViewer(null)} />}
+    </div>
+  )
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
@@ -398,50 +427,6 @@ export function DevicePage() {
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('device.history')}</CardTitle>
-          <Select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-8 w-auto text-xs" aria-label={t('device.range')}>
-            {ranges.map((h) => <option key={h} value={h}>{rangeLabel(h)}</option>)}
-          </Select>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {readings.map((v) => <MetricChart key={v.metric} device={deviceId} metric={v.metric} hours={hours} />)}
-          <HealthCharts device={deviceId} hours={hours} />
-          <TimeAxis {...chartWindow(hours)} />
-        </CardContent>
-      </Card>
-
-      {canControl && online && (commands.includes('snapshot') || commands.includes('relay') || commands.includes('reboot') || forgetSpare) && (
-        <Card>
-          <CardHeader><CardTitle>{t('device.commands')}</CardTitle></CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            {commands.includes('snapshot') && (
-              <Button variant="outline" onClick={() => void takeSnapshot()}><Camera />{t('device.snapshot')}</Button>
-            )}
-            {commands.includes('relay') && relayChannels(device).map((channel) => (
-              <div key={channel} className="flex items-center gap-2">
-                <span className="text-xs text-neutral-500">{channel}</span>
-                <Button variant="outline" onClick={() => void send('relay', { channel, set: 'on' })}><Power />{t('device.relayOn')}</Button>
-                <Button variant="outline" onClick={() => void send('relay', { channel, set: 'off' })}><PowerOff />{t('device.relayOff')}</Button>
-              </div>
-            ))}
-            {commands.includes('reboot') && (
-              <Button variant="outline" onClick={() => void send('reboot')}><RotateCw />{t('device.reboot')}</Button>
-            )}
-            {forgetSpare && (
-              <Button
-                variant="outline"
-                title={t('device.forgetSpareHint')}
-                onClick={() => window.confirm(t('device.forgetSpareConfirm')) && void send('wifi', { mode: 'forget' })}
-              >
-                <WifiOff />{t('device.forgetSpare')}
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
       {(device.type === 'monitor' || (device.driver === 'hornet' && (device.hw ?? '').includes('oled'))) && (
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-1">{t('display.title')}<HelpTip text={t('display.hint')} /></CardTitle></CardHeader>
@@ -477,6 +462,46 @@ export function DevicePage() {
         </Card>
       )}
 
+      {device.status !== 'disabled' && device.driver === 'hornet' && device.type !== 'ble' && (
+        <Card>
+          <CardHeader><CardTitle>{device.supportedFeatures && device.supportedFeatures.length > 1 ? `${t('features.title')} · ${t('swarm.pins')}` : t('swarm.pins')}</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <FeaturesPanel device={device} editable={isAdmin} />
+            <PinsPanel deviceId={device.deviceId} editable={isAdmin} board={device.hw} type={device.type} features={device.features} />
+          </CardContent>
+        </Card>
+      )}
+
+      {canControl && online && (commands.includes('snapshot') || commands.includes('relay') || commands.includes('reboot') || forgetSpare) && (
+        <Card>
+          <CardHeader><CardTitle>{t('device.commands')}</CardTitle></CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {commands.includes('snapshot') && (
+              <Button variant="outline" onClick={() => void takeSnapshot()}><Camera />{t('device.snapshot')}</Button>
+            )}
+            {commands.includes('relay') && relayChannels(device).map((channel) => (
+              <div key={channel} className="flex items-center gap-2">
+                <span className="text-xs text-neutral-500">{channel}</span>
+                <Button variant="outline" onClick={() => void send('relay', { channel, set: 'on' })}><Power />{t('device.relayOn')}</Button>
+                <Button variant="outline" onClick={() => void send('relay', { channel, set: 'off' })}><PowerOff />{t('device.relayOff')}</Button>
+              </div>
+            ))}
+            {commands.includes('reboot') && (
+              <Button variant="outline" onClick={() => void send('reboot')}><RotateCw />{t('device.reboot')}</Button>
+            )}
+            {forgetSpare && (
+              <Button
+                variant="outline"
+                title={t('device.forgetSpareHint')}
+                onClick={() => window.confirm(t('device.forgetSpareConfirm')) && void send('wifi', { mode: 'forget' })}
+              >
+                <WifiOff />{t('device.forgetSpare')}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {device.type === 'ble' && (
         <Card>
           <CardHeader><CardTitle>{t('ble.title')}</CardTitle></CardHeader>
@@ -500,18 +525,24 @@ export function DevicePage() {
         </Card>
       )}
 
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('device.history')}</CardTitle>
+          <Select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-8 w-auto text-xs" aria-label={t('device.range')}>
+            {ranges.map((h) => <option key={h} value={h}>{rangeLabel(h)}</option>)}
+          </Select>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {readings.map((v) => <MetricChart key={v.metric} device={deviceId} metric={v.metric} hours={hours} />)}
+          <HealthCharts device={deviceId} hours={hours} />
+          <TimeAxis {...chartWindow(hours)} />
+        </CardContent>
+      </Card>
+
+      <HornetEvents deviceId={deviceId} />
+
       {canControl && <CommandHistory device={deviceId} name={device.name} />}
       <Logs device={deviceId} name={device.name} canClear={canControl} />
-
-      {device.status !== 'disabled' && device.driver === 'hornet' && device.type !== 'ble' && (
-        <Card>
-          <CardHeader><CardTitle>{device.supportedFeatures && device.supportedFeatures.length > 1 ? `${t('features.title')} · ${t('swarm.pins')}` : t('swarm.pins')}</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <FeaturesPanel device={device} editable={isAdmin} />
-            <PinsPanel deviceId={device.deviceId} editable={isAdmin} board={device.hw} type={device.type} features={device.features} />
-          </CardContent>
-        </Card>
-      )}
 
       {isAdmin && device.type !== 'hive' && (device.status !== 'disabled' || !device.lastSeenAt) && (
         <div className="flex flex-wrap justify-end gap-2">

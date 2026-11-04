@@ -55,8 +55,10 @@ export function Chart({ points, from, to, format, axisFormat }: {
  * round value marks on the left with thin horizontal lines, and thin vertical lines at round times (labelled once
  * by <TimeAxis>). With several series the readout above lists each at the time under the pointer.
  */
-export function MultiChart({ series, from, to, format, axisFormat }: {
+export function MultiChart({ series, from, to, format, axisFormat, height }: {
   series: ChartSeries[]
+  /** Plot height in pixels (a modal draws it taller than the 150 of a page). */
+  height?: number
   from: Date
   to: Date
   /** Readout above the chart (the value under the pointer). */
@@ -71,13 +73,14 @@ export function MultiChart({ series, from, to, format, axisFormat }: {
     <div ref={ref}>
       {filled.length === 0
         ? <p className="py-6 text-center text-sm text-neutral-500">{t('device.noData')}</p>
-        : <ChartBody series={filled} from={from} to={to} width={width} format={format} axisFormat={axisFormat} />}
+        : <ChartBody series={filled} from={from} to={to} width={width} height={height ?? H} format={format} axisFormat={axisFormat} />}
     </div>
   )
 }
 
-function ChartBody({ series, from, to, width, format, axisFormat }: {
+function ChartBody({ series, from, to, width, height, format, axisFormat }: {
   series: ChartSeries[]
+  height: number
   from: Date
   to: Date
   width: number
@@ -91,7 +94,7 @@ function ChartBody({ series, from, to, width, format, axisFormat }: {
   const plotW = Math.max(1, width - PLOT.left - PLOT.right)
   const { ticks, min, max, step } = niceTicks(Math.min(...all.map((p) => p.min)), Math.max(...all.map((p) => p.max)))
   const x = (ms: number) => PLOT.left + ((ms - x0) / span) * plotW
-  const y = (v: number) => TOP + (1 - (v - min) / (max - min)) * (H - TOP - BOTTOM)
+  const y = (v: number) => TOP + (1 - (v - min) / (max - min)) * (height - TOP - BOTTOM)
   const decimals = tickDecimals(step)
   const label = axisFormat ?? ((v, d) => formatFixed(v, d))
   const vertical = timeTicks(from, to).ticks
@@ -132,9 +135,9 @@ function ChartBody({ series, from, to, width, format, axisFormat }: {
           <span className="tabular-nums">{formatWhen(shownAt)}</span>
         </div>
       )}
-      <svg width={width} height={H} viewBox={`0 0 ${width} ${H}`} className="mt-1 block touch-pan-y" role="img" onPointerMove={onMove} onPointerLeave={() => setHoverMs(null)}>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="mt-1 block touch-pan-y" role="img" onPointerMove={onMove} onPointerLeave={() => setHoverMs(null)}>
         {vertical.map((d) => (
-          <line key={d.getTime()} x1={x(d.getTime())} x2={x(d.getTime())} y1={TOP} y2={H - BOTTOM} className="stroke-white/10" />
+          <line key={d.getTime()} x1={x(d.getTime())} x2={x(d.getTime())} y1={TOP} y2={height - BOTTOM} className="stroke-white/10" />
         ))}
         {ticks.map((v) => (
           <g key={v}>
@@ -161,7 +164,7 @@ function ChartBody({ series, from, to, width, format, axisFormat }: {
             </g>
           )
         })}
-        {markerMs != null && <line x1={x(markerMs)} x2={x(markerMs)} y1={TOP} y2={H - BOTTOM} className="stroke-neutral-400" strokeDasharray="3 3" />}
+        {markerMs != null && <line x1={x(markerMs)} x2={x(markerMs)} y1={TOP} y2={height - BOTTOM} className="stroke-neutral-400" strokeDasharray="3 3" />}
       </svg>
     </div>
   )

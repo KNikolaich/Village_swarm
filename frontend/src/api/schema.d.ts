@@ -4436,6 +4436,7 @@ export interface paths {
                     to?: string;
                     cursor?: string;
                     limit?: number;
+                    unacknowledged?: boolean;
                 };
                 header?: never;
                 path?: never;

@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { Maximize2, Minimize2, Play, Square, Video, WifiOff } from 'lucide-react'
+import { Camera, Maximize2, Minimize2, Play, Square, Video, WifiOff } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, call, type EventDto } from '@/api/client'
+import { useSnapshot } from '@/api/queries'
 import { CarControls } from '@/components/CarControls'
 import { PtzControls } from '@/components/PtzControls'
 import { Button } from '@/components/ui/button'
@@ -144,6 +145,7 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
             : <PtzControls deviceId={camera.deviceId} onTouch={touch} />)}
           {camera && playing && (
             <div className="absolute right-2 top-2 flex gap-1">
+              {camera.kind !== 'car' && <SnapshotButton deviceId={camera.deviceId} />}
               <Button variant="secondary" size="icon" className="size-8 opacity-80" onClick={fullscreen}
                 title={full ? t('video.exitFullscreen') : t('video.fullscreen')} aria-label={full ? t('video.exitFullscreen') : t('video.fullscreen')}>
                 {full ? <Minimize2 /> : <Maximize2 />}
@@ -154,6 +156,18 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+/** "Take a photo" from the viewer: the camera's own snapshot, saved like any other photo. */
+function SnapshotButton({ deviceId }: { deviceId: string }) {
+  const takeSnapshot = useSnapshot(deviceId)
+  const [busy, setBusy] = useState(false)
+  return (
+    <Button variant="secondary" size="icon" className="size-8 opacity-80" disabled={busy} title={t('device.snapshot')} aria-label={t('device.snapshot')}
+      onClick={() => { setBusy(true); void takeSnapshot().finally(() => setBusy(false)) }}>
+      <Camera />
+    </Button>
   )
 }
 

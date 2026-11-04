@@ -3669,6 +3669,13 @@
               "type": "integer",
               "format": "int32"
             }
+          },
+          {
+            "name": "unacknowledged",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
