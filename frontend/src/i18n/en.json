@@ -646,6 +646,8 @@
       "timeout": "no answer"
     },
     "logs": "Hornet log",
+    "events": "Hornet events",
+    "allEvents": "All events of this hornet",
     "logLevel": "Level",
     "logAll": "all",
     "noLogs": "No entries",
