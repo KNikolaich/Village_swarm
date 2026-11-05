@@ -113,6 +113,9 @@ public sealed record DeviceConfig
     public IrConfig? Ir { get; init; }
     public CarConfig? Car { get; init; }
     public MqttCityConfig? MqttCity { get; init; }
+
+    /// <summary>"this" (the hive the hornet was enrolled with, the default) or "other": the hive it prefers to reach.</summary>
+    public string? PreferHive { get; init; }
 }
 
 /// <summary>The city broker a hornet falls back to when home does not answer (spec 4.5).</summary>
@@ -126,6 +129,9 @@ public sealed record MqttCityConfig
     /// <summary>Seconds the first broker may stay silent before this one is used (default 180); probe: how often the first is looked at (default 300).</summary>
     public int? AfterS { get; init; }
     public int? ProbeS { get; init; }
+
+    /// <summary>This broker is the preferred one (the hornet's prefer_hive is "other").</summary>
+    public bool? PreferOther { get; init; }
 }
 
 /// <summary>Role car: how the motors are mounted and how far a move may go (the light is the relay, channel light).</summary>

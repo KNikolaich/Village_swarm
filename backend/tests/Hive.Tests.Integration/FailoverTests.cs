@@ -86,6 +86,46 @@ public sealed class FailoverConfigTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task A_hornet_can_prefer_the_other_hive_and_the_choice_survives_a_new_address()
+    {
+        await RegisterAsync("meteo-prefer1");
+        using var scope = hive.App.Services.CreateScope();
+        var failover = Service(scope);
+        await failover.SetAsync(new FailoverDto(null, 1883), "user:test", CancellationToken.None);
+
+        // no other hive named yet: nothing to prefer
+        Assert.Equal(ConfigUpdateStatus.BadRequest, await failover.SetPreferAsync("meteo-prefer1", "other", "user:test", CancellationToken.None));
+        Assert.Equal(ConfigUpdateStatus.BadRequest, await failover.SetPreferAsync("meteo-prefer1", "somewhere", "user:test", CancellationToken.None));
+        Assert.Equal(ConfigUpdateStatus.NotFound, await failover.SetPreferAsync("nobody-here", "this", "user:test", CancellationToken.None));
+
+        await failover.SetAsync(new FailoverDto("192.168.1.3", 1883), "user:test", CancellationToken.None);
+        Assert.Equal(ConfigUpdateStatus.Updated, await failover.SetPreferAsync("meteo-prefer1", "other", "user:test", CancellationToken.None));
+        var config = (await hive.QueryAsync(db => db.Devices.AsNoTracking().SingleAsync(d => d.DeviceId == "meteo-prefer1"))).Config!.RootElement;
+        Assert.Equal("other", config.GetProperty("prefer_hive").GetString());
+        Assert.True(config.GetProperty("mqtt_city").GetProperty("prefer_other").GetBoolean());
+
+        // a new address keeps the choice
+        await failover.SetAsync(new FailoverDto("192.168.1.9", 1883), "user:test", CancellationToken.None);
+        await failover.SyncAsync(CancellationToken.None);
+        var moved = (await hive.QueryAsync(db => db.Devices.AsNoTracking().SingleAsync(d => d.DeviceId == "meteo-prefer1"))).Config!.RootElement;
+        Assert.Equal(("192.168.1.9", true), (moved.GetProperty("mqtt_city").GetProperty("host").GetString(), moved.GetProperty("mqtt_city").GetProperty("prefer_other").GetBoolean()));
+
+        // back to the hive it was enrolled with
+        Assert.Equal(ConfigUpdateStatus.Updated, await failover.SetPreferAsync("meteo-prefer1", "this", "user:test", CancellationToken.None));
+        var back = (await hive.QueryAsync(db => db.Devices.AsNoTracking().SingleAsync(d => d.DeviceId == "meteo-prefer1"))).Config!.RootElement;
+        Assert.False(back.TryGetProperty("prefer_hive", out _));
+        Assert.False(back.GetProperty("mqtt_city").TryGetProperty("prefer_other", out _));
+
+        // through the API: an unknown hornet and a wrong value
+        var admin = await hive.LoginAsync();
+        using var unknown = await admin.PutAsJsonAsync("/api/devices/nobody-here/prefer", new { prefer = "this" });
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, unknown.StatusCode);
+        using var wrong = await admin.PutAsJsonAsync("/api/devices/meteo-prefer1/prefer", new { prefer = "elsewhere" });
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, wrong.StatusCode);
+        await failover.SetAsync(new FailoverDto(null, 1883), "user:test", CancellationToken.None);
+    }
+
+    [Fact]
     public async Task Without_the_shared_secret_no_login_is_made_up_and_a_bad_address_is_refused()
     {
         var admin = await hive.LoginAsync();

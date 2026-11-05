@@ -959,6 +959,51 @@
         }
       }
     },
+    "/api/devices/{deviceId}/prefer": {
+      "put": {
+        "tags": [
+          "devices"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferHiveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/devices/{deviceId}/zone": {
       "put": {
         "tags": [
@@ -6190,6 +6235,12 @@
           "visitor": {
             "type": "boolean",
             "default": false
+          },
+          "preferHive": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -8627,6 +8678,17 @@
                 "$ref": "#/components/schemas/NtcSettings"
               }
             ]
+          }
+        }
+      },
+      "PreferHiveRequest": {
+        "required": [
+          "prefer"
+        ],
+        "type": "object",
+        "properties": {
+          "prefer": {
+            "type": "string"
           }
         }
       },

@@ -15,7 +15,15 @@ constexpr uint32_t kHomeDownBeforeCityMs = 180000;  // 3 minutes without home (s
 constexpr uint32_t kHomeProbeEveryMs = 300000;      // then every 5 minutes a look at whether home is back
 constexpr uint32_t kHomeProbeWindowMs = 25000;      // how long one look waits for home to answer
 
+// "Home" below is the PREFERRED broker, "City" the other one. Which of the two real brokers each is, the hornet's setting says
+// (config prefer_hive): by default the preferred is the one it was enrolled with.
 enum class Broker : uint8_t { Home, City };
+
+// The real broker in use: true for the second one (config mqtt_city), false for the first (the enrollment's).
+inline bool usesSecond(Broker applied, bool preferSecond, bool hasSecond) {
+    if (!hasSecond) return false;
+    return (applied == Broker::City) != preferSecond;
+}
 
 // How long home may stay silent before the other broker is used, and how often home is looked at from there (milliseconds).
 struct Times {

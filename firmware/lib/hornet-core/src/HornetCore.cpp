@@ -414,7 +414,7 @@ String Core::stamp(JsonObject message, const String& presetId) {
 }
 
 void Core::bindBroker() {
-    const bool city = appliedBroker_ == failover::Broker::City && hasCity();
+    const bool city = usingSecond();
     const String& user = city ? cityUser_ : settings_.mqttUser;
     const String& pass = city ? cityPass_ : settings_.mqttPass;
     mqtt.setServer(city ? cityHost_.c_str() : settings_.mqttHost.c_str(), city ? cityPort_ : settings_.mqttPort);
@@ -430,6 +430,18 @@ void Core::applyCityBroker(JsonVariantConst city) {
     // after_s / probe_s: a hornet that is moved between two hives (the city's own, carried to the dacha) settles on one within seconds.
     failoverTimes_.downBeforeCityMs = (city["after_s"] | (failover::kHomeDownBeforeCityMs / 1000)) * 1000UL;
     failoverTimes_.probeEveryMs = (city["probe_s"] | (failover::kHomeProbeEveryMs / 1000)) * 1000UL;
+    // Which hive is preferred: it is tried first, and looked at again from the other one (config mqtt_city.prefer_other).
+    const bool preferSecond = city["prefer_other"] | false;
+    if (preferSecond != preferSecond_) {
+        preferSecond_ = preferSecond;
+        appliedBroker_ = failover::Broker::Home;  // the preferred one first
+        failover_ = failover::State();
+        failover_.sinceMs = millis();
+        if (mqtt.connected()) mqtt.disconnect(true);
+        mqttAttempts_ = 0;
+        nextMqttAttemptMs_ = 0;
+        bindBroker();
+    }
     if (host == cityHost_ && user == cityUser_ && pass == cityPass_ && port == cityPort_) return;
     cityHost_ = host;
     cityUser_ = user;
@@ -445,7 +457,7 @@ void Core::checkBrokerFailover() {
     if (sleepy() || wifiTrial_) return;
     const auto want = failover::step(failover_, millis(), WiFi.status() == WL_CONNECTED, mqtt.connected(), hasCity(), failoverTimes_);
     if (want == appliedBroker_) return;
-    Serial.printf("[hornet] %s\n", want == failover::Broker::City ? "home does not answer: the city broker" : "looking at home again");
+    Serial.printf("[hornet] %s\n", want == failover::Broker::City ? "the preferred broker does not answer: the other one" : "looking at the preferred broker again");
     appliedBroker_ = want;
     if (mqtt.connected()) mqtt.disconnect(true);
     bindBroker();
@@ -466,9 +478,9 @@ void Core::connectMqtt() {
     if (WiFi.status() != WL_CONNECTED || millis() < nextMqttAttemptMs_ || mqtt.disconnected() == false) return;
     // Exponential backoff with jitter (spec 4.5).
     nextMqttAttemptMs_ = millis() + backoffMs(mqttAttempts_++) + (random(1000));
-    Serial.printf("[hornet] mqtt connect (%s) %s:%u\n", appliedBroker_ == failover::Broker::City ? "city" : "home",
-                  appliedBroker_ == failover::Broker::City ? cityHost_.c_str() : settings_.mqttHost.c_str(),
-                  appliedBroker_ == failover::Broker::City ? cityPort_ : settings_.mqttPort);
+    Serial.printf("[hornet] mqtt connect (%s) %s:%u\n", usingSecond() ? "city" : "home",
+                  usingSecond() ? cityHost_.c_str() : settings_.mqttHost.c_str(),
+                  usingSecond() ? cityPort_ : settings_.mqttPort);
     mqtt.connect();
 }
 
@@ -672,7 +684,7 @@ void Core::publishHealth() {
     if (platform::hasPsram()) health["psram_free"] = platform::freePsram();
     health["reset_reason"] = platform::resetReason();
     health["outbox"] = outbox.size();
-    health["broker"] = appliedBroker_ == failover::Broker::City ? "city" : "home";
+    health["broker"] = usingSecond() ? "city" : "home";
     role_.fillHealth(health.as<JsonObject>());
     String body;
     serializeJson(health, body);

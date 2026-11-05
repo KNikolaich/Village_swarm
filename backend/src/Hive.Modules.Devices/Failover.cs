@@ -85,7 +85,7 @@ public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions
     }
 
     /// <summary>The "mqtt_city" a hornet should have, or null (no address set, or no shared secret to make its password from).</summary>
-    public JsonObject? CityConfigFor(string deviceId, FailoverDto city)
+    public JsonObject? CityConfigFor(string deviceId, FailoverDto city, bool preferOther = false)
     {
         if (string.IsNullOrEmpty(city.Host) || !CanLogin)
             return null;
@@ -96,6 +96,8 @@ public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions
             ["user"] = DynamicSecurity.ClientName(deviceId),
             ["pass"] = CityBrokerLogin.Password(options.Value.BridgePassword!, deviceId),
         };
+        if (preferOther)
+            config["prefer_other"] = true;
         // On the city the "other broker" is the dacha's, for a hornet that is carried between the two: it settles on one within seconds.
         if (node.Node == "city")
         {
@@ -103,6 +105,44 @@ public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions
             config["probe_s"] = 900;
         }
         return config;
+    }
+
+    public static bool PreferOther(JsonObject config) => config["prefer_hive"]?.GetValue<string>() == "other";
+
+    /// <summary>
+    /// The hive the hornet prefers to reach: "this" (the one it was enrolled with) or "other". Kept in its config as prefer_hive and written
+    /// to the firmware inside mqtt_city. NotFound when there is no such hornet; BadRequest when "other" is asked and no other hive is set.
+    /// </summary>
+    public async Task<ConfigUpdateStatus> SetPreferAsync(string deviceId, string prefer, string by, CancellationToken ct)
+    {
+        if (prefer is not ("this" or "other"))
+            return ConfigUpdateStatus.BadRequest;
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Driver == Drivers.Hornet && d.Status != DeviceStatus.Disabled, ct);
+        if (device is null)
+            return ConfigUpdateStatus.NotFound;
+        var city = await GetAsync(ct);
+        if (prefer == "other" && CityConfigFor(deviceId, city) is null)
+            return ConfigUpdateStatus.BadRequest;
+        var config = device.Config is { } current
+            ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
+            : new JsonObject { ["v"] = 1, ["name"] = device.Name, ["health_interval_s"] = 60 };
+        if (prefer == "other")
+            config["prefer_hive"] = "other";
+        else
+            config.Remove("prefer_hive");
+        var want = CityConfigFor(deviceId, city, prefer == "other");
+        if (want is null)
+            config.Remove("mqtt_city");
+        else
+            config["mqtt_city"] = want;
+        device.ConfigRev++;
+        config["rev"] = device.ConfigRev;
+        device.Config = JsonDocument.Parse(config.ToJsonString());
+        Audit.Record(db, time.GetUtcNow(), by, "device_prefer_hive", deviceId, new { prefer });
+        await db.SaveChangesAsync(ct);
+        if (mqtt.IsConnected)
+            await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
+        return ConfigUpdateStatus.Updated;
     }
 
     /// <summary>Brings every hornet's config in line with the city address (a new config revision only where it differs). Returns how many changed.</summary>
@@ -115,7 +155,7 @@ public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions
         foreach (var device in hornets)
         {
             var config = JsonNode.Parse(device.Config!.RootElement.GetRawText())!.AsObject();
-            var want = CityConfigFor(device.DeviceId, city);
+            var want = CityConfigFor(device.DeviceId, city, PreferOther(config));
             if (JsonNode.DeepEquals(config["mqtt_city"], want))
                 continue;
             if (want is null)
@@ -168,10 +208,25 @@ public sealed class FailoverSync(IServiceScopeFactory scopes, MqttGateway mqtt, 
     }
 }
 
+public sealed record PreferHiveRequest(string Prefer);
+
 public static class FailoverEndpoints
 {
     public static IEndpointRouteBuilder MapFailoverEndpoints(this IEndpointRouteBuilder app)
     {
+        // Which hive a hornet prefers to reach: the one it was enrolled with ("this") or the other ("other").
+        app.MapPut("/api/devices/{deviceId}/prefer", async Task<Results<NoContent, NotFound, ValidationProblem>> (
+                string deviceId, PreferHiveRequest request, System.Security.Claims.ClaimsPrincipal user, FailoverService failover, CancellationToken ct) =>
+                await failover.SetPreferAsync(deviceId, request.Prefer, $"user:{user.Identity?.Name}", ct) switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]>
+                        { ["prefer"] = ["this или other; для other сначала укажите адрес другого Улья в Настройках → Запасной брокер"] }),
+                    _ => TypedResults.NoContent(),
+                })
+            .WithTags("devices")
+            .RequireAuthorization(HiveRoles.CanControl);
+
         var group = app.MapGroup("/api/failover").WithTags("failover");
         group.MapGet("", async (FailoverService failover, CancellationToken ct) => TypedResults.Ok(await failover.StateAsync(ct)))
             .RequireAuthorization(HiveRoles.AdminOnly);

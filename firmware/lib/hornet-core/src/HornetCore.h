@@ -187,6 +187,8 @@ private:
     String cityHost_, cityUser_, cityPass_;
     uint16_t cityPort_ = 1883;
     failover::Times failoverTimes_;
+    bool preferSecond_ = false;  // config mqtt_city.prefer_other: the second broker is the preferred one
+    bool usingSecond() const { return failover::usesSecond(appliedBroker_, preferSecond_, hasCity()); }
     failover::State failover_;
     failover::Broker appliedBroker_ = failover::Broker::Home;
     bool hasCity() const { return cityHost_.length() > 0; }

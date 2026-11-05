@@ -2,6 +2,7 @@ import { IpCamChannelSettings, NvrDeviceView } from '@/components/IpCamPanel'
 import { FeaturesPanel } from '@/components/FeaturesPanel'
 import { BlePanel } from '@/components/BlePanel'
 import { DisplayPanel } from '@/components/DisplayPanel'
+import { PreferHivePanel } from '@/components/PreferHivePanel'
 import { HelpTip } from '@/components/HelpTip'
 import { ScreenAccessPanel } from '@/components/ScreenAccessPanel'
 import { RangeEditor } from '@/components/RangeEditor'
@@ -426,6 +427,13 @@ export function DevicePage() {
           <CardContent>
             <TimelapsePanel device={device} canControl={canControl} hasLight={commands.includes('relay')} />
           </CardContent>
+        </Card>
+      )}
+
+      {device.driver === 'hornet' && device.type !== 'monitor' && !device.visitor && canControl && (
+        <Card>
+          <CardHeader><CardTitle>{t('prefer.title')}</CardTitle></CardHeader>
+          <CardContent><PreferHivePanel deviceId={deviceId} preferHive={device.preferHive} editable={canControl} /></CardContent>
         </Card>
       )}
 

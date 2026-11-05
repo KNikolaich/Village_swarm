@@ -373,6 +373,10 @@
       },
       "additionalProperties": false
     },
+    "prefer_hive": {
+      "enum": ["this", "other"],
+      "description": "Which hive the hornet prefers to reach: the one it was enrolled with (this, the default) or the other one (spec 4.5; needs mqtt_city). The hive turns it into mqtt_city.prefer_other"
+    },
     "mqtt_city": {
       "description": "The second broker, in the city (spec 4.5): an awake hornet that has not reached home for 3 minutes with its Wi-Fi up connects here, and looks at home again every 5 minutes. The hive writes it when a city address is set in Settings; the login is the hornet's own on the city broker",
       "type": "object",
@@ -383,7 +387,8 @@
         "user": { "type": "string", "maxLength": 64 },
         "pass": { "type": "string", "maxLength": 64 },
         "after_s": { "type": "integer", "minimum": 10, "maximum": 3600, "description": "How long the first broker may stay silent before this one is used (default 180). A hornet of the city hive that is carried to the dacha gets 20" },
-        "probe_s": { "type": "integer", "minimum": 30, "maximum": 86400, "description": "How often the first broker is looked at while this one is in use (default 300)" }
+        "probe_s": { "type": "integer", "minimum": 30, "maximum": 86400, "description": "How often the first broker is looked at while this one is in use (default 300)" },
+        "prefer_other": { "type": "boolean", "description": "This broker is the preferred one: it is tried first, and the enrollment's broker is the fallback. Written by the hive from prefer_hive" }
       },
       "additionalProperties": false
     },
