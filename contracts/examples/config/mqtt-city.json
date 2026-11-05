@@ -1,0 +1,5 @@
+{
+  "v": 1, "rev": 7, "name": "Метео на веранде",
+  "health_interval_s": 60, "tele_interval_s": 60,
+  "mqtt_city": { "host": "192.168.1.3", "port": 1883, "user": "meteo-veranda1", "pass": "Q3nUe8wX1mZpLr4TgB7aYc2KdV9sHf6J" }
+}

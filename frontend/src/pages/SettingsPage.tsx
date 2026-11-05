@@ -10,6 +10,7 @@ import { BackupCard } from '@/components/BackupCard'
 import { CertificateCard } from '@/components/CertificateCard'
 import { PasswordInput } from '@/components/PasswordInput'
 import { RetentionCard } from '@/components/RetentionCard'
+import { FailoverCard } from '@/components/FailoverCard'
 import { WeatherSettingsCard } from '@/components/WeatherSettingsCard'
 import { WifiRolloutPanel } from '@/components/WifiRolloutPanel'
 import { Button } from '@/components/ui/button'
@@ -31,6 +32,7 @@ export function SettingsPage() {
       <InstallCard />
       <WifiCard />
       <WeatherSettingsCard />
+      <FailoverCard />
       <LanguageCard />
       <BackupCard />
       <RetentionCard />

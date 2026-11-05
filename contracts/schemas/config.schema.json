@@ -373,6 +373,18 @@
       },
       "additionalProperties": false
     },
+    "mqtt_city": {
+      "description": "The second broker, in the city (spec 4.5): an awake hornet that has not reached home for 3 minutes with its Wi-Fi up connects here, and looks at home again every 5 minutes. The hive writes it when a city address is set in Settings; the login is the hornet's own on the city broker",
+      "type": "object",
+      "required": ["host"],
+      "properties": {
+        "host": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "user": { "type": "string", "maxLength": 64 },
+        "pass": { "type": "string", "maxLength": 64 }
+      },
+      "additionalProperties": false
+    },
     "ir": {
       "description": "Roles irrx and irtx: the remote's buttons learned and named by the family. The hive keeps them and sends the code with each cmd/ir; the hornet does not read them",
       "type": "object",

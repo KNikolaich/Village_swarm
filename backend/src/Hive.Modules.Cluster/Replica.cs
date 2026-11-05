@@ -301,3 +301,61 @@ public sealed class ReplicaCatchUp(
         return added;
     }
 }
+
+/// <summary>
+/// City: gives every hornet the login it needs on this broker when home does not answer (spec 4.5). The password is derived from the
+/// shared secret and the hornet's id (<see cref="CityBrokerLogin"/>), which home writes into the hornet's config the same way. Created
+/// once per hornet and never recreated: a recreated login would drop a hornet that is connected with it.
+/// </summary>
+public sealed class HornetCityLogins(
+    IOptions<ClusterOptions> options,
+    IOptions<HiveOptions> hive,
+    IServiceScopeFactory scopes,
+    DynamicSecurity dynsec,
+    MqttGateway mqtt,
+    TimeProvider time,
+    ILogger<HornetCityLogins> logger) : BackgroundService
+{
+    private readonly HashSet<string> _done = [];
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        if (Assembly.GetEntryAssembly()?.GetName().Name == "GetDocument.Insider" || !options.Value.Enabled || hive.Value.Node != "city"
+            || string.IsNullOrEmpty(options.Value.BridgePassword))
+            return;
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(2), time);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                try
+                {
+                    await ProvisionAsync(stoppingToken);
+                }
+                catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
+                {
+                    logger.LogWarning(ex, "Creating the hornets' logins on the city broker failed");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    internal async Task ProvisionAsync(CancellationToken ct)
+    {
+        if (!mqtt.IsConnected)
+            return;
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<HiveDbContext>();
+        var ids = await db.Devices.AsNoTracking()
+            .Where(d => d.Driver == Drivers.Hornet && d.Status != DeviceStatus.Disabled && !d.DeviceId.StartsWith("hive-"))
+            .Select(d => d.DeviceId).ToListAsync(ct);
+        foreach (var id in ids.Where(i => !_done.Contains(i)))
+        {
+            await dynsec.ProvisionHornetIfMissingAsync(id, CityBrokerLogin.Password(options.Value.BridgePassword!, id), ct);
+            _done.Add(id);
+        }
+    }
+}

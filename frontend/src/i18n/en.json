@@ -1711,5 +1711,15 @@
     "saved": "Saved",
     "refused": "Not saved",
     "hint": "The camera is mounted on its side or upside down: live video is turned in the browser, new photos by the hive when it stores them (older ones stay as they were). The control arrows do not change: they drive the car or the camera, not the picture."
+  },
+  "failover": {
+    "title": "Fallback broker (city)",
+    "hint": "If a hornet cannot reach this hive for 3 minutes (with its Wi-Fi up) it connects to the broker in the city, and every 5 minutes checks whether home is back. Give the address of the city broker as the HORNETS reach it (for example through the router's WireGuard tunnel), not the one the hive itself uses. Each hornet has its own login on the city broker, which the hive writes into the hornet's settings. Battery hornets that sleep stay on the home broker. Empty: no fallback broker.",
+    "noSecret": "There is no secret shared with the city (CITY_MQTT_PASSWORD in this hive's .env): the hornets' logins cannot be made, so the address will not be passed on.",
+    "host": "Address",
+    "port": "Port",
+    "saved": "Saved: the hornets get the address within a minute",
+    "bad": "Bad address or port",
+    "off": "Fallback broker is off"
   }
 }

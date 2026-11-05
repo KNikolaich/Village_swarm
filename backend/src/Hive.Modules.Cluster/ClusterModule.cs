@@ -445,6 +445,7 @@ public static class ClusterModule
         services.AddSingleton<ReplicaCatchUp>();
         services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<ReplicaCatchUp>());
         services.AddHostedService(sp => sp.GetRequiredService<ReplicaCatchUp>());
+        services.AddHostedService<HornetCityLogins>();
 
         // The catalog of reference data, home to city (spec 11.2).
         services.AddSingleton<CatalogState>();

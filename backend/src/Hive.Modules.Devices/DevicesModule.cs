@@ -99,6 +99,9 @@ public static class DevicesModule
         services.AddScoped<DeviceConfigService>();
         services.AddScoped<OtaService>();
         services.AddScoped<DisplayFeedService>();
+        services.Configure<CityBrokerOptions>(configuration.GetSection("Cluster"));
+        services.AddScoped<FailoverService>();
+        services.AddHostedService<FailoverSync>();
         services.AddScoped<DisplayFontCatalog>();
         services.AddScreenAccess(configuration);
         services.AddScoped<ValueRangeStore>();
@@ -353,6 +356,7 @@ public static class DevicesModule
         app.MapProvisioningEndpoints();
         app.MapOtaEndpoints();
         app.MapOtaPendingEndpoints();
+        app.MapFailoverEndpoints();
         app.MapValueRangeEndpoints();
         app.MapOtaRolloutEndpoints();
 

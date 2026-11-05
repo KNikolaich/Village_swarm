@@ -105,9 +105,8 @@ void Core::begin() {
     configTime(0, 0, settings_.ntp.c_str(), settings_.mqttHost.c_str());
 
     willTopic = topics::status(settings_.deviceId.c_str()).c_str();
-    mqtt.setServer(settings_.mqttHost.c_str(), settings_.mqttPort);
+    bindBroker();
     mqtt.setClientId(settings_.deviceId.c_str());
-    if (settings_.mqttUser.length()) mqtt.setCredentials(settings_.mqttUser.c_str(), settings_.mqttPass.c_str());
     mqtt.setWill(willTopic.c_str(), 1, true, "offline");
     mqtt.setKeepAlive(15);
     mqtt.setCleanSession(true);
@@ -414,7 +413,45 @@ String Core::stamp(JsonObject message, const String& presetId) {
     return id;
 }
 
+void Core::bindBroker() {
+    const bool city = appliedBroker_ == failover::Broker::City && hasCity();
+    const String& user = city ? cityUser_ : settings_.mqttUser;
+    const String& pass = city ? cityPass_ : settings_.mqttPass;
+    mqtt.setServer(city ? cityHost_.c_str() : settings_.mqttHost.c_str(), city ? cityPort_ : settings_.mqttPort);
+    mqtt.setCredentials(user.length() ? user.c_str() : nullptr, user.length() ? pass.c_str() : nullptr);
+}
+
+// The city broker the hive named in config mqtt_city (host, port, user, pass); none: home only.
+void Core::applyCityBroker(JsonVariantConst city) {
+    const String host = city["host"] | "";
+    const String user = city["user"] | "";
+    const String pass = city["pass"] | "";
+    const uint16_t port = city["port"] | 1883;
+    if (host == cityHost_ && user == cityUser_ && pass == cityPass_ && port == cityPort_) return;
+    cityHost_ = host;
+    cityUser_ = user;
+    cityPass_ = pass;
+    cityPort_ = port;
+    if (!hasCity() && appliedBroker_ == failover::Broker::City) appliedBroker_ = failover::Broker::Home;
+    bindBroker();  // the client keeps pointers to these strings
+}
+
+// Home not answering for three minutes with the Wi-Fi up: the city broker; every five minutes a look at home again.
+// A sleeper keeps to home (it is awake for seconds only) and so does a hornet in the middle of a Wi-Fi change.
+void Core::checkBrokerFailover() {
+    if (sleepy() || wifiTrial_) return;
+    const auto want = failover::step(failover_, millis(), WiFi.status() == WL_CONNECTED, mqtt.connected(), hasCity());
+    if (want == appliedBroker_) return;
+    Serial.printf("[hornet] %s\n", want == failover::Broker::City ? "home does not answer: the city broker" : "looking at home again");
+    appliedBroker_ = want;
+    if (mqtt.connected()) mqtt.disconnect(true);
+    bindBroker();
+    mqttAttempts_ = 0;
+    nextMqttAttemptMs_ = 0;
+}
+
 void Core::connectMqtt() {
+    checkBrokerFailover();
     if (mqtt.connected()) {
         mqttWasConnected_ = true;
         return;
@@ -426,7 +463,9 @@ void Core::connectMqtt() {
     if (WiFi.status() != WL_CONNECTED || millis() < nextMqttAttemptMs_ || mqtt.disconnected() == false) return;
     // Exponential backoff with jitter (spec 4.5).
     nextMqttAttemptMs_ = millis() + backoffMs(mqttAttempts_++) + (random(1000));
-    Serial.printf("[hornet] mqtt connect %s:%u\n", settings_.mqttHost.c_str(), settings_.mqttPort);
+    Serial.printf("[hornet] mqtt connect (%s) %s:%u\n", appliedBroker_ == failover::Broker::City ? "city" : "home",
+                  appliedBroker_ == failover::Broker::City ? cityHost_.c_str() : settings_.mqttHost.c_str(),
+                  appliedBroker_ == failover::Broker::City ? cityPort_ : settings_.mqttPort);
     mqtt.connect();
 }
 
@@ -583,6 +622,7 @@ void Core::applyConfig(const String& payload, bool fromHive) {
     configRev_ = rev;
     config_ = doc;
     healthIntervalS_ = doc["health_interval_s"] | 60U;
+    applyCityBroker(doc["mqtt_city"]);
     sleepS_ = doc["sleep_s"] | 0U;
     lightSleep_ = String(doc["sleep_mode"] | "deep") == "light";
     applyWifiPowerSave();
@@ -629,7 +669,7 @@ void Core::publishHealth() {
     if (platform::hasPsram()) health["psram_free"] = platform::freePsram();
     health["reset_reason"] = platform::resetReason();
     health["outbox"] = outbox.size();
-    health["broker"] = "home";
+    health["broker"] = appliedBroker_ == failover::Broker::City ? "city" : "home";
     role_.fillHealth(health.as<JsonObject>());
     String body;
     serializeJson(health, body);

@@ -46,8 +46,8 @@ public sealed class EventAckTests(HiveFixture hive)
         await hive.QueryAsync(async db =>
         {
             db.Events.AddRange(
-                new DeviceEvent { Id = "01UNACKTEST000000000000000A", DeviceId = "guard-unack1", Type = "motion", Severity = EventSeverity.Alarm, Ts = now, ReceivedAt = now, Payload = JsonDocument.Parse("{}") },
-                new DeviceEvent { Id = "01UNACKTEST000000000000000B", DeviceId = "guard-unack1", Type = "motion", Severity = EventSeverity.Alarm, Ts = now, ReceivedAt = now, AcknowledgedAt = now, AcknowledgedBy = "user:test", Payload = JsonDocument.Parse("{}") });
+                new DeviceEvent { Id = "01UNACKTEST00000000000000A", DeviceId = "guard-unack1", Type = "motion", Severity = EventSeverity.Alarm, Ts = now, ReceivedAt = now, Payload = JsonDocument.Parse("{}") },
+                new DeviceEvent { Id = "01UNACKTEST00000000000000B", DeviceId = "guard-unack1", Type = "motion", Severity = EventSeverity.Alarm, Ts = now, ReceivedAt = now, AcknowledgedAt = now, AcknowledgedBy = "user:test", Payload = JsonDocument.Parse("{}") });
             await db.SaveChangesAsync();
             return 0;
         });
@@ -55,7 +55,7 @@ public sealed class EventAckTests(HiveFixture hive)
         var member = await hive.LoginAsync();
         var page = await member.GetFromJsonAsync<JsonElement>("/api/events?device=guard-unack1&unacknowledged=true");
         var ids = page.GetProperty("items").EnumerateArray().Select(e => e.GetProperty("id").GetString()).ToList();
-        Assert.Equal(["01UNACKTEST000000000000000A"], ids);
+        Assert.Equal(["01UNACKTEST00000000000000A"], ids);
     }
 
     [Fact]

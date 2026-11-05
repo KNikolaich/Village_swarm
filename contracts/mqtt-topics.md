@@ -38,6 +38,12 @@ It tries on at most 5 wake-ups and stops when the hornet reports the new version
 With `sleep_mode` `light` the hornet stays connected (Wi-Fi power saving, readings every `sleep_s`), so it
 behaves like any other hornet: LWT, commands and config work as usual.
 
+**Two brokers** (spec 4.5): when config `mqtt_city` is set, an awake hornet that has not reached the home broker for 3 minutes while its Wi-Fi is up
+connects to the city broker with its own login there (`mqtt_city.user`/`pass`) and publishes the same topics, with `health.broker` = `city`; every 5 minutes it looks at home for 25 s
+and stays there if home answers. A sleeping hornet keeps to home. The hive writes `mqtt_city` into every hornet's config when a city address is set (`PUT /api/failover`): the
+password of the hornet on the city broker is derived from the secret the nodes share (`Cluster__BridgePassword`) and the hornet's id (`CityBrokerLogin`), so the city creates the login without
+being told it. What the city broker received while home was gone reaches home through the catch-up (`contracts/cluster.md`).
+
 A hornet with a screen (config `display`) may show readings of other devices: the hive keeps the choice in config `display.items` (`device` absent = the hornet itself,
 `metric`, `label`) and publishes the ready texts to `vs/v1/hive/display/{id}` (retained, on change; the hornet reads `vs/v1/hive/#` already). An empty `items` list
 means nothing is chosen. The hornet does not read `display.items` itself. Layout: without `size` on any item the screen lays out up to 4 lines itself; with

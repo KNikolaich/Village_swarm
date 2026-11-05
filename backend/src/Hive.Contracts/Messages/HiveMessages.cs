@@ -112,6 +112,16 @@ public sealed record DeviceConfig
     public BleConfig? Ble { get; init; }
     public IrConfig? Ir { get; init; }
     public CarConfig? Car { get; init; }
+    public MqttCityConfig? MqttCity { get; init; }
+}
+
+/// <summary>The city broker a hornet falls back to when home does not answer (spec 4.5).</summary>
+public sealed record MqttCityConfig
+{
+    public required string Host { get; init; }
+    public int? Port { get; init; }
+    public string? User { get; init; }
+    public string? Pass { get; init; }
 }
 
 /// <summary>Role car: how the motors are mounted and how far a move may go (the light is the relay, channel light).</summary>

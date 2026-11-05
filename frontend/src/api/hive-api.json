@@ -3113,6 +3113,62 @@
         }
       }
     },
+    "/api/failover": {
+      "get": {
+        "tags": [
+          "failover"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailoverStateDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "failover"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FailoverDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailoverStateDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ranges": {
       "get": {
         "tags": [
@@ -6774,6 +6830,48 @@
           "ts": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "FailoverDto": {
+        "required": [
+          "host",
+          "port"
+        ],
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "FailoverStateDto": {
+        "required": [
+          "host",
+          "port",
+          "canLogin"
+        ],
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "port": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "canLogin": {
+            "type": "boolean"
           }
         }
       },
@@ -10635,6 +10733,9 @@
     },
     {
       "name": "firmware"
+    },
+    {
+      "name": "failover"
     },
     {
       "name": "ranges"

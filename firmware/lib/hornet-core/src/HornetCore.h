@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "BrokerFailover.h"
 #include "Platform.h"
 #include "Settings.h"
 #include "Topics.h"
@@ -155,6 +156,9 @@ private:
     void checkWifiTrial();
     void checkWifiSpare();
     void applyWifiPowerSave();
+    void bindBroker();                       // server and login of the broker in use (home or city)
+    void checkBrokerFailover();
+    void applyCityBroker(JsonVariantConst city);
 
     Role& role_;
     Settings settings_;
@@ -178,6 +182,13 @@ private:
     bool wifiTrial_ = false;               // this boot is trying settings_.wifiNext*
     unsigned long wifiRestartAtMs_ = 0;    // restart onto the new network once the ack has left
     bool usingSpare_ = false;              // this boot (or the last swap) uses the spare network
+    // Second broker (config mqtt_city, spec 4.5): used when home has not answered for three minutes. The MQTT client keeps
+    // pointers to these strings, so they are only changed through applyConfig, which binds them again.
+    String cityHost_, cityUser_, cityPass_;
+    uint16_t cityPort_ = 1883;
+    failover::State failover_;
+    failover::Broker appliedBroker_ = failover::Broker::Home;
+    bool hasCity() const { return cityHost_.length() > 0; }
     unsigned long wifiDownSince_ = 0;      // when an awake hornet lost Wi-Fi, 0 while connected
     unsigned long brokerDownSince_ = 0;    // when an awake hornet lost the broker, 0 while online
     String rxTopic_;

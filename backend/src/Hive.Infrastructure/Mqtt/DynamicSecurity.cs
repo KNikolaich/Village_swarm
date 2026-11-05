@@ -63,11 +63,32 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
     {
         if (!Enabled)
             return password;
-        var role = RoleName(deviceId);
-        var dev = Topics.Device(deviceId);
         // Old login and role are removed first: replacing a board revokes the previous one (spec 5.3).
         await SendAsync([new JsonObject { ["command"] = "deleteClient", ["username"] = ClientName(deviceId) },
-                         new JsonObject { ["command"] = "deleteRole", ["rolename"] = role }], ct, ignoreErrors: true);
+                         new JsonObject { ["command"] = "deleteRole", ["rolename"] = RoleName(deviceId) }], ct, ignoreErrors: true);
+        await CreateHornetAsync(deviceId, password, ct);
+        return password;
+    }
+
+    /// <summary>
+    /// The hornet's login on the CITY broker (it connects there when home does not answer, spec 4.5): created when missing, never
+    /// recreated, because a recreated login drops a hornet that is connected with it.
+    /// </summary>
+    public async Task ProvisionHornetIfMissingAsync(string deviceId, string password, CancellationToken ct)
+    {
+        if (!Enabled)
+            return;
+        var existing = await SendAsync([new JsonObject { ["command"] = "getClient", ["username"] = ClientName(deviceId) }], ct, ignoreErrors: true);
+        if (existing.FirstOrDefault()?["error"] is null)
+            return;
+        await SendAsync([new JsonObject { ["command"] = "deleteRole", ["rolename"] = RoleName(deviceId) }], ct, ignoreErrors: true);
+        await CreateHornetAsync(deviceId, password, ct);
+    }
+
+    private async Task CreateHornetAsync(string deviceId, string password, CancellationToken ct)
+    {
+        var role = RoleName(deviceId);
+        var dev = Topics.Device(deviceId);
         await SendAsync(
         [
             new JsonObject { ["command"] = "createRole", ["rolename"] = role },
@@ -86,7 +107,6 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
                 ["roles"] = new JsonArray { new JsonObject { ["rolename"] = role } },
             },
         ], ct);
-        return password;
     }
 
     /// <summary>
