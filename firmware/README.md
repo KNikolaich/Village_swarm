@@ -94,7 +94,9 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
   `monitor-crowpanel37` works the same way and reads `frame.bin?tab=n`: as many tabs as `X-Frame-Tabs` says (3: Weather,
   Measure, Calendar), kept in LittleFS, flipped with the rocker (only the cell under the cursor is black, the press
   chooses), partial refreshes of the UC8253; every tab is read at the interval, sooner while the hive monitors the panel
-  (`X-Frame-Refresh`, the 1.54" honours it too). MENU 2 s = settings point, EXIT = read now. With a
+  (`X-Frame-Refresh`, the 1.54" honours it too). MENU = read now, EXIT = sleep until a button, EXIT 2 s = help
+  (MENU 2 s there = settings point). MENU 2 s = the book reader: txt, md and epub from the TF card, no Wi-Fi
+  (src/roles/reader_crowpanel37.cpp, lib/hornet-core Reader.h, docs/reader.md). With a
   divider from the battery to GPIO8 it sends `X-Battery-mV` (docs/display.md).
 
 ESP8266 notes: 80 KB of RAM, so roles stay small; the watchdog is the chip's fixed one (~8 s). Settings live
