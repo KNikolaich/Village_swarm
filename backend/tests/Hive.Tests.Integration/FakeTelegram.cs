@@ -27,6 +27,9 @@ public sealed class FakeTelegram : IAsyncDisposable
 
     public ConcurrentQueue<Sent> Outbox { get; } = new();
 
+    /// <summary>How often each Bot API method was called (lower case): who polls, who only writes.</summary>
+    public ConcurrentDictionary<string, int> Calls { get; } = new();
+
     public sealed record Sent(string Method, long ChatId, string? Text, int MessageId, int Photos, int? ReplyTo, bool Silent, string? Buttons);
 
     public string BaseUrl { get; private set; } = "";
@@ -103,6 +106,7 @@ public sealed class FakeTelegram : IAsyncDisposable
             return;
         }
         var form = await ReadParametersAsync(ctx.Request);
+        Calls.AddOrUpdate(method.ToLowerInvariant(), 1, (_, n) => n + 1);
         switch (method.ToLowerInvariant())
         {
             case "getme":

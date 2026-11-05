@@ -10,11 +10,13 @@ using Telegram.Bot.Types.Enums;
 namespace Hive.Modules.Notify.Telegram;
 
 /// <summary>
-/// Long polling (spec 9.1): no inbound connections, so a grey IP is fine. Only one poller per token
-/// may run (409 Conflict otherwise), which is why home and city have separate bots (spec 9.2).
+/// Long polling (spec 9.1): no inbound connections, so a grey IP is fine. Only one poller per token may run (409 Conflict
+/// otherwise), so home and the city can share one bot: the node that is in charge polls (home, or the city while it has taken
+/// the alarms over), an observer only writes. The people are the same on both nodes (the catalog), so they see one bot.
 /// </summary>
 public sealed class TelegramBotHost(
     TelegramGateway telegram,
+    Hive.Infrastructure.NodeState node,
     IServiceScopeFactory scopes,
     IOptions<TelegramOptions> options,
     TimeProvider time,
@@ -39,6 +41,13 @@ public sealed class TelegramBotHost(
                     var me = await telegram.CallAsync(bot => bot.GetMe(stoppingToken), stoppingToken);
                     BotUsername = me.Username;
                     logger.LogInformation("Telegram bot @{Bot} polling via {Endpoint}", me.Username, telegram.CurrentEndpoint);
+                }
+
+                // An observer (the city while home is alive) does not poll: home does, with the same bot.
+                if (node.ReadOnly)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, Math.Min(5, options.Value.PollTimeoutS))), time, stoppingToken);
+                    continue;
                 }
 
                 var updates = await telegram.CallAsync(bot => bot.GetUpdates(offset, limit: 50, timeout: options.Value.PollTimeoutS,

@@ -26,7 +26,10 @@ public sealed record CatalogDevice(string DeviceId, string Type, string Name, st
 public sealed record CatalogRule(string Name, bool Enabled, JsonElement Definition);
 
 /// <summary>A person who may sign in: the same login and password at home and in the city (the password only as the hash the hive stores).</summary>
-public sealed record CatalogUser(string UserName, string? DisplayName, string? PasswordHash, IReadOnlyList<string> Roles);
+public sealed record CatalogUser(string UserName, string? DisplayName, string? PasswordHash, IReadOnlyList<string> Roles, IReadOnlyList<CatalogChat>? Chats = null);
+
+/// <summary>The Telegram chats of a person: the same bot serves home and the city, so the city knows where to write to the same people.</summary>
+public sealed record CatalogChat(long ChatId, string? Username, string NotifyLevel);
 
 /// <summary>The reference data of the home node (spec 11.2): the master is at home, the city applies it and only reads.</summary>
 public sealed record CatalogSnapshot(
@@ -84,8 +87,10 @@ public sealed class CatalogBuilder(HiveDbContext db, UserManager<HiveUser> users
         var devices = await db.Devices.AsNoTracking().OrderBy(d => d.DeviceId).ToListAsync(ct);
         var rules = await db.Rules.AsNoTracking().OrderBy(r => r.Name).ToListAsync(ct);
         var people = new List<CatalogUser>();
+        var chats = (await db.TgLinks.AsNoTracking().ToListAsync(ct)).ToLookup(l => l.UserId);
         foreach (var user in await users.Users.AsNoTracking().OrderBy(u => u.UserName).ToListAsync(ct))
-            people.Add(new CatalogUser(user.UserName!, user.DisplayName, user.PasswordHash, (await users.GetRolesAsync(user)).OrderBy(r => r).ToList()));
+            people.Add(new CatalogUser(user.UserName!, user.DisplayName, user.PasswordHash, (await users.GetRolesAsync(user)).OrderBy(r => r).ToList(),
+                chats[user.Id].OrderBy(l => l.ChatId).Select(l => new CatalogChat(l.ChatId, l.Username, l.NotifyLevel.ToString())).ToList()));
 
         return new CatalogSnapshot(1, time.GetUtcNow().ToUnixTimeMilliseconds(), hive.Value.Node,
             zones.Select(z => new CatalogZone(z.Name, z.Kind.ToString(), z.Sort)).ToList(),
@@ -191,6 +196,22 @@ public sealed class CatalogApplier(HiveDbContext db, UserManager<HiveUser> users
                 await users.AddToRolesAsync(user, add);
             if (remove.Count > 0)
                 await users.RemoveFromRolesAsync(user, remove);
+
+            // The chats of this person: the same bot writes to them from both nodes. Added and updated, never removed (a chat linked in the city stays).
+            foreach (var chat in u.Chats ?? [])
+            {
+                var link = await db.TgLinks.FirstOrDefaultAsync(l => l.ChatId == chat.ChatId, ct);
+                var level = Enum.TryParse<EventSeverity>(chat.NotifyLevel, out var parsed) ? parsed : EventSeverity.Warn;
+                if (link is null)
+                    db.TgLinks.Add(new TgLink { UserId = user.Id, ChatId = chat.ChatId, Username = chat.Username, LinkedAt = now, NotifyLevel = level });
+                else
+                {
+                    link.UserId = user.Id;
+                    link.Username = chat.Username;
+                    link.NotifyLevel = level;
+                }
+            }
+            await db.SaveChangesAsync(ct);
         }
         return new CatalogCounts(s.Zones.Count, s.Devices.Count, s.Rules.Count, s.Users.Count);
     }

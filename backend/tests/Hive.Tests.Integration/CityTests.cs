@@ -168,6 +168,10 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
         var state = await StateAsync(admin);
         Assert.Equal(("city", "Observer"), (state.Node, state.Role));
 
+        // one bot for both nodes: an observer only writes with it, home is the one that polls
+        await Task.Delay(1500);
+        Assert.False(city.Telegram.Calls.ContainsKey("getupdates"), "an observer must not poll the bot");
+
         // an observer only reads
         // (the city's own hornets, rules and zones may be changed: CityOwnHornetsTests)
         using var refused = await admin.PutAsJsonAsync("/api/devices/guard-city1/name", new { name = "Не должна измениться" });
@@ -222,6 +226,9 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
         // a hornet talks to the city broker directly: the city takes over the alarms and may be written to
         await link.PublishAsync("vs/v1/dev/guard-city1/status", "online", true, true, CancellationToken.None);
         await WaitForRoleAsync(admin, "Standby");
+        for (var i = 0; i < 50 && !city.Telegram.Calls.ContainsKey("getupdates"); i++)   // while it has the alarms it polls, so people can answer
+            await Task.Delay(100);
+        Assert.True(city.Telegram.Calls.ContainsKey("getupdates"), "the city that took over must poll the bot");
         string? activeNode = null;
         using var watcher = await ConnectAsync("active-watch");
         watcher.ApplicationMessageReceivedAsync += m => { activeNode = m.ApplicationMessage.ConvertPayloadToString(); return Task.CompletedTask; };
@@ -270,7 +277,7 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
             [new CatalogDevice("meteo-sync1", "meteo", "Термометр в гостиной", "Гостиная-синк", "hornet", 3, false, null),
              new CatalogDevice("heat-sync-gone", "heat", "Старый обогрев", null, "hornet", 0, true, null)],
             [NotifyRule("Синк-правило"), NotifyRule("Синк-правило-2")],
-            [new CatalogUser("synced-user", "Мама", hash, ["viewer"])]);
+            [new CatalogUser("synced-user", "Мама", hash, ["viewer"]), new CatalogUser("chat-user", "Папа", hash, ["viewer"], [new CatalogChat(777555, "papa", "Alarm")])]);
         await PublishCatalogAsync(first);
 
         await city.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == "meteo-sync1"), "device from the catalog");
@@ -288,10 +295,16 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
         using var wrong = await city.App.CreateClient().PostAsJsonAsync("/api/auth/login", new { login = "synced-user", password = "not-the-password" });
         Assert.NotEqual(HttpStatusCode.OK, wrong.StatusCode);
 
+        // the chat of that person is known here too: the same bot writes to it from the city
+        var link = await city.QueryAsync(db => db.TgLinks.AsNoTracking().SingleAsync(l => l.ChatId == 777555));
+        Assert.Equal(("papa", EventSeverity.Alarm), (link.Username, link.NotifyLevel));
+        var papaId = (await city.QueryAsync(db => db.Users.AsNoTracking().SingleAsync(u => u.UserName == "chat-user"))).Id;
+        Assert.Equal(papaId, link.UserId);
+
         // the cluster state says when the catalog came and how big it was
         var state = await StateAsync(admin);
         Assert.NotNull(state.CatalogAt);
-        Assert.Equal(new CatalogCounts(1, 2, 2, 1), state.Catalog);
+        Assert.Equal(new CatalogCounts(1, 2, 2, 2), state.Catalog);
 
         // a later snapshot: renamed device, one rule gone, the password changed and the role promoted
         var hash2 = new Microsoft.AspNetCore.Identity.PasswordHasher<Hive.Infrastructure.Identity.HiveUser>().HashPassword(null!, "second-pass-67890");

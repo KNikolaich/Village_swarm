@@ -34,13 +34,13 @@ Published by home when the content changes (checked every `Cluster__CatalogCheck
   zones:   [{ name, kind, sort }],
   devices: [{ deviceId, type, name, zone (name), driver, sort, disabled, info (only for drivers other than hornet) }],
   rules:   [{ name, enabled, definition }],
-  users:   [{ userName, displayName, passwordHash, roles }] }
+  users:   [{ userName, displayName, passwordHash, roles, chats: [{ chatId, username, notifyLevel }] }] }
 ```
 
 The city applies a snapshot that is newer than the last one it applied, by name (ids differ between the two databases):
 zones and devices are created or updated (a device removed at home arrives as `disabled`); rules are created or updated, and a rule that came from home
 (`updated_by = sync:home`) and is no longer in the snapshot is deleted; users are created or updated with the same password hash and roles.
-Nothing the city has of its own is deleted: no zone, no device, no user, no rule it made itself. Runtime data (status, readings, firmware, photos) is not in the catalog.
+The Telegram chats of the users are added or updated the same way (never removed): one bot serves both nodes. It is polled (`getUpdates`) by the node in charge only, home, or the city while it has taken over the alarms; an observer city only writes with it. Nothing the city has of its own is deleted: no zone, no device, no user, no rule it made itself. Runtime data (status, readings, firmware, photos) is not in the catalog.
 
 ## Catch-up of events after home is back (`vs/v1/hive/home/replica/request`, `vs/v1/sync/city/replica`)
 
