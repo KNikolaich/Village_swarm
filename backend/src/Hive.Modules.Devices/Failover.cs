@@ -21,10 +21,10 @@ using Microsoft.Extensions.Options;
 namespace Hive.Modules.Devices;
 
 /// <summary>Where hornets find the city broker when home does not answer (the address as the HORNETS reach it, e.g. through the WireGuard tunnel of the router). No host: no second broker.</summary>
-public sealed record FailoverDto(string? Host, int Port);
+public sealed record FailoverDto(string? Host, int Port, string? ReplicaUrl = null);
 
 /// <summary>What the Settings card shows: the address, and whether this node has the shared secret the hornets' logins on the city broker are made from.</summary>
-public sealed record FailoverStateDto(string? Host, int Port, bool CanLogin);
+public sealed record FailoverStateDto(string? Host, int Port, bool CanLogin, string? ReplicaUrl);
 
 /// <summary>
 /// The second broker of the hornets (spec 4.5): the city address is kept in the modes table and written, with the hornet's own login there,
@@ -39,8 +39,9 @@ public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions
     private static readonly Regex HostName = new("^[A-Za-z0-9]([A-Za-z0-9.-]{0,126}[A-Za-z0-9])?$");
 
     public static string? Validate(FailoverDto r) =>
-        string.IsNullOrWhiteSpace(r.Host) || !HostName.IsMatch(r.Host.Trim()) ? "host: адрес городского брокера (имя или IP)"
+        !string.IsNullOrWhiteSpace(r.Host) && !HostName.IsMatch(r.Host.Trim()) ? "host: адрес городского брокера (имя или IP)"
         : r.Port is < 1 or > 65535 ? "port: от 1 до 65535"
+        : !string.IsNullOrWhiteSpace(r.ReplicaUrl) && !(Uri.TryCreate(r.ReplicaUrl.Trim(), UriKind.Absolute, out var u) && u.Scheme is "http" or "https") ? "replicaUrl: адрес вида https://192.168.1.3"
         : null;
 
     /// <summary>The shared secret is what the logins on the city broker come from: without it there is nothing to give a hornet.</summary>
@@ -55,21 +56,22 @@ public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions
     public async Task<FailoverStateDto> StateAsync(CancellationToken ct)
     {
         var city = await GetAsync(ct);
-        return new FailoverStateDto(city.Host, city.Port, CanLogin);
+        return new FailoverStateDto(city.Host, city.Port, CanLogin, city.ReplicaUrl);
     }
 
     public async Task SetAsync(FailoverDto dto, string by, CancellationToken ct)
     {
         var host = dto.Host?.Trim();
+        var replicaUrl = string.IsNullOrWhiteSpace(dto.ReplicaUrl) ? null : dto.ReplicaUrl.Trim().TrimEnd('/');
         var mode = await db.Modes.FirstOrDefaultAsync(m => m.Key == Key, ct);
-        if (string.IsNullOrEmpty(host))
+        if (string.IsNullOrEmpty(host) && replicaUrl is null)
         {
             if (mode is not null)
                 db.Modes.Remove(mode);
         }
         else
         {
-            var value = JsonSerializer.Serialize(new FailoverDto(host, dto.Port), Web);
+            var value = JsonSerializer.Serialize(new FailoverDto(host, dto.Port, replicaUrl), Web);
             if (mode is null)
                 db.Modes.Add(new Mode { Key = Key, Value = value, UpdatedAt = time.GetUtcNow(), UpdatedBy = by });
             else
@@ -164,8 +166,8 @@ public static class FailoverEndpoints
             .RequireAuthorization(HiveRoles.AdminOnly);
         group.MapPut("", async Task<Results<Ok<FailoverStateDto>, ValidationProblem>> (FailoverDto request, System.Security.Claims.ClaimsPrincipal user, FailoverService failover, CancellationToken ct) =>
             {
-                // An empty host switches the second broker off.
-                if (!string.IsNullOrWhiteSpace(request.Host) && FailoverService.Validate(request) is { } error)
+                // An empty host and address switch the second broker and the photo copy off.
+                if (FailoverService.Validate(request) is { } error)
                     return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["host"] = [error] });
                 await failover.SetAsync(request, $"user:{user.Identity?.Name}", ct);
                 await failover.SyncAsync(ct);

@@ -51,6 +51,9 @@ public sealed class ClusterOptions
     public string BridgeUser { get; set; } = "bridge-home";
 
     public string? BridgePassword { get; set; }
+
+    /// <summary>Home: how often the photo queue is looked at (seconds).</summary>
+    public int ReplicaEveryS { get; set; } = 30;
 }
 
 public enum HomePhase { Up, Silent, SilentLong }
@@ -421,7 +424,9 @@ public sealed class ReadOnlyMiddleware(RequestDelegate next, NodeState node)
     /// <summary>What belongs to this node alone and is never copied from home: sign-in, a person's own account, and this node's own weather and language settings.</summary>
     private static bool NodeLocal(PathString path) =>
         path.StartsWithSegments("/api/auth") || path.StartsWithSegments("/api/me")
-        || path.StartsWithSegments("/api/settings/weather") || path.StartsWithSegments("/api/settings/language");
+        || path.StartsWithSegments("/api/settings/weather") || path.StartsWithSegments("/api/settings/language")
+        // Home's node sends the city the photos it took: authenticated by the key of the two nodes, it changes nothing of the house's data.
+        || path.StartsWithSegments("/api/ingest/replica");
 }
 
 public static class ClusterModule
@@ -447,6 +452,12 @@ public static class ClusterModule
         services.AddHostedService(sp => sp.GetRequiredService<ReplicaCatchUp>());
         services.AddHostedService<HornetCityLogins>();
 
+        // Photos home to city (spec 7.3): the queue and sender at home, the receiver in the city.
+        services.Configure<CityBrokerOptions>(configuration.GetSection(ClusterOptions.Section));
+        services.AddSingleton<PhotoReplicaState>();
+        services.AddHostedService<PhotoReplicator>();
+        services.AddScoped<PhotoReplicaReceiver>();
+
         // The catalog of reference data, home to city (spec 11.2).
         services.AddSingleton<CatalogState>();
         services.AddScoped<CatalogBuilder>();
@@ -462,6 +473,7 @@ public static class ClusterModule
     public static IEndpointRouteBuilder MapClusterEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/cluster", (HomeWatch watch) => TypedResults.Ok(watch.Describe())).WithTags("cluster");
+        app.MapPhotoReplicaEndpoints();
         return app;
     }
 }

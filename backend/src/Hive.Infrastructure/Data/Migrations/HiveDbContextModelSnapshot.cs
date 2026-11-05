@@ -891,6 +891,18 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("received_at");
 
+                    b.Property<DateTimeOffset?>("ReplicaNextAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("replica_next_at");
+
+                    b.Property<int>("ReplicaTries")
+                        .HasColumnType("integer")
+                        .HasColumnName("replica_tries");
+
+                    b.Property<DateTimeOffset?>("ReplicatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("replicated_at");
+
                     b.Property<string>("Sha256")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -921,6 +933,9 @@ namespace Hive.Infrastructure.Data.Migrations
 
                     b.HasIndex("EventId")
                         .HasDatabaseName("ix_media_event_id");
+
+                    b.HasIndex("ReplicatedAt")
+                        .HasDatabaseName("ix_media_replicated_at");
 
                     b.HasIndex("Ts")
                         .HasDatabaseName("ix_media_ts");

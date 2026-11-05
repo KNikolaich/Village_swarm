@@ -351,6 +351,8 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.HasIndex(x => x.Ts);
             e.HasIndex(x => new { x.DeviceId, x.Ts });
             e.HasIndex(x => x.EventId);
+            // The photos still to send to the city: the queue is read by priority and age.
+            e.HasIndex(x => x.ReplicatedAt);
         });
 
         // Partitioned by month in raw SQL (see the InitialSchema migration); EF only reads it.

@@ -1720,6 +1720,12 @@
     "port": "Port",
     "saved": "Saved: the hornets get the address within a minute",
     "bad": "Bad address or port",
-    "off": "Fallback broker is off"
+    "off": "Fallback broker is off",
+    "replicaUrl": "Address of the city hive for the photo copy (default https://{broker address})",
+    "photos": "Photo copy to the city",
+    "photosOff": "Off: it needs the city address, the shared CITY_MQTT_PASSWORD and the city link on (CLUSTER_ENABLED).",
+    "photosNone": "Everything worth sending is already in the city.",
+    "photosWaiting": "Waiting to be sent: {n}, of them alarms: {alarms}.",
+    "photosLast": "The last photo went {when}."
   }
 }

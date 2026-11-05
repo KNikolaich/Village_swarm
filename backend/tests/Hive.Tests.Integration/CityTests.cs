@@ -23,6 +23,7 @@ namespace Hive.Tests.Integration;
 public sealed class CityFixture : IAsyncLifetime
 {
     public const string AdminPassword = "city-admin-password";
+    public const string CityBridgeSecret = "city-fixture-secret";
 
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17").WithDatabase("hive").WithUsername("hive").WithPassword("hive").Build();
 
@@ -57,6 +58,7 @@ public sealed class CityFixture : IAsyncLifetime
             b.UseSetting("Cluster:HomeSilenceS", "3");
             b.UseSetting("Cluster:HomeAlarmS", "6");
             b.UseSetting("Cluster:TickS", "1");
+            b.UseSetting("Cluster:BridgePassword", CityBridgeSecret);
             b.UseSetting("Auth:BootstrapAdminPassword", AdminPassword);
             b.UseSetting("Auth:AuthRequestsPerMinute", "10000");
             b.UseSetting("Telegram:Token", FakeTelegram.Token);

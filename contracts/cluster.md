@@ -56,3 +56,15 @@ The city answers with the events whose `ts` is after `since`, oldest first, exce
 `more: true` means the limit cut the list and `lastTs` is where to ask again. An empty answer is one chunk with no events, so home knows it is done.
 Home inserts the events it does not have (by `id`; devices it does not know are skipped) with `via_node = City`. Nothing is notified and no rule runs for them: the city already told people.
 Home repeats a request every 60 s until the whole answer is in. Hornets cannot read `vs/v1/sync/#`; the bridge on home takes `vs/v1/sync/city/#` in, and the bridge login on the city may read it.
+
+## Photos home to city (`PUT /api/ingest/replica/media/{id}`, spec 7.3)
+
+Home sends every photo to the city over HTTP (through the router's tunnel), alarm photos first. Settings → "Запасной брокер (город)" holds the address (`failover.city`: `host`, optional `replicaUrl`; the photo address is
+`replicaUrl`, else `https://{host}`). Home's queue is the `media` table itself: a photo is waiting while `replicated_at` is null, in three classes read in this order: alarm photos (event severity alarm or
+critical; kept in the queue 7 days), photos of other events (24 h), snapshots and time-lapse frames (6 h). A refused photo is tried again after 1, 2, 4... minutes (at most an hour, `replica_tries`, `replica_next_at`);
+a city that does not answer ends the round without counting against the photo. `GET /api/replica/media` (admin) answers `{enabled, url, waiting, waitingAlarms, lastSentAt, lastError}`.
+
+Request: body is the JPEG; headers `X-Replica-Key` (made from `Cluster__BridgePassword`, the secret both nodes share: `CityBrokerLogin.Password(secret, "replica-media")`), `X-Device-Id`, `X-Kind` (`Photo`, `Snapshot`, `Timelapse`),
+`X-Ts` (unix ms), `X-Sha256` (of the body), `X-Event-Id` and `X-Event-Type` when the photo belongs to an event. The city checks the key, that the bytes are a JPEG with that SHA-256 and that the id is `<ULID>-<n>`, and answers
+`201` (kept), `200` (it had the photo already), `401` (key), `400` (not the photo that was named). The copy has `uploaded_via` = `replica`. An observer city lets this one call through, like sign-in.
+Home's HTTP client accepts the city's self-signed certificate: the way is the tunnel and the key only the two nodes can make.

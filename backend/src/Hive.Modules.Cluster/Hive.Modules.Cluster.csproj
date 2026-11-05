@@ -8,6 +8,7 @@
     <ProjectReference Include="../Hive.Infrastructure/Hive.Infrastructure.csproj" />
     <ProjectReference Include="../Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
     <ProjectReference Include="../Hive.Modules.Rules/Hive.Modules.Rules.csproj" />
+    <ProjectReference Include="../Hive.Modules.Media/Hive.Modules.Media.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Hive.Tests.Unit" />

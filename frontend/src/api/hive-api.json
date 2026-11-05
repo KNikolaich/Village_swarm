@@ -1163,6 +1163,25 @@
         }
       }
     },
+    "/api/replica/media": {
+      "get": {
+        "tags": [
+          "replica"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhotoReplicaStatusDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/monitor": {
       "get": {
         "tags": [
@@ -6849,6 +6868,12 @@
           "port": {
             "type": "integer",
             "format": "int32"
+          },
+          "replicaUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -6856,7 +6881,8 @@
         "required": [
           "host",
           "port",
-          "canLogin"
+          "canLogin",
+          "replicaUrl"
         ],
         "type": "object",
         "properties": {
@@ -6872,6 +6898,12 @@
           },
           "canLogin": {
             "type": "boolean"
+          },
+          "replicaUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -8377,6 +8409,49 @@
           "seconds": {
             "type": "integer",
             "format": "int32"
+          }
+        }
+      },
+      "PhotoReplicaStatusDto": {
+        "required": [
+          "enabled",
+          "url",
+          "waiting",
+          "waitingAlarms",
+          "lastSentAt",
+          "lastError"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "waiting": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "waitingAlarms": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "lastSentAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "lastError": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -10715,6 +10790,9 @@
     },
     {
       "name": "cluster"
+    },
+    {
+      "name": "replica"
     },
     {
       "name": "monitor"

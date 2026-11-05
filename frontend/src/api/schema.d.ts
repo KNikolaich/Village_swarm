@@ -1603,6 +1603,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/replica/media": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PhotoReplicaStatusDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/monitor": {
         parameters: {
             query?: never;
@@ -6826,12 +6861,14 @@ export interface components {
             host: null | string;
             /** Format: int32 */
             port: number;
+            replicaUrl?: null | string;
         };
         FailoverStateDto: {
             host: null | string;
             /** Format: int32 */
             port: number;
             canLogin: boolean;
+            replicaUrl: null | string;
         };
         FeaturesRequest: {
             features: string[];
@@ -7224,6 +7261,17 @@ export interface components {
         PermitJoinRequest: {
             /** Format: int32 */
             seconds: number;
+        };
+        PhotoReplicaStatusDto: {
+            enabled: boolean;
+            url: null | string;
+            /** Format: int32 */
+            waiting: number;
+            /** Format: int32 */
+            waitingAlarms: number;
+            /** Format: date-time */
+            lastSentAt: null | string;
+            lastError: null | string;
         };
         PinRow: {
             function: string;
