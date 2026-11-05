@@ -212,6 +212,10 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_seen_at");
 
+                    b.Property<bool>("Local")
+                        .HasColumnType("boolean")
+                        .HasColumnName("local");
+
                     b.Property<DateTimeOffset?>("LogsClearedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("logs_cleared_at");
@@ -320,6 +324,10 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("upload_token_hash");
+
+                    b.Property<bool>("Visitor")
+                        .HasColumnType("boolean")
+                        .HasColumnName("visitor");
 
                     b.Property<int?>("ZoneId")
                         .HasColumnType("integer")

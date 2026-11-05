@@ -6182,6 +6182,14 @@
             "type": "integer",
             "format": "int32",
             "default": 0
+          },
+          "local": {
+            "type": "boolean",
+            "default": false
+          },
+          "visitor": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

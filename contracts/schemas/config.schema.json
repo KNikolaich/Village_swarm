@@ -381,7 +381,9 @@
         "host": { "type": "string", "minLength": 1, "maxLength": 128 },
         "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
         "user": { "type": "string", "maxLength": 64 },
-        "pass": { "type": "string", "maxLength": 64 }
+        "pass": { "type": "string", "maxLength": 64 },
+        "after_s": { "type": "integer", "minimum": 10, "maximum": 3600, "description": "How long the first broker may stay silent before this one is used (default 180). A hornet of the city hive that is carried to the dacha gets 20" },
+        "probe_s": { "type": "integer", "minimum": 30, "maximum": 86400, "description": "How often the first broker is looked at while this one is in use (default 300)" }
       },
       "additionalProperties": false
     },

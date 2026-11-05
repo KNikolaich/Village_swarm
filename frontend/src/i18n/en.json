@@ -912,7 +912,8 @@
       "fitBadReference": "Type the reference reading as a number, e.g. 22.8",
       "fitDone": "Offset {offset} °C filled in, press \"Save pins\"",
       "invalid": "{field}: number out of range"
-    }
+    },
+    "localHere": "own"
   },
   "add": {
     "step1": "Hornet and code",
@@ -1344,7 +1345,7 @@
     }
   },
   "cluster": {
-    "observer": "City node: shows a copy of the events. Changes are made on the main node, at home.",
+    "observer": "City node: shows a copy of home, its data is changed at home. The hornets of the city itself (marked \"own\" in the swarm) can be added and set up here.",
     "homeDown": "Home has not answered for {m} min. Waiting for it.",
     "standby": "Home has not answered for {m} min and hornets write here. The city node has taken over the alarms; rules only notify, commands by hand.",
     "catalog": "Catalog from home: {time}.",

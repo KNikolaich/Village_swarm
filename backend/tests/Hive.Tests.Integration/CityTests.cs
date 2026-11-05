@@ -169,8 +169,11 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
         Assert.Equal(("city", "Observer"), (state.Node, state.Role));
 
         // an observer only reads
-        using var refused = await admin.PostAsJsonAsync("/api/zones", new { name = "Не должна появиться", kind = "house" });
+        // (the city's own hornets, rules and zones may be changed: CityOwnHornetsTests)
+        using var refused = await admin.PutAsJsonAsync("/api/devices/guard-city1/name", new { name = "Не должна измениться" });
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        using var modeRefused = await admin.PutAsJsonAsync("/api/modes/armed", new { value = "true" });
+        Assert.Equal(HttpStatusCode.Forbidden, modeRefused.StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/zones")).StatusCode);
 
         // a person's own settings stay open on an observer: the password (a wrong current one is answered as a validation error, not "403"),

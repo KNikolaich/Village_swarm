@@ -186,6 +186,7 @@ private:
     // pointers to these strings, so they are only changed through applyConfig, which binds them again.
     String cityHost_, cityUser_, cityPass_;
     uint16_t cityPort_ = 1883;
+    failover::Times failoverTimes_;
     failover::State failover_;
     failover::Broker appliedBroker_ = failover::Broker::Home;
     bool hasCity() const { return cityHost_.length() > 0; }

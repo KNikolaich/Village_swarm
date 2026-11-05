@@ -412,10 +412,10 @@ public sealed class ReadOnlyMiddleware(RequestDelegate next, NodeState node)
     {
         var request = context.Request;
         var changes = !HttpMethods.IsGet(request.Method) && !HttpMethods.IsHead(request.Method) && !HttpMethods.IsOptions(request.Method);
-        if (node.ReadOnly && changes && request.Path.StartsWithSegments("/api") && !NodeLocal(request.Path))
+        if (node.ReadOnly && changes && request.Path.StartsWithSegments("/api") && !NodeLocal(request.Path) && !OwnDevice(request.Path))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new { title = "Этот узел только наблюдает: изменения вносятся на главном узле (дома)" });
+            await context.Response.WriteAsJsonAsync(new { title = "Этот узел наблюдает за домом: его данные меняются дома. Здесь можно менять только своих шершней" });
             return;
         }
         await next(context);
@@ -426,7 +426,20 @@ public sealed class ReadOnlyMiddleware(RequestDelegate next, NodeState node)
         path.StartsWithSegments("/api/auth") || path.StartsWithSegments("/api/me")
         || path.StartsWithSegments("/api/settings/weather") || path.StartsWithSegments("/api/settings/language")
         // Home's node sends the city the photos it took: authenticated by the key of the two nodes, it changes nothing of the house's data.
-        || path.StartsWithSegments("/api/ingest/replica");
+        || path.StartsWithSegments("/api/ingest/replica")
+        // The city's own hornets: they are added here (the wizard, the board trading its code for a login), their photos arrive here, and the
+        // rules and zones made here belong to this node (what home sent is put back by the next catalog).
+        || path.StartsWithSegments("/api/provision") || path.StartsWithSegments("/api/ingest/photo")
+        || path.StartsWithSegments("/api/rules") || path.StartsWithSegments("/api/zones")
+        // On the city this names the dacha's broker, for the hornets it makes itself.
+        || path.StartsWithSegments("/api/failover");
+
+    /// <summary>/api/devices/{id}/...: allowed for a device made on this node, never for a copy of the other node's.</summary>
+    private bool OwnDevice(PathString path)
+    {
+        var parts = path.Value?.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return parts is ["api", "devices", var id, ..] && node.IsLocal(id);
+    }
 }
 
 public static class ClusterModule
@@ -451,6 +464,11 @@ public static class ClusterModule
         services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<ReplicaCatchUp>());
         services.AddHostedService(sp => sp.GetRequiredService<ReplicaCatchUp>());
         services.AddHostedService<HornetCityLogins>();
+
+        // The hornets the city made itself, told to home so that they are let in when carried to the dacha.
+        services.AddHostedService<LocalsPublisher>();
+        services.AddSingleton<LocalsReceiver>();
+        services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<LocalsReceiver>());
 
         // Photos home to city (spec 7.3): the queue and sender at home, the receiver in the city.
         services.Configure<CityBrokerOptions>(configuration.GetSection(ClusterOptions.Section));

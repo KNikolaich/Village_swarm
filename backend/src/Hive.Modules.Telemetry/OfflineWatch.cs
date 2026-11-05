@@ -63,7 +63,7 @@ public sealed class OfflineWatch(IServiceScopeFactory scopes, IngestQueue ingest
         var limit = TimeSpan.FromMinutes(Math.Max(1, options.Value.Minutes));
 
         var gone = await db.Devices
-            .Where(d => d.Status == DeviceStatus.Offline && d.OfflineReportedAt == null && d.LastSeenAt != null && now - d.LastSeenAt >= limit)
+            .Where(d => d.Status == DeviceStatus.Offline && d.OfflineReportedAt == null && !d.Visitor && d.LastSeenAt != null && now - d.LastSeenAt >= limit)
             .ToListAsync(ct);
         foreach (var device in gone)
         {

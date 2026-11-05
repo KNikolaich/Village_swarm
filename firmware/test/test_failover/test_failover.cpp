@@ -67,6 +67,18 @@ static void test_a_probe_that_gets_no_answer_goes_back_to_the_city_and_waits_fiv
     TEST_ASSERT_EQUAL(Broker::Home, step(s, 300 * kSec + 25 * kSec + 300 * kSec, true, true, true));
 }
 
+static void test_a_hornet_that_moves_between_hives_uses_short_times() {
+    Times roaming;
+    roaming.downBeforeCityMs = 20 * kSec;
+    roaming.probeEveryMs = 15 * kMin;
+    State s;
+    s.sinceMs = 0;
+    TEST_ASSERT_EQUAL(Broker::Home, step(s, 19 * kSec, true, false, true, roaming));
+    TEST_ASSERT_EQUAL(Broker::City, step(s, 20 * kSec, true, false, true, roaming));   // the first hive is not here: the other one
+    TEST_ASSERT_EQUAL(Broker::City, step(s, 20 * kSec + 14 * kMin, true, true, true, roaming));   // and it is left alone for a quarter of an hour
+    TEST_ASSERT_EQUAL(Broker::Home, step(s, 20 * kSec + 15 * kMin, true, true, true, roaming));
+}
+
 static void test_the_clock_wrapping_around_does_not_confuse_it() {
     State s;
     s.sinceMs = 0xFFFFFFFFu - 60 * kSec;
@@ -83,6 +95,7 @@ int main() {
     RUN_TEST(test_a_lost_wifi_is_not_home_being_down);
     RUN_TEST(test_on_the_city_it_looks_at_home_every_five_minutes_and_comes_back_when_home_answers);
     RUN_TEST(test_a_probe_that_gets_no_answer_goes_back_to_the_city_and_waits_five_more_minutes);
+    RUN_TEST(test_a_hornet_that_moves_between_hives_uses_short_times);
     RUN_TEST(test_the_clock_wrapping_around_does_not_confuse_it);
     return UNITY_END();
 }

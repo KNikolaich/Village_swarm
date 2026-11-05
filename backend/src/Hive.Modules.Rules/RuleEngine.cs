@@ -134,8 +134,6 @@ public sealed class RuleRunner(
 
     public async Task RunAsync(int ruleId, CancellationToken ct)
     {
-        if (!node.RulesRun)
-            return;  // an observer node keeps a copy: its rules never run
         await Gate.WaitAsync(ct);
         try
         {
@@ -153,6 +151,9 @@ public sealed class RuleRunner(
         if (row is null)
             return;
         var rule = RuleStore.Read(row.Definition);
+        // An observer node keeps a copy of the other node's rules: they never run here. The rules about its own devices do.
+        if (!node.RulesRunFor(rule.Trigger.Device))
+            return;
         var now = time.GetUtcNow();
         if (row.LastFiredAt is { } last && now - last < TimeSpan.FromSeconds(rule.CooldownS))
             return;
@@ -200,7 +201,7 @@ public sealed class RuleRunner(
     private async Task<(bool Ok, string Result)> ActAsync(Rule row, RuleAction action, double? value, DateTimeOffset now, CancellationToken ct)
     {
         // A standby node only tells people things; commands, snapshots and mode changes wait for the active node or a person.
-        if (!node.RulesMayCommand && action.Kind is "command" or "snapshot" or "set_mode")
+        if (!node.MayCommand(action.Device ?? RuleStore.Read(row.Definition).Trigger.Device) && action.Kind is "command" or "snapshot" or "set_mode")
             return (false, "standby: not on the active node");
         try
         {

@@ -16,12 +16,33 @@ public sealed class NodeState
 
     public string Node { get; }
 
+    // The devices made on this node (added through its own screen, not copied from the other one): the city keeps its own hornets
+    // next to the copies of home's. Read often (every rule, notification and request), so a set in memory, kept up to date by the node.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _local = new(StringComparer.Ordinal);
+
+    public bool IsLocal(string? deviceId) => deviceId is not null && _local.ContainsKey(deviceId);
+
+    public void MarkLocal(string deviceId) => _local[deviceId] = 0;
+
+    public void ForgetLocal(string deviceId) => _local.TryRemove(deviceId, out _);
+
+    public void LoadLocal(IEnumerable<string> deviceIds)
+    {
+        foreach (var id in deviceIds)
+            _local[id] = 0;
+    }
+
     public NodeRole Role => _role;
 
     public void Set(NodeRole role) => _role = role;
 
-    /// <summary>Observers do not run rules at all.</summary>
+    /// <summary>Observers do not run rules about the other node's devices; the rules of their own devices run (<see cref="RulesRunFor"/>).</summary>
     public bool RulesRun => Role != NodeRole.Observer;
+
+    public bool RulesRunFor(string? deviceId) => RulesRun || IsLocal(deviceId);
+
+    /// <summary>A rule may command a device on the active node, and on any node for the node's own devices.</summary>
+    public bool MayCommand(string? deviceId) => RulesMayCommand || IsLocal(deviceId);
 
     /// <summary>Rules may command devices, set modes and take snapshots only on the active node; a standby node's rules just notify.</summary>
     public bool RulesMayCommand => Role == NodeRole.Active;
@@ -35,5 +56,5 @@ public sealed class NodeState
     /// active node itself, "hive-home".
     /// </summary>
     public bool Notifies(string deviceId) =>
-        Role != NodeRole.Observer || deviceId.StartsWith("hive-", StringComparison.Ordinal) && deviceId != $"hive-{Node}";
+        Role != NodeRole.Observer || IsLocal(deviceId) || deviceId.StartsWith("hive-", StringComparison.Ordinal) && deviceId != $"hive-{Node}";
 }

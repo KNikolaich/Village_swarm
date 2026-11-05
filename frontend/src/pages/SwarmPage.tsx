@@ -501,6 +501,8 @@ export function SwarmPage() {
   const qc = useQueryClient()
   const devices = useDevices(true)
   const me = useMe()
+  // On the city node the hornets made here are marked: the others are copies of home's.
+  const cluster = useQuery({ queryKey: ['cluster'], queryFn: () => call(api.GET('/api/cluster')), refetchInterval: 60_000, retry: false })
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
   const [fwOpen, setFwOpen] = useState<string | null>(null)
@@ -639,7 +641,7 @@ export function SwarmPage() {
                 <div className="min-w-0 flex-1">
                   <Link to={`/swarm/${encodeURIComponent(d.deviceId)}`} className="block truncate font-medium hover:text-amber-400">{d.name}</Link>
                   <p className="truncate text-xs text-neutral-500">
-                    {d.deviceId} · {d.type === 'nvr' ? t('deviceTypes.nvr') : d.type}{d.driver === 'tasmota' ? ' · Tasmota' : d.driver === 'zigbee' ? ' · Zigbee' : ''}{d.type === 'nvr' && d.ip ? ` · ${d.ip}` : ''} · {formatAgo(d.lastSeenAt)}
+                    {d.deviceId} · {d.type === 'nvr' ? t('deviceTypes.nvr') : d.type}{d.driver === 'tasmota' ? ' · Tasmota' : d.driver === 'zigbee' ? ' · Zigbee' : ''}{d.type === 'nvr' && d.ip ? ` · ${d.ip}` : ''} · {formatAgo(d.lastSeenAt)}{d.local && cluster.data?.enabled && cluster.data.node === 'city' ? ` · ${t('swarm.localHere')}` : ''}
                   </p>
                   {d.type === 'nvr' && loginTrouble(d) && <p className="text-xs text-red-400">{t(`ipcam.login.short.${loginTrouble(d)}`)}</p>}
                   {canControl && d.type === 'meteo' && d.status !== 'disabled' && (

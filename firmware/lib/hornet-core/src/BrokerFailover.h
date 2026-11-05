@@ -3,6 +3,8 @@
 // Two brokers, home and city (spec 4.5, 11.3). An awake hornet that cannot reach home for kHomeDownBeforeCityMs while its
 // Wi-Fi is up moves to the city broker, and every kHomeProbeEveryMs it tries home again for kHomeProbeWindowMs: if home
 // answers it stays there, otherwise it goes back to the city. Pure logic with the times passed in, so it is tested natively.
+// "Home" is the broker the hornet was enrolled with, "city" the other hive's: a hornet of the city hive that is carried to the
+// dacha has the dacha as its "city" and uses short times (mqtt_city after_s / probe_s), so it settles on whichever hive it reaches.
 
 #include <cstdint>
 
@@ -15,6 +17,12 @@ constexpr uint32_t kHomeProbeWindowMs = 25000;      // how long one look waits f
 
 enum class Broker : uint8_t { Home, City };
 
+// How long home may stay silent before the other broker is used, and how often home is looked at from there (milliseconds).
+struct Times {
+    uint32_t downBeforeCityMs = kHomeDownBeforeCityMs;
+    uint32_t probeEveryMs = kHomeProbeEveryMs;
+};
+
 struct State {
     Broker broker = Broker::Home;
     bool probing = false;   // on home, only to see whether it answers (a way back from the city)
@@ -25,7 +33,7 @@ struct State {
 //   wifiUp: the Wi-Fi is connected (a lost Wi-Fi says nothing about home)
 //   connected: connected to the broker in use
 //   hasCity: the hive has told this hornet where the city broker is (config mqtt_city)
-inline Broker step(State& s, uint32_t nowMs, bool wifiUp, bool connected, bool hasCity) {
+inline Broker step(State& s, uint32_t nowMs, bool wifiUp, bool connected, bool hasCity, const Times& times = Times()) {
     if (!hasCity) {
         s.broker = Broker::Home;
         s.probing = false;
@@ -35,12 +43,12 @@ inline Broker step(State& s, uint32_t nowMs, bool wifiUp, bool connected, bool h
     if (s.broker == Broker::Home && !s.probing) {
         if (connected || !wifiUp) {
             s.sinceMs = nowMs;
-        } else if (nowMs - s.sinceMs >= kHomeDownBeforeCityMs) {
+        } else if (nowMs - s.sinceMs >= times.downBeforeCityMs) {
             s.broker = Broker::City;
             s.sinceMs = nowMs;
         }
     } else if (s.broker == Broker::City) {
-        if (nowMs - s.sinceMs >= kHomeProbeEveryMs) {
+        if (nowMs - s.sinceMs >= times.probeEveryMs) {
             s.broker = Broker::Home;
             s.probing = true;
             s.sinceMs = nowMs;

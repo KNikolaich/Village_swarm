@@ -122,6 +122,10 @@ public sealed record MqttCityConfig
     public int? Port { get; init; }
     public string? User { get; init; }
     public string? Pass { get; init; }
+
+    /// <summary>Seconds the first broker may stay silent before this one is used (default 180); probe: how often the first is looked at (default 300).</summary>
+    public int? AfterS { get; init; }
+    public int? ProbeS { get; init; }
 }
 
 /// <summary>Role car: how the motors are mounted and how far a move may go (the light is the relay, channel light).</summary>

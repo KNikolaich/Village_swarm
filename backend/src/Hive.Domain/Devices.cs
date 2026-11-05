@@ -182,6 +182,18 @@ public class Device
     public DateTimeOffset CreatedAt { get; set; }
     public string? Notes { get; set; }
 
+    /// <summary>
+    /// Made on this node (enrolled through its own screen), not a copy of the other node's device. The city keeps its own hornets next
+    /// to the copies of home's: only these can be changed there, and their rules and notifications run there.
+    /// </summary>
+    public bool Local { get; set; }
+
+    /// <summary>
+    /// A hornet of the other hive that is let in here (the city's own hornet, carried to the dacha): shown as a guest, and not reported as
+    /// missing while it is away.
+    /// </summary>
+    public bool Visitor { get; set; }
+
     /// <summary>Place in the swarm list inside its group: lower first, equal ones in the usual order (trouble first, then id).</summary>
     public int Sort { get; set; }
 

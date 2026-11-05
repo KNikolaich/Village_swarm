@@ -427,6 +427,9 @@ void Core::applyCityBroker(JsonVariantConst city) {
     const String user = city["user"] | "";
     const String pass = city["pass"] | "";
     const uint16_t port = city["port"] | 1883;
+    // after_s / probe_s: a hornet that is moved between two hives (the city's own, carried to the dacha) settles on one within seconds.
+    failoverTimes_.downBeforeCityMs = (city["after_s"] | (failover::kHomeDownBeforeCityMs / 1000)) * 1000UL;
+    failoverTimes_.probeEveryMs = (city["probe_s"] | (failover::kHomeProbeEveryMs / 1000)) * 1000UL;
     if (host == cityHost_ && user == cityUser_ && pass == cityPass_ && port == cityPort_) return;
     cityHost_ = host;
     cityUser_ = user;
@@ -440,7 +443,7 @@ void Core::applyCityBroker(JsonVariantConst city) {
 // A sleeper keeps to home (it is awake for seconds only) and so does a hornet in the middle of a Wi-Fi change.
 void Core::checkBrokerFailover() {
     if (sleepy() || wifiTrial_) return;
-    const auto want = failover::step(failover_, millis(), WiFi.status() == WL_CONNECTED, mqtt.connected(), hasCity());
+    const auto want = failover::step(failover_, millis(), WiFi.status() == WL_CONNECTED, mqtt.connected(), hasCity(), failoverTimes_);
     if (want == appliedBroker_) return;
     Serial.printf("[hornet] %s\n", want == failover::Broker::City ? "home does not answer: the city broker" : "looking at home again");
     appliedBroker_ = want;

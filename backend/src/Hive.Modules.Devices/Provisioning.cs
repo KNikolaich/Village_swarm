@@ -62,6 +62,7 @@ public sealed class ProvisioningService(
     DynamicSecurity dynsec,
     MqttGateway mqtt,
     IOptions<ProvisioningOptions> options,
+    Hive.Infrastructure.NodeState node,
     TimeProvider time)
 {
     // No 0/O, 1/I: typed from a screen.
@@ -147,6 +148,8 @@ public sealed class ProvisioningService(
             device = new Device { DeviceId = code.DeviceId, TypeCode = code.TypeCode, Name = code.Name, CreatedAt = now };
             db.Devices.Add(device);
         }
+        device.Local = true;   // made on this node (on the city: its own hornet, not a copy of home's)
+        node.MarkLocal(device.DeviceId);
         device.TypeCode = code.TypeCode;
         device.Name = code.Name;
         device.ZoneId = code.ZoneId ?? device.ZoneId;
@@ -207,6 +210,8 @@ public sealed class ProvisioningService(
             device = new Device { DeviceId = r.DeviceId, TypeCode = r.Type, Name = r.Name.Trim(), CreatedAt = now };
             db.Devices.Add(device);
         }
+        device.Local = true;
+        node.MarkLocal(device.DeviceId);
         device.TypeCode = r.Type;
         device.Name = r.Name.Trim();
         device.ZoneId = r.ZoneId ?? device.ZoneId;

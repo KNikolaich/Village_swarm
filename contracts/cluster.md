@@ -19,7 +19,7 @@ Hornets cannot subscribe to `vs/v1/sync/#` (their ACL reads their own topics and
 | Role | Node | Rules | Notifications | UI |
 |---|---|---|---|---|
 | `Active` | home | run, may command | all | writes |
-| `Observer` | city while home is alive | do not run | only about `hive-home` (the other node) | read only: `POST/PUT/PATCH/DELETE /api/*` give 403, except `/api/auth/*` (signing in) `/api/me/*` (a person's own password and Telegram chats), `/api/settings/weather` and `/api/settings/language` (this node's own settings, never copied from home) |
+| `Observer` | city while home is alive | do not run (except the rules about the city's own devices) | only about `hive-home` (the other node) and the city's own devices | read only for the other node's data (the city's own hornets, rules, zones and the provisioning wizard stay open, see "The city's own hornets"): `POST/PUT/PATCH/DELETE /api/*` give 403, except `/api/auth/*` (signing in) `/api/me/*` (a person's own password and Telegram chats), `/api/settings/weather` and `/api/settings/language` (this node's own settings, never copied from home) |
 | `Standby` | city while home is silent and a hornet speaks on the city broker | run, only notify | all | writes |
 
 The city makes events on the device `hive-home`: `home_offline` (warn, `Cluster__HomeSilenceS`, 180 s without a heartbeat), `home_offline_long` (alarm,
@@ -56,6 +56,16 @@ The city answers with the events whose `ts` is after `since`, oldest first, exce
 `more: true` means the limit cut the list and `lastTs` is where to ask again. An empty answer is one chunk with no events, so home knows it is done.
 Home inserts the events it does not have (by `id`; devices it does not know are skipped) with `via_node = City`. Nothing is notified and no rule runs for them: the city already told people.
 Home repeats a request every 60 s until the whole answer is in. Hornets cannot read `vs/v1/sync/#`; the bridge on home takes `vs/v1/sync/city/#` in, and the bridge login on the city may read it.
+
+## The city's own hornets (`devices.local`, `vs/v1/sync/city/locals`)
+
+The city is also a hive of its own: hornets enrolled through its screen (the provisioning wizard, a board trading its code, `POST /api/provision/*`) are marked `local`; everything else it has is a copy of home's. An observer city
+refuses changes to the copies (403) and allows them for local devices: `/api/devices/{id}/...` of a local device, `/api/provision/*`, `/api/ingest/photo`, `/api/rules`, `/api/zones`, `/api/failover`. A rule runs on the
+observer when its trigger device is local, and may command a local device; notifications about a local device go out. Rules and zones the catalog sent are put back by the next catalog.
+
+The city tells home which hornets it made itself, retained, gzip JSON on `vs/v1/sync/city/locals` (taken in by the bridge): `{v: 1, ts, node: "city", devices: [{deviceId, type, name, hw}]}`. Home makes each of them a login on its
+broker from the shared secret and the id (`CityBrokerLogin`) and a row in the swarm with `visitor` set (not reported as missing while away). The city writes the dacha's broker into the config of its own hornets (`mqtt_city`,
+`after_s` 20, `probe_s` 900; `PUT /api/failover` on the city names the dacha), so a hornet carried to the dacha leaves the city broker within 20 seconds and settles on the dacha's. Home's data is not copied back.
 
 ## Photos home to city (`PUT /api/ingest/replica/media/{id}`, spec 7.3)
 

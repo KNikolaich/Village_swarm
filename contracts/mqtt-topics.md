@@ -44,6 +44,10 @@ and stays there if home answers. A sleeping hornet keeps to home. The hive write
 password of the hornet on the city broker is derived from the secret the nodes share (`Cluster__BridgePassword`) and the hornet's id (`CityBrokerLogin`), so the city creates the login without
 being told it. What the city broker received while home was gone reaches home through the catch-up (`contracts/cluster.md`).
 
+The same mechanism carries a hornet **between two hives**: a hornet enrolled at the city hive (a "own" device there, `devices.local`) gets the dacha's broker as its `mqtt_city`, with `after_s` 20 and
+`probe_s` 900, so at the dacha it leaves the city broker, which it cannot reach, within 20 seconds and settles on the dacha broker; carried back, it settles on the city one. The dacha creates its login there
+from the same shared secret (`LocalsReceiver`, from the city's list of its own hornets, `vs/v1/sync/city/locals`, `contracts/cluster.md`).
+
 A hornet with a screen (config `display`) may show readings of other devices: the hive keeps the choice in config `display.items` (`device` absent = the hornet itself,
 `metric`, `label`) and publishes the ready texts to `vs/v1/hive/display/{id}` (retained, on change; the hornet reads `vs/v1/hive/#` already). An empty `items` list
 means nothing is chosen. The hornet does not read `display.items` itself. Layout: without `size` on any item the screen lays out up to 4 lines itself; with

@@ -30,7 +30,7 @@ public sealed record FailoverStateDto(string? Host, int Port, bool CanLogin, str
 /// The second broker of the hornets (spec 4.5): the city address is kept in the modes table and written, with the hornet's own login there,
 /// into every hornet's config as <c>mqtt_city</c>. The hornet connects to it when home has not answered for three minutes.
 /// </summary>
-public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions<CityBrokerOptions> options, TimeProvider time)
+public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions<CityBrokerOptions> options, NodeState node, TimeProvider time)
 {
     public const string Key = "failover.city";
     public const int DefaultPort = 1883;
@@ -85,21 +85,33 @@ public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions
     }
 
     /// <summary>The "mqtt_city" a hornet should have, or null (no address set, or no shared secret to make its password from).</summary>
-    public JsonObject? CityConfigFor(string deviceId, FailoverDto city) =>
-        string.IsNullOrEmpty(city.Host) || !CanLogin ? null : new JsonObject
+    public JsonObject? CityConfigFor(string deviceId, FailoverDto city)
+    {
+        if (string.IsNullOrEmpty(city.Host) || !CanLogin)
+            return null;
+        var config = new JsonObject
         {
             ["host"] = city.Host,
             ["port"] = city.Port,
             ["user"] = DynamicSecurity.ClientName(deviceId),
             ["pass"] = CityBrokerLogin.Password(options.Value.BridgePassword!, deviceId),
         };
+        // On the city the "other broker" is the dacha's, for a hornet that is carried between the two: it settles on one within seconds.
+        if (node.Node == "city")
+        {
+            config["after_s"] = 20;
+            config["probe_s"] = 900;
+        }
+        return config;
+    }
 
     /// <summary>Brings every hornet's config in line with the city address (a new config revision only where it differs). Returns how many changed.</summary>
     public async Task<int> SyncAsync(CancellationToken ct)
     {
         var city = await GetAsync(ct);
         var changed = 0;
-        var hornets = await db.Devices.Where(d => d.Driver == Drivers.Hornet && d.Status != DeviceStatus.Disabled && d.Config != null).ToListAsync(ct);
+        // The city only writes into the configs of its own hornets: the others are copies of home's.
+        var hornets = await db.Devices.Where(d => d.Driver == Drivers.Hornet && d.Status != DeviceStatus.Disabled && d.Config != null && (d.Local || !node.ReadOnly)).ToListAsync(ct);
         foreach (var device in hornets)
         {
             var config = JsonNode.Parse(device.Config!.RootElement.GetRawText())!.AsObject();
@@ -123,7 +135,7 @@ public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions
 }
 
 /// <summary>Keeps the hornets' configs up to date with the city address: at start, every few minutes (new hornets, a changed address).</summary>
-public sealed class FailoverSync(IServiceScopeFactory scopes, NodeState node, MqttGateway mqtt, TimeProvider time, ILogger<FailoverSync> logger) : BackgroundService
+public sealed class FailoverSync(IServiceScopeFactory scopes, MqttGateway mqtt, TimeProvider time, ILogger<FailoverSync> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -137,8 +149,7 @@ public sealed class FailoverSync(IServiceScopeFactory scopes, NodeState node, Mq
             {
                 try
                 {
-                    // The city only watches: the hornets' configs are written by the node that commands them.
-                    if (!mqtt.IsConnected || node.ReadOnly)
+                    if (!mqtt.IsConnected)
                         continue;
                     using var scope = scopes.CreateScope();
                     var changed = await scope.ServiceProvider.GetRequiredService<FailoverService>().SyncAsync(stoppingToken);

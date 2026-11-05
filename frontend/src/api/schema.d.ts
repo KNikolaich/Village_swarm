@@ -6685,6 +6685,10 @@ export interface components {
              * @default 0
              */
             rotate: number;
+            /** @default false */
+            local: boolean;
+            /** @default false */
+            visitor: boolean;
         };
         DeviceLogDto: {
             /** Format: int64 */
