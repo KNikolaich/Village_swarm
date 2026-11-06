@@ -22,6 +22,10 @@
 // After a power-on or a reset the panel waits 12 s for the console before it reads, repeating "[monitor] ready"; a line sent (or a USB host
 // that is attached) keeps the window open (ConsoleWindow in RemoteMonitor.h). `show` also prints why the last read failed (DNS, TLS, refused, timeout, HTTP code).
 //
+// Battery: every read tells the cell (X-Battery-mV, GPIO4 through a 1:2 divider) and the hive draws it in the top right corner.
+// Wired mode: on external power the panel does not deep-sleep but waits out its interval awake (USB stays up, buttons answer at once):
+// "set wired auto|off|on" (auto: a USB host, or the cell's voltage rising or held high; see wiredNow in RemoteMonitor.h and docs/display.md).
+//
 // Pins from the Waveshare examples for the V2 board (github.com/waveshareteam/ESP32-S3-ePaper-1.54).
 
 #include <Arduino.h>
@@ -134,6 +138,9 @@ RTC_DATA_ATTR int apChannel = 0;
 RTC_DATA_ATTR int apSsid = -1;
 RTC_DATA_ATTR bool switchedOff = false;  // PWR put it to sleep on USB power: the next PWR switches it on
 RTC_DATA_ATTR bool messageShown = false; // a message replaced the picture: draw the picture again even on 304
+RTC_DATA_ATTR int wiredLastMv = 0;       // the cell at the previous read: a rise says the charger works (wiredNow)
+RTC_DATA_ATTR bool wiredRestart = false; // the interval of wired mode ended (or a button was pressed): this start is not a power-on
+RTC_DATA_ATTR uint64_t wiredButtons = 0; // the button that ended it, as the wake-up status would say
 RTC_DATA_ATTR uint32_t refreshS = 0;     // the hive's monitoring: read this often (X-Frame-Refresh), 0 = own interval
 
 struct Settings {
@@ -141,6 +148,7 @@ struct Settings {
     int intervalMin = kDefaultIntervalMin;
     int rotation = 0;
     bool insecure = false;
+    WiredMode wired = WiredMode::Auto;
 
     bool ready() const { return ssid[0].length() > 0 && frameUrl(url.c_str()).length() > 0 && token.length() > 0; }
 
@@ -156,6 +164,7 @@ struct Settings {
         intervalMin = clampInterval(p.getInt("interval", kDefaultIntervalMin));
         rotation = p.getInt("rot", 0) & 3;
         insecure = p.getBool("insecure", false);
+        wired = static_cast<WiredMode>(p.getUChar("wired", static_cast<uint8_t>(WiredMode::Auto)) % 3);
         p.end();
     }
 
@@ -171,6 +180,7 @@ struct Settings {
         p.putInt("interval", intervalMin);
         p.putInt("rot", rotation);
         p.putBool("insecure", insecure);
+        p.putUChar("wired", static_cast<uint8_t>(wired));
         p.end();
     }
 } settings;
@@ -184,6 +194,8 @@ struct Settings {
 #endif
 
 String deviceMac();  // below, with the headers of a read
+bool usbHostAttached();
+int batteryReading();
 
 String consoleLine;
 
@@ -207,6 +219,7 @@ Order runCommand(String line) {
         Serial.printf("[monitor] ssid=%s ssid2=%s url=%s token=%s interval=%d rot=%d insecure=%d\n", settings.ssid[0].c_str(),
                       settings.ssid[1].c_str(), settings.url.c_str(), settings.token.isEmpty() ? "-" : "set", settings.intervalMin,
                       settings.rotation, settings.insecure);
+        Serial.printf("[monitor] wired=%s battery=%d mV usb=%d\n", wiredModeName(settings.wired), batteryReading(), usbHostAttached() ? 1 : 0);
         Serial.printf("[monitor] link: %s, code %d, failures %lu, mac=%s, fw=%s\n", lastFail == Fail::None ? "ok" : failureText(lastFail, lastFailCode).c_str(),
                       lastFailCode, static_cast<unsigned long>(failures), deviceMac().c_str(), HORNET_FW_VERSION);
         return Order::None;
@@ -227,6 +240,15 @@ Order runCommand(String line) {
     else if (key == "interval") settings.intervalMin = clampInterval(value.toInt());
     else if (key == "rot") settings.rotation = value.toInt() & 3;
     else if (key == "insecure") settings.insecure = value == "1";
+    else if (key == "wired") {
+        value.trim();
+        const WiredMode mode = parseWiredMode(value.c_str(), settings.wired);
+        if (std::string(wiredModeName(mode)) != value.c_str()) {
+            Serial.println("[monitor] error: wired is auto, off or on");
+            return Order::None;
+        }
+        settings.wired = mode;
+    }
     else {
         Serial.printf("[monitor] error: unknown key %s\n", key.c_str());
         return Order::None;
@@ -266,6 +288,9 @@ void powerOn() {
     digitalWrite(kPinEpdPower, LOW);
 }
 
+/// The cell in millivolts through the 1:2 divider, or -1 when it makes no sense (no divider): what a read tells the hive (X-Battery-mV).
+int batteryReading() { return hornet::remote::batteryMv(static_cast<int>(analogReadMilliVolts(kPinBattery))); }
+
 int batteryMv() {
     return static_cast<int>(analogReadMilliVolts(kPinBattery)) * 2;
 }
@@ -276,11 +301,44 @@ String batteryLine() {
     return percent < 0 ? String() : "Батарея " + String(percent) + "%";
 }
 
+
+/// On external power: waits out the interval awake (Wi-Fi off, the CPU slowed, no deep sleep: USB stays up and the buttons answer at once),
+/// then starts again through a restart that remembers it is not a power-on (no console window) and which button, if any, ended it.
+/// A console line that sends the panel to read ("go") ends it too. Never delays longer than 20 ms.
+[[noreturn]] void wiredWait(uint32_t minutes) {
+    Serial.printf("[monitor] wired: staying awake, next read in %lu min\n", static_cast<unsigned long>(minutes));
+    setCpuFrequencyMhz(80);
+    pinMode(kPinBoot, INPUT_PULLUP);
+    pinMode(kPinPwr, INPUT_PULLUP);
+    const uint32_t started = millis();
+    const uint32_t waitMs = minutes * 60UL * 1000UL;
+    uint64_t pressed = 0;
+    while (pressed == 0 && millis() - started < waitMs) {
+        if (digitalRead(kPinBoot) == LOW) pressed |= 1ULL << kPinBoot;
+        if (digitalRead(kPinPwr) == LOW) pressed |= 1ULL << kPinPwr;
+        bool activity = false;
+        if (pollConsole(activity) != Order::None) break;  // go or save over USB: read now
+        delay(20);
+    }
+    wiredRestart = true;
+    wiredButtons = pressed;
+    Serial.flush();
+    ESP.restart();
+    for (;;) delay(1000);
+}
+
 /// Deep sleep until the timer (minutes, 0 = none) or a button. The e-paper keeps its picture without power.
+/// On external power (wiredNow) a timed sleep is spent awake instead (wiredWait).
 [[noreturn]] void sleepFor(uint32_t minutes) {
     display.hibernate();
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
+    if (minutes > 0) {
+        const int mv = batteryReading();  // Wi-Fi is off: no sag from its bursts
+        const bool wired = wiredNow(settings.wired, mv, wiredLastMv, usbHostAttached());
+        if (mv > 0) wiredLastMv = mv;
+        if (wired) wiredWait(minutes);
+    }
     digitalWrite(kPinEpdPower, HIGH);
     gpio_hold_en(kPinEpdPower);
     gpio_hold_en(kPinPowerHold);
@@ -633,6 +691,7 @@ Reply fetchFrame(bool sleep = false) {
     }
     addIdentity(http);
     http.addHeader("Authorization", "Bearer " + settings.token);
+    if (const int mv = batteryReading(); mv > 0) http.addHeader("X-Battery-mV", String(mv));
     if (!sleep && lastEtag[0] && haveFrame) http.addHeader("If-None-Match", lastEtag);
     const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Refresh", "Date"};
     http.collectHeaders(keys, 5);
@@ -870,12 +929,15 @@ void setup() {
     Serial.begin(115200);
     settings.load();
 
-    const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    // A start that ended the wired wait is a timer or a button, not a power-on: no console window, the button it remembered.
+    const bool fromWired = wiredRestart;
+    wiredRestart = false;
+    const esp_sleep_wakeup_cause_t cause = fromWired ? (wiredButtons ? ESP_SLEEP_WAKEUP_EXT1 : ESP_SLEEP_WAKEUP_TIMER) : esp_sleep_get_wakeup_cause();
     const Order order = cause == ESP_SLEEP_WAKEUP_UNDEFINED ? consoleWindow() : Order::None;
     initScreen();
     if (order == Order::Save) saveAndSleep();
 
-    const uint64_t buttons = cause == ESP_SLEEP_WAKEUP_EXT1 ? esp_sleep_get_ext1_wakeup_status() : 0;
+    const uint64_t buttons = cause == ESP_SLEEP_WAKEUP_EXT1 ? (fromWired ? wiredButtons : esp_sleep_get_ext1_wakeup_status()) : 0;
     Serial.printf("[monitor] wake: cause %d, buttons 0x%llx, offline tries %lu%s\n", static_cast<int>(cause), static_cast<unsigned long long>(buttons),
                   static_cast<unsigned long>(failures), switchedOff ? ", was switched off" : "");
     if (buttons & (1ULL << kPinPwr)) {

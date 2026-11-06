@@ -71,7 +71,7 @@ holds again.
 
 A panel may say its battery with every read: request header `X-Battery-mV` (integer millivolts, 2500..4500; absent when
 it cannot measure it). The hive keeps it as the monitor's `battery_voltage` reading (volts) and draws the battery on the
-tabs that have one; a value outside the range is ignored.
+tabs that have one and, for a screen without tabs (the Waveshare 1.54"), in the top right corner of the picture in steps of five percent (the `ETag` follows it); a value outside the range is ignored.
 
 A panel may also say who it is with every read (`frame` and `frame.bin`): request headers `X-Device-Mac` (its Wi-Fi MAC, `A0:B7:65:12:34:56`,
 colons or dashes, any case) and `X-Fw-Version` (its build, e.g. `0.2.0+a1b2c3d`: letters, digits and `. _ + ~ -`, up to 40

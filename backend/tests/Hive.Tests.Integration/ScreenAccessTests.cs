@@ -507,6 +507,50 @@ public sealed class ScreenAccessTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task The_small_panel_tells_its_battery_and_the_hive_draws_it_in_the_top_right_corner()
+    {
+        var admin = await hive.LoginAsync();
+        var anonymous = hive.App.CreateClient();
+        using var added = await admin.PostAsJsonAsync("/api/devices/remote-monitors", new { deviceId = "monitor-small-bat", name = "Малая", board = "waveshare-s3-epaper-154" });
+        Assert.Equal(HttpStatusCode.Created, added.StatusCode);
+        using var issued = await admin.PostAsync("/api/devices/monitor-small-bat/screen-access", null);
+        var token = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+
+        async Task<(string ETag, byte[] Bits)> Read(int? mv)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, "/api/monitor/v1/frame.bin");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            if (mv is { } v)
+                request.Headers.Add("X-Battery-mV", v.ToString());
+            using var response = await anonymous.SendAsync(request);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            return (response.Headers.ETag!.Tag, await response.Content.ReadAsByteArrayAsync());
+        }
+        // black pixels in the top right 70x30 of the 200x200 picture (25 bytes a row; the right 9 bytes cover 72 pixels)
+        static int Corner(byte[] bits) =>
+            Enumerable.Range(0, 30).Sum(row => Enumerable.Range(16, 9).Sum(col => System.Numerics.BitOperations.PopCount((uint)bits[row * 25 + col])));
+
+        var before = await Read(null);  // nothing known of the cell: a picture as always, no battery
+        Assert.Equal(5000, before.Bits.Length);
+        Assert.Equal(0, Corner(before.Bits));
+
+        // the cell is told with a read; the next picture carries it (the ingest writes it a moment later)
+        (string ETag, byte[] Bits) after = before;
+        for (var i = 0; i < 40 && after.ETag == before.ETag; i++)
+        {
+            after = await Read(3912);
+            if (after.ETag == before.ETag)
+                await Task.Delay(250);
+        }
+        Assert.NotEqual(before.ETag, after.ETag);
+        Assert.True(Corner(after.Bits) > 40, "the battery and its percent are in the corner");
+
+        // the rest of the picture is the same as without it
+        for (var row = 30; row < 200; row++)
+            Assert.Equal(before.Bits.AsSpan(row * 25, 25).ToArray(), after.Bits.AsSpan(row * 25, 25).ToArray());
+    }
+
+    [Fact]
     public async Task A_monitor_far_away_is_added_by_hand_and_reads_the_picture_the_hive_draws()
     {
         var admin = await hive.LoginAsync();
