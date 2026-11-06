@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { t } from '@/i18n'
 import { translateEspWebTools } from '@/lib/espWebToolsRu'
 import { serialSupported } from '@/lib/serial'
+import { SerialNotice } from '@/components/SerialNotice'
 
 /**
  * The "Flash" button of ESP Web Tools for one firmware build (an env like guard-cam-esp32cam): the browser writes the
@@ -22,7 +23,7 @@ export function FlashButton({ build }: { build: string }) {
     import('esp-web-tools/dist/web/install-button.js').then(() => setReady(true), (e: unknown) => setLoadError(String(e)))
   }, [supported])
 
-  if (!supported) return <p className="text-amber-300">{t('add.noSerial')}</p>
+  if (!supported) return <SerialNotice />
   if (loadError)
     return (
       <p className="space-y-1 text-amber-300">

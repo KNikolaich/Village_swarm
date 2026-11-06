@@ -923,7 +923,7 @@
     "getCode": "Get a code",
     "replaces": "replaces an existing one",
     "flashHint": "Plug the board in over USB (ESP32-CAM-MB or a USB-UART) and press the button: the browser flashes it, sends the Wi-Fi and the code itself and waits until the hornet is online. About a minute.",
-    "noSerial": "This browser has no Web Serial: open this page in Chrome or Edge on a computer.",
+    "noSerial": "This browser (Firefox, Safari, a phone browser) cannot talk to a board over USB: flashing and USB setup need Web Serial. Open this page in Chrome, Edge or Opera on a computer, or download the firmware file and flash it by hand.",
     "noFirmware": "No built firmware for type {type}: build it in PlatformIO (env {type}-<board>).",
     "flash": "Flash",
     "download": "Download the firmware (.bin)",

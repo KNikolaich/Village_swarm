@@ -14,6 +14,7 @@ import { getLanguage, t } from '@/i18n'
 import { SetupStages } from '@/components/SetupStages'
 import { SetupError, type SetupStage, setupHornet, setupStages } from '@/lib/hornetSetup'
 import { type SerialPortLike, serialSupported } from '@/lib/serial'
+import { SerialNotice } from '@/components/SerialNotice'
 import { hiveUrl } from '@/lib/hiveUrl'
 
 const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant', 'ble', 'irrx', 'irtx', 'monitor', 'car']
@@ -457,7 +458,10 @@ function SetupStep({ type, build, code, deviceId, onDone, doneLabel }: {
             </Button>
           </>
         ) : (
-          <p className="text-amber-300">{t('add.noSerial')}</p>
+          <>
+            <SerialNotice />
+            <Button disabled><Cpu />{t('add.flashAndSend')}</Button>
+          </>
         )}
         {stage && <SetupStages stages={stages} stage={stage} running={running} failed={failed} progress={progress} />}
         {failed && (

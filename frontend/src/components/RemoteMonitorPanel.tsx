@@ -14,6 +14,7 @@ import { SetupError, type SetupStage } from '@/lib/hornetSetup'
 import { publicHiveUrl, rememberHiveUrl } from '@/lib/publicUrl'
 import { remoteStages, setupRemote } from '@/lib/remoteSetup'
 import { type SerialPortLike, serialSupported } from '@/lib/serial'
+import { SerialNotice } from '@/components/SerialNotice'
 
 /** Boards whose picture the hive draws (DisplayScreens.RenderedBoards) and the firmware build for each. */
 const remoteBoards = [
@@ -204,7 +205,7 @@ export function RemoteMonitorPanel({ existingId }: { existingId?: string }) {
             <Cpu />{t(flashed || !build ? 'remoteMonitor.send' : existingId ? 'remoteMonitor.flashAgain' : 'remoteMonitor.addAndFlash')}
           </Button>
         ) : (
-          <p className="text-amber-300">{t('add.noSerial')}</p>
+          <SerialNotice />
         )}
         {!build && !firmware.isLoading && <p className="text-xs text-amber-300">{t('remoteMonitor.noBuild').replace('{build}', remoteBoards.find((x) => x.board === board)?.build ?? '')}</p>}
         {stage && <SetupStages stages={stages} stage={stage} running={running} failed={failed} progress={progress} names="remoteMonitor.stage" />}
