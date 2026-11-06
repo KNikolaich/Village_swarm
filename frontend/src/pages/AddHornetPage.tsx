@@ -290,6 +290,15 @@ function OneHornet() {
   )
 }
 
+/** Firefox, Safari and phone browsers have no Web Serial: say so instead of leaving the USB steps silently dead. */
+function SerialNotice() {
+  return (
+    <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-amber-300">
+      {t('add.noSerial')}
+    </p>
+  )
+}
+
 function FlashStep({ type, build }: { type: string; build?: Build }) {
   const [ready, setReady] = useState(false)
   const available = build !== undefined
@@ -306,10 +315,13 @@ function FlashStep({ type, build }: { type: string; build?: Build }) {
       <CardContent className="space-y-2 text-sm">
         {build && <p>{t('add.boardLine').replace('{board}', buildTitle(build))}{build.version && <span className="text-neutral-500"> · {build.version}</span>}</p>}
         <p className="text-neutral-400">{t('add.flashHint')}</p>
-        {!serialSupported() && <p className="text-amber-300">{t('add.noSerial')}</p>}
+        {!serialSupported() && <SerialNotice />}
         {!available && <p className="text-amber-300">{t('add.noFirmware').replace('{type}', type)}</p>}
         {build && (
           <div className="flex flex-wrap items-center gap-4">
+            {!serialSupported() && (
+              <Button disabled title={t('add.noSerialShort')}><Cpu />{t('add.flash')}</Button>
+            )}
             {ready &&
               createElement('esp-web-install-button', { key: build.build, manifest: `/api/firmware/${build.build}/manifest.json` },
                 createElement(Button, { slot: 'activate' } as never, createElement(Cpu), t('add.flash')))}
@@ -387,6 +399,7 @@ function ConfigureStep({ code, deviceId }: { code: string; deviceId: string }) {
         <PasswordInput placeholder={t('add.pass')} value={pass} onChange={(e) => setPass(e.target.value)} />
         <Input placeholder="http://192.168.1.10:5080" value={hive} onChange={(e) => setHive(e.target.value)} />
         <p className="text-xs text-neutral-500">{t('add.hiveHint')}</p>
+        {!serialSupported() && <SerialNotice />}
         {serialSupported() && (
           <Button onClick={() => void send()} disabled={!ssid || !hive || state === 'sending'}><Usb />{t('add.send')}</Button>
         )}
