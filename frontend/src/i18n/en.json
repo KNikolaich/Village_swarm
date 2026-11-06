@@ -1656,6 +1656,9 @@
       "settings": "Sending the settings",
       "read": "Check: reading the picture from the hive"
     },
+    "phoneInstead": "USB did not work? Set the panel up from a phone: the QR code below works without USB.",
+    "phoneQr": "QR code for a phone (issue a token)",
+    "phoneQrHint": "No USB needed: a token is issued (the old one stops working) and a code is shown with the Wi-Fi, the hive's address and the token for the panel's VillageSwarm-xxxx point.",
     "why": {
       "tokenRejected": "The hive did not accept the token. Press Retry: a new one is issued and written to the panel.",
       "notDrawn": "The hive does not draw this screen: the wrong board is chosen.",

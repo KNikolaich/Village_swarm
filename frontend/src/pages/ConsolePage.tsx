@@ -15,6 +15,8 @@ import { SetupError, type SetupStage } from '@/lib/hornetSetup'
 import { needsInsecure, remoteStages, setupRemote } from '@/lib/remoteSetup'
 import { publicHiveUrl } from '@/lib/publicUrl'
 import { statusText } from '@/lib/usbPort'
+import { PhoneSetup } from '@/components/PhoneSetup'
+import { preparePhoneSetup } from '@/lib/phoneSetupFlow'
 import type { ConsoleStatus } from '@/lib/hornetSetup'
 
 type Line = { id: number; kind: 'in' | 'out' | 'info'; text: string; count: number }
@@ -50,6 +52,7 @@ export function ConsolePage() {
   const [monitorRun, setMonitorRun] = useState<'idle' | 'running' | 'done' | SetupError>('idle')
   const [monitorStage, setMonitorStage] = useState<SetupStage>('restart')
   const [monitorStatus, setMonitorStatus] = useState<ConsoleStatus | null>(null)
+  const [phone, setPhone] = useState<{ token: string; url: string; ssid: string; pass: string } | null>(null)
   const port = useRef<HornetSerial | null>(null)
   const nextId = useRef(1)
   const log = useRef<HTMLDivElement>(null)
@@ -243,6 +246,29 @@ export function ConsolePage() {
     }
   }
 
+  /** The QR for the phone, without USB: a token on demand for the chosen monitor, with the hive's address and Wi-Fi. */
+  async function showPhoneQr() {
+    const secrets = await call(api.GET('/api/settings/wifi/reveal')).catch(() => null)
+    const url = (monitor.url || publicHiveUrl() || secrets?.hiveUrl || '').trim()
+    if (!/^https?:\/\/.+/.test(url)) {
+      toast.error(t('console.joinNoUrl'))
+      return
+    }
+    try {
+      const token = await preparePhoneSetup({
+        ensureMonitor: async () => {},  // it is in the list: it exists
+        issueToken: async () => {
+          const issued = await api.POST('/api/devices/{deviceId}/screen-access', { params: { path: { deviceId: monitor.deviceId } } })
+          if (!issued.response.ok || !issued.data) throw new Error(t('errors.generic'))
+          return issued.data.token
+        },
+      })
+      setPhone({ token, url, ssid: secrets?.ssid ?? '', pass: secrets?.password ?? '' })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('errors.generic'))
+    }
+  }
+
   function submit() {
     const line = input.trim()
     if (!line) return
@@ -383,6 +409,12 @@ export function ConsolePage() {
           )}
           {monitorRun === 'running' && monitorStatus && <p className="text-xs text-amber-300" role="status">{statusText(monitorStatus)}</p>}
           {monitorRun === 'done' && <p className="text-xs text-emerald-400">{t('console.monitorDoneHint')}</p>}
+          {monitorRun instanceof SetupError && <p className="text-xs text-amber-300">{t('remoteMonitor.phoneInstead')}</p>}
+          <div className="space-y-1 text-xs text-neutral-500">
+            <Button variant="secondary" size="sm" disabled={!monitor.deviceId || monitorRun === 'running'} onClick={() => void showPhoneQr()}>{t('remoteMonitor.phoneQr')}</Button>
+            <p>{t('remoteMonitor.phoneQrHint')}</p>
+          </div>
+          {phone && <PhoneSetup url={phone.url} token={phone.token} ssid={phone.ssid} pass={phone.pass} intervalMin={10} open />}
           {monitorRun instanceof SetupError && (
             <p className="rounded-lg border border-red-900/60 bg-red-950/20 p-2 text-red-300">
               {t(`remoteMonitor.why.${monitorRun.reason}`, t(`add.why.${monitorRun.reason}`, t('add.why.other')))} {t('console.monitorRetryHint')}

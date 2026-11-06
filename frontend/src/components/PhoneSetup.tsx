@@ -7,10 +7,10 @@ import { portalLink } from '@/lib/setupLink'
  * The other way to set a remote monitor up: on the spot, from a phone. The code holds the address of the panel's own
  * settings page with the hive's address, the token and the Wi-Fi in it, so nothing is copied by hand from a screen.
  */
-export function PhoneSetup({ url, token, ssid, pass, intervalMin }: { url: string; token: string; ssid?: string; pass?: string; intervalMin?: number }) {
+export function PhoneSetup({ url, token, ssid, pass, intervalMin, open }: { url: string; token: string; ssid?: string; pass?: string; intervalMin?: number; open?: boolean }) {
   const link = portalLink({ url, token, ssid, pass, intervalMin })
   return (
-    <details className="text-xs text-neutral-500">
+    <details open={open} className="text-xs text-neutral-500">
       <summary className="cursor-pointer">{t('phoneSetup.title')}</summary>
       <div className="mt-2 flex flex-wrap items-start gap-3">
         <QrCode text={link} label={t('phoneSetup.qr')} size={176} />
