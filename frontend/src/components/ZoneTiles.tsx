@@ -36,12 +36,12 @@ export function ZoneTiles({ devices, latest }: { devices: readonly DeviceDto[]; 
 /**
  * One reading. Two places to click: the name (an underlined link to the hornet while the pointer is over it), and the
  * rest of the tile, which shows the chart in a tooltip on hover and opens it in a window on click. A reading that has
- * gone quiet (the hornet is offline, or its value is old) is dimmed, so an offline hornet is seen at a glance.
+ * gone quiet (its value is old) is dimmed, so a silent hornet is seen at a glance.
  */
 function TileCard({ tile, tone, onOpen }: { tile: Tile; tone?: string; onOpen: () => void }) {
   const [hover, setHover] = useState(false)
   const v = tile.main
-  const stale = isStale(tile.device, v.ts)
+  const stale = isStale(v.ts)
   return (
     <div className={cn('relative rounded-lg bg-neutral-800/50 transition-colors hover:bg-neutral-800', stale && 'bg-neutral-800/25')}>
       <button
