@@ -10,6 +10,12 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui/primitives'
 import { t } from '@/i18n'
 import { HornetSerial, serialSupported } from '@/lib/serial'
+import { SetupStages } from '@/components/SetupStages'
+import { SetupError, type SetupStage } from '@/lib/hornetSetup'
+import { needsInsecure, remoteStages, setupRemote } from '@/lib/remoteSetup'
+import { publicHiveUrl } from '@/lib/publicUrl'
+import { statusText } from '@/lib/usbPort'
+import type { ConsoleStatus } from '@/lib/hornetSetup'
 
 type Line = { id: number; kind: 'in' | 'out' | 'info'; text: string; count: number }
 
@@ -39,6 +45,11 @@ export function ConsolePage() {
   const devices = useDevices(true)
   const [join, setJoin] = useState({ deviceId: '', url: '', code: '' })
   const [joining, setJoining] = useState(false)
+  // A monitor far away (an e-ink panel that reads over HTTPS) joins by a screen token, not by a code
+  const [monitor, setMonitor] = useState({ deviceId: '', url: '', here: true, selfSigned: false })
+  const [monitorRun, setMonitorRun] = useState<'idle' | 'running' | 'done' | SetupError>('idle')
+  const [monitorStage, setMonitorStage] = useState<SetupStage>('restart')
+  const [monitorStatus, setMonitorStatus] = useState<ConsoleStatus | null>(null)
   const port = useRef<HornetSerial | null>(null)
   const nextId = useRef(1)
   const log = useRef<HTMLDivElement>(null)
@@ -178,6 +189,60 @@ export function ConsolePage() {
     }
   }
 
+  /**
+   * Joins a monitor far away to the hive in one press: a new screen token, then over USB the Wi-Fi from Settings, the hive's
+   * address, the token (and, for an address that is an IP, no certificate check); "save"/"go" go by themselves. The page waits
+   * for the panel's console the robust way (setupRemote: nudge, reset by DTR/RTS, reopen) and says what it is doing.
+   */
+  async function joinMonitor() {
+    if (!port.current) return
+    const secrets = await call(api.GET('/api/settings/wifi/reveal')).catch(() => null)
+    if (!secrets?.ssid) {
+      toast.error(t('console.noHiveWifi'))
+      return
+    }
+    const url = (monitor.url || publicHiveUrl() || secrets.hiveUrl || '').trim()
+    if (!/^https?:\/\/.+/.test(url)) {
+      toast.error(t('console.joinNoUrl'))
+      return
+    }
+    const device = (devices.data ?? []).find((d) => d.deviceId === monitor.deviceId)
+    if (!device) {
+      toast.error(t('console.monitorPick'))
+      return
+    }
+    const question = t('console.monitorConfirm').replace('{name}', device.name).replace('{ssid}', secrets.ssid).replace('{url}', url)
+    if (!window.confirm(question)) return
+    const raw = port.current.rawPort
+    await disconnect()  // the setup opens the port itself
+    setMonitorRun('running')
+    setMonitorStage('restart')
+    setMonitorStatus(null)
+    try {
+      await setupRemote({
+        port: raw,
+        settings: { ssid: secrets.ssid, pass: secrets.password, url, intervalMin: 10, insecure: monitor.selfSigned || needsInsecure(url) },
+        issueToken: async () => {
+          const issued = await api.POST('/api/devices/{deviceId}/screen-access', { params: { path: { deviceId: monitor.deviceId } } })
+          if (!issued.response.ok || !issued.data) throw new SetupError('settings', 'other', t('errors.generic'))
+          return issued.data.token
+        },
+        readNow: monitor.here,
+        onStage: setMonitorStage,
+        onProgress: () => {},
+        onLog: (line) => push('in', line),
+        onStatus: setMonitorStatus,
+      })
+      setMonitorRun('done')
+      toast.success(t('console.monitorDone'))
+    } catch (e) {
+      setMonitorRun(e instanceof SetupError ? e : new SetupError(monitorStage, 'other', String(e)))
+      push('info', String(e instanceof Error ? e.message : e))
+    } finally {
+      setMonitorStatus(null)
+    }
+  }
+
   function submit() {
     const line = input.trim()
     if (!line) return
@@ -284,6 +349,45 @@ export function ConsolePage() {
             <Input placeholder={t('console.joinCode')} className="font-mono" value={join.code} onChange={(e) => setJoin({ ...join, code: e.target.value })} />
           </div>
           <Button disabled={!connected || joining || (!join.deviceId && !join.code.trim())} onClick={() => void joinHive()}>{t('console.joinGo')}</Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>{t('console.monitorJoin')}</CardTitle></CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-neutral-400">{t('console.monitorHint')}</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <select
+              className="h-9 rounded-md border border-neutral-700 bg-neutral-900 px-2 text-sm"
+              value={monitor.deviceId}
+              disabled={monitorRun === 'running'}
+              onChange={(e) => setMonitor({ ...monitor, deviceId: e.target.value })}
+            >
+              <option value="">{t('console.monitorPick')}</option>
+              {(devices.data ?? []).filter((d) => d.type === 'monitor' && d.driver === 'http').map((d) => <option key={d.deviceId} value={d.deviceId}>{d.name} ({d.deviceId})</option>)}
+            </select>
+            <Input placeholder={t('console.monitorUrl')} value={monitor.url} disabled={monitorRun === 'running'} onChange={(e) => setMonitor({ ...monitor, url: e.target.value })} />
+          </div>
+          <label className="flex items-start gap-2 text-xs text-neutral-300">
+            <input type="checkbox" className="mt-0.5" checked={monitor.here} onChange={(e) => setMonitor({ ...monitor, here: e.target.checked })} />
+            <span>{t('remoteMonitor.here')}</span>
+          </label>
+          <label className="flex items-start gap-2 text-xs text-neutral-300">
+            <input type="checkbox" className="mt-0.5" checked={monitor.selfSigned} onChange={(e) => setMonitor({ ...monitor, selfSigned: e.target.checked })} />
+            <span>{t('console.monitorSelfSigned')}</span>
+          </label>
+          <Button disabled={!connected || monitorRun === 'running' || !monitor.deviceId} onClick={() => void joinMonitor()}>{t('console.monitorGo')}</Button>
+          {monitorRun !== 'idle' && (
+            <SetupStages stages={remoteStages.filter((x) => x !== 'port' && x !== 'flash')} stage={monitorStage} running={monitorRun === 'running'}
+              failed={monitorRun instanceof SetupError ? monitorRun : null} progress={0} names="remoteMonitor.stage" />
+          )}
+          {monitorRun === 'running' && monitorStatus && <p className="text-xs text-amber-300" role="status">{statusText(monitorStatus)}</p>}
+          {monitorRun === 'done' && <p className="text-xs text-emerald-400">{t('console.monitorDoneHint')}</p>}
+          {monitorRun instanceof SetupError && (
+            <p className="rounded-lg border border-red-900/60 bg-red-950/20 p-2 text-red-300">
+              {t(`remoteMonitor.why.${monitorRun.reason}`, t(`add.why.${monitorRun.reason}`, t('add.why.other')))} {t('console.monitorRetryHint')}
+            </p>
+          )}
         </CardContent>
       </Card>
 

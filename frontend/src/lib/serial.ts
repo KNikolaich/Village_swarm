@@ -55,6 +55,11 @@ export class HornetSerial {
     return s
   }
 
+  /** The port under this console, for a flow that opens it itself (the monitor setup): close this console first. */
+  get rawPort(): SerialPortLike {
+    return this.port
+  }
+
   /** The first line that matches, or null after the timeout. Lines that came before the call do not count. */
   waitForLine(match: (line: string) => boolean, timeoutMs: number): Promise<string | null> {
     return new Promise((resolve) => {
