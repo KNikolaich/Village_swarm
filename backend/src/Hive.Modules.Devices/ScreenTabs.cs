@@ -217,6 +217,21 @@ public static class ScreenTabs
         return font.Metrics.CapHeight > 0 ? font.Metrics.CapHeight : px * 0.7f;
     }
 
+    /// <summary>
+    /// The battery in the top right corner of a screen that has no tabs (the small 1.54" panel): drawn with the same hand as on the
+    /// tabs, over what the picture holds. Shown in steps of five percent, so a panel's e-ink is not redrawn for every percent that goes.
+    /// </summary>
+    public static void DrawBatteryCorner(SKBitmap bitmap, FontSet fonts, int? percent)
+    {
+        if (percent is not { } pct)
+            return;
+        using var canvas = new SKCanvas(bitmap);
+        DrawBattery(new Pen(canvas, fonts, bitmap.Width, bitmap.Height), CornerPercent(pct));
+    }
+
+    /// <summary>The percent as the corner shows it: to the nearest five.</summary>
+    public static int CornerPercent(int percent) => Math.Clamp((percent + 2) / 5 * 5, 0, 100);
+
     /// <summary>A small battery standing upright in the top right corner, the percent to its left. Nothing when unknown.</summary>
     private static void DrawBattery(Pen p, int? percent)
     {

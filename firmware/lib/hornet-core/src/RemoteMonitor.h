@@ -365,6 +365,45 @@ inline int batteryMv(int pinMv) {
     return mv >= 2500 && mv <= 4500 ? mv : -1;
 }
 
+// ------------------------------------------------------------------ wired mode (external power)
+
+/// What the person chose with "set wired": the panel decides (auto), never stays awake (off), always does (on, a panel that is always plugged in).
+enum class WiredMode : uint8_t { Auto = 0, Off = 1, On = 2 };
+
+inline WiredMode parseWiredMode(const std::string& text, WiredMode fallback) {
+    if (text == "auto") return WiredMode::Auto;
+    if (text == "off") return WiredMode::Off;
+    if (text == "on") return WiredMode::On;
+    return fallback;
+}
+
+inline const char* wiredModeName(WiredMode mode) { return mode == WiredMode::Off ? "off" : mode == WiredMode::On ? "on" : "auto"; }
+
+/// A cell held at or above this by the charger (the charge ends at 4.20 V). A cell that has only been charged also rests here for a while
+/// (see wiredNow), which is why the voltage alone is not trusted when it falls.
+constexpr int kWiredFullMv = 4150;
+/// Rising this much between two reads of the same panel is a charger pushing current into the cell (a cell on its own only falls).
+constexpr int kWiredRiseMv = 8;
+/// Falling this much between two reads: no charger, whatever the level.
+constexpr int kWiredFallMv = 10;
+
+/// Whether the panel is on external power now, from what the board gives: the Waveshare ESP32-S3-ePaper-1.54 has no pin that tells VBUS or the
+/// charger's state to the chip (the cell's voltage on GPIO4 is all it reads), so the signals are: a USB host on the other side of the console
+/// (reliable, but only a computer says it, not a charger) and the cell's voltage between two reads (a rise is charging; a high level that
+/// is not falling is a full cell on the charger; otherwise it is on the cell). <lastMv> is the previous read (0 = none), kept by the caller.
+///
+/// Not reliable at the top: a cell that was just charged and unplugged is also high and flat, so it counts as wired until it falls 10 mV
+/// between two reads (a few reads at the panel's interval). The cost of that error is a few hours of awake time at a full cell, not a dead one.
+inline bool wiredNow(WiredMode mode, int mv, int lastMv, bool usbHost) {
+    if (mode == WiredMode::Off) return false;
+    if (mode == WiredMode::On) return true;
+    if (usbHost) return true;
+    if (mv < 2500 || mv > 4500) return false;  // no divider, or nonsense: nothing to go by
+    if (lastMv >= 2500 && mv <= lastMv - kWiredFallMv) return false;
+    if (lastMv >= 2500 && mv >= lastMv + kWiredRiseMv) return true;
+    return mv >= kWiredFullMv;
+}
+
 /// Seconds since 1970 from an HTTP Date header ("Tue, 27 Oct 2026 20:41:02 GMT"), 0 when it does not read.
 inline uint32_t httpDate(const std::string& date) {
     static const char* kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};

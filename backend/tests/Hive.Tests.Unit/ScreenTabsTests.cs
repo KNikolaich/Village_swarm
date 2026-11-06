@@ -178,6 +178,41 @@ public class ScreenTabsTests
         Assert.True(Black(bitmap, new SKRectI(0, 90, 416, 150)) > 100);
     }
 
+    // ---- the small panel (200x200, no tabs): the battery in the corner of the picture the hive draws
+
+    private static readonly DisplayScreenDto Small = new(200, 200, Rendered: true);
+
+    private static SKBitmap Blank() { var b = new SKBitmap(new SKImageInfo(200, 200, SKColorType.Gray8, SKAlphaType.Opaque)); b.Erase(SKColors.White); return b; }
+
+    [Fact]
+    public void The_small_panel_gets_its_battery_in_the_top_right_corner_and_nothing_elsewhere()
+    {
+        using var bare = Blank();
+        using var drawn = Blank();
+        ScreenTabs.DrawBatteryCorner(drawn, TabFonts(), 64);
+        // the corner: the icon and the percent in the top 30 rows, right 70 columns
+        var corner = new SKRectI(130, 0, 200, 30);
+        Assert.Equal(0, Black(bare, corner));
+        Assert.True(Black(drawn, corner) > 40, "battery and percent are drawn");
+        // not a pixel outside it: the rest of the picture (the person's items) is untouched
+        Assert.Equal(0, Black(drawn, new SKRectI(0, 30, 200, 200)));
+        Assert.Equal(0, Black(drawn, new SKRectI(0, 0, 130, 30)));
+    }
+
+    [Fact]
+    public void An_unknown_battery_draws_nothing_and_the_percent_goes_in_steps_of_five()
+    {
+        using var drawn = Blank();
+        ScreenTabs.DrawBatteryCorner(drawn, TabFonts(), null);
+        Assert.Equal(0, Black(drawn, new SKRectI(0, 0, 200, 200)));
+        Assert.Equal([0, 0, 5, 65, 65, 70, 100, 100], new[] { 0, 2, 3, 64, 66, 68, 99, 100 }.Select(ScreenTabs.CornerPercent));
+        using var full = Blank();
+        using var half = Blank();
+        ScreenTabs.DrawBatteryCorner(full, TabFonts(), 100);
+        ScreenTabs.DrawBatteryCorner(half, TabFonts(), 50);
+        Assert.True(Black(full, new SKRectI(130, 0, 200, 30)) > Black(half, new SKRectI(130, 0, 200, 30)));  // a fuller cell is blacker
+    }
+
     [Fact]
     public void Battery_follows_the_curve_of_a_lithium_cell()
     {

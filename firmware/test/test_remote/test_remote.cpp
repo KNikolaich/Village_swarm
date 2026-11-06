@@ -248,6 +248,53 @@ static void test_console_says_ready_twice_a_second() {
     TEST_ASSERT_FALSE(ConsoleWindow::readyDue(700, 400));
 }
 
+// Wired mode: a table of what the panel sees (mode, cell mV now, cell mV at the previous read, USB host) and what it decides.
+static void test_wired_mode_table() {
+    struct Row {
+        WiredMode mode;
+        int mv, last;
+        bool usb;
+        bool wired;
+        const char* why;
+    };
+    const Row rows[] = {
+        {WiredMode::Off, 4200, 4100, true, false, "off never stays awake"},
+        {WiredMode::On, 3600, 3700, false, true, "on always does"},
+        {WiredMode::Auto, 3700, 3700, true, true, "a USB host is external power"},
+        {WiredMode::Auto, 3700, 0, false, false, "on the cell, first read"},
+        {WiredMode::Auto, 3700, 3705, false, false, "on the cell, slowly falling"},
+        {WiredMode::Auto, 3700, 3698, false, false, "on the cell, steady"},
+        {WiredMode::Auto, 3750, 3700, false, true, "rising 50 mV: the charger works"},
+        {WiredMode::Auto, 3708, 3700, false, true, "rising exactly 8 mV counts"},
+        {WiredMode::Auto, 3707, 3700, false, false, "7 mV is noise"},
+        {WiredMode::Auto, 4200, 4200, false, true, "full on the charger, steady"},
+        {WiredMode::Auto, 4160, 0, false, true, "first read, high: counts as wired"},
+        {WiredMode::Auto, 4150, 4155, false, true, "high and nearly flat"},
+        {WiredMode::Auto, 4150, 4165, false, false, "high but falling 15 mV: unplugged"},
+        {WiredMode::Auto, 4140, 4140, false, false, "just under the full level, flat"},
+        {WiredMode::Auto, 4300, 4300, false, true, "a high reading in range"},
+        {WiredMode::Auto, 5200, 4100, false, false, "nonsense above range"},
+        {WiredMode::Auto, 0, 0, false, false, "no divider soldered"},
+        {WiredMode::Auto, 0, 0, true, true, "no divider, but a USB host"},
+        {WiredMode::Auto, 3000, 3500, false, false, "falling a lot"},
+    };
+    for (const Row& r : rows) {
+        char message[96];
+        snprintf(message, sizeof message, "%s", r.why);
+        TEST_ASSERT_EQUAL_MESSAGE(r.wired, wiredNow(r.mode, r.mv, r.last, r.usb), message);
+    }
+}
+
+static void test_wired_mode_setting() {
+    TEST_ASSERT_TRUE(parseWiredMode("auto", WiredMode::Off) == WiredMode::Auto);
+    TEST_ASSERT_TRUE(parseWiredMode("off", WiredMode::Auto) == WiredMode::Off);
+    TEST_ASSERT_TRUE(parseWiredMode("on", WiredMode::Auto) == WiredMode::On);
+    TEST_ASSERT_TRUE(parseWiredMode("sometimes", WiredMode::Off) == WiredMode::Off);  // junk keeps what there was
+    TEST_ASSERT_EQUAL_STRING("auto", wiredModeName(WiredMode::Auto));
+    TEST_ASSERT_EQUAL_STRING("off", wiredModeName(WiredMode::Off));
+    TEST_ASSERT_EQUAL_STRING("on", wiredModeName(WiredMode::On));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_frame_url_from_what_people_paste);
@@ -268,5 +315,7 @@ int main() {
     RUN_TEST(test_console_window_stays_open_while_somebody_is_there);
     RUN_TEST(test_console_window_waits_for_a_usb_host_but_not_forever);
     RUN_TEST(test_console_says_ready_twice_a_second);
+    RUN_TEST(test_wired_mode_table);
+    RUN_TEST(test_wired_mode_setting);
     return UNITY_END();
 }

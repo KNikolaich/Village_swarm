@@ -557,12 +557,14 @@ public sealed class DisplayFeedService(
     {
         if (DisplayScreens.For(device.Hw, RotationOf(device)) is not { } screen)
             return null;
-        var set = await fonts.LoadAsync(message.Items.Select(i => i.Font), ct);
+        var corner = await CornerBatteryAsync(device, screen, ct);
+        var set = await fonts.LoadAsync(message.Items.Select(i => i.Font).Concat(corner is null ? [] : ScreenTabs.Families), ct);
         using var background = device.ScreenBackground is { } png ? SKBitmap.Decode(png) : null;
         var images = await ImagesAsync(device, ct);
         try
         {
             var bitmap = DisplayRender.Render(message, screen, set, background, images);
+            ScreenTabs.DrawBatteryCorner(bitmap, set, corner);
             return InvertOf(device) ? DisplayRender.Invert(bitmap) : bitmap;
         }
         finally
@@ -574,7 +576,15 @@ public sealed class DisplayFeedService(
 
     /// <summary>What besides the items makes the picture what it is (background, turn, fonts): a panel redraws when it changes.</summary>
     public async Task<string> PictureTagAsync(Device device, CancellationToken ct) =>
-        $"{device.ScreenBackgroundSha}/{RotationOf(device)}{(InvertOf(device) ? "/dark" : "")}/{await fonts.VersionAsync(ct)}/{ImageIds(device)}";
+        $"{device.ScreenBackgroundSha}/{RotationOf(device)}{(InvertOf(device) ? "/dark" : "")}/{await fonts.VersionAsync(ct)}/{ImageIds(device)}"
+        + (await CornerBatteryAsync(device, DisplayScreens.For(device.Hw), ct) is { } pct ? $"/bat{pct}" : "");
+
+    /// <summary>
+    /// The battery for the corner of a picture the hive draws for a screen without tabs (the small panel), in steps of five; null when
+    /// the panel has not told it lately or the screen is not one the hive draws. Tabs draw their own battery.
+    /// </summary>
+    private async Task<int?> CornerBatteryAsync(Device device, DisplayScreenDto? screen, CancellationToken ct) =>
+        screen is { Rendered: true, Tabs: 0 } && await BatteryAsync(device.DeviceId, ct) is { } pct ? ScreenTabs.CornerPercent(pct) : null;
 
     /// <summary>The pictures the state items of the screen are drawn with: another choice is another picture.</summary>
     private static string ImageIds(Device device) =>
