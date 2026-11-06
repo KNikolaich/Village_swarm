@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+﻿﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -12,14 +12,10 @@ namespace Hive.Infrastructure.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.InsertData(
-                table: "device_types",
-                columns: new[] { "code", "caps", "default_config", "offline_after_s", "title" },
-                values: new object[,]
-                {
-                    { "irrx", null, null, 180, "ИК-приёмник (учит кнопки пульта)" },
-                    { "irtx", null, null, 180, "ИК-передатчик (управляет прибором)" }
-                });
+            migrationBuilder.Sql(
+                "INSERT INTO device_types (code, caps, default_config, offline_after_s, title) VALUES ('irrx', NULL, NULL, 180, 'ИК-приёмник (учит кнопки пульта)') ON CONFLICT (code) DO UPDATE SET title = EXCLUDED.title WHERE device_types.title = device_types.code");
+            migrationBuilder.Sql(
+                "INSERT INTO device_types (code, caps, default_config, offline_after_s, title) VALUES ('irtx', NULL, NULL, 180, 'ИК-передатчик (управляет прибором)') ON CONFLICT (code) DO UPDATE SET title = EXCLUDED.title WHERE device_types.title = device_types.code");
         }
 
         /// <inheritdoc />

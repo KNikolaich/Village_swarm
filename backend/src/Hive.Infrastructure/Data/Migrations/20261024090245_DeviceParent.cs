@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+﻿﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -17,10 +17,8 @@ namespace Hive.Infrastructure.Data.Migrations
                 maxLength: 32,
                 nullable: true);
 
-            migrationBuilder.InsertData(
-                table: "device_types",
-                columns: new[] { "code", "caps", "default_config", "offline_after_s", "title" },
-                values: new object[] { "nvr", null, null, 180, "Видеорегистратор" });
+            migrationBuilder.Sql(
+                "INSERT INTO device_types (code, caps, default_config, offline_after_s, title) VALUES ('nvr', NULL, NULL, 180, 'Видеорегистратор') ON CONFLICT (code) DO UPDATE SET title = EXCLUDED.title WHERE device_types.title = device_types.code");
 
             migrationBuilder.CreateIndex(
                 name: "ix_devices_parent_id",

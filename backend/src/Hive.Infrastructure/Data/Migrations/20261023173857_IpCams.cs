@@ -1,4 +1,4 @@
-﻿using System;
+﻿﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -52,10 +52,8 @@ namespace Hive.Infrastructure.Data.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
-            migrationBuilder.InsertData(
-                table: "device_types",
-                columns: new[] { "code", "caps", "default_config", "offline_after_s", "title" },
-                values: new object[] { "ipcam", null, null, 180, "IP-камера (через видеорегистратор)" });
+            migrationBuilder.Sql(
+                "INSERT INTO device_types (code, caps, default_config, offline_after_s, title) VALUES ('ipcam', NULL, NULL, 180, 'IP-камера (через видеорегистратор)') ON CONFLICT (code) DO UPDATE SET title = EXCLUDED.title WHERE device_types.title = device_types.code");
 
             migrationBuilder.CreateIndex(
                 name: "ix_nvr_channels_device_id",
