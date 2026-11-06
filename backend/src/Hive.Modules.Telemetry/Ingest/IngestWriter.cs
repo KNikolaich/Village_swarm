@@ -80,7 +80,7 @@ public sealed class IngestWriter(HiveDbContext db)
                     MarkOnline(device);
                     break;
                 case DeviceStateReceived state:
-                    device.State = state.State;
+                    device.State = state.Merge ? MergeState(device.State, state.State) : state.State;
                     break;
                 case DeviceEventReceived { Type: "config_applied" } applied
                     when applied.Payload.RootElement.TryGetProperty("rev", out var rev) && rev.TryGetInt32(out var r):
@@ -104,6 +104,16 @@ public sealed class IngestWriter(HiveDbContext db)
             command.AckAt = ack.ReceivedAt;
             command.AckPayload = ack.Payload;
         }
+    }
+
+    /// <summary>Tasmota reports one relay at a time ("POWER2": "ON"): the other channels keep what they had.</summary>
+    private static JsonDocument MergeState(JsonDocument? old, JsonDocument update)
+    {
+        var merged = old is null ? new System.Text.Json.Nodes.JsonObject()
+            : System.Text.Json.Nodes.JsonNode.Parse(old.RootElement.GetRawText())?.AsObject() ?? [];
+        foreach (var p in update.RootElement.EnumerateObject())
+            merged[p.Name] = System.Text.Json.Nodes.JsonNode.Parse(p.Value.GetRawText());
+        return JsonDocument.Parse(merged.ToJsonString());
     }
 
     /// <summary>Fresh health means the hornet is alive even if a stale retained "offline" arrived earlier.</summary>

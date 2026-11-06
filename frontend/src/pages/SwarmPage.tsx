@@ -1,23 +1,23 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowUpCircle, Check, CircleHelp, Moon, Pencil, Pin, Plus, RefreshCw, Trash2, Wifi, WifiOff, X } from 'lucide-react'
-import { useMemo, useState, type FormEvent } from 'react'
-import { Link } from 'react-router'
+import { ArrowRightLeft, BatteryMedium, Camera, Car, ChevronDown, ChevronRight, CircleHelp, CloudDownload, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Plus, Terminal, Thermometer, Usb, Wifi, WifiOff, type LucideIcon } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router'
+import { FlashButton } from '@/components/FlashButton'
+import { OtaRolloutPanel } from '@/components/OtaRolloutPanel'
 import { toast } from 'sonner'
-import { api, call, type DeviceDto } from '@/api/client'
-import { keys, useDevices, useMe } from '@/api/queries'
+import { api, call, type DeviceDto, type LatestValueDto, type Schemas } from '@/api/client'
+import { keys, useDevices, useLatestTelemetry, useMe, useOtaRollout, useRanges, useSendCommand, useSnapshot, useZones } from '@/api/queries'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
-import { statusLabel, t } from '@/i18n'
-import { formatAgo } from '@/lib/format'
-import { CodeBox } from '@/pages/AddHornetPage'
-
-/** "Problems first": offline, then weak signal, then the rest (spec 8.2 screen 5). */
-function badness(d: DeviceDto): number {
-  if (d.status === 'disabled') return 4
-  if (d.status !== 'online') return 0
-  if ((d.rssi ?? 0) < -80) return 1
-  return 2
-}
+import { Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
+import { metricLabel, statusLabel, t } from '@/i18n'
+import { formatAgo, formatValue } from '@/lib/format'
+import { ntcMetrics, thermometerSensorsFor, usesPin } from '@/lib/features'
+import { calibratedOffset, ntcDefaults, ntcNumberFields, ntcSides, parseNtcNumber, type NtcSettings } from '@/lib/ntc'
+import { candidates, newerBuild as newerBuildFor } from '@/lib/otaRollout'
+import { groupDevices, groupings, mainReadings, quickControls, type Grouping, splitChildren } from '@/lib/swarm'
+import { cn } from '@/lib/utils'
+import { driveLink } from '@/lib/video'
+import { rangeClass, rangeKey, rangeState } from '@/lib/valueRange'
 
 /** Battery intervals offered in the UI; the contract allows 60..86400 s. 0 = always awake. */
 const sleepChoices = [0, 300, 600, 900, 1800, 3600]
@@ -28,11 +28,14 @@ function asleep(d: DeviceDto): boolean {
   return Date.now() - new Date(d.lastSeenAt).getTime() > 90_000
 }
 
-/** Pin fields per role; an unknown type shows them all. The firmware uses only these (BoardPins.RoleFunctions). */
-const pinFields = [['onewirePin', 'onewire'], ['sdaPin', 'sda'], ['sclPin', 'scl'], ['relayPin', 'relay'], ['buttonPin', 'button'], ['vbatPin', 'vbat']] as const
+/** Pin fields per role, narrowed by the hornet's features; an unknown type shows them all (BoardPins.RoleFunctions). */
+const pinFields = [['onewirePin', 'onewire'], ['dhtPin', 'dht'], ['sdaPin', 'sda'], ['sclPin', 'scl'], ['relayPin', 'relay'], ['buttonPin', 'button'], ['vbatPin', 'vbat'], ['ntcPin', 'ntc']] as const
 const roleFunctions: Record<string, readonly string[]> = {
-  meteo: ['onewire', 'sda', 'scl', 'vbat'],
+  meteo: ['onewire', 'dht', 'sda', 'scl', 'vbat', 'ntc'],
   relay: ['relay', 'button', 'vbat'],
+  heat: ['onewire', 'dht', 'sda', 'scl', 'relay', 'button', 'vbat'],
+  'guard-cam': ['relay'],
+  monitor: ['sda', 'scl', 'vbat', 'ntc'],
 }
 
 /** ESP8266 boards: one ADC (A0 = GPIO17) and D-labels on the silkscreen. */
@@ -42,7 +45,9 @@ const esp8266Boards = ['nodemcu-v3', 'wemos-d1-mini', 'esp-01', 'esp-01-dht11']
 function pinHelp(fn: string, board: string | null | undefined): string {
   const base = t(`swarm.pinHelp.${fn}`)
   if (!board) return base
-  const extra = esp8266Boards.includes(board) ? t(`swarm.pinHelp.${fn}Esp8266`, '') : board.startsWith('esp32c3') ? t(`swarm.pinHelp.${fn}Esp32c3`, '') : ''
+  const extra = esp8266Boards.includes(board) ? t(`swarm.pinHelp.${fn}Esp8266`, '')
+    : board.startsWith('esp32c3') ? t(`swarm.pinHelp.${fn}Esp32c3`, '')
+    : board === 'esp32cam-aithinker' ? t(`swarm.pinHelp.${fn}Esp32cam`, '') : ''
   return extra ? `${base} ${extra}` : base
 }
 
@@ -57,14 +62,39 @@ function HelpTip({ text, open, onToggle }: { text: string; open: boolean; onTogg
 }
 
 /** Pins of one hornet: what each function uses (board default or set by hand), conflicts shown, and editing. */
-export function PinsPanel({ deviceId, editable, board, type }: { deviceId: string; editable: boolean; board?: string | null; type?: string }) {
+export function PinsPanel({ deviceId, editable, board, type, features }: { deviceId: string; editable: boolean; board?: string | null; type?: string; features?: readonly string[] | null }) {
   const qc = useQueryClient()
   const pins = useQuery({ queryKey: ['devices', deviceId, 'pins'], queryFn: () => call(api.GET('/api/devices/{deviceId}/pins', { params: { path: { deviceId } } })) })
+  const latest = useLatestTelemetry()
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [help, setHelp] = useState<string | null>(null)
+  const [reference, setReference] = useState('')
   const used = type ? roleFunctions[type] : undefined
-  const keys = used ? pinFields.filter(([, fn]) => used.includes(fn)) : pinFields
+  // The thermometer's sensor (DS18B20 or DHT) decides between the 1-Wire and the DHT pin; '' in the draft = the board's.
+  const showSensor = pins.data?.thermometer != null && (!features || features.includes('thermometer'))
+  const sensor = draft.thermometer !== undefined ? draft.thermometer || null : (pins.data?.thermometer ?? null)
+  const keys = pinFields.filter(([, fn]) => (!used || used.includes(fn)) && usesPin(features, fn, sensor))
   const showRatio = keys.some(([, fn]) => fn === 'vbat')
+  // The thermistor's divider and calibration: shown once it has a pin (set or being typed) or is the thermometer (A0 by default).
+  const ntcRow = pins.data?.pins.find((r) => r.function === 'ntc')
+  const ntcThermometer = showSensor && sensor === 'ntc'
+  const showNtc = keys.some(([, fn]) => fn === 'ntc') && (ntcThermometer || (draft.ntcPin !== undefined ? draft.ntcPin.trim() !== '' : ntcRow?.pin != null))
+  const ntc: NtcSettings = pins.data?.ntc ?? {}
+  const ntcReading = ntcMetrics(ntcThermometer ? 'ntc' : null)
+    .map((m) => latest.data?.find((v) => v.deviceId === deviceId && v.metric === m))
+    .find((v) => v !== undefined)
+
+  function fitToReference() {
+    const ref = Number(reference.trim().replace(',', '.').replace('−', '-'))
+    if (!ntcReading || reference.trim() === '' || !Number.isFinite(ref)) {
+      toast.error(t(ntcReading ? 'swarm.ntc.fitBadReference' : 'swarm.ntc.fitNoReading'))
+      return
+    }
+    // The reading carries the offset saved now; a typed one not saved yet is not in it.
+    const offset = calibratedOffset(ntc.offset, ntcReading.value, ref)
+    setDraft({ ...draft, 'ntc.offset': String(offset) })
+    toast.success(t('swarm.ntc.fitDone').replace('{offset}', String(offset)))
+  }
 
   async function save() {
     // The request is the whole set of hand-set pins: fields left alone keep what is set now, an emptied one goes back to the default.
@@ -91,8 +121,26 @@ export function PinsPanel({ deviceId, editable, board, type }: { deviceId: strin
       toast.error(t('swarm.ratioInvalid'))
       return
     } else body.vbatRatio = Number(ratioText)
+    const thermometer = draft.thermometer !== undefined ? draft.thermometer || null : pins.data?.thermometerByHand ? (pins.data.thermometer ?? null) : null
+    let ntcBody: NtcSettings | null = null
+    if (body.ntcPin != null || thermometer === 'ntc') {
+      ntcBody = { side: draft['ntc.side'] !== undefined ? draft['ntc.side'] || null : (ntc.side ?? null) }
+      for (const f of ntcNumberFields) {
+        const text = draft[`ntc.${f}`]
+        if (text === undefined) {
+          ntcBody[f] = ntc[f] ?? null
+          continue
+        }
+        const v = parseNtcNumber(f, text)
+        if (v === undefined) {
+          toast.error(t('swarm.ntc.invalid').replace('{field}', t(`swarm.ntc.${f}`)))
+          return
+        }
+        ntcBody[f] = v
+      }
+    }
     try {
-      await call(api.PUT('/api/devices/{deviceId}/pins', { params: { path: { deviceId } }, body }))
+      await call(api.PUT('/api/devices/{deviceId}/pins', { params: { path: { deviceId } }, body: { ...body, thermometer, ntc: ntcBody } }))
       setDraft({})
       toast.success(t('swarm.pinsSaved'))
       await qc.invalidateQueries({ queryKey: ['devices', deviceId, 'pins'] })
@@ -114,18 +162,38 @@ export function PinsPanel({ deviceId, editable, board, type }: { deviceId: strin
             {rows.map((r) => (
               <tr key={r.function} className="border-t border-neutral-800">
                 <td className="py-1 pr-2 text-neutral-400">{r.function}</td>
-                <td className="py-1 pr-2 tabular-nums">{r.function === 'vbat' && board && esp8266Boards.includes(board) ? 'A0' : `GPIO${r.pin}`}</td>
+                <td className={cn('py-1 pr-2 tabular-nums', r.pin == null && 'text-amber-400')}>
+                  {r.pin == null ? t('swarm.pinsUnset') : (r.function === 'vbat' || r.function === 'ntc') && board && esp8266Boards.includes(board) ? 'A0' : `GPIO${r.pin}`}
+                </td>
                 <td className="py-1 text-neutral-500">
-                  {r.source === 'config' ? t('swarm.pinsByHand') : t('swarm.pinsDefault')}{r.note ? ` · ${r.note}` : ''}
+                  {r.source === 'config' ? t('swarm.pinsByHand') : r.source === 'none' ? t('swarm.pinsUnsetHint') : t('swarm.pinsDefault')}{r.note ? ` · ${r.note}` : ''}
                   {r.function === 'vbat' ? ` · ×${ratio ?? 1}` : ''}
+                  {r.function === 'ntc' ? ` · ${t(`swarm.ntc.side_${ntc.side ?? ntcDefaults.side}`)}, B ${ntc.beta ?? ntcDefaults.beta}${ntc.offset ? `, ${ntc.offset > 0 ? '+' : ''}${ntc.offset}°` : ''}` : ''}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
+      {showSensor && !editable && <p className="text-neutral-500">{t('swarm.thermometer')}: {t(`swarm.sensor.${pins.data?.thermometer}`)}</p>}
       {editable && (
         <div className="grid grid-cols-3 gap-2">
+          {showSensor && (
+            <label className="col-span-3 space-y-1">
+              <span className="flex items-center gap-1 text-neutral-500">
+                {t('swarm.thermometer')}
+                <HelpTip text={t('swarm.pinHelp.thermometer')} open={help === 'thermometer'} onToggle={() => setHelp(help === 'thermometer' ? null : 'thermometer')} />
+              </span>
+              <Select
+                value={draft.thermometer ?? (pins.data?.thermometerByHand ? (pins.data.thermometer ?? '') : '')}
+                onChange={(e) => setDraft({ ...draft, thermometer: e.target.value })}
+                className="h-8 w-full text-xs"
+              >
+                <option value="">{t('swarm.sensorBoard').replace('{sensor}', t(`swarm.sensor.${pins.data?.thermometerByHand ? 'unknown' : pins.data?.thermometer}`))}</option>
+                {thermometerSensorsFor(type).map((s) => <option key={s} value={s}>{t(`swarm.sensor.${s}`)}</option>)}
+              </Select>
+            </label>
+          )}
           {keys.map(([field, label]) => (
             <label key={field} className="space-y-1">
               <span className="flex items-center gap-1 text-neutral-500">
@@ -156,7 +224,55 @@ export function PinsPanel({ deviceId, editable, board, type }: { deviceId: strin
               />
             </label>
           )}
-          {help && <p className="col-span-3 whitespace-pre-line rounded-lg bg-neutral-900 p-2 text-neutral-300">{help === 'ratio' ? t('swarm.pinHelp.ratio') : pinHelp(help, board)}</p>}
+          {showNtc && (
+            <div className="col-span-3 grid grid-cols-3 gap-2 rounded-lg border border-neutral-800 p-2">
+              <p className="col-span-3 flex items-center gap-1 font-medium text-neutral-300">
+                {t('swarm.ntc.title')}
+                <HelpTip text={t('swarm.pinHelp.ntcSettings')} open={help === 'ntcSettings'} onToggle={() => setHelp(help === 'ntcSettings' ? null : 'ntcSettings')} />
+              </p>
+              <label className="col-span-3 space-y-1">
+                <span className="text-neutral-500">{t('swarm.ntc.side')}</span>
+                <Select
+                  value={draft['ntc.side'] ?? ntc.side ?? ''}
+                  onChange={(e) => setDraft({ ...draft, 'ntc.side': e.target.value })}
+                  className="h-8 w-full text-xs"
+                >
+                  <option value="">{t('swarm.ntc.sideDefault')}</option>
+                  {ntcSides.map((s) => <option key={s} value={s}>{t(`swarm.ntc.side_${s}`)}</option>)}
+                </Select>
+              </label>
+              {ntcNumberFields.map((f) => (
+                <label key={f} className="space-y-1">
+                  <span className="text-neutral-500">{t(`swarm.ntc.${f}`)}</span>
+                  <Input
+                    inputMode="decimal"
+                    placeholder={String(ntc[f] ?? ntcDefaults[f])}
+                    value={draft[`ntc.${f}`] ?? ''}
+                    onChange={(e) => setDraft({ ...draft, [`ntc.${f}`]: e.target.value })}
+                    className="h-8 text-xs"
+                  />
+                </label>
+              ))}
+              <div className="col-span-3 space-y-1">
+                <span className="text-neutral-500">
+                  {ntcReading
+                    ? t('swarm.ntc.fitNow').replace('{value}', formatValue('temperature_ntc', ntcReading.value)).replace('{ago}', formatAgo(ntcReading.ts))
+                    : t('swarm.ntc.fitNoReading')}
+                </span>
+                <div className="flex gap-2">
+                  <Input
+                    inputMode="decimal"
+                    placeholder={t('swarm.ntc.reference')}
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                    className="h-8 text-xs"
+                  />
+                  <Button size="sm" variant="secondary" onClick={fitToReference} disabled={!ntcReading || reference.trim() === ''}>{t('swarm.ntc.fit')}</Button>
+                </div>
+              </div>
+            </div>
+          )}
+          {help && <p className="col-span-3 whitespace-pre-line rounded-lg bg-neutral-900 p-2 text-neutral-300">{help === 'ratio' || help === 'thermometer' || help === 'ntcSettings' ? t(`swarm.pinHelp.${help}`) : pinHelp(help, board)}</p>}
           <Button size="sm" className="col-span-3" onClick={() => void save()} disabled={Object.keys(draft).length === 0}>{t('swarm.pinsSave')}</Button>
         </div>
       )}
@@ -164,100 +280,303 @@ export function PinsPanel({ deviceId, editable, board, type }: { deviceId: strin
   )
 }
 
-/** The hornet's name, with an inline editor for admins (a typo made when adding it is fixed here). */
-function DeviceName({ device, editable }: { device: DeviceDto; editable: boolean }) {
-  const qc = useQueryClient()
-  const [draft, setDraft] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+/**
+ * A meteo or relay hornet may move to the heat firmware of its board, which does all they do; a meteo hornet with a screen
+ * to the monitor firmware (OtaService.CanBecome).
+ */
+const canBecome = (type: string, role: string) =>
+  (role === 'heat' && (type === 'meteo' || type === 'relay')) || (role === 'monitor' && type === 'meteo')
 
-  async function save(e: FormEvent) {
-    e.preventDefault()
-    const name = (draft ?? '').trim()
-    if (!name || name === device.name) {
-      setDraft(null)
+/** Over-the-air update of one hornet: the builds the hive has for its role and board, the running one marked. */
+function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; builds: Schemas['FirmwareBuildDto'][]; onDone: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [usbOpen, setUsbOpen] = useState<string | null>(null)
+  const qc = useQueryClient()
+  const env = `${device.type}-${device.hw ?? '?'}`
+  // A deep sleeper cannot take the command while it sleeps: the hive keeps the wish and sends it at the next wake-up.
+  const sleeper = !!device.sleepS && device.sleepMode === 'deep'
+  const waiting = useQuery({ queryKey: ['ota', 'pending'], queryFn: () => call(api.GET('/api/ota/pending')), enabled: sleeper })
+  const pending = waiting.data?.find((p) => p.deviceId === device.deviceId)
+  const suitable = builds.filter((b) => b.board === device.hw && (b.role === device.type || canBecome(device.type, b.role)))
+
+  async function update(build: Schemas['FirmwareBuildDto']) {
+    const risky = (device.hw ?? '').startsWith('esp-01')
+    const text = build.role !== device.type
+      ? t('swarm.becomeConfirm').replace('{name}', device.name).replace('{type}', t(`deviceTypes.${build.role}`, build.role))
+      : t('swarm.updateConfirm').replace('{name}', device.name).replace('{from}', device.fw ?? '?').replace('{to}', build.version ?? '?')
+    const notes = [risky ? t('swarm.updateRisk') : '', build.signed ? '' : t('swarm.updateUnsigned')].filter(Boolean)
+    if (!window.confirm(notes.length ? `${text}\n\n${notes.join('\n\n')}` : text)) return
+    setBusy(true)
+    const { response, error } = await api.POST('/api/devices/{deviceId}/ota', { params: { path: { deviceId: device.deviceId } }, body: { build: build.build } })
+    setBusy(false)
+    if (response.ok) {
+      toast.success(t('swarm.updateStarted'))
+      onDone()
       return
     }
-    setBusy(true)
-    try {
-      await call(api.PUT('/api/devices/{deviceId}/name', { params: { path: { deviceId: device.deviceId } }, body: { name } }))
-      toast.success(t('swarm.renamed'))
-      setDraft(null)
-      await qc.invalidateQueries({ queryKey: keys.devices })
-    } catch {
-      toast.error(t('swarm.renameFailed'))
-    } finally {
-      setBusy(false)
-    }
+    const reason = (error as { errors?: Record<string, string[]> } | undefined)?.errors?.ota?.[0]
+    toast.error(reason ? `${t('swarm.updateRefused')}: ${reason}` : t('swarm.updateRefused'))
   }
 
-  if (draft === null)
-    return (
-      <div className="flex min-w-0 items-center gap-1">
-        <Link to={`/swarm/${encodeURIComponent(device.deviceId)}`} className="block truncate font-medium hover:text-amber-400">{device.name}</Link>
-        {editable && (
-          <Button variant="ghost" size="icon" className="size-7 shrink-0 text-neutral-500" title={t('swarm.rename')} aria-label={t('swarm.rename')} onClick={() => setDraft(device.name)}>
-            <Pencil className="size-3.5" />
-          </Button>
-        )}
-      </div>
-    )
+  async function queue(build: Schemas['FirmwareBuildDto']) {
+    const risky = (device.hw ?? '').startsWith('esp-01')
+    const text = t('swarm.waitConfirm').replace('{name}', device.name).replace('{to}', build.version ?? '?')
+    const notes = [risky ? t('swarm.updateRisk') : '', build.signed ? '' : t('swarm.updateUnsigned')].filter(Boolean)
+    if (!window.confirm(notes.length ? `${text}\n\n${notes.join('\n\n')}` : text)) return
+    setBusy(true)
+    const { response, error } = await api.PUT('/api/devices/{deviceId}/ota/pending', { params: { path: { deviceId: device.deviceId } }, body: { build: build.build } })
+    setBusy(false)
+    if (response.ok) {
+      toast.success(t('swarm.waitQueued'))
+      await qc.invalidateQueries({ queryKey: ['ota', 'pending'] })
+      return
+    }
+    const reason = (error as { errors?: Record<string, string[]> } | undefined)?.errors?.ota?.[0]
+    toast.error(reason ? `${t('swarm.updateRefused')}: ${reason}` : t('swarm.updateRefused'))
+  }
+
+  async function cancelWaiting() {
+    setBusy(true)
+    await api.DELETE('/api/devices/{deviceId}/ota/pending', { params: { path: { deviceId: device.deviceId } } })
+    setBusy(false)
+    await qc.invalidateQueries({ queryKey: ['ota', 'pending'] })
+  }
 
   return (
-    <form onSubmit={save} className="flex items-center gap-1">
-      <Input
-        autoFocus
-        value={draft}
-        maxLength={128}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Escape') setDraft(null) }}
-        className="h-8 min-w-0"
-        aria-label={t('swarm.rename')}
-      />
-      <Button type="submit" variant="ghost" size="icon" className="size-8 shrink-0 text-emerald-400" disabled={busy || !draft.trim()} title={t('common.save')} aria-label={t('common.save')}><Check /></Button>
-      <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" onClick={() => setDraft(null)} title={t('common.cancel')} aria-label={t('common.cancel')}><X /></Button>
-    </form>
+    <div className="space-y-2 text-xs">
+      <p className="text-neutral-400">{t('swarm.fwRunning').replace('{version}', device.fw ?? '?')}</p>
+      {!suitable.some((b) => b.role === device.type) && <p className="text-neutral-500">{t('swarm.fwNone').replace('{env}', env)}</p>}
+      {suitable.map((b) => {
+        const current = b.version === device.fw
+        return (
+          <div key={b.build} className="flex items-center justify-between gap-2 border-t border-neutral-800 pt-2">
+            <div>
+              <p className="font-medium">{b.build} · {b.version ?? '?'}</p>
+              {b.role !== device.type && <p className="text-amber-400">{t('swarm.fwBecome').replace('{type}', t(`deviceTypes.${b.role}`, b.role))}</p>}
+              <p className="text-neutral-500">{t('swarm.fwBuilt').replace('{when}', formatAgo(b.built))}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {current ? (
+                <span className="text-neutral-500">{t('swarm.fwCurrent')}</span>
+              ) : sleeper && pending?.build === b.build ? (
+                <>
+                  <span className="text-amber-400">{t('swarm.waitPending').replace('{n}', String(pending.attempts))}</span>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void cancelWaiting()}>{t('common.cancel')}</Button>
+                </>
+              ) : sleeper ? (
+                <Button size="sm" disabled={busy} onClick={() => void queue(b)}>{t('swarm.fwInstallOnWake')}</Button>
+              ) : (
+                <Button size="sm" disabled={busy || device.status !== 'online'} onClick={() => void update(b)}>{t('swarm.fwInstall')}</Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => setUsbOpen(usbOpen === b.build ? null : b.build)}><Usb />{t('swarm.fwUsb')}</Button>
+            </div>
+          </div>
+        )
+      })}
+      {usbOpen && (
+        <div className="space-y-2 rounded-lg border border-neutral-800 p-3">
+          <p className="text-neutral-300">{t('swarm.fwUsbHint')}</p>
+          <FlashButton build={usbOpen} />
+        </div>
+      )}
+      {suitable.some((b) => b.role === device.type) && suitable.every((b) => b.role !== device.type || b.version === device.fw) && <p className="text-neutral-500">{t('swarm.fwNoNewer')}</p>}
+      {device.status !== 'online' && <p className="text-amber-400">{t('swarm.fwOffline')}</p>}
+    </div>
   )
 }
 
-/** Screen 5 (spec 8.2): every hornet, sorted by trouble, with replace and remove. */
+const readingIcons: Record<string, LucideIcon> = {
+  temperature: Thermometer,
+  temperature_2: Thermometer,
+  temperature_ntc: Thermometer,
+  humidity: Droplets,
+  pressure: Gauge,
+  battery_voltage: BatteryMedium,
+  cpu_temperature: Cpu,
+  disk_used_pct: HardDrive,
+}
+
+/** A reading older than this is shown dimmed: the hornet has not confirmed it lately. */
+const staleAfterMs = 3 * 3600_000
+
+/** The hornet's main readings as large numbers; the label and age are in the tooltip. */
+function Readings({ device, latest }: { device: DeviceDto; latest: LatestValueDto[] }) {
+  const readings = mainReadings(device, latest)
+  const ranges = useRanges().data
+  if (readings.length === 0) return null
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      {readings.map((v) => {
+        const Icon = readingIcons[v.metric]
+        const stale = device.status !== 'online' || Date.now() - new Date(v.ts).getTime() > staleAfterMs
+        return (
+          <span key={v.metric} title={`${metricLabel(v.metric)} · ${formatAgo(v.ts)}`}
+            className={cn('flex items-center gap-1', stale && 'opacity-50')}>
+            {Icon && <Icon className="size-4 text-neutral-500" />}
+            <span className={cn('text-xl font-semibold tabular-nums', ranges?.has(rangeKey(device.deviceId, v.metric))
+              ? rangeClass(rangeState(v.value, ranges.get(rangeKey(device.deviceId, v.metric))))
+              : v.metric.startsWith('temperature') && v.value < 0 && 'text-sky-300')}>
+              {formatValue(v.metric, v.value)}
+            </span>
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+/** Whether the hornet is on line, by one sign and its colour before the name; the word is in the tooltip. */
+function StatusIcon({ device }: { device: DeviceDto }) {
+  const sleeping = asleep(device)
+  const label = sleeping ? t('swarm.sleeping') : statusLabel(device.status)
+  const Icon = sleeping ? Moon : device.status === 'online' ? Wifi : WifiOff
+  const tone = sleeping ? 'text-sky-300' : device.status === 'online' ? 'text-emerald-400'
+    : device.status === 'disabled' || device.status === 'pending' ? 'text-neutral-500' : 'text-red-400'
+  return <span title={label} aria-label={label} role="img" className={cn('shrink-0', tone)}><Icon className="size-4" /></span>
+}
+
+/** "?" by the sleep controls: a tap opens what sleep, never sleeping, deep and light sleep mean (phones have no hover). */
+function SleepHelp() {
+  const [open, setOpen] = useState(false)
+  return (
+    <span className="relative">
+      <button type="button" aria-label={t('swarm.sleepHelpLabel')} aria-expanded={open} onClick={() => setOpen(!open)}
+        className={cn('inline-flex align-middle', open ? 'text-amber-400' : 'text-neutral-500 hover:text-neutral-300')}>
+        <CircleHelp className="size-3.5" />
+      </button>
+      {open && (
+        <span role="tooltip" className="fixed inset-x-4 top-24 z-50 block whitespace-pre-line rounded-lg border border-neutral-700 bg-neutral-900 p-3 text-xs text-neutral-300 shadow-xl sm:absolute sm:inset-x-auto sm:left-0 sm:top-6 sm:z-20 sm:w-96"
+          onClick={() => setOpen(false)}>
+          {t('swarm.sleepHelp')}
+        </span>
+      )}
+    </span>
+  )
+}
+
+/** One-press controls of what the hornet drives: a relay toggles (the bulb is lit while it is on), a camera takes a photo. */
+function QuickControls({ device }: { device: DeviceDto }) {
+  const qc = useQueryClient()
+  const send = useSendCommand(device.deviceId)
+  const takeSnapshot = useSnapshot(device.deviceId)
+  const navigate = useNavigate()
+  const { relays, snapshot, drive } = quickControls(device)
+  if (relays.length === 0 && !snapshot && !drive) return null
+
+  async function toggle(channel: string, on: boolean | null) {
+    await send('relay', { channel, set: on ? 'off' : 'on' })
+    // The new state comes back as the hornet's retained state; read it once it had time to arrive.
+    for (const ms of [1500, 5000]) setTimeout(() => void qc.invalidateQueries({ queryKey: keys.devices }), ms)
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      {relays.map(({ channel, on }) => {
+        const Icon = channel === 'heater' ? Flame : Lightbulb
+        const title = t(on ? 'swarm.relayOnTitle' : on === false ? 'swarm.relayOffTitle' : 'swarm.relayUnknownTitle').replace('{channel}', channel)
+        return (
+          <Button key={channel} variant="outline" size="icon" title={title} aria-label={title} aria-pressed={on ?? undefined}
+            className={on ? 'border-amber-400/60 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25' : 'text-neutral-400'}
+            onClick={() => void toggle(channel, on)}>
+            <Icon className={on ? 'fill-amber-300/40' : undefined} />
+          </Button>
+        )
+      })}
+      {snapshot && (
+        <Button variant="outline" size="icon" title={t('swarm.snapshot')} aria-label={t('swarm.snapshot')} onClick={() => void takeSnapshot()}>
+          <Camera />
+        </Button>
+      )}
+      {drive && (
+        <Button variant="outline" size="icon" title={t('car.drive')} aria-label={t('car.drive')} onClick={() => void navigate(driveLink(device.deviceId))}>
+          <Car />
+        </Button>
+      )}
+    </div>
+  )
+}
+
+/** Screen 5 (spec 8.2): every hornet, grouped by zone or kind (hives first), with its readings and controls at hand. */
 export function SwarmPage() {
   const qc = useQueryClient()
-  const devices = useDevices()
+  const devices = useDevices(true)
   const me = useMe()
+  // On the city node the hornets made here are marked: the others are copies of home's.
+  const cluster = useQuery({ queryKey: ['cluster'], queryFn: () => call(api.GET('/api/cluster')), refetchInterval: 60_000, retry: false })
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
-  const [pinsOpen, setPinsOpen] = useState<string | null>(null)
+  const [fwOpen, setFwOpen] = useState<string | null>(null)
   const firmware = useQuery({ queryKey: ['firmware'], queryFn: () => call(api.GET('/api/firmware')), enabled: isAdmin })
-  const [replaceCode, setReplaceCode] = useState<{ deviceId: string; code: string; expiresAt: string } | null>(null)
-  const list = useMemo(
-    () => [...(devices.data ?? [])].sort((a, b) => badness(a) - badness(b) || a.deviceId.localeCompare(b.deviceId)),
-    [devices.data],
+  const rollout = useOtaRollout(isAdmin)
+  const rolloutActive = ['running', 'stopping'].includes(rollout.data?.rollout?.state ?? '')
+  const [rolloutOpen, setRolloutOpen] = useState(false)
+  // A rollout seen running keeps the panel open after it ends, so its result stays on screen.
+  const [rolloutSeen, setRolloutSeen] = useState(false)
+  if (rolloutActive && !rolloutSeen) {
+    setRolloutSeen(true)
+    setRolloutOpen(true)
+  }
+  const navigate = useNavigate()
+  // Removed hornets are hidden unless asked for; remembered between visits.
+  const [showDeceased, setShowDeceased] = useState(() => {
+    try { return localStorage.getItem('swarm.showDeceased') === '1' } catch { return false }
+  })
+  function toggleDeceased(on: boolean) {
+    setShowDeceased(on)
+    try { localStorage.setItem('swarm.showDeceased', on ? '1' : '0') } catch { /* private window: just not remembered */ }
+  }
+  // How the list is grouped is remembered between visits too.
+  const [grouping, setGrouping] = useState<Grouping>(() => {
+    try {
+      const saved = localStorage.getItem('swarm.grouping')
+      return groupings.find((g) => g === saved) ?? 'zone'
+    } catch { return 'zone' }
+  })
+  function changeGrouping(g: Grouping) {
+    setGrouping(g)
+    try { localStorage.setItem('swarm.grouping', g) } catch { /* private window: just not remembered */ }
+  }
+  const zones = useZones()
+  const latest = useLatestTelemetry()
+  const deceasedCount = (devices.data ?? []).filter((d) => d.status === 'disabled').length
+  const outdated = useMemo(() => candidates(devices.data ?? [], firmware.data ?? []).length, [devices.data, firmware.data])
+  const list = useMemo(() => (devices.data ?? []).filter((d) => showDeceased || d.status !== 'disabled'), [devices.data, showDeceased])
+  // An NVR's cameras are listed under it, not in the groups.
+  const { top, children } = useMemo(() => splitChildren(list), [list])
+  const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleFolded = (id: string) => setFolded((f) => {
+    const next = new Set(f)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+  const groups = useMemo(
+    () => groupDevices(top, zones.data ?? [], grouping, {
+      hives: t('swarm.groupHives'),
+      noZone: t('swarm.noZone'),
+      type: (type) => t(`deviceTypes.${type}`, type),
+    }),
+    [top, zones.data, grouping],
   )
 
-  async function replace(deviceId: string) {
-    const code = await call(api.POST('/api/devices/{deviceId}/replace', { params: { path: { deviceId } } }))
-    setReplaceCode({ deviceId, code: code.code, expiresAt: code.expiresAt })
+  /** The wizard opens on the flashing step: the hornet's type and name are known, and the code is issued there. */
+  function replace(deviceId: string, revive = false) {
+    if ((devices.data ?? []).find((d) => d.deviceId === deviceId)?.driver === 'tasmota') {
+      if (window.confirm(t('swarm.replaceTasmotaConfirm').replace('{id}', deviceId))) navigate(`/swarm/add?tasmota=${encodeURIComponent(deviceId)}`)
+      return
+    }
+    if ((devices.data ?? []).find((d) => d.deviceId === deviceId)?.driver === 'http') {
+      // a remote monitor has no enrollment: the same setup as for a new one, for the monitor that exists
+      navigate(`/swarm/add?remote=${encodeURIComponent(deviceId)}`)
+      return
+    }
+    if (!window.confirm(t(revive ? 'swarm.reviveConfirm' : 'swarm.replaceConfirm').replace('{id}', deviceId))) return
+    navigate(`/swarm/add?replace=${encodeURIComponent(deviceId)}`)
   }
 
   /** A build for this hornet's role and board that is not the version it runs now (null: nothing to offer). */
   function newerBuild(d: DeviceDto) {
-    return (firmware.data ?? []).find((b) => b.role === d.type && b.board === d.hw && b.version && b.version !== d.fw) ?? null
-  }
-
-  async function update(d: DeviceDto) {
-    const build = newerBuild(d)
-    if (!build) return
-    const risky = (d.hw ?? '').startsWith('esp-01')
-    const text = t('swarm.updateConfirm').replace('{name}', d.name).replace('{from}', d.fw ?? '?').replace('{to}', build.version ?? '?')
-    if (!window.confirm(risky ? `${text}
-
-${t('swarm.updateRisk')}` : text)) return
-    try {
-      await call(api.POST('/api/devices/{deviceId}/ota', { params: { path: { deviceId: d.deviceId } }, body: { build: build.build } }))
-      toast.success(t('swarm.updateStarted'))
-    } catch {
-      toast.error(t('swarm.updateRefused'))
-    }
+    return newerBuildFor(d, firmware.data ?? [])
   }
 
   async function setSleep(d: DeviceDto, body: { sleepS?: number; sleepMode?: 'deep' | 'light' }) {
@@ -266,105 +585,167 @@ ${t('swarm.updateRisk')}` : text)) return
     await qc.invalidateQueries({ queryKey: keys.devices })
   }
 
-  async function remove(d: DeviceDto) {
-    if (!window.confirm(t('swarm.removeConfirm').replace('{name}', d.name))) return
-    await call(api.DELETE('/api/devices/{deviceId}', { params: { path: { deviceId: d.deviceId } } }))
-    toast.success(t('swarm.removed'))
-    await qc.invalidateQueries({ queryKey: keys.devices })
-  }
-
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">{t('swarm.title')}</h1>
         {isAdmin && (
-          <Link to="/swarm/add">
-            <Button tabIndex={-1}><Plus />{t('swarm.add')}</Button>
-          </Link>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {(outdated > 0 || rolloutActive) && (
+              <Button variant="outline" className={rolloutActive ? 'text-amber-400' : undefined} onClick={() => setRolloutOpen(!rolloutOpen)}>
+                <CloudDownload />{rolloutActive ? t('swarm.rollout.openRunning') : t('swarm.rollout.open').replace('{n}', String(outdated))}
+              </Button>
+            )}
+            <Link to="/console">
+              <Button variant="outline" tabIndex={-1}><Terminal />{t('swarm.console')}</Button>
+            </Link>
+            <Link to="/swarm/add">
+              <Button tabIndex={-1}><Plus />{t('swarm.add')}</Button>
+            </Link>
+          </div>
         )}
       </div>
 
-      {replaceCode && (
-        <Card className="border-amber-900/60">
-          <CardContent className="space-y-2">
-            <p className="text-sm">{t('swarm.replaceHint').replace('{id}', replaceCode.deviceId)}</p>
-            <CodeBox code={replaceCode.code} expiresAt={replaceCode.expiresAt} />
-          </CardContent>
-        </Card>
+      {isAdmin && (rolloutOpen || rolloutActive) && (
+        <OtaRolloutPanel devices={devices.data ?? []} builds={firmware.data ?? []} rollout={rollout.data?.rollout ?? null} onClose={() => setRolloutOpen(false)} />
       )}
+
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex items-center gap-1 rounded-lg bg-neutral-900 p-1 text-xs" role="radiogroup" aria-label={t('swarm.groupBy')}>
+          {groupings.map((g) => (
+            <button key={g} type="button" role="radio" aria-checked={grouping === g} onClick={() => changeGrouping(g)}
+              className={cn('rounded-md px-3 py-1.5', grouping === g ? 'bg-neutral-700 text-neutral-100' : 'text-neutral-400 hover:text-neutral-200')}>
+              {t(`swarm.group.${g}`)}
+            </button>
+          ))}
+        </div>
+        {deceasedCount > 0 && (
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400" title={t('swarm.deceasedHint')}>
+            <input type="checkbox" className="size-4 accent-amber-400" checked={showDeceased} onChange={(e) => toggleDeceased(e.target.checked)} />
+            {t('swarm.showDeceased').replace('{n}', String(deceasedCount))}
+          </label>
+        )}
+      </div>
 
       {devices.isLoading && <Skeleton className="h-40" />}
       {!devices.isLoading && list.length === 0 && <Empty>{t('overview.noDevices')}</Empty>}
-      <div className="space-y-2">
-        {list.map((d) => (
+      <div className="space-y-4">
+        {groups.map((group) => (
+          <section key={group.key} className="space-y-2">
+            {group.title && <h2 className="px-1 text-xs font-medium uppercase tracking-wide text-neutral-500">{group.title}</h2>}
+            {group.devices.map((d) => (
           <Card key={d.deviceId} className={d.status === 'disabled' ? 'opacity-50' : undefined}>
-            <CardContent className="flex items-center justify-between gap-3 py-3">
-              <div className="min-w-0">
-                <DeviceName device={d} editable={isAdmin && d.status !== 'disabled'} />
-                <p className="truncate text-xs text-neutral-500">
-                  {d.deviceId} · {d.type} · {d.fw ?? '—'} · {formatAgo(d.lastSeenAt)}
-                </p>
-                {canControl && d.type === 'meteo' && d.status !== 'disabled' && (
-                  <label className="mt-1 flex items-center gap-2 text-xs text-neutral-400" title={t('swarm.sleepHint')}>
-                    <Moon className="size-3" />
-                    {t('swarm.sleep')}
-                    <Select
-                      value={d.sleepS ?? 0}
-                      onChange={(e) => void setSleep(d, { sleepS: Number(e.target.value) })}
-                      className="h-7 text-xs"
-                    >
-                      {sleepChoices.map((s) => (
-                        <option key={s} value={s}>{s === 0 ? t('swarm.sleepNever') : t('swarm.sleepMinutes').replace('{n}', String(s / 60))}</option>
-                      ))}
-                    </Select>
-                    {!!d.sleepS && (
+            <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3">
+              <div className="flex min-w-0 flex-1 basis-48 items-start gap-2.5">
+                <div className="pt-0.5"><StatusIcon device={d} /></div>
+                <div className="min-w-0 flex-1">
+                  <Link to={`/swarm/${encodeURIComponent(d.deviceId)}`} className="block truncate font-medium hover:text-amber-400">{d.name}</Link>
+                  <p className="truncate text-xs text-neutral-500">
+                    {d.deviceId} · {d.type === 'nvr' ? t('deviceTypes.nvr') : d.type}{d.driver === 'tasmota' ? ' · Tasmota' : d.driver === 'zigbee' ? ' · Zigbee' : ''}{d.type === 'nvr' && d.ip ? ` · ${d.ip}` : ''} · {formatAgo(d.lastSeenAt)}{d.local && cluster.data?.enabled && cluster.data.node === 'city' ? ` · ${t('swarm.localHere')}` : ''}
+                  </p>
+                  {d.type === 'nvr' && loginTrouble(d) && <p className="text-xs text-red-400">{t(`ipcam.login.short.${loginTrouble(d)}`)}</p>}
+                  {canControl && d.type === 'meteo' && d.status !== 'disabled' && (
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-neutral-400">
+                      <span className="flex items-center gap-2 whitespace-nowrap"><Moon className="size-3" />{t('swarm.sleep')}</span>
                       <Select
-                        value={d.sleepMode}
-                        onChange={(e) => void setSleep(d, { sleepMode: e.target.value as 'deep' | 'light' })}
-                        className="h-7 text-xs"
-                        aria-label={t('swarm.sleepMode')}
+                        value={d.sleepS ?? 0}
+                        onChange={(e) => void setSleep(d, { sleepS: Number(e.target.value) })}
+                        className="h-7 w-auto text-xs"
+                        aria-label={t('swarm.sleep')}
                       >
-                        <option value="deep">{t('swarm.sleepDeep')}</option>
-                        <option value="light">{t('swarm.sleepLight')}</option>
+                        {sleepChoices.map((s) => (
+                          <option key={s} value={s}>{s === 0 ? t('swarm.sleepNever') : t('swarm.sleepMinutes').replace('{n}', String(s / 60))}</option>
+                        ))}
                       </Select>
-                    )}
-                  </label>
-                )}
+                      {!!d.sleepS && (
+                        <Select
+                          value={d.sleepMode}
+                          onChange={(e) => void setSleep(d, { sleepMode: e.target.value as 'deep' | 'light' })}
+                          className="h-7 w-auto text-xs"
+                          aria-label={t('swarm.sleepMode')}
+                        >
+                          <option value="deep">{t('swarm.sleepDeep')}</option>
+                          <option value="light">{t('swarm.sleepLight')}</option>
+                        </Select>
+                      )}
+                      <SleepHelp />
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {d.rssi != null && d.status === 'online' && (
-                  <span className={`text-xs tabular-nums ${d.rssi < -80 ? 'text-amber-400' : 'text-neutral-500'}`}>{d.rssi} dBm</span>
+              {d.status !== 'disabled' && <Readings device={d} latest={latest.data ?? []} />}
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                {canControl && d.status === 'online' && !asleep(d) && <QuickControls device={d} />}
+                {d.rssi != null && d.status === 'online' && d.rssi < -80 && (
+                  <span className="text-xs tabular-nums text-amber-400" title={t('swarm.weakSignal')}>{d.rssi} dBm</span>
                 )}
-                {asleep(d) ? (
-                  <Badge tone="neutral"><Moon className="size-3" />{t('swarm.sleeping')}</Badge>
-                ) : (
-                  <Badge tone={d.status === 'online' ? 'ok' : d.status === 'disabled' || d.status === 'pending' ? 'neutral' : 'alarm'}>
-                    {d.status === 'online' ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
-                    {statusLabel(d.status)}
-                  </Badge>
+                {/* The chip only when there is a newer build for it; the version it runs is on its page. */}
+                {isAdmin && d.status !== 'disabled' && d.driver === 'hornet' && d.type !== 'hive' && newerBuild(d) && (
+                  <Button variant="ghost" size="icon" title={t('swarm.updateAvailable')} aria-label={t('swarm.updateAvailable')}
+                    className="text-amber-400 hover:text-amber-300" onClick={() => setFwOpen(fwOpen === d.deviceId ? null : d.deviceId)}><Cpu /></Button>
                 )}
-                {isAdmin && d.status === 'online' && newerBuild(d) && (
-                  <Button variant="ghost" size="icon" title={t('swarm.update')} className="text-amber-400" onClick={() => void update(d)}><ArrowUpCircle /></Button>
+                {isAdmin && d.status === 'disabled' && replaceable(d) && (
+                  <Button variant="outline" size="sm" title={t('swarm.reviveTitle')} onClick={() => replace(d.deviceId, true)}><ArrowRightLeft />{t('swarm.revive')}</Button>
                 )}
-                {d.status !== 'disabled' && (
-                  <Button variant="ghost" size="icon" title={t('swarm.pins')} onClick={() => setPinsOpen(pinsOpen === d.deviceId ? null : d.deviceId)}><Pin /></Button>
-                )}
-                {isAdmin && d.status !== 'disabled' && (
-                  <>
-                    <Button variant="ghost" size="icon" title={t('swarm.replace')} onClick={() => void replace(d.deviceId)}><RefreshCw /></Button>
-                    <Button variant="ghost" size="icon" title={t('swarm.remove')} onClick={() => void remove(d)}><Trash2 /></Button>
-                  </>
+                {isAdmin && d.status !== 'disabled' && d.type !== 'hive' && replaceable(d) && (
+                  <Button variant="ghost" size="icon" title={t('swarm.replaceTitle')} onClick={() => replace(d.deviceId)}><ArrowRightLeft /></Button>
                 )}
               </div>
             </CardContent>
-            {pinsOpen === d.deviceId && (
+            {fwOpen === d.deviceId && (
               <CardContent className="border-t border-neutral-800 pt-3">
-                <PinsPanel deviceId={d.deviceId} editable={isAdmin} board={d.hw} type={d.type} />
+                <FirmwarePanel device={d} builds={firmware.data ?? []} onDone={() => setFwOpen(null)} />
               </CardContent>
             )}
+            {children.has(d.deviceId) && (
+              <ChildDevices
+                devices={children.get(d.deviceId)!}
+                open={!folded.has(d.deviceId)}
+                onToggle={() => toggleFolded(d.deviceId)}
+                canControl={canControl}
+              />
+            )}
           </Card>
+            ))}
+          </section>
         ))}
       </div>
     </div>
+  )
+}
+
+/** Only boards can be replaced (a new board takes over the hornet): not Zigbee devices or cameras behind an NVR. */
+const replaceable = (d: DeviceDto) => d.driver === 'hornet' || d.driver === 'tasmota' || d.driver === 'http'
+
+/** An NVR whose login is locked or refused says so on its row (its device state "login", contracts/ipcam.md). */
+function loginTrouble(d: DeviceDto): string | null {
+  const login = (d.state as { login?: unknown } | null)?.login
+  return typeof login === 'string' && login !== 'ok' ? login : null
+}
+
+/** The devices that belong to a parent (an NVR's cameras), under its row; folded on a tap, open by default. */
+function ChildDevices({ devices, open, onToggle, canControl }: { devices: DeviceDto[]; open: boolean; onToggle: () => void; canControl: boolean }) {
+  return (
+    <CardContent className="border-t border-neutral-800 py-2">
+      <button type="button" onClick={onToggle} aria-expanded={open}
+        className="flex w-full items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200">
+        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        {t('swarm.children').replace('{n}', String(devices.length))}
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-2 border-l border-neutral-800 pl-3">
+          {devices.map((c) => (
+            <li key={c.deviceId} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1', c.status === 'disabled' && 'opacity-50')}>
+              <StatusIcon device={c} />
+              <div className="min-w-0 flex-1">
+                <Link to={`/swarm/${encodeURIComponent(c.deviceId)}`} className="block truncate text-sm hover:text-amber-400">{c.name}</Link>
+                <p className="truncate text-xs text-neutral-500">{c.deviceId}{c.zone ? ` · ${c.zone}` : ''} · {formatAgo(c.lastSeenAt)}</p>
+              </div>
+              {canControl && c.status === 'online' && <QuickControls device={c} />}
+            </li>
+          ))}
+        </ul>
+      )}
+    </CardContent>
   )
 }

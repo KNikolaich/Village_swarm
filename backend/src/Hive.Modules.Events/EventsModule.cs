@@ -13,15 +13,18 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Hive.Modules.Events;
 
-public sealed record EventPhotoDto(string Id, string Url, string ThumbUrl);
+/// <summary>Ts is when the frame was taken; a camera that could not take a fresh one sends an older frame with its own time.</summary>
+public sealed record EventPhotoDto(string Id, string Url, string ThumbUrl, DateTimeOffset Ts);
 
 public sealed record EventDto(
     string Id, string DeviceId, string? DeviceName, string? Zone, string Type, string Severity,
     DateTimeOffset Ts, DateTimeOffset ReceivedAt, bool? Armed,
-    string? AcknowledgedBy, DateTimeOffset? AcknowledgedAt, JsonElement Payload, IReadOnlyList<EventPhotoDto> Photos);
+    string? AcknowledgedBy, DateTimeOffset? AcknowledgedAt, JsonElement Payload, IReadOnlyList<EventPhotoDto> Photos,
+    string? PhotoProblem = null);
 
 public sealed record EventFilter(
-    string? Type, string? Device, int? Zone, string? Severity, DateTimeOffset? From, DateTimeOffset? To, string? Cursor, int? Limit);
+    string? Type, string? Device, int? Zone, string? Severity, DateTimeOffset? From, DateTimeOffset? To, string? Cursor, int? Limit,
+    bool? Unacknowledged = null);
 
 /// <summary>Event feed and acknowledgement (spec 6.5, 6.7).</summary>
 public sealed record AckAllRequest(string? Device = null, DateTimeOffset? From = null, DateTimeOffset? To = null);
@@ -36,12 +39,16 @@ public sealed class EventQueries(HiveDbContext db, TimeProvider time)
         var query = db.Events.AsNoTracking();
         if (!string.IsNullOrEmpty(f.Type))
             query = query.Where(e => e.Type == f.Type);
+        else // timelapse frames go to the photos, not to the feed (a camera every 5 minutes would bury everything else)
+            query = query.Where(e => !db.Media.Any(m => m.EventId == e.Id && m.Kind == MediaKind.Timelapse));
         if (!string.IsNullOrEmpty(f.Device))
             query = query.Where(e => e.DeviceId == f.Device);
         if (f.Zone is { } zone)
             query = query.Where(e => db.Devices.Any(d => d.DeviceId == e.DeviceId && d.ZoneId == zone));
         if (Enum.TryParse<EventSeverity>(f.Severity, ignoreCase: true, out var minSeverity))
             query = query.Where(e => e.Severity >= minSeverity);
+        if (f.Unacknowledged == true)
+            query = query.Where(e => e.AcknowledgedAt == null);
         if (f.From?.ToUniversalTime() is { } from)
             query = query.Where(e => e.Ts >= from);
         if (f.To?.ToUniversalTime() is { } to)
@@ -90,23 +97,62 @@ public sealed class EventQueries(HiveDbContext db, TimeProvider time)
         var deviceIds = events.Select(e => e.DeviceId).Distinct().ToList();
         var photos = (await db.Media.AsNoTracking()
                 .Where(m => m.EventId != null && ids.Contains(m.EventId))
-                .Select(m => new { m.EventId, m.Id })
+                .Select(m => new { m.EventId, m.Id, m.Ts })
                 .ToListAsync(ct))
             .GroupBy(m => m.EventId!)
             .ToDictionary(g => g.Key, g => g.OrderBy(m => m.Id, StringComparer.Ordinal)
-                .Select(m => new EventPhotoDto(m.Id, $"/api/media/{m.Id}", $"/api/media/{m.Id}/thumb")).ToList());
+                .Select(m => new EventPhotoDto(m.Id, $"/api/media/{m.Id}", $"/api/media/{m.Id}/thumb", m.Ts)).ToList());
         var devices = await db.Devices.AsNoTracking()
             .Where(d => deviceIds.Contains(d.DeviceId))
             .Select(d => new { d.DeviceId, d.Name, Zone = d.Zone == null ? null : d.Zone.Name })
             .ToDictionaryAsync(d => d.DeviceId, ct);
+
+        var noFrame = await NoFrameAsync(events.Where(e => !photos.ContainsKey(e.Id)).ToList(), ct);
 
         return events.Select(e =>
         {
             devices.TryGetValue(e.DeviceId, out var d);
             return new EventDto(e.Id, e.DeviceId, d?.Name, d?.Zone, e.Type, e.Severity.ToString().ToLowerInvariant(),
                 e.Ts, e.ReceivedAt, e.Armed, e.AcknowledgedBy, e.AcknowledgedAt, e.Payload.RootElement.Clone(),
-                photos.GetValueOrDefault(e.Id) ?? []);
+                photos.GetValueOrDefault(e.Id) ?? [], noFrame.Contains(e.Id) ? NoFramePhotoProblem : null);
         }).ToList();
+    }
+
+    /// <summary>PhotoProblem of an event whose camera reported it could take no frame: a power problem far more often than Wi-Fi.</summary>
+    public const string NoFramePhotoProblem = "no_frame";
+
+    /// <summary>Message a guard camera logs when the sensor gives no frame (firmware guard_cam.cpp).</summary>
+    public const string CameraFrameFailedLog = "camera frame failed";
+
+    /// <summary>
+    /// Events without photos whose camera, around the event, logged that it got no frame or came back from a brownout
+    /// reset: the photo was never taken, so the card should not blame the upload.
+    /// </summary>
+    private async Task<HashSet<string>> NoFrameAsync(List<DeviceEvent> events, CancellationToken ct)
+    {
+        var result = new HashSet<string>();
+        if (events.Count == 0)
+            return result;
+        var before = TimeSpan.FromSeconds(10);
+        var after = TimeSpan.FromMinutes(3);
+        var deviceIds = events.Select(e => e.DeviceId).Distinct().ToList();
+        var from = events.Min(e => e.Ts) - before;
+        var to = events.Max(e => e.Ts) + after;
+        var marks = await db.DeviceLogs.AsNoTracking()
+            .Where(l => deviceIds.Contains(l.DeviceId) && l.Ts >= from && l.Ts <= to && l.Msg == CameraFrameFailedLog)
+            .Select(l => new { l.DeviceId, l.Ts })
+            .ToListAsync(ct);
+        // Health repeats the reset reason of its boot for the whole uptime: the reboot itself is what counts.
+        marks.AddRange((await db.DeviceHealth.AsNoTracking()
+                .Where(h => deviceIds.Contains(h.DeviceId) && h.Ts >= from && h.ResetReason == "brownout")
+                .Select(h => new { h.DeviceId, h.Ts, h.UptimeS })
+                .ToListAsync(ct))
+            .Select(h => new { h.DeviceId, Ts = h.Ts - TimeSpan.FromSeconds(h.UptimeS) })
+            .Where(h => h.Ts >= from && h.Ts <= to));
+        foreach (var e in events)
+            if (marks.Any(m => m.DeviceId == e.DeviceId && m.Ts >= e.Ts - before && m.Ts <= e.Ts + after))
+                result.Add(e.Id);
+        return result;
     }
 }
 
@@ -121,8 +167,8 @@ public static class EventsModule
     {
         var events = app.MapGroup("/api/events").WithTags("events");
         events.MapGet("", (string? type, string? device, int? zone, string? severity, DateTimeOffset? from, DateTimeOffset? to,
-                string? cursor, int? limit, EventQueries q, CancellationToken ct) =>
-            q.ListAsync(new EventFilter(type, device, zone, severity, from, to, cursor, limit), ct));
+                string? cursor, int? limit, bool? unacknowledged, EventQueries q, CancellationToken ct) =>
+            q.ListAsync(new EventFilter(type, device, zone, severity, from, to, cursor, limit, unacknowledged), ct));
         events.MapGet("/{id}", async Task<Results<Ok<EventDto>, NotFound>> (string id, EventQueries q, CancellationToken ct) =>
             await q.GetAsync(id, ct) is { } e ? TypedResults.Ok(e) : TypedResults.NotFound());
         events.MapPost("/{id}/ack", async Task<Results<Ok<EventDto>, NotFound>> (string id, ClaimsPrincipal user, EventQueries q, CancellationToken ct) =>

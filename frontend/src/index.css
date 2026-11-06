@@ -10,3 +10,28 @@
 body {
   @apply bg-neutral-950 text-neutral-100 antialiased;
 }
+
+/* Notes: the Markdown editor (MDXEditor) on the dark theme, and the typography of the note text. */
+.note-editor .dark-theme {
+  --baseBase: var(--color-neutral-900);
+  --basePageBg: transparent;
+}
+.note-editor [role='toolbar'] {
+  @apply sticky top-0 z-10 flex-wrap rounded-t-xl rounded-b-none border-b border-neutral-800 bg-neutral-900;
+}
+.note-content {
+  @apply min-h-[50vh] px-4 py-3 text-[15px] leading-relaxed text-neutral-200 outline-none;
+}
+.note-content h1 { @apply mt-4 mb-2 text-2xl font-semibold text-neutral-50; }
+.note-content h2 { @apply mt-4 mb-2 text-xl font-semibold text-neutral-50; }
+.note-content h3 { @apply mt-3 mb-1 text-lg font-semibold text-neutral-100; }
+.note-content p { @apply my-2; }
+.note-content ul { @apply my-2 list-disc pl-6; }
+.note-content ol { @apply my-2 list-decimal pl-6; }
+.note-content blockquote { @apply my-2 border-l-2 border-amber-400/60 pl-3 text-neutral-400; }
+.note-content a { @apply text-amber-300 underline underline-offset-2; }
+.note-content code { @apply rounded bg-neutral-800 px-1 py-0.5 text-[0.9em]; }
+.note-content hr { @apply my-4 border-neutral-700; }
+.note-content img { @apply my-2 max-h-[60vh] max-w-full rounded-lg; }
+.note-content table { @apply my-2 border-collapse text-sm; }
+.note-content th, .note-content td { @apply border border-neutral-700 px-2 py-1; }

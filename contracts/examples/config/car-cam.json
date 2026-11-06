@@ -1,0 +1,8 @@
+{
+  "v": 1, "rev": 3, "name": "Машинка",
+  "health_interval_s": 60,
+  "camera": { "frame": "VGA", "quality": 14 },
+  "hw": { "motor_pins": [14, 15, 13, 12], "motor_pwm": true, "relay_pin": 4, "relay_active_low": false },
+  "relay": { "channel": "light", "max_on_s": 600 },
+  "car": { "invert_left": false, "invert_right": true, "swap_sides": false, "max_run_s": 60, "max_speed": 80, "min_speed": 40, "stream_key": "k3J9q2mX7vPz4Lw8" }
+}

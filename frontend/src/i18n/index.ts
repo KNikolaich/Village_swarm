@@ -29,4 +29,8 @@ export function t(key: string, fallback?: string): string {
 export const eventTypeLabel = (type: string) => t(`eventTypes.${type}`, type)
 export const severityLabel = (severity: string) => t(`severity.${severity}`, severity)
 export const statusLabel = (status: string) => t(`status.${status}`, status)
-export const metricLabel = (metric: string) => t(`metrics.${metric}`, metric)
+/** temperature_3 of a third probe reads "Температура 3" without a key of its own. */
+export const metricLabel = (metric: string) => {
+  const probe = /^temperature_(\d+)$/.exec(metric)
+  return t(`metrics.${metric}`, probe ? `${t('metrics.temperature')} ${probe[1]}` : metric)
+}

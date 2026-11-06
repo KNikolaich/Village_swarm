@@ -20,8 +20,21 @@ public sealed class LiveTests(HiveFixture hive)
         var client = hive.App.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = false });
         using var response = await client.PostAsJsonAsync("/api/auth/login", new { login = "admin", password = HiveFixture.AdminPassword });
         response.EnsureSuccessStatusCode();
-        return response.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("hive_session=", StringComparison.Ordinal)).Split(';')[0];
+        if (Cookie(response, "hive_session") is { } session)
+            return session;
+
+        // Admin has Telegram (TelegramTests): this new device types the code, carrying the hive_2fa cookie by hand.
+        using var second = new HttpRequestMessage(HttpMethod.Post, "/api/auth/totp") { Content = JsonContent.Create(new { code = hive.LastLoginCode() }) };
+        second.Headers.Add("Cookie", Cookie(response, "hive_2fa"));
+        using var confirmed = await client.SendAsync(second);
+        confirmed.EnsureSuccessStatusCode();
+        return Cookie(confirmed, "hive_session")!;
     }
+
+    private static string? Cookie(HttpResponseMessage response, string name) =>
+        response.Headers.TryGetValues("Set-Cookie", out var cookies)
+            ? cookies.FirstOrDefault(c => c.StartsWith(name + "=", StringComparison.Ordinal))?.Split(';')[0]
+            : null;
 
     private HubConnection Connect(string? cookie) =>
         new HubConnectionBuilder()

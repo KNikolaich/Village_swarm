@@ -11,6 +11,7 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     : IdentityDbContext<HiveUser, IdentityRole<int>, int>(options)
 {
     public DbSet<Zone> Zones => Set<Zone>();
+    public DbSet<DashboardLayout> DashboardLayouts => Set<DashboardLayout>();
     public DbSet<DeviceType> DeviceTypes => Set<DeviceType>();
     public DbSet<Device> Devices => Set<Device>();
     public DbSet<TelemetryPoint> Telemetry => Set<TelemetryPoint>();
@@ -25,9 +26,20 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
     public DbSet<TgLinkCode> TgLinkCodes => Set<TgLinkCode>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<EnrollmentCode> EnrollmentCodes => Set<EnrollmentCode>();
+    public DbSet<DisplayFont> DisplayFonts => Set<DisplayFont>();
+    public DbSet<DisplayImage> DisplayImages => Set<DisplayImage>();
     public DbSet<WeatherSnapshot> WeatherSnapshots => Set<WeatherSnapshot>();
+    public DbSet<BackupRun> BackupRuns => Set<BackupRun>();
+    public DbSet<TelemetryHourly> TelemetryHourly => Set<TelemetryHourly>();
     public DbSet<Rule> Rules => Set<Rule>();
     public DbSet<RuleRun> RuleRuns => Set<RuleRun>();
+    public DbSet<Note> Notes => Set<Note>();
+    public DbSet<NoteAttachment> NoteAttachments => Set<NoteAttachment>();
+    public DbSet<Nvr> Nvrs => Set<Nvr>();
+    public DbSet<NvrChannel> NvrChannels => Set<NvrChannel>();
+    public DbSet<TrustedDevice> TrustedDevices => Set<TrustedDevice>();
+    public DbSet<AuthChallenge> AuthChallenges => Set<AuthChallenge>();
+    public DbSet<LoginThrottle> LoginThrottles => Set<LoginThrottle>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -46,6 +58,33 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
         b.Entity<IdentityUserToken<int>>().ToTable("user_tokens");
         b.Entity<IdentityRoleClaim<int>>().ToTable("role_claims");
         b.Entity<IdentityUserPasskey<int>>().ToTable("user_passkeys");
+
+        b.Entity<TrustedDevice>(e =>
+        {
+            e.ToTable("trusted_devices");
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(128);
+            e.Property(x => x.LastIp).HasMaxLength(64);
+            e.HasIndex(x => new { x.TokenHash, x.UserId }).IsUnique();
+            e.HasOne<HiveUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<AuthChallenge>(e =>
+        {
+            e.ToTable("auth_challenges");
+            e.Property(x => x.Id).HasMaxLength(64);
+            e.Property(x => x.CodeHash).HasMaxLength(64);
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(16);
+            e.HasIndex(x => new { x.UserId, x.Kind });
+            e.HasOne<HiveUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<LoginThrottle>(e =>
+        {
+            e.ToTable("login_throttles");
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Key).HasMaxLength(96);
+        });
 
         b.Entity<Zone>(e =>
         {
@@ -66,7 +105,16 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
                 new DeviceType { Code = "heat", Title = "Обогрев", OfflineAfterS = 180 },
                 new DeviceType { Code = "leak", Title = "Датчик протечки с краном", OfflineAfterS = 180 },
                 new DeviceType { Code = "relay", Title = "Реле (свет, розетка)", OfflineAfterS = 180 },
-                new DeviceType { Code = "plant", Title = "Растения", OfflineAfterS = 600 });
+                new DeviceType { Code = "plant", Title = "Растения", OfflineAfterS = 600 },
+                new DeviceType { Code = "ble", Title = "Мост Bluetooth (кухонный термометр)", OfflineAfterS = 180 },
+                new DeviceType { Code = "irrx", Title = "ИК-приёмник (учит кнопки пульта)", OfflineAfterS = 180 },
+                new DeviceType { Code = "irtx", Title = "ИК-передатчик (управляет прибором)", OfflineAfterS = 180 },
+                new DeviceType { Code = "monitor", Title = "Монитор (экран с показаниями)", OfflineAfterS = 180 },
+                new DeviceType { Code = "sensor", Title = "Датчик (движение, дверь, протечка, температура)", OfflineAfterS = 1800 },
+                new DeviceType { Code = "ipcam", Title = "IP-камера (через видеорегистратор)", OfflineAfterS = 180 },
+                new DeviceType { Code = "nvr", Title = "Видеорегистратор", OfflineAfterS = 180 },
+                new DeviceType { Code = "car", Title = "Машинка с камерой", OfflineAfterS = 180 });
+            // A camera on its own is an ipcam device too: only its settings (nvrs.kind = camera) differ.
         });
 
         b.Entity<Device>(e =>
@@ -82,6 +130,14 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.HasOne<DeviceType>().WithMany().HasForeignKey(x => x.TypeCode).OnDelete(DeleteBehavior.Restrict);
             e.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
             e.Property(x => x.UploadTokenHash).HasMaxLength(64);
+            e.Property(x => x.ScreenTokenHash).HasMaxLength(64);
+            e.HasIndex(x => x.ScreenTokenHash).IsUnique();
+            e.Property(x => x.ScreenReadFrom).HasMaxLength(64);
+            e.Property(x => x.ScreenBackgroundSha).HasMaxLength(16);
+            e.Property(x => x.ScreenSleepSha).HasMaxLength(16);
+            e.Property(x => x.Driver).HasMaxLength(16).HasDefaultValue(Drivers.Hornet);
+            e.Property(x => x.ParentId).HasMaxLength(32);
+            e.HasIndex(x => x.ParentId);
         });
 
         b.Entity<DeviceCommand>(e =>
@@ -95,6 +151,14 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
             e.HasIndex(x => new { x.DeviceId, x.IssuedAt });
             e.HasIndex(x => x.Status);
+        });
+
+        b.Entity<DashboardLayout>(e =>
+        {
+            e.ToTable("dashboard_layouts");
+            e.HasKey(x => x.Screen);
+            e.Property(x => x.Screen).HasMaxLength(16);
+            e.Property(x => x.UpdatedBy).HasMaxLength(64);
         });
 
         b.Entity<Mode>(e =>
@@ -133,12 +197,82 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.HasOne<HiveUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        b.Entity<TelemetryHourly>(e =>
+        {
+            e.ToTable("telemetry_hourly");
+            e.HasKey(x => new { x.DeviceId, x.Metric, x.Hour });
+            e.Property(x => x.DeviceId).HasMaxLength(32);
+            e.Property(x => x.Metric).HasMaxLength(32);
+        });
+
+        b.Entity<BackupRun>(e =>
+        {
+            e.ToTable("backup_runs");
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Detail).HasMaxLength(512);
+            e.HasIndex(x => new { x.Kind, x.StartedAt });
+        });
+
         b.Entity<Rule>(e =>
         {
             e.ToTable("rules");
             e.Property(x => x.Name).HasMaxLength(128);
             e.Property(x => x.LastOutcome).HasMaxLength(16);
             e.Property(x => x.UpdatedBy).HasMaxLength(64);
+        });
+
+        b.Entity<Note>(e =>
+        {
+            e.ToTable("notes");
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Icon).HasMaxLength(16);
+            e.Property(x => x.Color).HasMaxLength(16);
+            e.Property(x => x.CreatedBy).HasMaxLength(64);
+            e.Property(x => x.UpdatedBy).HasMaxLength(64);
+            // Purging the trash removes a branch in one statement.
+            e.HasOne<Note>().WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.ParentId, x.Sort });
+            e.HasIndex(x => x.DeletedAt);
+        });
+
+        b.Entity<NoteAttachment>(e =>
+        {
+            e.ToTable("note_attachments");
+            e.Property(x => x.Id).HasMaxLength(26);
+            e.Property(x => x.FileName).HasMaxLength(255);
+            e.Property(x => x.Mime).HasMaxLength(128);
+            e.Property(x => x.Sha256).HasMaxLength(64);
+            e.Property(x => x.Path).HasMaxLength(256);
+            e.HasOne<Note>().WithMany().HasForeignKey(x => x.NoteId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.NoteId);
+        });
+
+        b.Entity<Nvr>(e =>
+        {
+            e.ToTable("nvrs");
+            e.Property(x => x.Name).HasMaxLength(64);
+            e.Property(x => x.Host).HasMaxLength(255);
+            e.Property(x => x.Username).HasMaxLength(64);
+            e.Property(x => x.PasswordProtected).HasMaxLength(1024);
+            e.Property(x => x.RtspPort).HasDefaultValue(554);
+            e.Property(x => x.Kind).HasMaxLength(8).HasDefaultValue(NvrKinds.Nvr);
+            e.Property(x => x.Vendor).HasMaxLength(8).HasDefaultValue(CameraVendors.Dahua);
+            e.Property(x => x.SnapshotUrl).HasMaxLength(512);
+            e.Property(x => x.RtspMain).HasMaxLength(512);
+            e.Property(x => x.RtspSub).HasMaxLength(512);
+            e.Property(x => x.EventsUrl).HasMaxLength(512);
+            e.HasMany(x => x.Channels).WithOne().HasForeignKey(x => x.NvrId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<NvrChannel>(e =>
+        {
+            e.ToTable("nvr_channels");
+            e.Property(x => x.DeviceId).HasMaxLength(32);
+            e.Property(x => x.SnapshotSource).HasMaxLength(8).HasDefaultValue(SnapshotSources.Auto);
+            e.Property(x => x.SnapshotVia).HasMaxLength(8);
+            e.Property(x => x.SnapshotQuality).HasMaxLength(8).HasDefaultValue(SnapshotQualities.Fast);
+            e.HasIndex(x => new { x.NvrId, x.Channel }).IsUnique();
+            e.HasIndex(x => x.DeviceId).IsUnique();
         });
 
         b.Entity<RuleRun>(e =>
@@ -154,6 +288,25 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.ToTable("weather_snapshot");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).ValueGeneratedNever();
+        });
+
+        b.Entity<DisplayFont>(e =>
+        {
+            e.ToTable("display_fonts");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasMaxLength(64);
+            e.Property(x => x.FamilyId).HasMaxLength(56);
+            e.Property(x => x.Family).HasMaxLength(64);
+            e.Property(x => x.Sha).HasMaxLength(16);
+            e.HasIndex(x => x.FamilyId);
+        });
+
+        b.Entity<DisplayImage>(e =>
+        {
+            e.ToTable("display_images");
+            e.HasKey(x => new { x.DeviceId, x.Id });
+            e.Property(x => x.DeviceId).HasMaxLength(32);
+            e.Property(x => x.Id).HasMaxLength(16);
         });
 
         b.Entity<EnrollmentCode>(e =>
@@ -198,6 +351,8 @@ public class HiveDbContext(DbContextOptions<HiveDbContext> options)
             e.HasIndex(x => x.Ts);
             e.HasIndex(x => new { x.DeviceId, x.Ts });
             e.HasIndex(x => x.EventId);
+            // The photos still to send to the city: the queue is read by priority and age.
+            e.HasIndex(x => x.ReplicatedAt);
         });
 
         // Partitioned by month in raw SQL (see the InitialSchema migration); EF only reads it.

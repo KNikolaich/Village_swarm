@@ -4,11 +4,18 @@
 // the metric battery_voltage (V). Shared by the roles that can measure it (meteo, relay).
 //
 // ESP32: any ADC pin, read in millivolts. ESP8266: the only ADC is A0 (GPIO17), whatever vbat_pin says.
+//
+// ESP-01/01S have no A0 on their header. Their builds set HW_VBAT_VCC=1: the chip then measures its own supply
+// (ESP.getVcc(), a battery wired straight to 3V3 as in docs/hornet-esp01-battery.md) and publishes it the same way.
+// It is good to about 0.1 V, enough for the discharge curve; hw.vbat_ratio can be used to calibrate it against a meter.
 
 #include <Arduino.h>
 
 #ifndef HW_VBAT_PIN
 #define HW_VBAT_PIN -1
+#endif
+#ifndef HW_VBAT_VCC
+#define HW_VBAT_VCC 0
 #endif
 #ifndef HW_VBAT_RATIO
 #define HW_VBAT_RATIO 1.0
@@ -16,6 +23,11 @@
 // ESP8266 A0: volts at analogRead() = 1023 (1.0 on a bare ESP-12/ESP-01, 3.2 with the D1 mini / NodeMCU divider).
 #ifndef HW_ADC_FULL_SCALE
 #define HW_ADC_FULL_SCALE 3.2
+#endif
+
+#if HW_VBAT_VCC && defined(ESP8266)
+// The ADC reads the supply instead of A0. Defined once: only one role is built into an image.
+ADC_MODE(ADC_VCC);
 #endif
 
 namespace hornet {
@@ -30,10 +42,16 @@ public:
         if (ratio_ <= 0) ratio_ = HW_VBAT_RATIO;
     }
 
-    bool enabled() const { return pin_ >= 0; }
+    bool enabled() const { return HW_VBAT_VCC || pin_ >= 0; }
 
     // Averaged ADC reading times the divider ratio, in volts.
     float read() const {
+#if HW_VBAT_VCC && defined(ESP8266)
+        uint32_t supply = 0;
+        constexpr int kReads = 16;
+        for (int i = 0; i < kReads; ++i) supply += ESP.getVcc();
+        return supply / static_cast<float>(kReads) / 1000.0F * ratio_;
+#endif
         uint32_t sum = 0;
         constexpr int kSamples = 16;
         for (int i = 0; i < kSamples; ++i) {

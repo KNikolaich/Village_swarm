@@ -57,6 +57,25 @@ public sealed class RuleService(HiveDbContext db, RuleStore store, RuleDataLoade
         return ToDto(row);
     }
 
+    /// <summary>The "Авто" switch of a relay banner: the rule as it is, only switched on or off.</summary>
+    public async Task<RuleDto?> SetEnabledAsync(int id, bool enabled, string by, CancellationToken ct)
+    {
+        var row = await db.Rules.FirstOrDefaultAsync(r => r.Id == id, ct);
+        if (row is null)
+            return null;
+        if (row.Enabled != enabled)
+        {
+            var now = time.GetUtcNow();
+            row.Enabled = enabled;
+            row.UpdatedAt = now;
+            row.UpdatedBy = by;
+            Audit.Record(db, now, by, enabled ? "rule_enable" : "rule_disable", row.Name);
+            await db.SaveChangesAsync(ct);
+            store.Invalidate();
+        }
+        return ToDto(row);
+    }
+
     public async Task<bool> DeleteAsync(int id, string by, CancellationToken ct)
     {
         var row = await db.Rules.FirstOrDefaultAsync(r => r.Id == id, ct);
@@ -186,6 +205,11 @@ public static class RulesModule
                 return await s.UpdateAsync(id, request, $"user:{user.Identity?.Name}", ct) is { } r ? TypedResults.Ok(r) : TypedResults.NotFound();
             })
             .RequireAuthorization(HiveRoles.AdminOnly);
+
+        // Switching automation on and off is for the family too (like a relay); writing rules stays the administrator's.
+        rules.MapPut("/{id:int}/enabled", async Task<Results<Ok<RuleDto>, NotFound>> (int id, SetRuleEnabledRequest request, ClaimsPrincipal user, RuleService s, CancellationToken ct) =>
+                await s.SetEnabledAsync(id, request.Enabled, $"user:{user.Identity?.Name}", ct) is { } r ? TypedResults.Ok(r) : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.CanControl);
 
         rules.MapDelete("/{id:int}", async Task<Results<NoContent, NotFound>> (int id, ClaimsPrincipal user, RuleService s, CancellationToken ct) =>
                 await s.DeleteAsync(id, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())

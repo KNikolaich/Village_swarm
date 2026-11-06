@@ -28,7 +28,7 @@ public sealed record TelemetryReceived(
     : IngestItem(DeviceId, MessageId, Ts, ReceivedAt);
 
 public sealed record DeviceStateReceived(
-    string DeviceId, string MessageId, DateTimeOffset Ts, DateTimeOffset ReceivedAt, JsonDocument State)
+    string DeviceId, string MessageId, DateTimeOffset Ts, DateTimeOffset ReceivedAt, JsonDocument State, bool Merge = false)
     : IngestItem(DeviceId, MessageId, Ts, ReceivedAt);
 
 public sealed record DeviceEventReceived(

@@ -68,6 +68,37 @@ public sealed class ZonesTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task Zones_and_hornets_keep_the_place_set_for_them_in_lists()
+    {
+        await RegisterAsync("meteo-sort-a");
+        var admin = await hive.LoginAsync();
+
+        using var first = await admin.PostAsJsonAsync("/api/zones", new { name = "Сортировка-1", kind = "house", sort = 5 });
+        var firstId = (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
+        using var second = await admin.PostAsJsonAsync("/api/zones", new { name = "Сортировка-2", kind = "house", sort = 0 });
+        var secondId = (await second.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
+        var order = (await admin.GetFromJsonAsync<JsonElement>("/api/zones")).EnumerateArray().Select(z => z.GetProperty("id").GetInt32()).ToList();
+        Assert.True(order.IndexOf(secondId) < order.IndexOf(firstId), "a zone placed at 0 comes before one added last");
+
+        // A rename without a sort keeps the place.
+        using var rename = await admin.PutAsJsonAsync($"/api/zones/{secondId}", new { name = "Сортировка-2б", kind = "house" });
+        Assert.Equal(HttpStatusCode.NoContent, rename.StatusCode);
+        var zone = (await admin.GetFromJsonAsync<JsonElement>("/api/zones")).EnumerateArray().Single(z => z.GetProperty("id").GetInt32() == secondId);
+        Assert.Equal(0, zone.GetProperty("sort").GetInt32());
+        using var badZone = await admin.PutAsJsonAsync($"/api/zones/{secondId}", new { name = "Сортировка-2б", kind = "house", sort = -1 });
+        Assert.Equal(HttpStatusCode.BadRequest, badZone.StatusCode);
+
+        Assert.Equal(0, (await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-sort-a")).GetProperty("sort").GetInt32());
+        using var sorted = await admin.PutAsJsonAsync("/api/devices/meteo-sort-a/sort", new { sort = 7 });
+        Assert.Equal(HttpStatusCode.NoContent, sorted.StatusCode);
+        Assert.Equal(7, (await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-sort-a")).GetProperty("sort").GetInt32());
+        using var tooFar = await admin.PutAsJsonAsync("/api/devices/meteo-sort-a/sort", new { sort = 10000 });
+        Assert.Equal(HttpStatusCode.BadRequest, tooFar.StatusCode);
+        using var missing = await admin.PutAsJsonAsync("/api/devices/nobody/sort", new { sort = 1 });
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
+
+    [Fact]
     public async Task Only_admins_change_zones()
     {
         await hive.CreateUserAsync("viewer-zones", "viewer-zones-password", Hive.Infrastructure.Identity.HiveRoles.Viewer);
@@ -78,5 +109,36 @@ public sealed class ZonesTests(HiveFixture hive)
         Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
         using var assign = await viewer.PutAsJsonAsync("/api/devices/anything/zone", new { zoneId = 1 });
         Assert.Equal(HttpStatusCode.Forbidden, assign.StatusCode);
+        using var sort = await viewer.PutAsJsonAsync("/api/devices/anything/sort", new { sort = 1 });
+        Assert.Equal(HttpStatusCode.Forbidden, sort.StatusCode);
+        using var dashboard = await viewer.PutAsJsonAsync("/api/devices/anything/dashboard", new { shown = new[] { "temperature" } });
+        Assert.Equal(HttpStatusCode.Forbidden, dashboard.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_hornet_keeps_what_the_dashboards_show_of_it_until_reset_to_the_defaults()
+    {
+        await RegisterAsync("meteo-dash-a");
+        var admin = await hive.LoginAsync();
+        Assert.Equal(JsonValueKind.Null, (await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-dash-a")).GetProperty("dashboard").ValueKind);
+
+        using var set = await admin.PutAsJsonAsync("/api/devices/meteo-dash-a/dashboard", new { shown = new[] { "temperature_2", "temperature_3", "battery_voltage", "temperature_2" } });
+        Assert.Equal(HttpStatusCode.NoContent, set.StatusCode);
+        var shown = (await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-dash-a")).GetProperty("dashboard").EnumerateArray().Select(v => v.GetString()).ToList();
+        Assert.Equal(["temperature_2", "temperature_3", "battery_voltage"], shown);
+
+        // Nothing ticked is a choice too: the hornet shows nothing, which is not the same as the defaults.
+        using var none = await admin.PutAsJsonAsync("/api/devices/meteo-dash-a/dashboard", new { shown = Array.Empty<string>() });
+        Assert.Equal(HttpStatusCode.NoContent, none.StatusCode);
+        Assert.Equal(0, (await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-dash-a")).GetProperty("dashboard").GetArrayLength());
+
+        using var reset = await admin.PutAsJsonAsync("/api/devices/meteo-dash-a/dashboard", new { shown = (string[]?)null });
+        Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
+        Assert.Equal(JsonValueKind.Null, (await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-dash-a")).GetProperty("dashboard").ValueKind);
+
+        using var bad = await admin.PutAsJsonAsync("/api/devices/meteo-dash-a/dashboard", new { shown = new[] { "Temperature; drop" } });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        using var missing = await admin.PutAsJsonAsync("/api/devices/nobody/dashboard", new { shown = new[] { "temperature" } });
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
     }
 }

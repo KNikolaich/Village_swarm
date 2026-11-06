@@ -1,10 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The hive draws the frames of e-ink monitors (DisplayRender): DejaVu Sans Condensed Bold, Cyrillic included (Fonts/DejaVu-LICENSE.txt). -->
+    <!-- And the families people can choose (DisplayFontCatalog), all under open licenses (Fonts/licenses). -->
+    <EmbeddedResource Include="Fonts/*.ttf" LogicalName="Hive.Modules.Devices.Fonts.%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Hive.Domain/Hive.Domain.csproj" />
     <ProjectReference Include="../Hive.Contracts/Hive.Contracts.csproj" />
     <ProjectReference Include="../Hive.Infrastructure/Hive.Infrastructure.csproj" />
+    <ProjectReference Include="../Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
+    <!-- the forecast tab of a panel with tabs (ScreenTabs) -->
+    <ProjectReference Include="../Hive.Modules.Weather/Hive.Modules.Weather.csproj" />
   </ItemGroup>
 </Project>

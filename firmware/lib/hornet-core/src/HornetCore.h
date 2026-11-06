@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "BrokerFailover.h"
 #include "Platform.h"
 #include "Settings.h"
 #include "Topics.h"
@@ -74,6 +75,14 @@ struct Role {
 
     // Extra health fields (e.g. psram).
     virtual void fillHealth(JsonObject health) {}
+
+    // A role with a screen asks for the hive's display message (contracts/schemas/display.schema.json, retained on
+    // vs/v1/hive/display/{id}): what to show, as ready texts. An empty list means "show your own readings".
+    virtual bool wantsDisplay() const { return false; }
+    virtual void applyDisplay(Core& core, JsonObjectConst message) {}
+    // A car: wheel speeds from vs/v1/hive/drive/{id} (QoS 0, no ack), repeated while a control is held.
+    virtual bool wantsDrive() const { return false; }
+    virtual void applyDrive(Core& core, JsonObjectConst message) {}
 };
 
 using CommandHandler = std::function<AckResult(JsonObjectConst payload)>;
@@ -109,6 +118,9 @@ public:
 
     void onCommand(const char* name, CommandHandler handler);
 
+    // Re-sends info (caps, metrics) when a config change altered what the role does; no-op while offline.
+    void refreshInfo();
+
     // Battery mode (config sleep_s > 0): the role sends its readings once per wake-up while online, then calls
     // readingDone(); the core lets the messages leave, disconnects cleanly and deep-sleeps for sleep_s.
     bool sleepy() const { return sleepS_ > 0 && !lightSleep_ && !stayAwake_; }
@@ -134,12 +146,19 @@ private:
     bool publish(const String& topic, const String& payload, bool retain, bool qos1, bool bufferIfOffline);
     void flushOutbox();
     void serialConsole();
+    void printHelp();
     bool enroll(const String& hiveUrl, const String& code);
     [[noreturn]] void sleepNow();
     AckResult queueOta(JsonObjectConst payload);
     void runOta();
     void checkOtaOutcome();
+    AckResult queueWifi(JsonObjectConst payload);
+    void checkWifiTrial();
+    void checkWifiSpare();
     void applyWifiPowerSave();
+    void bindBroker();                       // server and login of the broker in use (home or city)
+    void checkBrokerFailover();
+    void applyCityBroker(JsonVariantConst city);
 
     Role& role_;
     Settings settings_;
@@ -157,9 +176,24 @@ private:
     bool lightSleep_ = false;
     struct PendingOta {
         bool queued = false;
-        String url, md5, version;
+        String url, md5, version, sig;
         uint32_t size = 0;
     } ota_;  // console "awake": no sleep until reboot, to change settings
+    bool wifiTrial_ = false;               // this boot is trying settings_.wifiNext*
+    unsigned long wifiRestartAtMs_ = 0;    // restart onto the new network once the ack has left
+    bool usingSpare_ = false;              // this boot (or the last swap) uses the spare network
+    // Second broker (config mqtt_city, spec 4.5): used when home has not answered for three minutes. The MQTT client keeps
+    // pointers to these strings, so they are only changed through applyConfig, which binds them again.
+    String cityHost_, cityUser_, cityPass_;
+    uint16_t cityPort_ = 1883;
+    failover::Times failoverTimes_;
+    bool preferSecond_ = false;  // config mqtt_city.prefer_other: the second broker is the preferred one
+    bool usingSecond() const { return failover::usesSecond(appliedBroker_, preferSecond_, hasCity()); }
+    failover::State failover_;
+    failover::Broker appliedBroker_ = failover::Broker::Home;
+    bool hasCity() const { return cityHost_.length() > 0; }
+    unsigned long wifiDownSince_ = 0;      // when an awake hornet lost Wi-Fi, 0 while connected
+    unsigned long brokerDownSince_ = 0;    // when an awake hornet lost the broker, 0 while online
     String rxTopic_;
     String rxPayload_;
     String consoleLine_;

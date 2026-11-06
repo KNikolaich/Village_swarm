@@ -1,0 +1,134 @@
+From de10a94f2ec0b905aadeadc8b2e5dd3ab8fef239 Mon Sep 17 00:00:00 2001
+From: Claude <kirill.nikolaevich@gmail.com>
+Date: Wed, 28 Oct 2026 12:54:28 +0000
+Subject: [PATCH] Remote monitor setup: issue the new screen token only once
+ the flashed panel answers
+
+A new token replaces the old one at once; issued before flashing, a flash or restart that
+failed left the panel with a token the hive no longer accepts.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017JpqxYKxwKJgNJ6YZCU86p
+---
+ .../src/components/RemoteMonitorPanel.tsx     | 11 +++--
+ frontend/src/lib/remoteSetup.ts               | 11 ++++-
+ frontend/src/lib/remoteSetupToken.test.ts     | 48 +++++++++++++++++++
+ 3 files changed, 64 insertions(+), 6 deletions(-)
+ create mode 100644 frontend/src/lib/remoteSetupToken.test.ts
+
+diff --git a/frontend/src/components/RemoteMonitorPanel.tsx b/frontend/src/components/RemoteMonitorPanel.tsx
+index c110629..65d1b2e 100644
+--- a/frontend/src/components/RemoteMonitorPanel.tsx
++++ b/frontend/src/components/RemoteMonitorPanel.tsx
+@@ -100,14 +100,17 @@ export function RemoteMonitorPanel({ existingId }: { existingId?: string }) {
+         created.current = true
+         await qc.invalidateQueries({ queryKey: keys.devices })
+       }
+-      const issued = await api.POST('/api/devices/{deviceId}/screen-access', { params: { path: { deviceId: id } } })
+-      if (!issued.response.ok || !issued.data) throw new SetupError('port', 'other', t('errors.generic'))
+-      setToken(issued.data.token)
+       rememberHiveUrl(hive)
+       await setupRemote({
+         port,
+         build: flashed || !build ? undefined : { build: build.build, chipFamily: build.chipFamily },
+-        settings: { ssid, pass, url: hive, token: issued.data.token, intervalMin: interval },
++        settings: { ssid, pass, url: hive, intervalMin: interval },
++        issueToken: async () => {
++          const issued = await api.POST('/api/devices/{deviceId}/screen-access', { params: { path: { deviceId: id } } })
++          if (!issued.response.ok || !issued.data) throw new SetupError('settings', 'other', t('errors.generic'))
++          setToken(issued.data.token)
++          return issued.data.token
++        },
+         readNow: here,
+         onStage,
+         onProgress: setProgress,
+diff --git a/frontend/src/lib/remoteSetup.ts b/frontend/src/lib/remoteSetup.ts
+index c4730e1..c84d722 100644
+--- a/frontend/src/lib/remoteSetup.ts
++++ b/frontend/src/lib/remoteSetup.ts
+@@ -51,7 +51,13 @@ export function frameProblem(code: number): string | null {
+ export type RemoteSetupOptions = {
+   port: SerialPortLike
+   build?: { build: string; chipFamily: string }
+-  settings: RemoteSettings
++  /** The settings but the token: that is issued only once the panel answers (issueToken). */
++  settings: Omit<RemoteSettings, 'token'>
++  /**
++   * A new screen token from the hive. A new one replaces the panel's old one at once, so it is asked for only when the
++   * panel is flashed and listening: a flash or a restart that fails leaves the old token working.
++   */
++  issueToken: () => Promise<string>
+   /** Read the picture now (the panel is at this Wi-Fi) or only save the settings. */
+   readNow: boolean
+   onStage: (stage: SetupStage) => void
+@@ -73,11 +79,12 @@ export async function setupRemote(o: RemoteSetupOptions) {
+     if ((await board.waitForLine((l) => panelLine(l) === 'ready', 20_000)) === null) throw new SetupError('restart', 'noAnswer')
+ 
+     o.onStage('settings')
++    const token = await o.issueToken()
+     const answer = board.waitForLine((l) => {
+       const p = panelLine(l)
+       return p === 'saved' || p === 'wifiFailed' || (typeof p === 'object' && p !== null)
+     }, o.readNow ? 90_000 : 15_000)
+-    for (const command of remoteCommands(o.settings, o.readNow)) {
++    for (const command of remoteCommands({ ...o.settings, token }, o.readNow)) {
+       await board.send(command)
+       await sleep(250)
+     }
+diff --git a/frontend/src/lib/remoteSetupToken.test.ts b/frontend/src/lib/remoteSetupToken.test.ts
+new file mode 100644
+index 0000000..1e2cd3e
+--- /dev/null
++++ b/frontend/src/lib/remoteSetupToken.test.ts
+@@ -0,0 +1,48 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest'
++import type { SerialPortLike } from '@/lib/serial'
++
++// The panel's console, played back: it says "ready" (or nothing) and then "saved" once it got the settings.
++const panel = vi.hoisted(() => ({ answers: true, sent: [] as string[], log: [] as string[] }))
++
++vi.mock('@/lib/hornetSetup', async (actual) => ({
++  ...(await actual<typeof import('@/lib/hornetSetup')>()),
++  flashBoard: vi.fn(async () => { panel.log.push('flashed') }),
++  sleep: vi.fn(async () => {}),
++  reopenConsole: vi.fn(async () => ({
++    waitForLine: async (match: (line: string) => boolean) => {
++      for (const line of ['[monitor] ready', '[monitor] saved'])
++        if (panel.answers && match(line)) return line
++      return null
++    },
++    send: async (line: string) => { panel.sent.push(line) },
++    close: async () => {},
++  })),
++}))
++
++const { setupRemote } = await import('@/lib/remoteSetup')
++
++function options(issueToken: () => Promise<string>) {
++  return {
++    port: {} as SerialPortLike, build: { build: 'monitor-crowpanel37', chipFamily: 'ESP32-S3' },
++    settings: { ssid: 'Дача', pass: 'p', url: 'https://hive', intervalMin: 30 }, readNow: false, issueToken,
++    onStage: () => {}, onProgress: () => {}, onLog: () => {},
++  }
++}
++
++describe('a new screen token for a reflashed panel', () => {
++  beforeEach(() => { panel.answers = true; panel.sent = []; panel.log = [] })
++
++  it('is issued only after the flashed panel answers, and sent to it', async () => {
++    const issue = vi.fn(async () => { panel.log.push('issued'); return 'aaaa-bbbb' })
++    await setupRemote(options(issue))
++    expect(panel.log).toEqual(['flashed', 'issued'])
++    expect(panel.sent).toContain('set token aaaa-bbbb')
++  })
++
++  it('is not issued when the panel does not answer, so its old token keeps working', async () => {
++    panel.answers = false
++    const issue = vi.fn(async () => 'never')
++    await expect(setupRemote(options(issue))).rejects.toThrow()
++    expect(issue).not.toHaveBeenCalled()
++  })
++})
+-- 
+2.43.0
+

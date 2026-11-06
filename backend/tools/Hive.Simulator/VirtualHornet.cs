@@ -252,6 +252,46 @@ public sealed class VirtualHornet
 
         if (name == "reboot" && result.Status == AckStatus.Ok)
             RebootRequested = true;
+        if (name == "wifi" && result.Status == AckStatus.Ok && root.TryGetProperty("ssid", out var ssid))
+            ReportWifi(ssid.GetString()!, root.TryGetProperty("mode", out var mode) && mode.GetString() == "stage", now);
+    }
+
+    /// <summary>The Wi-Fi switch as the firmware does it, validation included (contracts cmd-wifi).</summary>
+    private static CommandResult WifiCommandResult(JsonElement root)
+    {
+        // forget drops the spare network: no event, only the ack.
+        if (root.TryGetProperty("mode", out var mode) && mode.GetString() == "forget")
+            return root.TryGetProperty("ssid", out _) || root.TryGetProperty("pass", out _)
+                ? new CommandResult(AckStatus.Error, "bad wifi command")
+                : CommandResult.Ok();
+        var ssid = root.TryGetProperty("ssid", out var s) ? s.GetString() ?? "" : "";
+        var pass = root.TryGetProperty("pass", out var p) ? p.GetString() ?? "" : "";
+        var valid = ssid.Length is >= 1 and <= 32 && (pass.Length == 0 || pass.Length is >= 8 and <= 63);
+        return valid ? CommandResult.Ok() : new CommandResult(AckStatus.Error, "bad wifi command");
+    }
+
+    /// <summary>
+    /// The outcome the real hornet reports: "staged" for a spare network, or after its trial boot: the new network is its own, unless the name ends in
+    /// "-unreachable" (a network that cannot reach the hive), when the old one comes back.
+    /// </summary>
+    private void ReportWifi(string ssid, bool stage, DateTimeOffset now)
+    {
+        var e = NextEnvelope(now);
+        if (stage)
+        {
+            // A spare network is only kept; nothing changes until the main network is gone.
+            EmitEvent("wifi", new WifiEvent { Id = e.Id, Ts = e.Ts, Seq = e.Seq, Boot = e.Boot, Phase = WifiPhase.Staged, Ssid = ssid });
+            return;
+        }
+        var rolledBack = ssid.EndsWith("-unreachable", StringComparison.Ordinal);
+        EmitEvent("wifi", new WifiEvent
+        {
+            Id = e.Id, Ts = e.Ts, Seq = e.Seq, Boot = e.Boot,
+            Severity = rolledBack ? Severity.Warn : null,
+            Phase = rolledBack ? WifiPhase.RolledBack : WifiPhase.Applied,
+            Ssid = ssid,
+            Error = rolledBack ? "no connection to the hive over it" : null,
+        });
     }
 
     /// <summary>Set by cmd/reboot; the runner drops the connection and calls <see cref="Reboot"/>.</summary>
@@ -270,6 +310,7 @@ public sealed class VirtualHornet
         {
             "reboot" => CommandResult.Ok(),
             "config_reload" => CommandResult.Ok(),
+            "wifi" => WifiCommandResult(root),
             _ => Role.HandleCommand(name, root, now) ?? new CommandResult(AckStatus.Unsupported, $"unknown command {name}"),
         };
     }
@@ -301,9 +342,9 @@ public sealed class VirtualHornet
             Fw = Spec.Fw,
             Mac = FakeMac(Id),
             Ip = $"192.168.20.{100 + (IdHash(Id)[6] % 100)}",
-            Caps = Role.Caps,
+            Caps = [.. Role.Caps, "wifi.stage", "wifi.forget"],
             Metrics = Role.Metrics,
-            Commands = ["reboot", "config_reload", .. Role.Commands],
+            Commands = ["reboot", "config_reload", "wifi", .. Role.Commands],
         };
     }
 

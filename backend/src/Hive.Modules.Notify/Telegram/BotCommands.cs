@@ -19,6 +19,9 @@ using static Hive.Modules.Notify.Texts;
 
 namespace Hive.Modules.Notify.Telegram;
 
+/// <summary>A linked chat as other Telegram features see it (the assistant): who it is and whether it may change things.</summary>
+public sealed record TgCaller(long ChatId, int UserId, string Actor, bool CanControl);
+
 /// <summary>Bot commands and inline buttons (spec 9.3, 9.4). Only linked chats are served; others are audited.</summary>
 public sealed class BotCommands(
     HiveDbContext db,
@@ -180,6 +183,9 @@ public sealed class BotCommands(
                     await MuteAsync(caller, double.TryParse(arg, CultureInfo.InvariantCulture, out var h) ? h : 1, ct);
                     answer = "Предупреждения на паузе";
                     break;
+                case "arr" when Require(caller):
+                    answer = await ArrivingAsync(caller, chat, arg, callback.Message?.MessageId, ct);
+                    break;
                 case "disarm" when Require(caller):
                     if (arg == "yes")
                     {
@@ -199,6 +205,37 @@ public sealed class BotCommands(
             }
         }
         await telegram.CallAsync(bot => bot.AnswerCallbackQuery(callback.Id, answer, cancellationToken: ct), ct);
+    }
+
+    /// <summary>
+    /// The buttons under motion while the family is on its way: "Снять охрану" asks again in place, then disarms; "Это не мы"
+    /// arms at once (it is the safe way). The message keeps its text and photos; its buttons say what was done.
+    /// </summary>
+    private async Task<string> ArrivingAsync(Caller caller, long chat, string action, int? messageId, CancellationToken ct)
+    {
+        static InlineKeyboardMarkup Done(string text) => new([[InlineKeyboardButton.WithCallbackData(text, "arr:done")]]);
+        (string Answer, InlineKeyboardMarkup? Buttons) result = action switch
+        {
+            "disarm" => ("Точно снять охрану?", new InlineKeyboardMarkup(
+            [
+                [InlineKeyboardButton.WithCallbackData("Да, снять", "arr:disarm-yes"), InlineKeyboardButton.WithCallbackData("Отмена", "arr:back")],
+            ])),
+            "back" => ("Охрана не тронута", NotificationOutbox.ArrivingButtons()),
+            _ => ("Уже сделано", null),
+        };
+        if (action == "disarm-yes")
+        {
+            await arm.SetModeAsync(ArmService.Disarmed, caller.Actor, ct);
+            result = ("Охрана снята", Done("🔓 Охрана снята"));
+        }
+        else if (action == "arm")
+        {
+            await arm.SetModeAsync(ArmService.ArmedMode, caller.Actor, ct);
+            result = ("Охрана включена", Done("🛡 Охрана включена: это были не вы"));
+        }
+        if (messageId is { } m && result.Buttons is { } buttons)
+            await telegram.CallAsync(bot => bot.EditMessageReplyMarkup(chat, m, buttons, cancellationToken: ct), ct);
+        return result.Answer;
     }
 
     private async Task LinkAsync(Message message, string? code, CancellationToken ct)
@@ -224,7 +261,11 @@ public sealed class BotCommands(
         await ReplyAsync(chat, $"✅ Чат привязан к пользователю <b>{H(user?.UserName)}</b>. Сюда будут приходить тревоги.\n\n{Help}", ct);
     }
 
-    private async Task<string> StatusAsync(CancellationToken ct)
+    /// <summary>The linked chat's user, or null for a chat that is not linked (or a locked-out user).</summary>
+    public async Task<TgCaller?> CallerForAsync(long chat, CancellationToken ct) =>
+        await CallerAsync(chat, ct) is { } c ? new TgCaller(chat, c.User.Id, c.Actor, c.CanControl) : null;
+
+    public async Task<string> StatusAsync(CancellationToken ct)
     {
         var mode = await arm.GetAsync(ct);
         var devices = await db.Devices.AsNoTracking().Where(d => d.Status != DeviceStatus.Disabled).ToListAsync(ct);
@@ -232,7 +273,7 @@ public sealed class BotCommands(
         var since = time.GetUtcNow().AddDays(-1);
         var unacked = await db.Events.CountAsync(e => e.Severity >= EventSeverity.Alarm && e.AcknowledgedAt == null && e.Ts >= since, ct);
         var sb = new StringBuilder();
-        sb.AppendLine(mode.Armed ? "🛡 Охрана: <b>включена</b>" : "🔓 Охрана: <b>снята</b>");
+        sb.AppendLine(GuardLine(mode.Mode));
         sb.AppendLine($"🐝 Рой: {online}/{devices.Count} на связи");
         sb.AppendLine(await TemperaturesAsync(ct));
         sb.Append(unacked > 0
@@ -241,7 +282,14 @@ public sealed class BotCommands(
         return sb.ToString();
     }
 
-    private async Task<string> TemperaturesAsync(CancellationToken ct)
+    public static string GuardLine(string mode) => mode switch
+    {
+        ArmService.Arriving => "🚗 Охрана: <b>подготовка к приезду</b>",
+        ArmService.ArmedMode => "🛡 Охрана: <b>включена</b>",
+        _ => "🔓 Охрана: <b>снята</b>",
+    };
+
+    public async Task<string> TemperaturesAsync(CancellationToken ct)
     {
         var latest = await telemetry.LatestAsync(null, ct);
         var names = await db.Devices.AsNoTracking().ToDictionaryAsync(d => d.DeviceId, d => d.Name, ct);
@@ -251,7 +299,7 @@ public sealed class BotCommands(
         return "🌡 " + string.Join(", ", temps.Select(v => $"{H(names.GetValueOrDefault(v.DeviceId, v.DeviceId))}: {Temperature(v.Value)}"));
     }
 
-    private async Task<string> EventsAsync(int count, CancellationToken ct)
+    public async Task<string> EventsAsync(int count, CancellationToken ct)
     {
         var page = await events.ListAsync(new EventFilter(null, null, null, null, null, null, null, count), ct);
         if (page.Items.Count == 0)
@@ -260,7 +308,7 @@ public sealed class BotCommands(
             $"{Icon(Enum.Parse<EventSeverity>(e.Severity, true))} {hive.Value.ToLocal(e.Ts).ToString("dd.MM HH:mm", Ru)} {H(EventType(e.Type))} · {H(e.Zone ?? e.DeviceName ?? e.DeviceId)}"));
     }
 
-    private async Task<string> DevicesAsync(CancellationToken ct)
+    public async Task<string> DevicesAsync(CancellationToken ct)
     {
         var offline = await db.Devices.AsNoTracking().Where(d => d.Status == DeviceStatus.Offline).OrderBy(d => d.DeviceId).ToListAsync(ct);
         var weak = await db.Devices.AsNoTracking().Where(d => d.Status == DeviceStatus.Online && d.Rssi < -80).ToListAsync(ct);
@@ -276,7 +324,7 @@ public sealed class BotCommands(
 
     private async Task<List<CameraChoice>?> OnlineCamerasAsync(CancellationToken ct) =>
         await db.Devices.AsNoTracking()
-            .Where(d => d.TypeCode == "guard-cam" && d.Status == DeviceStatus.Online)
+            .Where(d => Cameras.Types.Contains(d.TypeCode) && d.Status == DeviceStatus.Online)
             .OrderBy(d => d.Name)
             .Select(d => new CameraChoice(d.DeviceId, d.Name))
             .ToListAsync(ct);
@@ -306,7 +354,7 @@ public sealed class BotCommands(
     private async Task SnapshotAsync(Caller caller, long chat, string? target, int? replyTo, CancellationToken ct)
     {
         var cameras = await db.Devices.AsNoTracking()
-            .Where(d => d.TypeCode == "guard-cam" && d.Status == DeviceStatus.Online)
+            .Where(d => Cameras.Types.Contains(d.TypeCode) && d.Status == DeviceStatus.Online)
             .Select(d => new { d.DeviceId, d.Name })
             .ToListAsync(ct);
         if (!string.IsNullOrEmpty(target))
@@ -316,11 +364,26 @@ public sealed class BotCommands(
             await ReplyAsync(chat, string.IsNullOrEmpty(target) ? "📷 Нет камер на связи." : $"📷 Камера «{H(target)}» не на связи или не найдена.", ct);
             return;
         }
+        await SnapshotAsync(chat, caller.Actor, cameras.Select(c => c.DeviceId).ToList(), replyTo, ct);
+    }
+
+    /// <summary>Asks the given cameras (online ones) for a frame now; the photos follow as a reply when they arrive.</summary>
+    public async Task SnapshotAsync(long chat, string actor, IReadOnlyCollection<string> deviceIds, int? replyTo, CancellationToken ct)
+    {
+        var cameras = await db.Devices.AsNoTracking()
+            .Where(d => Cameras.Types.Contains(d.TypeCode) && d.Status == DeviceStatus.Online && deviceIds.Contains(d.DeviceId))
+            .Select(d => new { d.DeviceId, d.Name })
+            .ToListAsync(ct);
+        if (cameras.Count == 0)
+        {
+            await ReplyAsync(chat, "📷 Нет камер на связи.", ct, replyTo: replyTo);
+            return;
+        }
 
         var now = time.GetUtcNow();
         var sentTo = new List<string>();
         foreach (var camera in cameras)
-            if ((await commands.SendAsync(camera.DeviceId, "snapshot", new JsonObject { ["count"] = 1 }, caller.Actor, 30, ct)).Status == SendStatus.Sent)
+            if ((await commands.SendAsync(camera.DeviceId, "snapshot", new JsonObject { ["count"] = 1 }, actor, 30, ct)).Status == SendStatus.Sent)
                 sentTo.Add(camera.DeviceId);
 
         var ack = await ReplyAsync(chat, $"📷 Снимаю: {H(string.Join(", ", cameras.Where(c => sentTo.Contains(c.DeviceId)).Select(c => c.Name)))}…", ct, replyTo: replyTo);
@@ -345,6 +408,21 @@ public sealed class BotCommands(
         link.MutedUntil = hours > 0 ? time.GetUtcNow().AddHours(hours) : null;
         await db.SaveChangesAsync(ct);
     }
+
+    /// <summary>The same as /mute for the chat: warnings stay quiet for the hours given (0 turns quiet off); alarms still come.</summary>
+    public async Task<string> MuteChatAsync(long chat, double hours, CancellationToken ct)
+    {
+        hours = Math.Clamp(hours, 0, 72);
+        var link = await db.TgLinks.FirstAsync(l => l.ChatId == chat, ct);
+        link.MutedUntil = hours > 0 ? time.GetUtcNow().AddHours(hours) : null;
+        await db.SaveChangesAsync(ct);
+        return hours > 0 ? $"🔕 Предупреждения не придут {hours.ToString("0.#", Ru)} ч. Тревоги придут как обычно." : "🔔 Тишина выключена.";
+    }
+
+    public async Task<DateTimeOffset?> MutedUntilAsync(long chat, CancellationToken ct) =>
+        await db.TgLinks.AsNoTracking().Where(l => l.ChatId == chat).Select(l => l.MutedUntil).FirstOrDefaultAsync(ct) is { } until && until > time.GetUtcNow()
+            ? until
+            : null;
 
     private async Task<Caller?> CallerAsync(long chat, CancellationToken ct)
     {

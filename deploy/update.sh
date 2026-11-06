@@ -35,25 +35,39 @@ docker compose exec -T postgres pg_dump -U hive -d hive | gzip >"$dump"
 ls -1t "$data"/backups/pre-update-*.sql.gz 2>/dev/null | tail -n +6 | xargs -r rm -f
 
 # Folders added by newer versions (the first install creates them; an update must too).
-mkdir -p "$data/keys"
+mkdir -p "$data/keys" "$data/restic"
 chown 1654:1654 "$data/keys" # "app" user of the .NET image
 
 set_env HIVE_VERSION "$version"
 [ -n "$tarball" ] || docker compose pull api web
 docker compose up -d --remove-orphans
 
-say "Проверяю $version"
-for _ in $(seq 1 40); do
+say "Проверяю $version (жду до 4 минут: первый запуск применяет изменения базы, на RPi это небыстро)"
+for _ in $(seq 1 80); do
 	if curl -fsk https://localhost/readyz >/dev/null 2>&1; then
 		say "Готово: $previous → $version"
 		docker image prune -f >/dev/null
+		# Every build has its own tag, so old versions are never "dangling" and prune leaves them: each costs
+		# hundreds of MB on the SD card. Keep this version and the previous one (for a manual rollback).
+		prefix="$(get_env HIVE_IMAGES || true)"
+		prefix="${prefix:-ghcr.io/knikolaich/village-swarm}"
+		for part in api web backup; do
+			docker image ls --format '{{.Repository}}:{{.Tag}}' "$prefix-$part" \
+				| grep -v -x -F -e "$prefix-$part:$version" -e "$prefix-$part:$previous" \
+				| xargs -r docker rmi >/dev/null 2>&1 || true
+		done
+		say "Место на диске: $(df -h "$data" | awk 'NR==2 {print $3 " из " $2 " (" $5 ")"}')"
 		exit 0
 	fi
 	sleep 3
 done
 
 say "Версия $version не ответила, возвращаю $previous"
-docker compose logs --tail 50 api || true
+# Why: which check of /readyz fails (database or mqtt), what the containers are doing, and the end of the api log.
+echo "--- /readyz:"; curl -sk https://localhost/readyz || echo "(нет ответа: api не слушает порт)"; echo
+echo "--- контейнеры:"; docker compose ps || true
+echo "--- журнал api (последние 120 строк):"
+docker compose logs --tail 120 api || true
 set_env HIVE_VERSION "$previous"
 docker compose up -d
 cat <<EOF

@@ -22,6 +22,15 @@ public class NativeHornetAdapterTests
     }
 
     [Fact]
+    public void Tells_the_hives_own_topics_from_device_topics()
+    {
+        Assert.True(NativeHornetAdapter.IsDeviceTopic("vs/v1/dev/guard-gate1/status"));
+        Assert.False(NativeHornetAdapter.IsDeviceTopic("vs/v1/hive/home/heartbeat"));
+        Assert.False(NativeHornetAdapter.IsDeviceTopic("vs/v1/sync/home/catalog"));
+        Assert.False(NativeHornetAdapter.IsDeviceTopic("$CONTROL/dynamic-security/v1/response"));
+    }
+
+    [Fact]
     public void Parses_info_example()
     {
         var info = Assert.IsType<DeviceInfoReceived>(Parse("vs/v1/dev/guard-gate1/info", Example("info/guard-cam.json")));

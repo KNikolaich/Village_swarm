@@ -33,6 +33,17 @@ public static class ProvisioningEndpoints
             })
             .RequireAuthorization(HiveRoles.AdminOnly);
 
+        provision.MapPost("/tasmota", async Task<Results<Ok<TasmotaSetup>, ValidationProblem>> (
+                CreateTasmotaRequest request, HttpContext http, ClaimsPrincipal user, ProvisioningService service, CancellationToken ct) =>
+            {
+                var requestBase = new Uri($"{http.Request.Scheme}://{http.Request.Host}");
+                var (setup, error) = await service.CreateTasmotaAsync(request, $"user:{user.Identity?.Name}", requestBase, ct);
+                return setup is not null
+                    ? TypedResults.Ok(setup)
+                    : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["request"] = [error!] });
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
         provision.MapPost("/batches", async Task<Results<Ok<BatchDto>, ValidationProblem>> (
                 CreateBatchRequest request, ClaimsPrincipal user, ProvisioningService service, CancellationToken ct) =>
             {
@@ -75,21 +86,36 @@ public static class ProvisioningEndpoints
             .WithTags("devices")
             .RequireAuthorization(HiveRoles.AdminOnly);
 
-        app.MapDelete("/api/devices/{deviceId}", async Task<Results<NoContent, NotFound>> (
-                string deviceId, ClaimsPrincipal user, ProvisioningService service, CancellationToken ct) =>
-                await service.DisableAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+        // ?purge=true: for a device that never reached the hive, remove it entirely (its id is free again). Others only go to the archive.
+        app.MapDelete("/api/devices/{deviceId}", async Task<Results<NoContent, NotFound, ValidationProblem>> (
+                string deviceId, bool? purge, ClaimsPrincipal user, ProvisioningService service, CancellationToken ct) =>
+            {
+                var by = $"user:{user.Identity?.Name}";
+                if (purge == true)
+                    return await service.PurgeAsync(deviceId, by, ct) switch
+                    {
+                        PurgeStatus.Purged => TypedResults.NoContent(),
+                        PurgeStatus.NotFound => TypedResults.NotFound(),
+                        _ => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["purge"] = ["the device has been seen: it stays in the archive with its history"] }),
+                    };
+                return await service.DisableAsync(deviceId, by, ct) ? TypedResults.NoContent() : TypedResults.NotFound();
+            })
             .WithTags("devices")
             .RequireAuthorization(HiveRoles.AdminOnly);
 
         // Images for the in-browser flasher (ESP Web Tools), one folder per build env (role-board).
         var firmware = app.MapGroup("/api/firmware").WithTags("firmware");
-        firmware.MapGet("/{build}/manifest.json", Results<JsonHttpResult<JsonObject>, NotFound> (string build, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
+        // Never from a cache: the same address carries a new image after each deploy, and a browser that kept the old one
+        // (no Cache-Control: heuristic freshness) flashed it again. The parts carry the version too.
+        firmware.MapGet("/{build}/manifest.json", Results<JsonHttpResult<JsonObject>, NotFound> (string build, HttpResponse response, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
         {
             if (ReadBuild(build, options.Value, env) is not { } b)
                 return TypedResults.NotFound();
+            response.Headers.CacheControl = "no-store";
+            var stamp = Uri.EscapeDataString(b.Version ?? b.Built.Ticks.ToString(CultureInfo.InvariantCulture));
             var parts = new JsonArray(b.Parts.Select(p => (JsonNode)new JsonObject
             {
-                ["path"] = $"/api/firmware/{build}/{p.File}",
+                ["path"] = $"/api/firmware/{build}/{p.File}?v={stamp}",
                 ["offset"] = p.Offset,
             }).ToArray());
             return TypedResults.Json(new JsonObject
@@ -100,29 +126,37 @@ public static class ProvisioningEndpoints
                 ["builds"] = new JsonArray { new JsonObject { ["chipFamily"] = b.ChipFamily, ["parts"] = parts } },
             });
         });
-        firmware.MapGet("/{build}/{file}", Results<PhysicalFileHttpResult, NotFound> (string build, string file, string? download, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
-            ReadBuild(build, options.Value, env) is { } b && b.Parts.Any(p => p.File == file)
-                // ?download=1 names the file after the build (meteo-esp01dht.bin) instead of firmware.bin.
-                ? TypedResults.PhysicalFile(Path.Combine(b.Dir, file), "application/octet-stream", download is "1" or "true" ? $"{build}-{file}" : null)
-                : TypedResults.NotFound());
-        firmware.MapGet("", (IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
+        firmware.MapGet("/{build}/{file}", Results<PhysicalFileHttpResult, NotFound> (string build, string file, string? download, HttpResponse response, IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
         {
-            var root = Path.GetFullPath(Path.Combine(env.ContentRootPath, options.Value.FirmwareDir));
-            if (!Directory.Exists(root))
-                return Array.Empty<FirmwareBuildDto>();
-            return Directory.GetDirectories(root)
-                .Select(d => ReadBuild(Path.GetFileName(d), options.Value, env))
-                .Where(b => b is not null)
-                .Select(b => new FirmwareBuildDto(b!.Name, b.Role, b.Board, b.ChipFamily, b.Built, b.Version))
-                .OrderBy(b => b.Build, StringComparer.Ordinal)
-                .ToArray();
+            if (ReadBuild(build, options.Value, env) is not { } b || !b.Parts.Any(p => p.File == file))
+                return TypedResults.NotFound();
+            response.Headers.CacheControl = "no-store";
+            // ?download=1 names the file after the build (meteo-esp01dht.bin) instead of firmware.bin.
+            return TypedResults.PhysicalFile(Path.Combine(b.Dir, file), "application/octet-stream", download is "1" or "true" ? $"{build}-{file}" : null);
         });
+        firmware.MapGet("", (IOptions<ProvisioningOptions> options, IHostEnvironment env) =>
+            ListBuilds(options.Value, env)
+                .Select(b => new FirmwareBuildDto(b.Name, b.Role, b.Board, b.ChipFamily, b.Built, b.Version, b.Signature is not null))
+                .ToArray());
         return app;
+    }
+
+    /// <summary>Every complete build the hive carries, by name.</summary>
+    internal static IReadOnlyList<Build> ListBuilds(ProvisioningOptions options, IHostEnvironment env)
+    {
+        var root = Path.GetFullPath(Path.Combine(env.ContentRootPath, options.FirmwareDir));
+        if (!Directory.Exists(root))
+            return [];
+        return Directory.GetDirectories(root)
+            .Select(d => ReadBuild(Path.GetFileName(d), options, env))
+            .OfType<Build>()
+            .OrderBy(b => b.Name, StringComparer.Ordinal)
+            .ToList();
     }
 
     internal sealed record Part(string File, int Offset);
 
-    internal sealed record Build(string Name, string Dir, string Role, string Board, string ChipFamily, IReadOnlyList<Part> Parts, DateTime Built, string? Version);
+    internal sealed record Build(string Name, string Dir, string Role, string Board, string ChipFamily, IReadOnlyList<Part> Parts, DateTime Built, string? Version, string? Sha512 = null, string? Signature = null);
 
     /// <summary>firmware/dist/<build>/build.json (written by firmware/scripts/dist.py), or the classic ESP32 layout without it.</summary>
     internal static Build? ReadBuild(string name, ProvisioningOptions options, IHostEnvironment env)
@@ -134,6 +168,8 @@ public static class ProvisioningEndpoints
         var board = name;
         var chip = "ESP32";
         string? version = null;
+        string? sha512 = null;
+        string? signature = null;
         IReadOnlyList<Part> parts = Esp32Parts.Select(p => new Part(p.File, p.Offset)).ToList();
         var meta = Path.Combine(dir, "build.json");
         if (File.Exists(meta))
@@ -143,11 +179,13 @@ public static class ProvisioningEndpoints
             board = json["board"]?.GetValue<string>() ?? board;
             chip = json["chipFamily"]?.GetValue<string>() ?? chip;
             version = json["version"]?.GetValue<string>();
+            sha512 = json["sha512"]?.GetValue<string>();
+            signature = json["signature"]?.GetValue<string>();
             parts = json["parts"]!.AsArray().Select(p => new Part(p!["file"]!.GetValue<string>(), p["offset"]!.GetValue<int>())).ToList();
         }
         if (!parts.All(p => File.Exists(Path.Combine(dir, p.File))))
             return null;
-        return new Build(name, dir, role, board, chip, parts, File.GetLastWriteTimeUtc(Path.Combine(dir, "firmware.bin")), version);
+        return new Build(name, dir, role, board, chip, parts, File.GetLastWriteTimeUtc(Path.Combine(dir, "firmware.bin")), version, sha512, signature);
     }
 
     private static string? FirmwareDir(string type, ProvisioningOptions options, IHostEnvironment env)
@@ -160,4 +198,4 @@ public static class ProvisioningEndpoints
 }
 
 /// <summary>A flashable firmware image: build env (role-board), role (device type), board name and chip.</summary>
-public sealed record FirmwareBuildDto(string Build, string Role, string Board, string ChipFamily, DateTime Built, string? Version);
+public sealed record FirmwareBuildDto(string Build, string Role, string Board, string ChipFamily, DateTime Built, string? Version, bool Signed);

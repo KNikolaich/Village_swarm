@@ -79,5 +79,8 @@ public class Notification
     public DateTimeOffset? SentAt { get; set; }
     public long? MessageId { get; set; }
     public long? ReplyToMessageId { get; set; }
+
+    /// <summary>About motion while the family is on its way ("едут хозяева"): quiet, with photos and the disarm / "not us" buttons.</summary>
+    public bool Arriving { get; set; }
     public string? Error { get; set; }
 }

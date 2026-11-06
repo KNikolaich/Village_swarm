@@ -27,4 +27,18 @@ public sealed class SettingsTests(HiveFixture hive)
         Assert.Equal(HttpStatusCode.BadRequest, (await admin.PutAsJsonAsync("/api/settings/language", new LanguageBody("de"))).StatusCode);
         await admin.PutAsJsonAsync("/api/settings/language", new LanguageBody("ru"));
     }
+
+    private sealed record VersionBody(string Version);
+
+    [Fact]
+    public async Task Version_is_shown_to_signed_in_users_only()
+    {
+        var anonymous = hive.App.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/settings/version")).StatusCode);
+
+        var admin = await hive.LoginAsync();
+        var version = await admin.GetFromJsonAsync<VersionBody>("/api/settings/version");
+        Assert.False(string.IsNullOrWhiteSpace(version!.Version));
+        Assert.DoesNotContain("+", version.Version);
+    }
 }

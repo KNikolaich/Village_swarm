@@ -1,0 +1,10 @@
+{
+  "v": 1, "rev": 5, "name": "Табло в спальне",
+  "health_interval_s": 60, "tele_interval_s": 60,
+  "hw": { "sda_pin": 5, "scl_pin": 6, "ntc_pin": 0, "ntc_side": "high", "ntc_r_series": 9960, "ntc_r_nominal": 10000, "ntc_beta": 3950, "ntc_offset": -0.4 },
+  "display": {
+    "items": [
+      { "device": "monitor-bedroom", "metric": "temperature_ntc", "label": "Спальня", "x": 0, "y": 0, "size": 6 }
+    ]
+  }
+}

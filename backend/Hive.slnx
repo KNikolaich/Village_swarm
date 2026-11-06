@@ -1,17 +1,22 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Hive.Api/Hive.Api.csproj" />
+    <Project Path="src/Hive.Modules.Assistant/Hive.Modules.Assistant.csproj" />
     <Project Path="src/Hive.Contracts/Hive.Contracts.csproj" />
     <Project Path="src/Hive.Domain/Hive.Domain.csproj" />
     <Project Path="src/Hive.Infrastructure/Hive.Infrastructure.csproj" />
+    <Project Path="src/Hive.Modules.Backup/Hive.Modules.Backup.csproj" />
     <Project Path="src/Hive.Modules.Cluster/Hive.Modules.Cluster.csproj" />
     <Project Path="src/Hive.Modules.Devices/Hive.Modules.Devices.csproj" />
     <Project Path="src/Hive.Modules.Events/Hive.Modules.Events.csproj" />
+    <Project Path="src/Hive.Modules.IpCams/Hive.Modules.IpCams.csproj" />
     <Project Path="src/Hive.Modules.Media/Hive.Modules.Media.csproj" />
     <Project Path="src/Hive.Modules.Notify/Hive.Modules.Notify.csproj" />
+    <Project Path="src/Hive.Modules.Retention/Hive.Modules.Retention.csproj" />
     <Project Path="src/Hive.Modules.Rules/Hive.Modules.Rules.csproj" />
     <Project Path="src/Hive.Modules.Telemetry/Hive.Modules.Telemetry.csproj" />
     <Project Path="src/Hive.Modules.Users/Hive.Modules.Users.csproj" />
+    <Project Path="src/Hive.Modules.Notes/Hive.Modules.Notes.csproj" />
     <Project Path="src/Hive.Modules.Weather/Hive.Modules.Weather.csproj" />
   </Folder>
   <Folder Name="/tests/">

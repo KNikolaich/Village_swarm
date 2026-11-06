@@ -1,0 +1,6 @@
+{
+  "v": 1, "rev": 1, "name": "ИК у пылесоса",
+  "health_interval_s": 60,
+  "hw": { "ir_pin": 2 },
+  "ir": { "buttons": { "Убираться": { "protocol": "NEC", "bits": 32, "data": "0x02FD807F" } } }
+}

@@ -26,6 +26,12 @@ void Settings::load() {
     boot = p.getUInt("boot", 0);
     otaPending = p.getString("otapend", "");
     otaRolledBack = p.getString("otarb", "");
+    wifiNextSsid = p.getString("wnssid", "");
+    wifiNextPass = p.getString("wnpass", "");
+    wifiRolledBack = p.getString("wrb", "");
+    wifi2Ssid = p.getString("w2ssid", "");
+    wifi2Pass = p.getString("w2pass", "");
+    wifiFails = p.getUInt("wfails", 0);
     p.end();
 }
 
@@ -49,6 +55,7 @@ void Settings::saveBoot() const {
     Preferences p;
     p.begin(kNs, false);
     p.putUInt("boot", boot);
+    p.putUInt("wfails", wifiFails);
     p.end();
 }
 
@@ -57,6 +64,23 @@ void Settings::saveOta() const {
     p.begin(kNs, false);
     p.putString("otapend", otaPending);
     p.putString("otarb", otaRolledBack);
+    p.end();
+}
+
+void Settings::saveWifiChange() const {
+    Preferences p;
+    p.begin(kNs, false);
+    p.putString("wnssid", wifiNextSsid);
+    p.putString("wnpass", wifiNextPass);
+    p.putString("wrb", wifiRolledBack);
+    p.end();
+}
+
+void Settings::saveWifiSpare() const {
+    Preferences p;
+    p.begin(kNs, false);
+    p.putString("w2ssid", wifi2Ssid);
+    p.putString("w2pass", wifi2Pass);
     p.end();
 }
 
@@ -119,6 +143,9 @@ void Settings::print(Print& out) const {
     out.printf("id=%s ssid=%s pass=%s mqtt=%s:%u mqttuser=%s upload=%s token=%s ntp=%s boot=%u\n",
                deviceId.c_str(), ssid.c_str(), pass.length() ? "***" : "", mqttHost.c_str(), mqttPort,
                mqttUser.c_str(), uploadUrl.c_str(), uploadToken.length() ? "***" : "", ntp.c_str(), boot);
+    // A Wi-Fi switch in progress or given up (cmd/wifi): which network is being tried, which did not work.
+    out.printf("wifi_trying=%s wifi_gave_up=%s wifi_spare=%s failed_boots=%u\n", wifiNextSsid.length() ? wifiNextSsid.c_str() : "-",
+               wifiRolledBack.length() ? wifiRolledBack.c_str() : "-", wifi2Ssid.length() ? wifi2Ssid.c_str() : "-", static_cast<unsigned>(wifiFails));
 }
 
 }  // namespace hornet

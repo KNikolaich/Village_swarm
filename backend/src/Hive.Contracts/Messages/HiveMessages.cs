@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Hive.Contracts.Messages;
 
 // Messages the hive publishes (hive -> dev). Schemas: contracts/schemas/*.schema.json.
@@ -26,6 +28,15 @@ public sealed record RelayCommand : Command
     public int? ForS { get; init; }
 }
 
+/// <summary>vs/v1/dev/{id}/cmd/ir (role irtx): one infrared code, as Tasmota's IRSend takes it.</summary>
+public sealed record IrCommand : Command
+{
+    public required string Protocol { get; init; }
+    public required int Bits { get; init; }
+    public required string Data { get; init; }
+    public int? Repeat { get; init; }
+}
+
 /// <summary>vs/v1/dev/{id}/cmd/arm</summary>
 public sealed record ArmCommand : Command
 {
@@ -39,6 +50,28 @@ public sealed record OtaCommand : Command
     public required string Md5 { get; init; }
     public required long Size { get; init; }
     public required string Version { get; init; }
+
+    /// <summary>Ed25519 signature (hex) of the SHA-512 of the image; hornets that carry the public key require it.</summary>
+    public string? Sig { get; init; }
+}
+
+/// <summary>vs/v1/dev/{id}/cmd/wifi: try <see cref="Ssid"/>; if the hornet does not reach the hive over it, the old network comes back.</summary>
+public sealed record WifiCommand : Command
+{
+    /// <summary>Required except for <see cref="WifiMode.Forget"/>, which has neither.</summary>
+    public string? Ssid { get; init; }
+    public string? Pass { get; init; }
+
+    /// <summary>stage: keep as a spare network; switch (the default): restart onto it now, with a way back; forget: drop the spare.</summary>
+    public WifiMode? Mode { get; init; }
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<WifiMode>))]
+public enum WifiMode
+{
+    Stage,
+    Switch,
+    Forget,
 }
 
 /// <summary>vs/v1/dev/{id}/cmd/snapshot</summary>
@@ -66,6 +99,9 @@ public sealed record DeviceConfig
     /// <summary>deep (default) or light: see contracts/schemas/config.schema.json sleep_mode.</summary>
     public SleepMode? SleepMode { get; init; }
 
+    /// <summary>What the hornet is used for: thermometer, bme280, relay, heater. Null: the role's default.</summary>
+    public IReadOnlyList<string>? Features { get; init; }
+
     public FailsafeConfig? Failsafe { get; init; }
     public GuardConfig? Guard { get; init; }
     public CameraConfig? Camera { get; init; }
@@ -73,15 +109,97 @@ public sealed record DeviceConfig
     public HwConfig? Hw { get; init; }
     public RelayConfig? Relay { get; init; }
     public DisplayConfig? Display { get; init; }
+    public BleConfig? Ble { get; init; }
+    public IrConfig? Ir { get; init; }
+    public CarConfig? Car { get; init; }
+    public MqttCityConfig? MqttCity { get; init; }
+
+    /// <summary>"this" (the hive the hornet was enrolled with, the default) or "other": the hive it prefers to reach.</summary>
+    public string? PreferHive { get; init; }
+}
+
+/// <summary>The city broker a hornet falls back to when home does not answer (spec 4.5).</summary>
+public sealed record MqttCityConfig
+{
+    public required string Host { get; init; }
+    public int? Port { get; init; }
+    public string? User { get; init; }
+    public string? Pass { get; init; }
+
+    /// <summary>Seconds the first broker may stay silent before this one is used (default 180); probe: how often the first is looked at (default 300).</summary>
+    public int? AfterS { get; init; }
+    public int? ProbeS { get; init; }
+
+    /// <summary>This broker is the preferred one (the hornet's prefer_hive is "other").</summary>
+    public bool? PreferOther { get; init; }
+}
+
+/// <summary>Role car: how the motors are mounted and how far a move may go (the light is the relay, channel light).</summary>
+public sealed record CarConfig
+{
+    public bool? InvertLeft { get; init; }
+    public bool? InvertRight { get; init; }
+
+    /// <summary>IN1/IN2 drive the right wheels and IN3/IN4 the left.</summary>
+    public bool? SwapSides { get; init; }
+
+    /// <summary>The motors stop after moving this long without a pause; null: 60.</summary>
+    public int? MaxRunS { get; init; }
+
+    /// <summary>Speeds are scaled to at most this percent; null: 100.</summary>
+    public int? MaxSpeed { get; init; }
+
+    /// <summary>PWM duty in percent where the motors start to turn; null: 40.</summary>
+    public int? MinSpeed { get; init; }
+
+    /// <summary>Set by the hive: the password of the camera's MJPEG stream (user hive), opened only by the hive's go2rtc.</summary>
+    public string? StreamKey { get; init; }
+}
+
+/// <summary>vs/v1/hive/drive/{id} (not retained, QoS 0): wheel speeds -100..100, repeated while a control is held.</summary>
+public sealed record DriveMessage
+{
+    public int V { get; init; } = 1;
+    public required long Ts { get; init; }
+    public required int Left { get; init; }
+    public required int Right { get; init; }
+}
+
+/// <summary>Roles irrx and irtx: the buttons of a remote, kept by the hive; the hornet does not read them.</summary>
+public sealed record IrConfig
+{
+    public IReadOnlyDictionary<string, IrButton>? Buttons { get; init; }
+}
+
+public sealed record IrButton
+{
+    public required string Protocol { get; init; }
+    public required int Bits { get; init; }
+    public required string Data { get; init; }
 }
 
 /// <summary>Board wiring; omitted pins keep the firmware defaults for the board.</summary>
 public sealed record HwConfig
 {
     public int? OnewirePin { get; init; }
+
+    /// <summary>DHT11/DHT22 data pin, used when Thermometer is dht11 or dht22.</summary>
+    public int? DhtPin { get; init; }
+
     public int? SdaPin { get; init; }
+
+    /// <summary>Role car: the L298N inputs IN1, IN2 (left motor), IN3, IN4 (right motor).</summary>
+    public IReadOnlyList<int>? MotorPins { get; init; }
+
+    /// <summary>Role car: speed by PWM on the IN pins; false: full speed only.</summary>
+    public bool? MotorPwm { get; init; }
+
     public int? SclPin { get; init; }
     public int? RelayPin { get; init; }
+
+    /// <summary>Roles irrx and irtx: the pin of the infrared receiver or emitter.</summary>
+    public int? IrPin { get; init; }
+
     public bool? RelayActiveLow { get; init; }
     public int? ButtonPin { get; init; }
     public int? LedPin { get; init; }
@@ -91,12 +209,147 @@ public sealed record HwConfig
 
     /// <summary>Divider ratio (R1+R2)/R2: battery V = pin V x ratio.</summary>
     public double? VbatRatio { get; init; }
+
+    /// <summary>The sensor the feature "thermometer" reads: ds18b20, dht11, dht22 or ntc (meteo: the NTC on NtcPin or A0, as temperature); null: the board's.</summary>
+    public string? Thermometer { get; init; }
+
+    /// <summary>Roles meteo and monitor: ADC pin with an NTC thermistor behind a divider (metric temperature_ntc).</summary>
+    public int? NtcPin { get; init; }
+
+    /// <summary>high: 3V3 - NTC - pin - resistor - GND (default); low: 3V3 - resistor - pin - NTC - GND.</summary>
+    public string? NtcSide { get; init; }
+
+    /// <summary>Ohm, the fixed resistor of the divider; null: 10000.</summary>
+    public double? NtcRSeries { get; init; }
+
+    /// <summary>Ohm, the NTC at 25 C; null: 10000.</summary>
+    public double? NtcRNominal { get; init; }
+
+    /// <summary>K, the NTC's B coefficient; null: 3950.</summary>
+    public double? NtcBeta { get; init; }
+
+    /// <summary>V, the supply of the divider; null: 3.3.</summary>
+    public double? NtcVcc { get; init; }
+
+    /// <summary>C added to the result (calibration); null: 0.</summary>
+    public double? NtcOffset { get; init; }
 }
 
 /// <summary>Small local screen: up to two metrics shown large.</summary>
 public sealed record DisplayConfig
 {
     public IReadOnlyList<string>? Lines { get; init; }
+
+    /// <summary>What to show, kept by the hive; it feeds the screen through vs/v1/hive/display/{id}.</summary>
+    public IReadOnlyList<DisplayConfigItem>? Items { get; init; }
+
+    /// <summary>Screens the hive draws: how the picture is turned clockwise, 0/90/180/270. Absent: 0.</summary>
+    public int? Rotation { get; init; }
+
+    /// <summary>Screens the hive draws: black and white swapped (a dark screen). Absent: false.</summary>
+    public bool? Invert { get; init; }
+
+    /// <summary>Monitoring of a monitor far away: it reads its screen every <see cref="DisplayMonitorConfig.EveryMin"/> minutes until the time is up.</summary>
+    public DisplayMonitorConfig? Monitor { get; init; }
+}
+
+public sealed record DisplayMonitorConfig
+{
+    /// <summary>Unix ms when the monitoring ends.</summary>
+    public required long Until { get; init; }
+
+    /// <summary>1, 2, 5 or 10.</summary>
+    public required int EveryMin { get; init; }
+}
+
+public sealed record DisplayConfigItem
+{
+    /// <summary>The device whose reading is shown; absent: the hornet itself.</summary>
+    public string? Device { get; init; }
+
+    /// <summary>The reading shown; absent when the item is a caption (<see cref="Text"/>).</summary>
+    public string? Metric { get; init; }
+
+    /// <summary>A caption the person typed instead of a reading, shown as it is.</summary>
+    public string? Text { get; init; }
+
+    public string? Label { get; init; }
+    /// <summary>Placed layout: pixels from the left edge to the anchor of the text (<see cref="Align"/> says which edge).</summary>
+    public int? X { get; init; }
+
+    /// <summary>Placed layout: pixels from the top edge to the top of the text (of its label when there is one).</summary>
+    public int? Y { get; init; }
+
+    /// <summary>Relative text height 1-10 (size/10 of the screen height). Set on any item: the whole screen is placed.</summary>
+    public int? Size { get; init; }
+
+    /// <summary>left (absent), center or right.</summary>
+    public string? Align { get; init; }
+
+    /// <summary>Screens the hive draws: id of the font family (GET /api/display/fonts). Absent: the standard font.</summary>
+    public string? Font { get; init; }
+
+    /// <summary>Screens the hive draws: the size of the font in pixels, 6-120. Absent: derived from <see cref="Size"/>.</summary>
+    public int? Px { get; init; }
+
+    public bool? Bold { get; init; }
+    public bool? Italic { get; init; }
+
+    /// <summary>The hive's clock instead of a reading: time or date.</summary>
+    public string? Clock { get; init; }
+
+    /// <summary>How the clock is written (contracts: config display.items[].format); absent: the first format of its kind.</summary>
+    public string? Format { get; init; }
+}
+
+/// <summary>vs/v1/hive/display/{id} (retained): ready texts for the screen, in the automatic layout or placed (x, y, size). No items: nothing chosen.</summary>
+public sealed record DisplayMessage
+{
+    public int V { get; init; } = 1;
+    public required long Ts { get; init; }
+    public required IReadOnlyList<DisplayItem> Items { get; init; }
+}
+
+public sealed record DisplayItem
+{
+    public string? Label { get; init; }
+    public required string Text { get; init; }
+    /// <summary>Placed layout: pixels from the left edge to the anchor of the text (<see cref="Align"/> says which edge).</summary>
+    public int? X { get; init; }
+
+    /// <summary>Placed layout: pixels from the top edge to the top of the text (of its label when there is one).</summary>
+    public int? Y { get; init; }
+
+    /// <summary>Relative text height 1-10 (size/10 of the screen height). Set on any item: the whole screen is placed.</summary>
+    public int? Size { get; init; }
+
+    /// <summary>left (absent), center or right.</summary>
+    public string? Align { get; init; }
+
+    /// <summary>Screens the hive draws: id of the font family (GET /api/display/fonts). Absent: the standard font.</summary>
+    public string? Font { get; init; }
+
+    /// <summary>Screens the hive draws: the size of the font in pixels, 6-120. Absent: derived from <see cref="Size"/>.</summary>
+    public int? Px { get; init; }
+
+    public bool? Bold { get; init; }
+    public bool? Italic { get; init; }
+
+    /// <summary>
+    /// "low" or "high": the reading is below or above the normal range set for it (the site's light blue and pink).
+    /// Absent: inside it, no range, or not a reading. The 0.42" OLED draws it on a white plate with an arrow up or down.
+    /// </summary>
+    public string? Range { get; init; }
+}
+
+/// <summary>Role ble: the Bluetooth LE thermometer the hornet is a bridge for.</summary>
+public sealed record BleConfig
+{
+    /// <summary>Bluetooth address, AA:BB:CC:DD:EE:FF. Absent: the hornet scans and lists what it hears in its log.</summary>
+    public string? Mac { get; init; }
+
+    /// <summary>Raw notification frames go to the hornet's log.</summary>
+    public bool? Dump { get; init; }
 }
 
 public sealed record RelayConfig
@@ -135,6 +388,9 @@ public sealed record CameraConfig
     public int? Burst { get; init; }
     public int? BurstIntervalMs { get; init; }
     public IrLedMode? IrLed { get; init; }
+
+    /// <summary>How the picture is turned clockwise (0, 90, 180, 270): the hive turns live video and photos, the hornet nothing.</summary>
+    public int? Rotate { get; init; }
 }
 
 public sealed record UploadConfig

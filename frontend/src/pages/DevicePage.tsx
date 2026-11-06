@@ -1,20 +1,47 @@
-import { ArrowLeft, Camera, Power, PowerOff, RotateCw, Wifi, WifiOff } from 'lucide-react'
-import { useState } from 'react'
-import { Link, useParams } from 'react-router'
-import type { DeviceDto } from '@/api/client'
-import { historyWindow, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useSendCommand, useSeries } from '@/api/queries'
+import { IpCamChannelSettings, NvrDeviceView } from '@/components/IpCamPanel'
+import { FeaturesPanel } from '@/components/FeaturesPanel'
+import { BlePanel } from '@/components/BlePanel'
+import { DisplayPanel } from '@/components/DisplayPanel'
+import { PreferHivePanel } from '@/components/PreferHivePanel'
+import { HelpTip } from '@/components/HelpTip'
+import { ScreenAccessPanel } from '@/components/ScreenAccessPanel'
+import { RangeEditor } from '@/components/RangeEditor'
+import { cn } from '@/lib/utils'
+import { rangeClass, rangeKey, rangeState } from '@/lib/valueRange'
+import { IrPanel, type IrReceiver } from '@/components/IrPanel'
+import { TasmotaConsole } from '@/components/TasmotaConsole'
+import { useQueryClient } from '@tanstack/react-query'
+import { ArrowLeft, Camera, ChevronDown, ChevronRight, ChevronUp, Cpu, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
+import { toast } from 'sonner'
+import { api, call } from '@/api/client'
+import { chartWindow, keys, useEvents, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useMonitoring, useRanges, useSendCommand, useSeries, useSnapshot, useTimelapse } from '@/api/queries'
+import { EventCard, type PhotoRef } from '@/components/EventCard'
+import { Lightbox } from '@/components/Lightbox'
 import { Chart, TimeAxis, type ChartPoint } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
+import { hasRelay, showsMetric } from '@/lib/features'
 import { formatAgo, formatFixed, formatValue, formatWhen, metricUnit } from '@/lib/format'
 import { ranges, rangeLabel } from '@/lib/ranges'
 import { ZoneSelect } from '@/pages/ClimatePage'
+import { DeviceName } from '@/components/DeviceName'
 import { PinsPanel } from '@/pages/SwarmPage'
+import { CarSetupCard } from '@/components/CarSetupCard'
+import { RotationCard } from '@/components/RotationCard'
+import { SortInput } from '@/components/SortInput'
+import { MonitoringPanel } from '@/components/MonitoringPanel'
+import { PanelMonitoring } from '@/components/PanelMonitoring'
+import { TimelapsePanel } from '@/components/TimelapsePanel'
+import { DashboardChecks } from '@/components/DashboardChecks'
+import { canMonitor } from '@/lib/monitoring'
+import { announcedCommands, hasCap, hasPicture, relayChannels } from '@/lib/swarm'
 
 function MetricChart({ device, metric, hours }: { device: string; metric: string; hours: number }) {
   const series = useSeries(device, metric, hours)
-  const { from, to } = historyWindow(hours)
+  const { from, to } = chartWindow(hours)
   return (
     <div className="space-y-1">
       <p className="text-sm font-medium">{metricLabel(metric)}</p>
@@ -34,7 +61,7 @@ function MetricChart({ device, metric, hours }: { device: string; metric: string
 /** Signal, free memory and battery from the hornet's own health reports (a battery line only when it reports one). */
 function HealthCharts({ device, hours }: { device: string; hours: number }) {
   const health = useHealthHistory(device, hours)
-  const { from, to } = historyWindow(hours)
+  const { from, to } = chartWindow(hours)
   if (health.isLoading) return <Skeleton className="h-36" />
   const rows = health.data ?? []
   const line = (pick: (r: (typeof rows)[number]) => number | null | undefined): ChartPoint[] =>
@@ -45,30 +72,89 @@ function HealthCharts({ device, hours }: { device: string; hours: number }) {
   const battery = line((r) => r.vbat)
   return (
     <>
-      <div className="space-y-1">
-        <p className="text-sm font-medium">{t('device.signal')}</p>
-        <Chart points={line((r) => r.rssi)} from={from} to={to} format={(v) => `${Math.round(v)} dBm`} axisFormat={(v, d) => formatFixed(v, d)} />
-      </div>
-      <div className="space-y-1">
-        <p className="text-sm font-medium">{t('device.memory')}</p>
-        <Chart points={line((r) => r.heapFree / 1024)} from={from} to={to} format={(v) => `${Math.round(v)} KB`} axisFormat={(v, d) => formatFixed(v, d)} />
-      </div>
       {battery.length > 0 && (
         <div className="space-y-1">
           <p className="text-sm font-medium">{t('device.battery')}</p>
           <Chart points={battery} from={from} to={to} format={(v) => `${v.toFixed(2)} V`} axisFormat={(v, d) => formatFixed(v, d)} />
         </div>
       )}
+      <details className="space-y-5">
+        <summary className="cursor-pointer text-sm text-neutral-400">{t('device.diagnostics')}</summary>
+        <div className="mt-3 space-y-1">
+          <p className="text-sm font-medium">{t('device.signal')}</p>
+          <Chart points={line((r) => r.rssi)} from={from} to={to} format={(v) => `${Math.round(v)} dBm`} axisFormat={(v, d) => formatFixed(v, d)} />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">{t('device.memory')}</p>
+          <Chart points={line((r) => r.heapFree / 1024)} from={from} to={to} format={(v) => `${Math.round(v)} KB`} axisFormat={(v, d) => formatFixed(v, d)} />
+        </div>
+      </details>
     </>
   )
 }
 
-function CommandHistory({ device }: { device: string }) {
-  const history = useCommandHistory(device, true)
-  const rows = history.data ?? []
+/** What the hornet said when it refused or failed a command (the "msg" of its ack). */
+function ackMessage(ack: unknown): string | null {
+  const msg = (ack as { msg?: unknown } | null)?.msg
+  return typeof msg === 'string' && msg ? msg : null
+}
+
+/**
+ * A card that starts folded: the arrow opens it, and open it offers the bin, which hides what is there now (the
+ * server drops the rows at its scheduled cleanup). `extra` sits by the buttons while it is open.
+ */
+function FoldedCard({ title, open, onOpen, onClear, clearLabel, extra, children }: {
+  title: string
+  open: boolean
+  onOpen: (open: boolean) => void
+  /** Missing for those who may only read. */
+  onClear?: () => void
+  clearLabel: string
+  extra?: ReactNode
+  children: ReactNode
+}) {
   return (
     <Card>
-      <CardHeader><CardTitle>{t('device.commandHistory')}</CardTitle></CardHeader>
+      <CardHeader className={open ? undefined : 'pb-4'}>
+        <button type="button" className="flex min-w-0 flex-1 items-center text-left" onClick={() => onOpen(!open)} aria-expanded={open}>
+          <CardTitle>{title}</CardTitle>
+        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {open && extra}
+          {open && onClear && (
+            <Button variant="ghost" size="icon" className="size-8 text-neutral-500 hover:text-red-400" title={clearLabel} aria-label={clearLabel} onClick={onClear}><Trash2 /></Button>
+          )}
+          <Button variant="ghost" size="icon" className="size-8 text-neutral-400" title={open ? t('device.collapse') : t('device.expand')} aria-label={open ? t('device.collapse') : t('device.expand')} aria-expanded={open} onClick={() => onOpen(!open)}>
+            {open ? <ChevronUp /> : <ChevronDown />}
+          </Button>
+        </div>
+      </CardHeader>
+      {open && children}
+    </Card>
+  )
+}
+
+/** Hides the list so far for everyone; the rows stay on the server until the retention cleanup. */
+function useClear(path: '/api/devices/{deviceId}/commands' | '/api/devices/{deviceId}/logs', deviceId: string, name: string, query: readonly unknown[]) {
+  const qc = useQueryClient()
+  return async () => {
+    if (!window.confirm(t(path.endsWith('logs') ? 'device.clearLogsConfirm' : 'device.clearCommandsConfirm').replace('{name}', name))) return
+    try {
+      await call(api.DELETE(path, { params: { path: { deviceId } } }))
+    } catch {
+      toast.error(t('device.clearFailed'))
+    }
+    await qc.invalidateQueries({ queryKey: query })
+  }
+}
+
+function CommandHistory({ device, name }: { device: string; name: string }) {
+  const [open, setOpen] = useState(false)
+  const history = useCommandHistory(device, open)
+  const clear = useClear('/api/devices/{deviceId}/commands', device, name, ['devices', device, 'commands'])
+  const rows = history.data ?? []
+  return (
+    <FoldedCard title={t('device.commandHistory')} open={open} onOpen={setOpen} onClear={() => void clear()} clearLabel={t('device.clearCommands')}>
       <CardContent>
         {history.isLoading && <Skeleton className="h-16" />}
         {!history.isLoading && rows.length === 0 && <p className="text-sm text-neutral-500">{t('device.noCommands')}</p>}
@@ -78,30 +164,38 @@ function CommandHistory({ device }: { device: string }) {
               <div className="min-w-0">
                 <p className="truncate font-medium">{c.name}</p>
                 <p className="truncate text-xs text-neutral-500">{c.issuedBy} · {formatWhen(c.issuedAt)}</p>
+                {c.status !== 'ok' && c.status !== 'sent' && ackMessage(c.ack) && <p className="break-words text-xs text-red-300">{ackMessage(c.ack)}</p>}
               </div>
               <Badge tone={c.status === 'ok' ? 'ok' : c.status === 'sent' ? 'neutral' : 'alarm'}>{t(`device.commandStatus.${c.status}`, c.status)}</Badge>
             </li>
           ))}
         </ul>
       </CardContent>
-    </Card>
+    </FoldedCard>
   )
 }
 
 const logLevels = ['', 'error', 'warn', 'info', 'debug']
 
-function Logs({ device }: { device: string }) {
+function Logs({ device, name, canClear }: { device: string; name: string; canClear: boolean }) {
+  const [open, setOpen] = useState(false)
   const [level, setLevel] = useState('')
-  const logs = useDeviceLogs(device, level)
+  const logs = useDeviceLogs(device, level, open)
+  const clear = useClear('/api/devices/{deviceId}/logs', device, name, ['telemetry', 'logs', device])
   const rows = logs.data ?? []
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('device.logs')}</CardTitle>
+    <FoldedCard
+      title={t('device.logs')}
+      open={open}
+      onOpen={setOpen}
+      onClear={canClear ? () => void clear() : undefined}
+      clearLabel={t('device.clearLogs')}
+      extra={(
         <Select value={level} onChange={(e) => setLevel(e.target.value)} className="h-8 w-auto text-xs" aria-label={t('device.logLevel')}>
           {logLevels.map((l) => <option key={l} value={l}>{l === '' ? t('device.logAll') : l}</option>)}
         </Select>
-      </CardHeader>
+      )}
+    >
       <CardContent>
         {logs.isLoading && <Skeleton className="h-16" />}
         {!logs.isLoading && rows.length === 0 && <p className="text-sm text-neutral-500">{t('device.noLogs')}</p>}
@@ -115,20 +209,35 @@ function Logs({ device }: { device: string }) {
           ))}
         </ul>
       </CardContent>
-    </Card>
+    </FoldedCard>
   )
 }
 
-/** Command names the hornet announced in its info message (contracts/schemas/info.schema.json "commands"). */
-function announcedCommands(d: DeviceDto): string[] {
-  const info = d.info as { commands?: unknown } | null
-  return Array.isArray(info?.commands) ? info.commands.filter((c): c is string => typeof c === 'string') : []
+/** The newest events of this hornet (up to 16), folded, with a way on to the full feed filtered to it. */
+function HornetEvents({ deviceId }: { deviceId: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <FoldedCard title={t('device.events')} open={open} onOpen={setOpen} clearLabel="">
+      <CardContent><HornetEventsBody deviceId={deviceId} /></CardContent>
+    </FoldedCard>
+  )
 }
 
-/** Relay channel names come from the hornet's retained state ({channel: on|off}); "relay" is the firmware default. */
-function relayChannels(d: DeviceDto): string[] {
-  const keys = Object.keys((d.state as Record<string, unknown> | null) ?? {})
-  return keys.length > 0 ? keys : ['relay']
+function HornetEventsBody({ deviceId }: { deviceId: string }) {
+  const events = useEvents({ device: deviceId, limit: 16 })
+  const [viewer, setViewer] = useState<{ photos: PhotoRef[]; index: number } | null>(null)
+  const rows = (events.data?.pages[0]?.items ?? []).slice(0, 16)
+  return (
+    <div className="space-y-2">
+      {events.isLoading && <Skeleton className="h-16" />}
+      {!events.isLoading && rows.length === 0 && <p className="text-sm text-neutral-500">{t('events.empty')}</p>}
+      {rows.map((e) => <EventCard key={e.id} event={e} compact onOpenPhoto={(photos, index) => setViewer({ photos, index })} />)}
+      <Link to={`/events?device=${encodeURIComponent(deviceId)}`} className="flex items-center justify-end text-sm text-amber-400">
+        {t('device.allEvents')} <ChevronRight className="size-4" />
+      </Link>
+      {viewer && <Lightbox photos={viewer.photos} index={viewer.index} onIndex={(index) => setViewer({ ...viewer, index })} onClose={() => setViewer(null)} />}
+    </div>
+  )
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -143,37 +252,101 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 /** Screen 4 (spec 8.2): one hornet's status, readings, commands and pins. Charts and logs need history endpoints. */
 export function DevicePage() {
   const { deviceId = '' } = useParams()
+  // Opened from a zone's editor (?zone=3): the way back leads to it.
+  const fromZone = useSearchParams()[0].get('zone')
   const [hours, setHours] = useState(24)
-  const devices = useDevices()
+  const devices = useDevices(true)
   const zones = useZones()
   const latest = useLatestTelemetry()
+  const valueRanges = useRanges().data
+  const monitoring = useMonitoring()
+  const timelapse = useTimelapse()
   const me = useMe()
   const canControl = (me.data?.roles.includes('admin') ?? false) || (me.data?.roles.includes('member') ?? false)
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const device = (devices.data ?? []).find((d) => d.deviceId === deviceId)
-  const readings = (latest.data ?? []).filter((v) => v.deviceId === deviceId).sort((a, b) => a.metric.localeCompare(b.metric))
+  // Infrared receivers of the house (our irrx, or a Tasmota device that keeps the last code): what a transmitter learns buttons from.
+  const irReceivers: IrReceiver[] = (devices.data ?? [])
+    .filter((d) => d.deviceId !== deviceId && (d.type === 'irrx' || (d.state as Record<string, unknown> | null)?.ir_last !== undefined))
+    .map((d) => ({ deviceId: d.deviceId, name: d.name, state: d.state }))
+  // Only what the hornet is used for: a relay that once sent a temperature does not keep showing it.
+  const readings = (latest.data ?? [])
+    .filter((v) => v.deviceId === deviceId && showsMetric(device?.features, v.metric, device?.thermometer))
+    .sort((a, b) => a.metric.localeCompare(b.metric))
 
   const send = useSendCommand(deviceId)
+  const takeSnapshot = useSnapshot(deviceId)
+  const qc = useQueryClient()
+  const navigate = useNavigate()
 
+  async function saveSort(sort: number) {
+    await call(api.PUT('/api/devices/{deviceId}/sort', { params: { path: { deviceId } }, body: { sort } }))
+    await qc.invalidateQueries({ queryKey: keys.devices })
+  }
+
+  async function remove() {
+    if (!device || !window.confirm(t('swarm.removeConfirm').replace('{name}', device.name))) return
+    await call(api.DELETE('/api/devices/{deviceId}', { params: { path: { deviceId } } }))
+    toast.success(t('swarm.removed'))
+    await qc.invalidateQueries({ queryKey: keys.devices })
+    navigate('/swarm')
+  }
+
+  /** For good, when the board never reached the hive: a flash that failed, a wrong id. The id is free again. */
+  async function purge() {
+    if (!device || !window.confirm(t('swarm.purgeConfirm').replace('{name}', device.name))) return
+    await call(api.DELETE('/api/devices/{deviceId}', { params: { path: { deviceId }, query: { purge: true } } }))
+    toast.success(t('swarm.purged'))
+    await qc.invalidateQueries({ queryKey: keys.devices })
+    navigate('/swarm')
+  }
+
+  const zone = (zones.data ?? []).find((z) => String(z.id) === fromZone)
   const back = (
-    <Link to="/swarm" className="flex items-center gap-1 text-sm text-amber-400">
-      <ArrowLeft className="size-4" />{t('device.back')}
+    <Link to={zone ? `/climate?edit=${zone.id}` : '/swarm'} className="flex items-center gap-1 text-sm text-amber-400">
+      <ArrowLeft className="size-4" />{zone ? t('climate.back').replace('{name}', zone.name) : t('device.back')}
     </Link>
   )
 
   if (devices.isLoading) return <Skeleton className="h-60" />
   if (!device) return <div className="space-y-3">{back}<Empty>{t('device.notFound')}</Empty></div>
 
-  const commands = announcedCommands(device)
+  // A relay the hornet is not used as gets no buttons, even if its firmware could switch one.
+  const commands = announcedCommands(device).filter((c) => c !== 'relay' || hasRelay(device.features))
+  const sensing = device.driver !== 'ipcam' && (device.features == null || device.features.some((f) => f === 'thermometer' || f === 'bme280') || readings.length > 0)
   const online = device.status === 'online'
   const configPending = device.configRev !== device.configAppliedRev
+  const monitored = (monitoring.data ?? []).some((m) => m.deviceId === deviceId)
+  const timelapsing = (timelapse.data ?? []).some((x) => x.deviceId === deviceId)
+  const camera = device.driver === 'hornet' && device.type === 'guard-cam' && device.status !== 'disabled'
+  const nvrId = (device.info as { nvrId?: unknown } | null)?.nvrId
+  // The spare Wi-Fi network (Settings → Wi-Fi for hornets) is the administrator's: so is dropping it.
+  const forgetSpare = isAdmin && hasCap(device, 'wifi.forget')
+
+  if (device.type === 'nvr')
+    return (
+      <div className="space-y-4">
+        {back}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <DeviceName device={device} editable={false} />
+            <p className="truncate text-xs text-neutral-500">{device.deviceId} · {t('deviceTypes.nvr')} · {device.ip}</p>
+          </div>
+          <Badge tone={online ? 'ok' : device.status === 'disabled' || device.status === 'pending' ? 'neutral' : 'alarm'}>
+            {online ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
+            {statusLabel(device.status)}
+          </Badge>
+        </div>
+        <NvrDeviceView deviceId={device.deviceId} isAdmin={isAdmin} />
+      </div>
+    )
 
   return (
     <div className="space-y-4">
       {back}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-semibold">{device.name}</h1>
+          <DeviceName device={device} editable={isAdmin && device.status !== 'disabled'} />
           <p className="truncate text-xs text-neutral-500">{device.deviceId} · {device.type}</p>
         </div>
         <Badge tone={online ? 'ok' : device.status === 'disabled' || device.status === 'pending' ? 'neutral' : 'alarm'}>
@@ -187,6 +360,7 @@ export function DevicePage() {
         <CardContent>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <Field label={t('device.zone')}>{isAdmin ? <ZoneSelect device={device} zones={zones.data ?? []} /> : device.zone}</Field>
+            <Field label={t('device.sort')}>{isAdmin ? <SortInput value={device.sort ?? 0} onSave={saveSort} label={t('device.sort')} /> : device.sort ?? 0}</Field>
             <Field label={t('device.board')}>{device.hw}</Field>
             <Field label={t('device.firmware')}>{device.fw}</Field>
             <Field label="MAC">{device.mac}</Field>
@@ -201,7 +375,12 @@ export function DevicePage() {
         </CardContent>
       </Card>
 
-      <Card>
+      {device.type === 'ipcam' && typeof nvrId === 'number' && <IpCamChannelSettings deviceId={device.deviceId} nvrId={nvrId} isAdmin={isAdmin} />}
+
+      {device.type === 'car' && canControl && <CarSetupCard deviceId={device.deviceId} editable={isAdmin} />}
+      {hasPicture(device) && canControl && device.status !== 'disabled' && <RotationCard device={device} />}
+
+      {sensing && <Card>
         <CardHeader><CardTitle>{t('device.readings')}</CardTitle></CardHeader>
         <CardContent>
           {latest.isLoading && <Skeleton className="h-16" />}
@@ -210,34 +389,105 @@ export function DevicePage() {
             {readings.map((v) => (
               <div key={v.metric} className="rounded-lg bg-neutral-800/50 p-3">
                 <p className="truncate text-xs text-neutral-400">{metricLabel(v.metric)}</p>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">{formatValue(v.metric, v.value)}</p>
+                <p className={cn('mt-1 text-2xl font-semibold tabular-nums', rangeClass(rangeState(v.value, valueRanges?.get(rangeKey(deviceId, v.metric)))))}>{formatValue(v.metric, v.value)}</p>
                 <p className="text-xs text-neutral-500">{formatAgo(v.ts)}</p>
               </div>
             ))}
           </div>
+          <RangeEditor deviceId={deviceId} metrics={readings.map((v) => v.metric)} editable={canControl} />
         </CardContent>
-      </Card>
+      </Card>}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('device.history')}</CardTitle>
-          <Select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-8 w-auto text-xs" aria-label={t('device.range')}>
-            {ranges.map((h) => <option key={h} value={h}>{rangeLabel(h)}</option>)}
-          </Select>
-        </CardHeader>
-        <CardContent className="space-y-5">
-          {readings.map((v) => <MetricChart key={v.metric} device={deviceId} metric={v.metric} hours={hours} />)}
-          <HealthCharts device={deviceId} hours={hours} />
-          <TimeAxis {...historyWindow(hours)} />
-        </CardContent>
-      </Card>
+      {device.type !== 'hive' && (isAdmin || device.dashboard != null) && (
+        <Card>
+          <CardHeader><CardTitle>{t('dashboard.title')}</CardTitle></CardHeader>
+          <CardContent><DashboardChecks device={device} latest={latest.data ?? []} editable={isAdmin} /></CardContent>
+        </Card>
+      )}
 
-      {canControl && online && (commands.includes('snapshot') || commands.includes('relay') || commands.includes('reboot')) && (
+      {canMonitor(device) && readings.some((v) => v.metric.startsWith('temperature')) && (canControl || monitored) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-1">{t('monitoring.title')}<HelpTip text={`${t('monitoring.hint')}\n${t('monitoring.alarmHint')}`} /></CardTitle>
+          </CardHeader>
+          <CardContent>
+            <MonitoringPanel
+              device={device}
+              metrics={readings.map((v) => v.metric).filter((m) => m.startsWith('temperature'))}
+              canControl={canControl}
+              onStarted={() => setHours((h) => Math.min(h, 1))}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {camera && (canControl || timelapsing) && (
+        <Card>
+          <CardHeader><CardTitle>{t('timelapse.title')}</CardTitle></CardHeader>
+          <CardContent>
+            <TimelapsePanel device={device} canControl={canControl} hasLight={commands.includes('relay')} />
+          </CardContent>
+        </Card>
+      )}
+
+      {device.driver === 'hornet' && device.type !== 'monitor' && !device.visitor && canControl && (
+        <Card>
+          <CardHeader><CardTitle>{t('prefer.title')}</CardTitle></CardHeader>
+          <CardContent><PreferHivePanel deviceId={deviceId} preferHive={device.preferHive} editable={canControl} /></CardContent>
+        </Card>
+      )}
+
+      {(device.type === 'monitor' || (device.driver === 'hornet' && (device.hw ?? '').includes('oled'))) && (
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-1">{t('display.title')}<HelpTip text={t('display.hint')} /></CardTitle></CardHeader>
+          <CardContent><DisplayPanel deviceId={deviceId} editable={isAdmin} /></CardContent>
+        </Card>
+      )}
+
+      {device.type === 'monitor' && device.driver === 'http' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-1">{t('monitoring.title')}<HelpTip text={t('panelMonitoring.help')} /></CardTitle>
+          </CardHeader>
+          <CardContent><PanelMonitoring deviceId={deviceId} canControl={canControl} /></CardContent>
+        </Card>
+      )}
+
+      {device.type === 'monitor' && device.driver === 'http' && isAdmin && (
+        <Card>
+          <CardHeader><CardTitle>{t('remoteMonitor.reflashTitle')}</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="text-xs text-neutral-500">{t('remoteMonitor.reflashHint')}</p>
+            <Link to={`/swarm/add?remote=${encodeURIComponent(deviceId)}`}>
+              <Button variant="outline"><Cpu />{t('remoteMonitor.flashAgain')}</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
+      {device.type === 'monitor' && isAdmin && (
+        <Card>
+          <CardHeader><CardTitle>{t('screenAccess.title')}</CardTitle></CardHeader>
+          <CardContent><ScreenAccessPanel deviceId={deviceId} /></CardContent>
+        </Card>
+      )}
+
+      {device.status !== 'disabled' && device.driver === 'hornet' && device.type !== 'ble' && (
+        <Card>
+          <CardHeader><CardTitle>{device.supportedFeatures && device.supportedFeatures.length > 1 ? `${t('features.title')} · ${t('swarm.pins')}` : t('swarm.pins')}</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <FeaturesPanel device={device} editable={isAdmin} />
+            <PinsPanel deviceId={device.deviceId} editable={isAdmin} board={device.hw} type={device.type} features={device.features} />
+          </CardContent>
+        </Card>
+      )}
+
+      {canControl && online && (commands.includes('snapshot') || commands.includes('relay') || commands.includes('reboot') || forgetSpare) && (
         <Card>
           <CardHeader><CardTitle>{t('device.commands')}</CardTitle></CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {commands.includes('snapshot') && (
-              <Button variant="outline" onClick={() => void send('snapshot', { count: 1 })}><Camera />{t('device.snapshot')}</Button>
+              <Button variant="outline" onClick={() => void takeSnapshot()}><Camera />{t('device.snapshot')}</Button>
             )}
             {commands.includes('relay') && relayChannels(device).map((channel) => (
               <div key={channel} className="flex items-center gap-2">
@@ -249,18 +499,70 @@ export function DevicePage() {
             {commands.includes('reboot') && (
               <Button variant="outline" onClick={() => void send('reboot')}><RotateCw />{t('device.reboot')}</Button>
             )}
+            {forgetSpare && (
+              <Button
+                variant="outline"
+                title={t('device.forgetSpareHint')}
+                onClick={() => window.confirm(t('device.forgetSpareConfirm')) && void send('wifi', { mode: 'forget' })}
+              >
+                <WifiOff />{t('device.forgetSpare')}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {canControl && <CommandHistory device={deviceId} />}
-      <Logs device={deviceId} />
-
-      {device.status !== 'disabled' && (
+      {device.type === 'ble' && (
         <Card>
-          <CardHeader><CardTitle>{t('swarm.pins')}</CardTitle></CardHeader>
-          <CardContent><PinsPanel deviceId={device.deviceId} editable={isAdmin} board={device.hw} type={device.type} /></CardContent>
+          <CardHeader><CardTitle>{t('ble.title')}</CardTitle></CardHeader>
+          <CardContent><BlePanel deviceId={deviceId} editable={isAdmin} /></CardContent>
         </Card>
+      )}
+
+      {isAdmin && device.driver === 'tasmota' && <TasmotaConsole deviceId={deviceId} online={online} />}
+
+      {canControl && commands.includes('ir') && (
+        <IrPanel deviceId={deviceId} state={device.state} online={online} canEdit={canControl}
+          receivers={device.type === 'irtx' ? irReceivers : undefined} />
+      )}
+      {device.type === 'irrx' && (
+        <Card>
+          <CardHeader><CardTitle>{t('ir.receiverTitle')}</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p className="text-xs text-neutral-500">{t('ir.receiverHint')}</p>
+            <p className="font-mono text-amber-200">{String((device.state as Record<string, unknown> | null)?.ir_last ?? t('ir.receiverNone'))}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{t('device.history')}</CardTitle>
+          <Select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-8 w-auto text-xs" aria-label={t('device.range')}>
+            {ranges.map((h) => <option key={h} value={h}>{rangeLabel(h)}</option>)}
+          </Select>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {readings.map((v) => <MetricChart key={v.metric} device={deviceId} metric={v.metric} hours={hours} />)}
+          <HealthCharts device={deviceId} hours={hours} />
+          <TimeAxis {...chartWindow(hours)} />
+        </CardContent>
+      </Card>
+
+      <HornetEvents deviceId={deviceId} />
+
+      {canControl && <CommandHistory device={deviceId} name={device.name} />}
+      <Logs device={deviceId} name={device.name} canClear={canControl} />
+
+      {isAdmin && device.type !== 'hive' && (device.status !== 'disabled' || !device.lastSeenAt) && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {!device.lastSeenAt && (
+            <Button variant="outline" title={t('swarm.purgeHint')} className="border-red-900 text-red-400 hover:bg-red-950" onClick={() => void purge()}><Trash2 />{t('swarm.purge')}</Button>
+          )}
+          {device.status !== 'disabled' && (
+            <Button variant="outline" className="border-red-900 text-red-400 hover:bg-red-950" onClick={() => void remove()}><Trash2 />{t('swarm.removeHornet')}</Button>
+          )}
+        </div>
       )}
     </div>
   )

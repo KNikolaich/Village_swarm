@@ -6,35 +6,78 @@ namespace Hive.Modules.Devices;
 /// </summary>
 public static class BoardPins
 {
-    public sealed record Defaults(int? OneWire, int? Sda, int? Scl, int? Relay, int? Button, int? Dht, bool RelayActiveLow, string Note);
+    /// <summary>Thermometer: the sensor feature "thermometer" reads when the config "hw" does not say (DeviceFeatures.Ds18b20...).</summary>
+    public sealed record Defaults(int? OneWire, int? Sda, int? Scl, int? Relay, int? Button, int? Dht, bool RelayActiveLow, string Note,
+        string Thermometer = DeviceFeatures.Ds18b20);
 
     public sealed record PinRow(string Function, string Key, int? Pin, string Source, string? Note);
 
     private static readonly Dictionary<string, Defaults> Boards = new()
     {
-        ["esp32cam-aithinker"] = new(null, null, null, null, null, null, false, "PIR on GPIO13 (guard-cam, fixed); microSD in 1-bit mode"),
+        ["esp32cam-aithinker"] = new(null, null, null, 4, null, null, false, "PIR on GPIO13 (guard-cam, fixed); microSD in 1-bit mode; GPIO4 is the white flash LED"),
         ["esp32c3-mini"] = new(3, 8, 9, 10, null, null, false, "SuperMini: 1-Wire GPIO3, I2C GPIO8/GPIO9, relay GPIO10"),
         ["esp32c3-oled-042"] = new(3, 5, 6, null, null, null, false, "0,42\" OLED on the same I2C bus (GPIO5/GPIO6)"),
         ["wemos-d1-mini"] = new(14, 4, 5, 12, 0, null, false, "D5/D2/D1 for 1-Wire/I2C, D6 relay, D3 button"),
         ["nodemcu-v3"] = new(14, 4, 5, 12, 0, null, false, "as Wemos D1 mini; D3 is the FLASH button"),
         ["esp-01"] = new(2, 0, 2, 0, null, null, true, "GPIO2 is shared by 1-Wire and I2C SCL; wire one kind of sensor only"),
-        ["esp-01-dht11"] = new(null, null, null, null, null, 2, false, "ESP-01S DHT11 module: DHT11 on GPIO2, nothing else"),
+        ["esp-01-dht11"] = new(null, null, null, null, null, 2, false, "ESP-01S DHT11 module: DHT11 on GPIO2, nothing else", DeviceFeatures.Dht11),
     };
 
     /// <summary>Roles and the functions they use: a pin is checked for conflicts only among these.</summary>
     private static readonly Dictionary<string, string[]> RoleFunctions = new()
     {
-        ["meteo"] = ["onewire", "sda", "scl", "vbat", "dht"],
+        ["meteo"] = ["onewire", "sda", "scl", "vbat", "dht", "ntc"],
         ["relay"] = ["relay", "button", "vbat"],
+        ["heat"] = ["onewire", "sda", "scl", "relay", "button", "vbat", "dht"],
+        ["guard-cam"] = ["relay"],
+        ["monitor"] = ["sda", "scl", "vbat", "ntc"],  // the screen on I2C
+    };
+
+    /// <summary>
+    /// Whether the hornet uses a pin function: its role has it and, where the role has features
+    /// (<see cref="DeviceFeatures"/>), one of the chosen features needs it. An unknown role uses everything.
+    /// </summary>
+    public static bool Uses(string type, IReadOnlyCollection<string>? features, string function) =>
+        (!RoleFunctions.TryGetValue(type, out var fns) || fns.Contains(function))
+        && (features is null || DeviceFeatures.Uses(features, function));
+
+    /// <summary>Pins a board keeps for itself; the firmware refuses them for any function (guard_cam.cpp outputPinAllowed).</summary>
+    private static readonly Dictionary<string, (int[] Pins, string Owner)> Reserved = new()
+    {
+        ["esp32cam-aithinker"] = ([0, 2, 5, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 34, 35, 36, 37, 38, 39], "camera, SD, PSRAM or PIR"),
     };
 
     public static bool KnownBoard(string board) => Boards.ContainsKey(board);
 
     public static Defaults? For(string? board) => board is not null && Boards.TryGetValue(board, out var d) ? d : null;
 
-    /// <summary>Effective pins: the config "hw" override where given, else the board default.</summary>
-    public static IReadOnlyList<PinRow> Rows(string? board, string type, System.Text.Json.JsonElement? hw)
+    /// <summary>Functions that do nothing without a pin: shown as not set (Source "none") instead of being left out.</summary>
+    private static readonly string[] NeedPin = ["onewire", "sda", "scl", "relay", "dht"];
+
+    /// <summary>
+    /// The sensor the feature "thermometer" reads: config "hw".thermometer when set, else the board's (a DHT11 on the
+    /// esp-01-dht11 module, a DS18B20 elsewhere).
+    /// </summary>
+    public static string ThermometerSensor(string? board, System.Text.Json.JsonElement? hw) =>
+        ThermometerByHand(hw) is { } s ? s : For(board)?.Thermometer ?? DeviceFeatures.Ds18b20;
+
+    /// <summary>The config "hw".thermometer, or null when the board default applies.</summary>
+    public static string? ThermometerByHand(System.Text.Json.JsonElement? hw) =>
+        hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty("thermometer", out var v)
+        && v.ValueKind == System.Text.Json.JsonValueKind.String && DeviceFeatures.ThermometerSensors.Contains(v.GetString())
+            ? v.GetString() : null;
+
+    /// <summary>
+    /// Effective pins of the functions the hornet uses: the config "hw" override where given, else the board default.
+    /// A pin the hornet needs but neither gives is listed with no pin (Source "none"), so a missing default shows.
+    /// The thermometer uses the 1-Wire pin for DS18B20s, the DHT pin for a DHT11/DHT22 and the NTC pin (A0 unless set) for
+    /// an NTC, one of them only.
+    /// </summary>
+    public static IReadOnlyList<PinRow> Rows(string? board, string type, System.Text.Json.JsonElement? hw, IReadOnlyCollection<string>? features = null)
     {
+        var sensor = ThermometerSensor(board, hw);
+        var dht = DeviceFeatures.IsDht(sensor);
+        var ntcThermometer = NtcThermometer(type, board, hw, features);
         var d = For(board) ?? new Defaults(null, null, null, null, null, null, false, "unknown board: pins are whatever the config says");
         int? Pick(string key, int? fallback) =>
             hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
@@ -47,29 +90,109 @@ public static class BoardPins
             new("relay", "relay_pin", Pick("relay_pin", d.Relay), Source(hw, "relay_pin"), d.RelayActiveLow ? "active low" : "active high"),
             new("button", "button_pin", Pick("button_pin", d.Button), Source(hw, "button_pin"), "local toggle"),
             new("vbat", "vbat_pin", Pick("vbat_pin", null), Source(hw, "vbat_pin"), "battery divider (ADC)"),
-            new("dht", "dht_pin", d.Dht, "default", "DHT11/22 data"),
+            new("dht", "dht_pin", Pick("dht_pin", d.Dht), Source(hw, "dht_pin"), "DHT11/22 data"),
+            ntcThermometer
+                ? new("ntc", "ntc_pin", Pick("ntc_pin", NtcThermometerPin(board)), Source(hw, "ntc_pin"), "NTC thermometer (ADC)")
+                : new("ntc", "ntc_pin", Pick("ntc_pin", null), Source(hw, "ntc_pin"), "NTC thermistor divider (ADC)"),
         };
-        return rows.Where(r => r.Pin is not null).ToList();
+        return rows
+            .Where(r => (r.Pin is not null || NeedPin.Contains(r.Function) || (r.Function == "ntc" && ntcThermometer)) && Uses(type, features, r.Function))
+            .Where(r => r.Function switch { "onewire" => sensor == DeviceFeatures.Ds18b20, "dht" => dht, _ => true })
+            .Select(r => r.Pin is null ? r with { Source = "none" } : r)
+            .ToList();
     }
 
     private static string Source(System.Text.Json.JsonElement? hw, string key) =>
-        hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty(key, out _) ? "config" : "default";
+        hw is { ValueKind: System.Text.Json.JsonValueKind.Object } h && h.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number
+            ? "config" : "default";
 
-    /// <summary>Pins used twice by the functions a role uses; empty when the wiring is clean.</summary>
-    public static IReadOnlyList<string> Conflicts(string type, IReadOnlyList<PinRow> rows)
+    /// <summary>Pins used twice by the functions a role uses, or taken by the board itself; empty when the wiring is clean.</summary>
+    public static IReadOnlyList<string> Conflicts(string type, IReadOnlyList<PinRow> rows, string? board = null, IReadOnlyCollection<string>? features = null)
     {
-        var used = RoleFunctions.TryGetValue(type, out var fns) ? fns : Array.Empty<string>();
-        return rows.Where(r => used.Contains(r.Function) && r.Pin is not null)
-            .GroupBy(r => r.Pin!.Value)
+        var mine = rows.Where(r => RoleFunctions.ContainsKey(type) && Uses(type, features, r.Function) && r.Pin is not null).ToList();
+        var twice = mine.GroupBy(r => r.Pin!.Value)
             .Where(g => g.Count() > 1)
-            .Select(g => $"GPIO{g.Key}: {string.Join(", ", g.Select(r => r.Function))}")
-            .ToList();
+            .Select(g => $"GPIO{g.Key}: {string.Join(", ", g.Select(r => r.Function))}");
+        var taken = board is not null && Reserved.TryGetValue(board, out var res)
+            ? mine.Where(r => res.Pins.Contains(r.Pin!.Value)).Select(r => $"GPIO{r.Pin}: {r.Function} ({res.Owner})")
+            : [];
+        // An ESP8266 has one ADC: the battery and the thermistor would both read A0, whatever pins the config gives them.
+        var adc = mine.Where(r => r.Function is "vbat" or "ntc").ToList();
+        var oneAdc = board is not null && Esp8266.Contains(board) && adc.Count == 2 && adc[0].Pin != adc[1].Pin
+            ? new[] { "A0: vbat, ntc (one ADC)" } : [];
+        var noAdc = mine.Where(r => r.Function == "ntc" && !AdcPin(board, r.Pin!.Value))
+            .Select(r => $"GPIO{r.Pin}: ntc (no ADC usable with Wi-Fi: {AdcPins(board)})");
+        return twice.Concat(taken).Concat(oneAdc).Concat(noAdc).ToList();
     }
+
+    /// <summary>Whether the hornet's thermometer is an NTC: hw.thermometer = "ntc", a role that can read it, the feature on.</summary>
+    public static bool NtcThermometer(string type, string? board, System.Text.Json.JsonElement? hw, IReadOnlyCollection<string>? features) =>
+        DeviceFeatures.NtcThermometerRoles.Contains(type) && ThermometerSensor(board, hw) == DeviceFeatures.Ntc
+        && (features is null || features.Contains(DeviceFeatures.Thermometer));
+
+    /// <summary>Where the firmware reads an NTC thermometer without hw.ntc_pin (Ntc.h HW_NTC_THERMOMETER_PIN): the board's A0.</summary>
+    public static int? NtcThermometerPin(string? board) => board switch
+    {
+        not null when board.StartsWith("esp32c3", StringComparison.Ordinal) => 0,
+        not null when Esp8266.Contains(board) => 17,
+        _ => null,
+    };
+
+    /// <summary>ESP8266 boards: one ADC, A0 (GPIO17).</summary>
+    private static readonly string[] Esp8266 = ["wemos-d1-mini", "nodemcu-v3", "esp-01", "esp-01-dht11"];
+
+    /// <summary>
+    /// Whether the thermistor can be read on this pin with Wi-Fi on: ADC1 only (ADC2 belongs to the radio). ESP32-C3:
+    /// GPIO0..GPIO4; ESP32: GPIO32..GPIO39; ESP8266: A0 whatever the number; an unknown board: any.
+    /// </summary>
+    public static bool AdcPin(string? board, int pin) => board switch
+    {
+        not null when board.StartsWith("esp32c3", StringComparison.Ordinal) => pin is >= 0 and <= 4,
+        "esp32cam-aithinker" => pin is >= 32 and <= 39,
+        _ => ValidPin(pin),
+    };
+
+    private static string AdcPins(string? board) => board switch
+    {
+        not null when board.StartsWith("esp32c3", StringComparison.Ordinal) => "GPIO0..GPIO4",
+        "esp32cam-aithinker" => "GPIO32..GPIO39",
+        _ => "ADC1",
+    };
 
     public static bool ValidPin(int pin) => pin is >= 0 and <= 39;
 
     /// <summary>Divider ratio (R1+R2)/R2: 5.7 for 47k over 10k. Above 100 the ADC step would be volts, not millivolts.</summary>
     public static bool ValidVbatRatio(double ratio) => ratio > 0 && ratio <= 100 && double.IsFinite(ratio);
+
+    /// <summary>
+    /// The thermistor's divider and calibration, as in the config "hw" (ntc_side, ntc_r_series...). Null fields keep the
+    /// firmware defaults: high side, 10 kOhm resistor, 10 kOhm at 25 C, B 3950, 3.3 V, no offset (firmware Thermistor.h).
+    /// </summary>
+    public sealed record NtcSettings(string? Side = null, double? RSeries = null, double? RNominal = null, double? Beta = null, double? Vcc = null, double? Offset = null);
+
+    public static readonly string[] NtcSides = ["high", "low"];
+
+    /// <summary>Why the thermistor settings make no sense, or null; the limits are those of contracts/schemas/config.schema.json.</summary>
+    public static string? ValidateNtc(NtcSettings n)
+    {
+        static bool In(double? v, double min, double max) => v is not { } x || (double.IsFinite(x) && x >= min && x <= max);
+        if (n.Side is { } side && !NtcSides.Contains(side)) return "Схема NTC: high (термистор к 3,3 В) или low (термистор к GND)";
+        if (!In(n.RSeries, 100, 1_000_000)) return "Резистор плеча: от 100 Ом до 1 МОм";
+        if (!In(n.RNominal, 100, 1_000_000)) return "Сопротивление NTC при 25 °C: от 100 Ом до 1 МОм";
+        if (!In(n.Beta, 1000, 10000)) return "Коэффициент B: от 1000 до 10000";
+        if (!In(n.Vcc, 1, 5.5)) return "Напряжение питания делителя: от 1 до 5,5 В";
+        if (!In(n.Offset, -20, 20)) return "Поправка: от −20 до +20 °C";
+        return null;
+    }
+
+    /// <summary>The thermistor settings of the config "hw"; every field null when none is set.</summary>
+    public static NtcSettings Ntc(System.Text.Json.JsonElement? hw)
+    {
+        if (hw is not { ValueKind: System.Text.Json.JsonValueKind.Object } h) return new();
+        double? Num(string key) => h.TryGetProperty(key, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetDouble() : null;
+        var side = h.TryGetProperty("ntc_side", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.String && NtcSides.Contains(s.GetString()) ? s.GetString() : null;
+        return new(side, Num("ntc_r_series"), Num("ntc_r_nominal"), Num("ntc_beta"), Num("ntc_vcc"), Num("ntc_offset"));
+    }
 
     /// <summary>The config "hw".vbat_ratio, or null when the firmware default (1.0) applies.</summary>
     public static double? VbatRatio(System.Text.Json.JsonElement? hw) =>

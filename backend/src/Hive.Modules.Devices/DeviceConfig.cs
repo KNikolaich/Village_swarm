@@ -73,7 +73,87 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         return ConfigUpdateStatus.Updated;
     }
 
+    /// <summary>How a camera's picture is turned (contracts: config camera.rotate).</summary>
+    public sealed record RotateRequest(int Rotate);
+
+    /// <summary>
+    /// Sets config camera.rotate of a device with a picture. A hornet gets its config published (the rotation is the
+    /// hive's to apply, the firmware ignores it); an IP camera keeps it in the hive only. The video list follows.
+    /// </summary>
+    public async Task<ConfigUpdateStatus> SetRotateAsync(string deviceId, int rotate, string by, CancellationToken ct)
+    {
+        if (!VideoRotation.Allowed.Contains(rotate))
+            return ConfigUpdateStatus.BadRequest;
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null)
+            return ConfigUpdateStatus.NotFound;
+        var config = device.Config is { } current
+            ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
+            : new JsonObject { ["v"] = 1, ["name"] = device.Name, ["health_interval_s"] = 60 };
+        var camera = config["camera"] as JsonObject ?? [];
+        camera["rotate"] = rotate;
+        config["camera"] = camera;
+        var hornet = device.Driver == Drivers.Hornet;
+        if (hornet)
+        {
+            device.ConfigRev++;
+            config["rev"] = device.ConfigRev;
+        }
+        device.Config = JsonDocument.Parse(config.ToJsonString());
+        Audit.Record(db, time.GetUtcNow(), by, "device_rotate", deviceId, new { rotate });
+        await db.SaveChangesAsync(ct);
+        if (hornet && mqtt.IsConnected)
+            await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
+        return ConfigUpdateStatus.Updated;
+    }
+
     public const int MaxNameLength = 128;
+
+    /// <summary>The thermometer a Bluetooth bridge (type ble) talks to: its address, and whether raw frames go to the log.</summary>
+    public sealed record BleRequest(string? Mac = null, bool Dump = false);
+
+    private static readonly System.Text.RegularExpressions.Regex MacRegex = new("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$");
+
+    public static string? ValidateBle(BleRequest r) =>
+        string.IsNullOrEmpty(r.Mac) || MacRegex.IsMatch(r.Mac) ? null : "mac: адрес вида AA:BB:CC:DD:EE:FF";
+
+    /// <summary>Sets config "ble" of a bridge and publishes the config. An empty address makes the bridge scan again.</summary>
+    public async Task<ConfigUpdateStatus> SetBleAsync(string deviceId, BleRequest r, string by, CancellationToken ct)
+    {
+        if (ValidateBle(r) is not null)
+            return ConfigUpdateStatus.BadRequest;
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.TypeCode == "ble", ct);
+        if (device is null)
+            return ConfigUpdateStatus.NotFound;
+        var config = device.Config is { } current
+            ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
+            : new JsonObject { ["v"] = 1, ["name"] = device.Name, ["health_interval_s"] = 60 };
+        var ble = new JsonObject();
+        if (!string.IsNullOrEmpty(r.Mac))
+            ble["mac"] = r.Mac.ToUpperInvariant();
+        if (r.Dump)
+            ble["dump"] = true;
+        if (ble.Count == 0) config.Remove("ble"); else config["ble"] = ble;
+        device.ConfigRev++;
+        config["rev"] = device.ConfigRev;
+        device.Config = JsonDocument.Parse(config.ToJsonString());
+        Audit.Record(db, time.GetUtcNow(), by, "device_ble", deviceId, new { mac = r.Mac, r.Dump });
+        await db.SaveChangesAsync(ct);
+        if (mqtt.IsConnected)
+            await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
+        return ConfigUpdateStatus.Updated;
+    }
+
+    /// <summary>The bridge's current "ble" settings.</summary>
+    public async Task<BleRequest?> GetBleAsync(string deviceId, CancellationToken ct)
+    {
+        var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.TypeCode == "ble", ct);
+        if (device is null)
+            return null;
+        if (device.Config is null || !device.Config.RootElement.TryGetProperty("ble", out var ble))
+            return new BleRequest();
+        return new BleRequest(ble.TryGetProperty("mac", out var m) ? m.GetString() : null, ble.TryGetProperty("dump", out var d) && d.ValueKind == JsonValueKind.True);
+    }
 
     /// <summary>
     /// Renames a hornet. The name also lives in its retained config (contracts: config.name), so a hornet that
@@ -111,10 +191,20 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
     /// <summary>
     /// Pins to override, keyed as in the config "hw" section (onewire_pin, sda_pin, …). Null keeps the board default.
     /// VbatRatio is the battery divider ratio (R1+R2)/R2 that turns the ADC voltage into the battery voltage.
+    /// Thermometer is the sensor the feature "thermometer" reads (ds18b20, dht11, dht22); null keeps the board's.
+    /// NtcPin is the ADC pin of an NTC thermistor, Ntc its divider and calibration (null fields: the firmware defaults).
     /// </summary>
-    public sealed record PinsRequest(int? OnewirePin = null, int? SdaPin = null, int? SclPin = null, int? RelayPin = null, int? ButtonPin = null, int? VbatPin = null, double? VbatRatio = null);
+    public sealed record PinsRequest(int? OnewirePin = null, int? SdaPin = null, int? SclPin = null, int? RelayPin = null, int? ButtonPin = null, int? VbatPin = null, double? VbatRatio = null,
+        int? DhtPin = null, string? Thermometer = null, int? NtcPin = null, BoardPins.NtcSettings? Ntc = null);
 
-    public sealed record PinsResult(ConfigUpdateStatus Status, string? Error, IReadOnlyList<BoardPins.PinRow> Rows, IReadOnlyList<string> Conflicts, double? VbatRatio = null);
+    /// <summary>Thermometer: the sensor the hornet reads as its thermometer, null for a role without one; ThermometerByHand: set in the config.</summary>
+    public sealed record PinsResult(ConfigUpdateStatus Status, string? Error, IReadOnlyList<BoardPins.PinRow> Rows, IReadOnlyList<string> Conflicts, double? VbatRatio = null,
+        string? Thermometer = null, bool ThermometerByHand = false, BoardPins.NtcSettings? Ntc = null);
+
+    private static PinsResult Pins(Device device, JsonElement? hw, IReadOnlyList<BoardPins.PinRow> rows, IReadOnlyList<string> conflicts, string? error = null) =>
+        new(error is null ? ConfigUpdateStatus.Updated : ConfigUpdateStatus.BadRequest, error, rows, conflicts, BoardPins.VbatRatio(hw),
+            DeviceFeatures.SupportedBy(device.TypeCode)?.Contains(DeviceFeatures.Thermometer) == true ? BoardPins.ThermometerSensor(device.Hw, hw) : null,
+            BoardPins.ThermometerByHand(hw) is not null, BoardPins.Ntc(hw));
 
     /// <summary>
     /// Sets pins by hand (where a sensor is wired is not always the default). Rejected when a pin is out of range or
@@ -125,11 +215,17 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
         if (device is null)
             return new PinsResult(ConfigUpdateStatus.NotFound, null, [], []);
-        foreach (var pin in new[] { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin })
+        foreach (var pin in new[] { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin, r.DhtPin, r.NtcPin })
             if (pin is { } p && !BoardPins.ValidPin(p))
                 return new PinsResult(ConfigUpdateStatus.BadRequest, "pin: от 0 до 39", [], []);
         if (r.VbatRatio is { } ratio && !BoardPins.ValidVbatRatio(ratio))
             return new PinsResult(ConfigUpdateStatus.BadRequest, "Коэффициент делителя: больше 0 и не больше 100", [], []);
+        if (r.Thermometer is { } sensor && !DeviceFeatures.ThermometerSensors.Contains(sensor))
+            return new PinsResult(ConfigUpdateStatus.BadRequest, "Датчик термометра: ds18b20, dht11, dht22 или ntc", [], []);
+        if (r.Thermometer == DeviceFeatures.Ntc && !DeviceFeatures.NtcThermometerRoles.Contains(device.TypeCode))
+            return new PinsResult(ConfigUpdateStatus.BadRequest, "NTC как термометр умеет только прошивка meteo", [], []);
+        if (r.Ntc is { } ntcSettings && BoardPins.ValidateNtc(ntcSettings) is { } ntcError)
+            return new PinsResult(ConfigUpdateStatus.BadRequest, ntcError, [], []);
 
         var config = device.Config is { } current
             ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
@@ -146,23 +242,41 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         Set("relay_pin", r.RelayPin);
         Set("button_pin", r.ButtonPin);
         Set("vbat_pin", r.VbatPin);
+        Set("dht_pin", r.DhtPin);
+        Set("ntc_pin", r.NtcPin);
+        void SetNum(string key, double? value)
+        {
+            if (value is { } v) hw[key] = v;
+            else hw.Remove(key);
+        }
+        var ntc = r.Ntc ?? new BoardPins.NtcSettings();
+        if (ntc.Side is { } side) hw["ntc_side"] = side;
+        else hw.Remove("ntc_side");
+        SetNum("ntc_r_series", ntc.RSeries);
+        SetNum("ntc_r_nominal", ntc.RNominal);
+        SetNum("ntc_beta", ntc.Beta);
+        SetNum("ntc_vcc", ntc.Vcc);
+        SetNum("ntc_offset", ntc.Offset);
+        if (r.Thermometer is { } t) hw["thermometer"] = t;
+        else hw.Remove("thermometer");
         if (r.VbatRatio is { } vr) hw["vbat_ratio"] = vr;
         else hw.Remove("vbat_ratio");
         var hwElement = JsonDocument.Parse(hw.ToJsonString()).RootElement;
-        var rows = BoardPins.Rows(device.Hw, device.TypeCode, hwElement);
-        var conflicts = BoardPins.Conflicts(device.TypeCode, rows);
+        var features = DeviceFeatures.Effective(device.TypeCode, device.Config?.RootElement);
+        var rows = BoardPins.Rows(device.Hw, device.TypeCode, hwElement, features);
+        var conflicts = BoardPins.Conflicts(device.TypeCode, rows, device.Hw, features);
         if (conflicts.Count > 0)
-            return new PinsResult(ConfigUpdateStatus.BadRequest, "Пины конфликтуют: " + string.Join("; ", conflicts), rows, conflicts);
+            return Pins(device, hwElement, rows, conflicts, "Пины конфликтуют: " + string.Join("; ", conflicts));
 
         if (hw.Count == 0) config.Remove("hw"); else config["hw"] = hw;
         device.ConfigRev++;
         config["rev"] = device.ConfigRev;
         device.Config = JsonDocument.Parse(config.ToJsonString());
-        Audit.Record(db, time.GetUtcNow(), by, "device_pins", deviceId, new { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin, r.VbatRatio });
+        Audit.Record(db, time.GetUtcNow(), by, "device_pins", deviceId, new { r.OnewirePin, r.SdaPin, r.SclPin, r.RelayPin, r.ButtonPin, r.VbatPin, r.VbatRatio, r.DhtPin, r.Thermometer, r.NtcPin, r.Ntc });
         await db.SaveChangesAsync(ct);
         if (mqtt.IsConnected)
             await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
-        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, conflicts, r.VbatRatio);
+        return Pins(device, hwElement, rows, conflicts);
     }
 
     /// <summary>The pins a hornet uses now, with where each one comes from, and any conflict.</summary>
@@ -172,9 +286,71 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
         if (device is null)
             return new PinsResult(ConfigUpdateStatus.NotFound, null, [], []);
         JsonElement? hw = device.Config?.RootElement.TryGetProperty("hw", out var h) == true ? h : null;
-        var rows = BoardPins.Rows(device.Hw, device.TypeCode, hw);
-        return new PinsResult(ConfigUpdateStatus.Updated, null, rows, BoardPins.Conflicts(device.TypeCode, rows), BoardPins.VbatRatio(hw));
+        var features = DeviceFeatures.Effective(device.TypeCode, device.Config?.RootElement);
+        var rows = BoardPins.Rows(device.Hw, device.TypeCode, hw, features);
+        return Pins(device, hw, rows, BoardPins.Conflicts(device.TypeCode, rows, device.Hw, features));
     }
+
+    /// <summary>
+    /// PUT /api/devices/{id}/features: what the hornet is used for, and for a heater the limits it keeps by itself
+    /// (null keeps what the config has, else the firmware defaults). Max on time is in seconds, as in the contract.
+    /// </summary>
+    public sealed record FeaturesRequest(IReadOnlyList<string> Features, double? MinC = null, double? MaxC = null, int? MaxOnS = null);
+
+    public sealed record FeaturesResult(ConfigUpdateStatus Status, string? Error = null);
+
+    /// <summary>
+    /// Sets config "features" (and failsafe.heater for a heater) and publishes the config. Refused when the role's
+    /// firmware cannot do a feature, a heater has no sensor, the limits make no sense, or the chosen features would
+    /// put two functions on one pin (ESP-01: relay and I2C both on GPIO0).
+    /// </summary>
+    public async Task<FeaturesResult> SetFeaturesAsync(string deviceId, FeaturesRequest r, string by, CancellationToken ct)
+    {
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null)
+            return new FeaturesResult(ConfigUpdateStatus.NotFound);
+        var features = DeviceFeatures.Normalize(r.Features ?? []);
+        if (DeviceFeatures.Validate(device.TypeCode, features) is { } error)
+            return new FeaturesResult(ConfigUpdateStatus.BadRequest, error);
+
+        var config = device.Config is { } current
+            ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
+            : new JsonObject { ["v"] = 1, ["name"] = device.Name, ["health_interval_s"] = 60 };
+        JsonElement? hw = device.Config?.RootElement.TryGetProperty("hw", out var h) == true ? h : null;
+        var conflicts = BoardPins.Conflicts(device.TypeCode, BoardPins.Rows(device.Hw, device.TypeCode, hw, features), device.Hw, features);
+        if (conflicts.Count > 0)
+            return new FeaturesResult(ConfigUpdateStatus.BadRequest, "Пины конфликтуют: " + string.Join("; ", conflicts));
+
+        config["features"] = new JsonArray(features.Select(f => (JsonNode)f).ToArray());
+        if (features.Contains(DeviceFeatures.Heater))
+        {
+            var (minC, maxC, maxOnS) = Heater(device) ?? (DeviceFeatures.DefaultMinC, DeviceFeatures.DefaultMaxC, DeviceFeatures.DefaultMaxOnS);
+            minC = r.MinC ?? minC;
+            maxC = r.MaxC ?? maxC;
+            maxOnS = r.MaxOnS ?? maxOnS;
+            if (DeviceFeatures.ValidateHeater(minC, maxC, maxOnS) is { } limits)
+                return new FeaturesResult(ConfigUpdateStatus.BadRequest, limits);
+            var failsafe = config["failsafe"] as JsonObject ?? new JsonObject();
+            failsafe["heater"] = new JsonObject { ["min_c"] = minC, ["max_c"] = maxC, ["max_on_s"] = maxOnS };
+            config["failsafe"] = failsafe;
+        }
+        device.ConfigRev++;
+        config["rev"] = device.ConfigRev;
+        device.Config = JsonDocument.Parse(config.ToJsonString());
+        Audit.Record(db, time.GetUtcNow(), by, "device_features", deviceId, new { features, r.MinC, r.MaxC, r.MaxOnS });
+        await db.SaveChangesAsync(ct);
+        if (mqtt.IsConnected && device.Status != DeviceStatus.Disabled)
+            await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
+        return new FeaturesResult(ConfigUpdateStatus.Updated);
+    }
+
+    /// <summary>The heater limits in the config (failsafe.heater), or null when it has none.</summary>
+    public static (double MinC, double MaxC, int MaxOnS)? Heater(Device d) =>
+        d.Config?.RootElement.TryGetProperty("failsafe", out var f) == true && f.ValueKind == JsonValueKind.Object
+        && f.TryGetProperty("heater", out var h) && h.ValueKind == JsonValueKind.Object
+        && h.TryGetProperty("min_c", out var min) && h.TryGetProperty("max_c", out var max) && h.TryGetProperty("max_on_s", out var on)
+            ? (min.GetDouble(), max.GetDouble(), on.GetInt32())
+            : null;
 
     public static int? SleepS(Device d) =>
         d.Config?.RootElement.TryGetProperty("sleep_s", out var s) == true && s.TryGetInt32(out var v) && v > 0 ? v : null;
@@ -182,6 +358,10 @@ public sealed class DeviceConfigService(HiveDbContext db, MqttGateway mqtt, Time
     /// <summary>light or deep; deep when sleep_mode is absent (the contract default).</summary>
     public static string SleepMode(Device d) =>
         d.Config?.RootElement.TryGetProperty("sleep_mode", out var m) == true && m.GetString() == "light" ? "light" : "deep";
+
+    /// <summary>A deep sleeper between wake-ups: awake only for seconds, so a command sent now would not reach it.</summary>
+    public static bool Asleep(Device d, DateTimeOffset now) =>
+        SleepS(d) is not null && SleepMode(d) == "deep" && d.LastSeenAt is { } seen && now - seen > TimeSpan.FromSeconds(90);
 }
 
 /// <summary>

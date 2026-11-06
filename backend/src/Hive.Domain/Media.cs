@@ -28,6 +28,20 @@ public class MediaItem
     public required string Sha256 { get; set; }
     public bool Pinned { get; set; }
 
-    /// <summary>home | city | sd (replayed from the hornet SD outbox).</summary>
+    /// <summary>home | city | sd (replayed from the hornet SD outbox) | replica (a copy sent from home to the city, spec 7.3).</summary>
     public string UploadedVia { get; set; } = "home";
+
+    /// <summary>When home sent this photo to the city and the city kept it; null: not yet (or this node is the city).</summary>
+    public DateTimeOffset? ReplicatedAt { get; set; }
+
+    /// <summary>Failed sends so far, and when the next one may be tried (growing pauses, so one bad photo does not block the queue).</summary>
+    public int ReplicaTries { get; set; }
+
+    public DateTimeOffset? ReplicaNextAt { get; set; }
+
+    /// <summary>How much earlier than the request a frame may be taken and still pass as fresh.</summary>
+    public static readonly TimeSpan FreshSlack = TimeSpan.FromMinutes(1);
+
+    /// <summary>The camera sent a frame taken well before it was asked for one (it could not take a fresh one).</summary>
+    public bool TakenBefore(DateTimeOffset askedAt) => Ts < askedAt - FreshSlack;
 }

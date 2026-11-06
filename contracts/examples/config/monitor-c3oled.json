@@ -1,0 +1,11 @@
+{
+  "v": 1, "rev": 4, "name": "Табло на кухне",
+  "health_interval_s": 60,
+  "hw": { "sda_pin": 5, "scl_pin": 6 },
+  "display": {
+    "items": [
+      { "device": "meteo-out1", "metric": "temperature", "label": "Улица", "x": 0, "y": 0, "size": 6 },
+      { "device": "meteo-room1", "metric": "humidity", "x": 71, "y": 28, "size": 3, "align": "right" }
+    ]
+  }
+}

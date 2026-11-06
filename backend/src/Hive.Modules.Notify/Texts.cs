@@ -19,11 +19,25 @@ public static class Texts
         "tamper" => "Камера закрыта или сдвинута",
         "snapshot" => "Снимок",
         "ota" => "Обновление прошивки",
+        "ota_rollout" => "Обновление всех шершней",
+        "wifi" => "Смена Wi-Fi",
+        "device_offline" => "Шершень не на связи",
+        "device_online" => "Шершень снова на связи",
+        "home_offline" => "Связь с домом потеряна",
+        "home_offline_long" => "Дом не на связи",
+        "home_online" => "Связь с домом восстановлена",
+        "backup" => "Проблема с бэкапом",
+        "disk_cleanup" => "Диск заполнен: удалены старые фото",
+        "backup_cleared" => "Бэкапы снова в порядке",
         "rule" => "Правило",
         "overheat" => "Улей перегревается",
         "overheat_cleared" => "Температура улья в норме",
         "disk_full" => "Диск улья почти заполнен",
         "disk_full_cleared" => "На диске улья снова есть место",
+        "monitor_threshold" => "Вышло из режима",
+        "monitor_normal" => "Снова в режиме",
+        "monitor_stale" => "Термометр замолчал",
+        "monitor_resumed" => "Термометр снова передаёт",
         _ => type,
     };
 
@@ -37,21 +51,90 @@ public static class Texts
 
     public static string H(string? s) => WebUtility.HtmlEncode(s ?? "");
 
+    /// <summary>Caption of a snapshot the camera took before it was asked: "⚠️ Снимок не свежий: снят 3 октября в 19:52".</summary>
+    public static string OldSnapshot(DateTimeOffset localTs) =>
+        $"⚠️ <b>Снимок не свежий</b>: снят {localTs.ToString("d MMMM 'в' HH:mm", Ru)}. Свежий камера не дала.";
+
     /// <summary>"🚨 <b>Движение</b>: Ворота · 23:14:25", the place being the zone or the device name.</summary>
     public static string Event(DeviceEvent e, string place, DateTimeOffset localTs, int repeat = 1)
     {
-        var text = $"{Icon(e.Severity)} <b>{H(EventType(e.Type))}</b>: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}";
+        var text = Hive.Modules.Telemetry.Ingest.ArrivingMode.Is(e.Payload)
+            ? $"🚗 <b>{H(EventType(e.Type))}</b>, едут хозяева: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}\nЕсли это не вы — нажмите «Это не мы», охрана включится."
+            : $"{Icon(e.Severity)} <b>{H(EventType(e.Type))}</b>: {H(place)}\n{H(e.DeviceId)} · {localTs.ToString("HH:mm:ss", Ru)}";
         if (e.Type == "ota")
             text += OtaDetail(e.Payload.RootElement);
+        if (e.Type == "ota_rollout")
+            text += RolloutDetail(e.Payload.RootElement);
+        if (e.Type == "device_offline" && e.Payload.RootElement.TryGetProperty("minutes", out var gone))
+            text += $"\nне отвечает уже {gone.GetInt32()} мин";
+        if (e.Type == "home_offline" && e.Payload.RootElement.TryGetProperty("seconds", out var quiet))
+            text += $"\nот дома нет вестей уже {quiet.GetInt32() / 60} мин";
+        if (e.Type == "home_offline_long" && e.Payload.RootElement.TryGetProperty("minutes", out var longQuiet))
+            text += $"\nДом не отвечает {longQuiet.GetInt32()} мин: возможно, пропали питание или интернет на даче.";
+        if (e.Type == "home_online" && e.Payload.RootElement.TryGetProperty("downSeconds", out var wasDown))
+            text += $"\nне отвечал {wasDown.GetInt32() / 60} мин";
+        if (e.Type == "wifi" && e.Payload.RootElement.TryGetProperty("ssid", out var network))
+            text += WifiDetail(network.GetString(), e.Payload.RootElement.TryGetProperty("phase", out var phase) ? phase.GetString() : null);
+        if (e.Type == "disk_cleanup")
+            text += CleanupDetail(e.Payload.RootElement);
+        if (e.Type == "backup")
+            text += BackupDetail(e.Payload.RootElement);
         if (e.Type == "rule" && e.Payload.RootElement.TryGetProperty("text", out var said))
             text += $"\n{H(said.GetString())}";
         if (e.Type == "failsafe" && e.Payload.RootElement.TryGetProperty("rule", out var rule))
             text += $"\nправило: {H(rule.GetString())}";
         if (e.Type.StartsWith("overheat", StringComparison.Ordinal) || e.Type.StartsWith("disk_full", StringComparison.Ordinal))
             text += HiveReading(e.Payload.RootElement);
+        if (e.Type.StartsWith("monitor_", StringComparison.Ordinal))
+            text += MonitorDetail(e.Type, e.Payload.RootElement);
         if (repeat > 1)
             text += $"\n<b>×{repeat}</b> подряд";
         return text;
+    }
+
+    /// <summary>
+    /// "\nудалено фото: 120, 45 МБ (диск был занят на 88%, стало 84%)" after an emergency cleanup (Hive.Modules.Retention),
+    /// and a hint when the disk is still full: then it is not the photos that fill it.
+    /// </summary>
+    private static string CleanupDetail(System.Text.Json.JsonElement p)
+    {
+        var photos = p.TryGetProperty("photos", out var n) ? n.GetInt32() : 0;
+        var size = p.TryGetProperty("bytes", out var b) && b.GetInt64() > 0 ? $", {Megabytes(b.GetInt64())}" : "";
+        var after = p.TryGetProperty("usedAfterPct", out var a) && a.ValueKind == System.Text.Json.JsonValueKind.Number
+            ? $", стало {a.GetDouble().ToString("0.#", Ru)}%" : "";
+        var used = p.TryGetProperty("usedPct", out var u) ? $" (диск был занят на {u.GetDouble().ToString("0.#", Ru)}%{after})" : "";
+        var oldAlarms = p.TryGetProperty("level", out var l) && l.GetInt32() >= 2 ? "\nПришлось удалить и часть старых фото тревог: проверьте диск." : "";
+        var stillFull = p.TryGetProperty("stillFull", out var f) && f.ValueKind == System.Text.Json.JsonValueKind.True
+            ? "\nДиск всё ещё заполнен: место занимают не фото, а система, старые версии Улья, база или бэкапы. Фото тревог младше месяца и «не удалять» Улей не трогает."
+            : "";
+        return $"\nудалено фото: {photos}{size}{used}{oldAlarms}{stillFull}";
+    }
+
+    private static string Megabytes(long bytes) => $"{Math.Max(1, (int)Math.Round(bytes / 1048576.0)).ToString(Ru)} МБ";
+
+    /// <summary>"\nсеть «name»: подключился" / "осталась прежняя сеть" for the outcome of a Wi-Fi switch.</summary>
+    private static string WifiDetail(string? ssid, string? phase) => phase switch
+    {
+        "staged" => $"\nзапасная сеть «{H(ssid)}» сохранена",
+        "applied" => $"\nтеперь в сети «{H(ssid)}»",
+        "rolled_back" => $"\nсеть «{H(ssid)}» не подошла, осталась прежняя",
+        _ => "",
+    };
+
+    /// <summary>One line per problem the backup watch found (Hive.Modules.Backup), e.g. "нет свежего дампа базы".</summary>
+    private static string BackupDetail(System.Text.Json.JsonElement p)
+    {
+        if (!p.TryGetProperty("problems", out var list) || list.ValueKind != System.Text.Json.JsonValueKind.Array)
+            return "";
+        var lines = list.EnumerateArray().Select(x => x.GetString() switch
+        {
+            "dump_failed" => "дамп базы не удался",
+            "dump_stale" => "нет свежего дампа базы",
+            "offsite_failed" => "копия вне дома не удалась",
+            "verify_failed" => "проверка восстановления не прошла",
+            var other => other ?? "",
+        });
+        return string.Concat(lines.Select(l => $"\n{H(l)}"));
     }
 
     /// <summary>"\nвоздух у платы: 47,5° (порог 45°)" for the hive's own sensor events.</summary>
@@ -69,6 +152,27 @@ public static class Texts
         return $"\n{H(label)}: {v.GetDouble().ToString("0.#", Ru)}{unit} (порог {l.GetDouble().ToString("0.#", Ru)}{unit})";
     }
 
+    /// <summary>
+    /// Monitoring mode (Hive.Modules.Telemetry.Monitoring): "\nсейчас 98,4° (нижняя граница 110°)" for a limit,
+    /// "\nнет данных 35 с (ждали каждые 10 с)" for silence.
+    /// </summary>
+    private static string MonitorDetail(string type, System.Text.Json.JsonElement p)
+    {
+        var unit = p.TryGetProperty("metric", out var m) && m.GetString()?.StartsWith("temperature", StringComparison.Ordinal) == true ? "°" : "";
+        if (type is "monitor_threshold" or "monitor_normal" && p.TryGetProperty("value", out var v) && p.TryGetProperty("limit", out var l))
+        {
+            var value = v.GetDouble();
+            var limit = l.GetDouble();
+            var side = type == "monitor_normal" ? "граница" : value < limit ? "нижняя граница" : "верхняя граница";
+            return $"\nсейчас {value.ToString("0.#", Ru)}{unit} ({side} {limit.ToString("0.#", Ru)}{unit})";
+        }
+        if (type == "monitor_stale" && p.TryGetProperty("silentS", out var s))
+            return $"\nнет данных {s.GetInt32()} с" + (p.TryGetProperty("intervalS", out var i) ? $" (ждали каждые {i.GetInt32()} с)" : "");
+        if (type == "monitor_resumed" && p.TryGetProperty("silentS", out var gap))
+            return $"\nмолчал {gap.GetInt32()} с";
+        return "";
+    }
+
     /// <summary>One line on what an update did, e.g. "0.2.0+abc: установлена и работает" (contracts event-ota).</summary>
     private static string OtaDetail(System.Text.Json.JsonElement p)
     {
@@ -84,6 +188,25 @@ public static class Texts
             _ => phase ?? "",
         };
         return $"\n{H(version)}: {what}" + (string.IsNullOrEmpty(error) ? "" : $" ({H(error)})");
+    }
+
+    /// <summary>"обновлено 2 из 5; остановлено на «Баня»: 0.3.0: timeout" (the hive's ota_rollout event).</summary>
+    private static string RolloutDetail(System.Text.Json.JsonElement p)
+    {
+        var result = p.TryGetProperty("result", out var r) ? r.GetString() : null;
+        var done = p.TryGetProperty("done", out var d) ? d.GetInt32() : 0;
+        var total = p.TryGetProperty("total", out var t) ? t.GetInt32() : 0;
+        var text = $"\nобновлено {done} из {total}";
+        if (result == "failed")
+        {
+            var device = p.TryGetProperty("device", out var dv) ? dv.GetString() : null;
+            var version = p.TryGetProperty("version", out var v) ? v.GetString() : null;
+            var error = p.TryGetProperty("error", out var er) ? er.GetString() : null;
+            text += $"; остановлено на «{H(device)}»: {H(version)}" + (string.IsNullOrEmpty(error) ? "" : $" ({H(error)})");
+        }
+        else if (result == "stopped")
+            text += "; остановлено вручную";
+        return text;
     }
 
     public static string Temperature(double value) => $"{value.ToString("0.#", Ru)}°";

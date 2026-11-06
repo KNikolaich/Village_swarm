@@ -120,4 +120,52 @@ public sealed class HistoryTests(HiveFixture hive)
         using var refused = await viewer.GetAsync("/api/devices/meteo-hist-d/commands");
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
     }
+
+    [Fact]
+    public async Task Clearing_hides_the_history_and_the_journal_so_far_but_keeps_the_rows_and_what_comes_next()
+    {
+        await RegisterAsync("meteo-hist-e");
+        var now = DateTimeOffset.UtcNow;
+        await hive.QueryAsync(async db =>
+        {
+            db.DeviceLogs.Add(new DeviceLog { DeviceId = "meteo-hist-e", Ts = now.AddMinutes(-1), Level = "info", Msg = "old" });
+            await db.SaveChangesAsync();
+            return 0;
+        });
+        var admin = await hive.LoginAsync();
+        using (var sent = await admin.PostAsJsonAsync("/api/devices/meteo-hist-e/commands", new { name = "reboot" }))
+            Assert.Equal(HttpStatusCode.Accepted, sent.StatusCode);
+
+        await hive.CreateUserAsync("viewer-clear", "viewer-clear-password", Hive.Infrastructure.Identity.HiveRoles.Viewer);
+        var viewer = await hive.LoginAsync("viewer-clear", "viewer-clear-password");
+        using (var refused = await viewer.DeleteAsync("/api/devices/meteo-hist-e/logs"))
+            Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+
+        using (var cleared = await admin.DeleteAsync("/api/devices/meteo-hist-e/commands"))
+            Assert.Equal(HttpStatusCode.NoContent, cleared.StatusCode);
+        using (var cleared = await admin.DeleteAsync("/api/devices/meteo-hist-e/logs"))
+            Assert.Equal(HttpStatusCode.NoContent, cleared.StatusCode);
+        using (var missing = await admin.DeleteAsync("/api/devices/no-such-hornet/logs"))
+            Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+
+        Assert.Empty((await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-hist-e/commands")).EnumerateArray());
+        Assert.Empty((await admin.GetFromJsonAsync<JsonElement>("/api/telemetry/logs?device=meteo-hist-e")).EnumerateArray());
+        // The rows wait for the retention cleanup.
+        Assert.Equal(2, await hive.QueryAsync(async db =>
+            await db.Commands.CountAsync(c => c.DeviceId == "meteo-hist-e") + await db.DeviceLogs.CountAsync(l => l.DeviceId == "meteo-hist-e" && l.Msg == "old")));
+
+        await Task.Delay(20);
+        using (var sent = await admin.PostAsJsonAsync("/api/devices/meteo-hist-e/commands", new { name = "config_reload" }))
+            Assert.Equal(HttpStatusCode.Accepted, sent.StatusCode);
+        await hive.QueryAsync(async db =>
+        {
+            db.DeviceLogs.Add(new DeviceLog { DeviceId = "meteo-hist-e", Ts = DateTimeOffset.UtcNow.AddSeconds(1), Level = "info", Msg = "new" });
+            await db.SaveChangesAsync();
+            return 0;
+        });
+        var history = (await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-hist-e/commands")).EnumerateArray().Select(c => c.GetProperty("name").GetString()).ToList();
+        Assert.Equal(["config_reload"], history);
+        var logs = (await admin.GetFromJsonAsync<JsonElement>("/api/telemetry/logs?device=meteo-hist-e")).EnumerateArray().Select(l => l.GetProperty("msg").GetString()).ToList();
+        Assert.Equal(["new"], logs);
+    }
 }

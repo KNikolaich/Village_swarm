@@ -8,7 +8,10 @@
 #include <esp_task_wdt.h>
 #elif defined(ESP8266)
 #include <ESP8266HTTPClient.h>
+#include <LittleFS.h>
 #include <user_interface.h>
+
+#include "LegacyFs.h"
 #endif
 
 namespace hornet {
@@ -99,6 +102,8 @@ int httpPost(const String& url, const char* contentType, const uint8_t* body, si
     return code;
 }
 
+bool adoptOldSettings() { return false; }  // NVS partitions have never moved
+
 #elif defined(ESP8266)
 
 // The ESP8266 hardware watchdog (~6 s) cannot be stretched to 30 s; the loop must stay short anyway.
@@ -169,6 +174,76 @@ int httpPost(const String& url, const char* contentType, const uint8_t* body, si
     if (response && code > 0) *response = http.getString();
     http.end();
     return code;
+}
+
+namespace {
+
+constexpr const char* kSettingsDir = "/nvs/hornet";  // Preferences namespace "hornet" (Settings.cpp)
+
+struct SettingFile {
+    String name;
+    std::vector<uint8_t> data;
+};
+
+// Reads the settings files worth copying; true when a device id is among them.
+bool readSettings(fs::FS& fs, std::vector<SettingFile>& out) {
+    bool hasId = false;
+    Dir dir = fs.openDir(kSettingsDir);
+    while (dir.next()) {
+        if (!dir.isFile() || !legacyfs::copyKey(dir.fileName().c_str())) continue;
+        File f = dir.openFile("r");
+        if (!f) return false;
+        SettingFile s{dir.fileName(), std::vector<uint8_t>(f.size())};
+        const size_t n = f.read(s.data.data(), s.data.size());
+        f.close();
+        if (n != s.data.size()) return false;
+        if (s.name == "id" && !s.data.empty()) hasId = true;
+        out.push_back(std::move(s));
+    }
+    return hasId;
+}
+
+}  // namespace
+
+bool adoptOldSettings() {
+    const legacyfs::Region old = legacyfs::previousFor(FS_PHYS_ADDR, FS_PHYS_SIZE);
+    if (old.size == 0) return false;
+
+    // Look without formatting: a format at the new place would wipe the tail of the old one.
+    LittleFS.setConfig(LittleFSConfig(false));
+    const bool currentHasId = LittleFS.begin() && LittleFS.exists(String(kSettingsDir) + "/id");
+    LittleFS.end();
+    LittleFS.setConfig(LittleFSConfig(true));
+    if (currentHasId) return false;
+
+    // All of it into RAM first (a few hundred bytes): the two places overlap.
+    std::vector<SettingFile> saved;
+    bool previousHasId = false;
+    {
+        fs::FS previous(fs::FSImplPtr(new littlefs_impl::LittleFSImpl(old.start, old.size, FS_PHYS_PAGE, FS_PHYS_BLOCK, 5)));
+        previous.setConfig(LittleFSConfig(false));  // never format the old place: no file system there is an answer
+        if (!previous.begin()) return false;
+        previousHasId = readSettings(previous, saved);
+        previous.end();
+    }
+    if (!legacyfs::shouldCopy(currentHasId, previousHasId)) return false;
+
+    if (!LittleFS.begin()) return false;  // formats the new place when it holds no file system yet
+    bool ok = true;
+    for (const auto& s : saved) {
+        File f = LittleFS.open(String(kSettingsDir) + "/" + s.name, "w");
+        ok = f && f.write(s.data.data(), s.data.size()) == s.data.size();
+        f.close();
+        if (!ok) break;
+    }
+    LittleFS.end();
+    if (!ok) return false;
+
+    // The old place is room for over-the-air images now. Wiping its superblocks keeps the copy from ever happening
+    // again, so settings cleared on purpose do not come back.
+    ESP.flashEraseSector(old.start / FS_PHYS_BLOCK);
+    ESP.flashEraseSector(old.start / FS_PHYS_BLOCK + 1);
+    return true;
 }
 
 #endif

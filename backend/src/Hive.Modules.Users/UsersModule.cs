@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Hive.Modules.Users;
 
@@ -25,11 +26,29 @@ public sealed class AuthOptions
     /// <summary>How long "remember me" keeps the session (phone at night should not ask for TOTP every time).</summary>
     public int SessionDays { get; set; } = 30;
 
-    /// <summary>Requests to /api/auth/* per minute per client IP (on top of the per-account lockout).</summary>
+    /// <summary>Requests to /api/auth/* per minute per client IP (on top of the pauses after wrong passwords).</summary>
     public int AuthRequestsPerMinute { get; set; } = 20;
+
+    /// <summary>When a login from a new device needs the code from Telegram: always, or only from the internet (the router's site).</summary>
+    public NewDeviceCodeMode NewDeviceCode { get; set; } = NewDeviceCodeMode.Always;
+
+    /// <summary>A trusted device not seen for this long asks for the code again.</summary>
+    public int TrustedDeviceDays { get; set; } = 180;
+
+    /// <summary>Lifetime of the login code sent to Telegram.</summary>
+    public int CodeMinutes { get; set; } = 10;
+
+    /// <summary>Lifetime of the recovery code sent by email.</summary>
+    public int RecoveryMinutes { get; set; } = 30;
 }
 
-/// <summary>Users, login with cookie + TOTP, roles (spec 6.5 /api/auth, /api/me; spec 12).</summary>
+public enum NewDeviceCodeMode
+{
+    Always,
+    External,
+}
+
+/// <summary>Users, login with cookie + a code on new devices, roles (spec 6.5 /api/auth, /api/me; spec 12).</summary>
 public static class UsersModule
 {
     public const string Name = "users";
@@ -47,8 +66,8 @@ public static class UsersModule
                 o.Password.RequireNonAlphanumeric = false;
                 o.Password.RequireUppercase = false;
                 o.Password.RequireDigit = false; // length matters more; generated passwords are word-like
-                o.Lockout.MaxFailedAccessAttempts = 5;
-                o.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+                // Wrong passwords pause the device, not the account (LoginThrottleService): a stranger cannot lock the owner out.
+                // Identity's lockout stays for an account an admin locks by hand.
                 o.Lockout.AllowedForNewUsers = true;
                 o.User.RequireUniqueEmail = false;
             })
@@ -82,6 +101,11 @@ public static class UsersModule
                 _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = auth.AuthRequestsPerMinute, Window = TimeSpan.FromMinutes(1) }));
         });
 
+        services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.Section));
+        services.AddSingleton<IMailSender, SmtpMailSender>();
+        services.TryAddScoped<IAuthNotifier, NoAuthNotifier>();
+        services.AddScoped<LoginThrottleService>();
+        services.AddScoped<TrustedDeviceService>();
         services.AddScoped<AuthService>();
         services.AddHostedService<AdminBootstrap>();
         services.AddScoped<HiveSettingsService>();
@@ -92,18 +116,19 @@ public static class UsersModule
     public static IEndpointRouteBuilder MapUsersEndpoints(this IEndpointRouteBuilder app)
     {
         var auth = app.MapGroup("/api/auth").AllowAnonymous().RequireRateLimiting(AuthRateLimit).WithTags("auth");
-        auth.MapPost("/login", async Task<Results<Ok<LoginResult>, UnauthorizedHttpResult, ProblemHttpResult>> (LoginRequest request, AuthService s) =>
-            await s.LoginAsync(request) switch
+        auth.MapGet("/options", (AuthService s) => TypedResults.Ok(s.Describe()));
+        auth.MapPost("/login", async Task<Results<Ok<LoginResult>, UnauthorizedHttpResult, ProblemHttpResult>> (LoginRequest request, AuthService s, CancellationToken ct) =>
+            await s.LoginAsync(request, ct) switch
             {
-                { Status: LoginStatus.Ok or LoginStatus.TotpRequired } r => TypedResults.Ok(r),
-                { Status: LoginStatus.LockedOut } => TypedResults.Problem("Слишком много попыток, вход заблокирован на 15 минут", statusCode: StatusCodes.Status423Locked),
-                _ => TypedResults.Unauthorized(),
+                { Status: LoginStatus.LockedOut } r => Locked(r.LockedUntil),
+                { Status: LoginStatus.Failed } => TypedResults.Unauthorized(),
+                var r => TypedResults.Ok(r),
             });
-        auth.MapPost("/totp", async Task<Results<Ok<LoginResult>, UnauthorizedHttpResult, ProblemHttpResult>> (TotpLoginRequest request, AuthService s) =>
-            await s.LoginTotpAsync(request) switch
+        auth.MapPost("/totp", async Task<Results<Ok<LoginResult>, UnauthorizedHttpResult, ProblemHttpResult>> (TotpLoginRequest request, AuthService s, CancellationToken ct) =>
+            await s.LoginTotpAsync(request, ct) switch
             {
                 { Status: LoginStatus.Ok } r => TypedResults.Ok(r),
-                { Status: LoginStatus.LockedOut } => TypedResults.Problem("Слишком много попыток, вход заблокирован на 15 минут", statusCode: StatusCodes.Status423Locked),
+                { Status: LoginStatus.LockedOut } r => Locked(r.LockedUntil),
                 _ => TypedResults.Unauthorized(),
             });
         auth.MapPost("/logout", async (AuthService s) =>
@@ -111,12 +136,28 @@ public static class UsersModule
             await s.LogoutAsync();
             return TypedResults.NoContent();
         });
+        auth.MapPost("/recover", async Task<Results<NoContent, ProblemHttpResult>> (RecoverRequest request, AuthService s, CancellationToken ct) =>
+            await s.StartRecoveryAsync(request, ct) is { Status: RecoveryStatus.LockedOut } r ? Locked(r.LockedUntil) : TypedResults.NoContent());
+        auth.MapPost("/recover/confirm", async Task<Results<NoContent, UnauthorizedHttpResult, ValidationProblem, ProblemHttpResult>> (RecoverConfirmRequest request, AuthService s, CancellationToken ct) =>
+            await s.ConfirmRecoveryAsync(request, ct) switch
+            {
+                { Status: RecoveryStatus.Ok } => TypedResults.NoContent(),
+                { Status: RecoveryStatus.LockedOut } r => Locked(r.LockedUntil),
+                { Status: RecoveryStatus.Invalid } r => TypedResults.ValidationProblem(r.Errors!),
+                _ => TypedResults.Unauthorized(),
+            });
 
         var me = app.MapGroup("/api/me").WithTags("me");
         me.MapGet("", async Task<Results<Ok<MeDto>, UnauthorizedHttpResult>> (ClaimsPrincipal user, AuthService s) =>
             await s.GetMeAsync(user) is { } dto ? TypedResults.Ok(dto) : TypedResults.Unauthorized());
         me.MapPost("/password", async Task<Results<NoContent, ValidationProblem>> (ChangePasswordRequest request, ClaimsPrincipal user, AuthService s) =>
             await s.ChangePasswordAsync(user, request) is { } errors ? TypedResults.ValidationProblem(errors) : TypedResults.NoContent());
+        me.MapPut("/email", async Task<Results<NoContent, ValidationProblem>> (SetEmailRequest request, ClaimsPrincipal user, AuthService s, CancellationToken ct) =>
+            await s.SetEmailAsync(user, request, ct) is { } errors ? TypedResults.ValidationProblem(errors) : TypedResults.NoContent());
+        me.MapGet("/devices", async (ClaimsPrincipal user, UserManager<HiveUser> users, TrustedDeviceService devices, HttpContext http, CancellationToken ct) =>
+            TypedResults.Ok(await devices.ListAsync(UserId(users, user), http, ct)));
+        me.MapDelete("/devices/{id:int}", async Task<Results<NoContent, NotFound>> (int id, ClaimsPrincipal user, UserManager<HiveUser> users, TrustedDeviceService devices, CancellationToken ct) =>
+            await devices.ForgetAsync(UserId(users, user), id, ct) ? TypedResults.NoContent() : TypedResults.NotFound());
         me.MapPost("/totp/setup", async (ClaimsPrincipal user, AuthService s) => TypedResults.Ok(await s.SetupTotpAsync(user)));
         me.MapPost("/totp/enable", async Task<Results<Ok<RecoveryCodesDto>, ValidationProblem>> (TotpCodeRequest request, ClaimsPrincipal user, AuthService s) =>
             await s.EnableTotpAsync(user, request.Code) is { } codes
@@ -128,4 +169,11 @@ public static class UsersModule
                 : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["code"] = ["Неверный код"] }));
         return app;
     }
+
+    private static ProblemHttpResult Locked(DateTimeOffset? until) =>
+        TypedResults.Problem("Слишком много неверных попыток, вход с этого устройства приостановлен", statusCode: StatusCodes.Status423Locked,
+            extensions: new Dictionary<string, object?> { ["lockedUntil"] = until });
+
+    private static int UserId(UserManager<HiveUser> users, ClaimsPrincipal user) =>
+        int.Parse(users.GetUserId(user)!, System.Globalization.CultureInfo.InvariantCulture);
 }

@@ -18,13 +18,17 @@ firmware: firmware-test
 	cd firmware && pio run -e guard-cam
 
 firmware-test:
-	cd firmware && pio test -e native
+	cd firmware && pio test -e native && python scripts/test_ota_sign.py && python scripts/test_fw_stale.py
 
 dev-up:
 	$(COMPOSE_DEV) up -d --wait
 
 dev-down:
 	$(COMPOSE_DEV) down
+
+# Tries the backup scripts for real in Docker (dump, rotation, restic copy, restore check, failures).
+backup-test:
+	bash deploy/backup/test.sh
 
 # Hive images for the RPi, packed into deploy/dist (docs/deploy.md). `make ship PI=kirill@192.168.10.4 ARGS="--host 192.168.10.4"`.
 images:

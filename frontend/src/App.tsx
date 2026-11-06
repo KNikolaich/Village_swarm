@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { createBrowserRouter, Navigate, RouterProvider } from 'react-router'
 import { Toaster } from 'sonner'
 import { ApiError, UNAUTHORIZED_EVENT } from '@/api/client'
@@ -9,6 +9,7 @@ import { HoneycombLogo } from '@/components/HoneycombLogo'
 import { useLive } from '@/lib/live'
 import { DevicePage } from '@/pages/DevicePage'
 import { ClimatePage } from '@/pages/ClimatePage'
+import { ConsolePage } from '@/pages/ConsolePage'
 import { EventsPage } from '@/pages/EventsPage'
 import { RuleEditorPage } from '@/pages/RuleEditorPage'
 import { RulesPage } from '@/pages/RulesPage'
@@ -19,6 +20,15 @@ import { AddHornetPage } from '@/pages/AddHornetPage'
 import { MonitorPage } from '@/pages/MonitorPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { SwarmPage } from '@/pages/SwarmPage'
+import { Skeleton } from '@/components/ui/primitives'
+
+// The Markdown editor is heavy: notes load on their own, the rest of the app stays light on 4G.
+const NotesPage = lazy(() => import('@/pages/NotesPage').then((m) => ({ default: m.NotesPage })))
+const notes = (
+  <Suspense fallback={<Skeleton className="h-96" />}>
+    <NotesPage />
+  </Suspense>
+)
 
 function Authenticated() {
   const live = useLive(true)
@@ -39,9 +49,12 @@ const router = createBrowserRouter([
       { path: 'photos/:date', element: <PhotosPage /> },
       { path: 'swarm', element: <SwarmPage /> },
       { path: 'swarm/add', element: <AddHornetPage /> },
+      { path: 'console', element: <ConsolePage /> },
       { path: 'swarm/:deviceId', element: <DevicePage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: 'monitor', element: <MonitorPage /> },
+      { path: 'notes', element: notes },
+      { path: 'notes/:id', element: notes },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },

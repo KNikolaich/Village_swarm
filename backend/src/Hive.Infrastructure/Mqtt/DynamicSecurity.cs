@@ -13,7 +13,7 @@ namespace Hive.Infrastructure.Mqtt;
 /// own topics. Commands go to $CONTROL/dynamic-security/v1 over the api's broker connection, which must
 /// belong to a client with the dynsec admin role.
 /// </summary>
-public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses responses, IOptions<MqttOptions> options, ILogger<DynamicSecurity> logger)
+public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses responses, IOptions<MqttOptions> options, IOptions<ZigbeeOptions> zigbee, ILogger<DynamicSecurity> logger)
 {
     public const string ControlTopic = "$CONTROL/dynamic-security/v1";
     public const string ResponseTopic = ControlTopic + "/response";
@@ -48,6 +48,13 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
             },
             Acl("addRoleACL", options.Value.AdminRole, "publishClientSend", $"{prefix}/#", 0),
             Acl("addRoleACL", options.Value.AdminRole, "subscribePattern", $"{prefix}/#", 0),
+            // Tasmota and OpenBeken devices: the api reads what they report and writes their commands.
+            Acl("addRoleACL", options.Value.AdminRole, "subscribePattern", "tele/#", 0),
+            Acl("addRoleACL", options.Value.AdminRole, "subscribePattern", "stat/#", 0),
+            Acl("addRoleACL", options.Value.AdminRole, "publishClientSend", "cmnd/#", 0),
+            // zigbee2mqtt: the api reads what it publishes and writes its requests and device commands.
+            Acl("addRoleACL", options.Value.AdminRole, "subscribePattern", $"{zigbee.Value.BaseTopic}/#", 0),
+            Acl("addRoleACL", options.Value.AdminRole, "publishClientSend", $"{zigbee.Value.BaseTopic}/#", 0),
         ], ct, ignoreErrors: true);
     }
 
@@ -56,11 +63,32 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
     {
         if (!Enabled)
             return password;
-        var role = RoleName(deviceId);
-        var dev = Topics.Device(deviceId);
         // Old login and role are removed first: replacing a board revokes the previous one (spec 5.3).
         await SendAsync([new JsonObject { ["command"] = "deleteClient", ["username"] = ClientName(deviceId) },
-                         new JsonObject { ["command"] = "deleteRole", ["rolename"] = role }], ct, ignoreErrors: true);
+                         new JsonObject { ["command"] = "deleteRole", ["rolename"] = RoleName(deviceId) }], ct, ignoreErrors: true);
+        await CreateHornetAsync(deviceId, password, ct);
+        return password;
+    }
+
+    /// <summary>
+    /// The hornet's login on the CITY broker (it connects there when home does not answer, spec 4.5): created when missing, never
+    /// recreated, because a recreated login drops a hornet that is connected with it.
+    /// </summary>
+    public async Task ProvisionHornetIfMissingAsync(string deviceId, string password, CancellationToken ct)
+    {
+        if (!Enabled)
+            return;
+        var existing = await SendAsync([new JsonObject { ["command"] = "getClient", ["username"] = ClientName(deviceId) }], ct, ignoreErrors: true);
+        if (existing.FirstOrDefault()?["error"] is null)
+            return;
+        await SendAsync([new JsonObject { ["command"] = "deleteRole", ["rolename"] = RoleName(deviceId) }], ct, ignoreErrors: true);
+        await CreateHornetAsync(deviceId, password, ct);
+    }
+
+    private async Task CreateHornetAsync(string deviceId, string password, CancellationToken ct)
+    {
+        var role = RoleName(deviceId);
+        var dev = Topics.Device(deviceId);
         await SendAsync(
         [
             new JsonObject { ["command"] = "createRole", ["rolename"] = role },
@@ -79,7 +107,99 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
                 ["roles"] = new JsonArray { new JsonObject { ["rolename"] = role } },
             },
         ], ct);
-        return password;
+    }
+
+    /// <summary>
+    /// Login and role of a Tasmota or OpenBeken device: it reports under tele/ and stat/ with its id, and listens to
+    /// cmnd/ with its id, nothing else.
+    /// </summary>
+    public async Task ProvisionTasmotaAsync(string deviceId, string password, CancellationToken ct)
+    {
+        if (!Enabled)
+            return;
+        var role = RoleName(deviceId);
+        await SendAsync([new JsonObject { ["command"] = "deleteClient", ["username"] = ClientName(deviceId) },
+                         new JsonObject { ["command"] = "deleteRole", ["rolename"] = role }], ct, ignoreErrors: true);
+        await SendAsync(
+        [
+            new JsonObject { ["command"] = "createRole", ["rolename"] = role },
+            Acl("addRoleACL", role, "publishClientSend", $"tele/{deviceId}/#", 0),
+            Acl("addRoleACL", role, "publishClientSend", $"stat/{deviceId}/#", 0),
+            Acl("addRoleACL", role, "subscribePattern", $"cmnd/{deviceId}/#", 0),
+            new JsonObject
+            {
+                ["command"] = "createClient",
+                ["username"] = ClientName(deviceId),
+                ["password"] = password,
+                ["roles"] = new JsonArray { new JsonObject { ["rolename"] = role } },
+            },
+        ], ct);
+    }
+
+    /// <summary>
+    /// The login of the zigbee2mqtt container: its own base topic, nothing else. Called at every (re)connect of the api, so it
+    /// only creates the login when it is missing: changing a password or deleting a client drops a connected zigbee2mqtt.
+    /// To change the password later, delete the client "zigbee2mqtt" with mosquitto_ctrl and restart the api.
+    /// </summary>
+    public async Task ProvisionZigbeeBridgeAsync(string user, string password, string baseTopic, CancellationToken ct)
+    {
+        if (!Enabled)
+            return;
+        const string role = "zigbee2mqtt-bridge";
+        var existing = await SendAsync([new JsonObject { ["command"] = "getClient", ["username"] = user }], ct, ignoreErrors: true);
+        if (existing.FirstOrDefault()?["error"] is null)
+            return;
+        await SendAsync(
+        [
+            new JsonObject { ["command"] = "createRole", ["rolename"] = role },
+            Acl("addRoleACL", role, "publishClientSend", $"{baseTopic}/#", 0),
+            Acl("addRoleACL", role, "subscribePattern", $"{baseTopic}/#", 0),
+            new JsonObject
+            {
+                ["command"] = "createClient",
+                ["username"] = user,
+                ["password"] = password,
+                ["roles"] = new JsonArray { new JsonObject { ["rolename"] = role } },
+            },
+        ], ct, ignoreErrors: true);
+    }
+
+    /// <summary>
+    /// The login the home node's Mosquitto bridge uses on the city broker: it may write what home publishes (hornet topics and
+    /// home's own hive topics) and read what the city says (its hive topics and the active node). Created once, when missing.
+    /// </summary>
+    public async Task ProvisionBridgeAsync(string user, string password, CancellationToken ct)
+    {
+        if (!Enabled)
+            return;
+        const string role = "bridge-home";
+        var prefix = Topics.Prefix;
+        var existing = await SendAsync([new JsonObject { ["command"] = "getClient", ["username"] = user }], ct, ignoreErrors: true);
+        if (existing.FirstOrDefault()?["error"] is null)
+        {
+            // A login made by an earlier version: only the permissions added since are put on its role (nothing changes when it has them).
+            await SendAsync([Acl("addRoleACL", role, "publishClientSend", $"{prefix}/sync/home/#", 0),
+                             Acl("addRoleACL", role, "subscribePattern", $"{prefix}/sync/city/#", 0)], ct, ignoreErrors: true);
+            return;
+        }
+        await SendAsync(
+        [
+            new JsonObject { ["command"] = "createRole", ["rolename"] = role },
+            Acl("addRoleACL", role, "publishClientSend", $"{prefix}/dev/#", 0),
+            Acl("addRoleACL", role, "publishClientSend", $"{prefix}/hive/home/#", 0),
+            Acl("addRoleACL", role, "publishClientSend", $"{prefix}/hive/active", 0),
+            Acl("addRoleACL", role, "publishClientSend", $"{prefix}/sync/home/#", 0),
+            Acl("addRoleACL", role, "subscribePattern", $"{prefix}/hive/city/#", 0),
+            Acl("addRoleACL", role, "subscribePattern", $"{prefix}/hive/active", 0),
+            Acl("addRoleACL", role, "subscribePattern", $"{prefix}/sync/city/#", 0),
+            new JsonObject
+            {
+                ["command"] = "createClient",
+                ["username"] = user,
+                ["password"] = password,
+                ["roles"] = new JsonArray { new JsonObject { ["rolename"] = role } },
+            },
+        ], ct, ignoreErrors: true);
     }
 
     /// <summary>Removes the hornet's login, e.g. when it is deleted or factory reset (spec 5.3).</summary>
@@ -101,7 +221,7 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
         ["allow"] = allow,
     };
 
-    private async Task SendAsync(JsonObject[] commands, CancellationToken ct, bool ignoreErrors = false)
+    private async Task<JsonArray> SendAsync(JsonObject[] commands, CancellationToken ct, bool ignoreErrors = false)
     {
         await mqtt.WaitConnectedAsync(Timeout, ct);
         var correlation = Guid.NewGuid().ToString("N");
@@ -123,6 +243,7 @@ public sealed class DynamicSecurity(MqttGateway mqtt, DynamicSecurityResponses r
                 else
                     throw new InvalidOperationException($"Mosquitto dynsec {r!["command"]} failed: {error}");
             }
+            return results;
         }
         finally
         {

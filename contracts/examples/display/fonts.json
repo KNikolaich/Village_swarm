@@ -1,0 +1,1 @@
+{ "v": 1, "ts": 1759387200123, "items": [ { "label": "Дача", "text": "-3.2°", "x": 4, "y": 4, "size": 3, "align": "left", "font": "anonymous-pro", "px": 32, "bold": true }, { "text": "Лето", "x": 196, "y": 150, "size": 2, "align": "right", "font": "cormorant-infant", "px": 24, "italic": true } ] }

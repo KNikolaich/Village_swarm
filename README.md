@@ -84,9 +84,9 @@ Alarms come with buttons (ack, more photos, 1 h mute) and photos; commands: /sta
 
 ## Adding a hornet
 
-Web UI → Рой → «Добавить шершня»: pick the type, id and name to get a one-time code, flash the board from the
-browser (Chrome/Edge, ESP Web Tools; images come from `firmware/dist/<role>` after `pio run`), then send Wi-Fi
-and the code over USB. The board calls `/api/provision/enroll`, gets its own Mosquitto login (dynsec, only its
+Web UI → Рой → «Добавить шершня»: pick the type, id and name to get a one-time code, then one button flashes
+the board from the browser (Chrome/Edge, Web Serial with esptool-js; images come from `firmware/dist/<role>` after
+`pio run`) and sends Wi-Fi and the code over the same USB cable, waiting until the hornet is online. The board calls `/api/provision/enroll`, gets its own Mosquitto login (dynsec, only its
 own topics) and photo upload token, and comes online. «Заменить» issues a code for the same id (history kept,
 the old board loses access); «Удалить» revokes the login. The simulator can do the same against a real hive:
 `Hive.Simulator scenario.yaml --hive http://hive:5080 --login admin --password ...`.

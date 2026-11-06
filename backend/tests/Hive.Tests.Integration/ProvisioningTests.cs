@@ -20,6 +20,7 @@ namespace Hive.Tests.Integration;
 public sealed class DynSecFixture : IAsyncLifetime
 {
     public const string AdminPassword = "dynsec-admin-password";
+    public const string ZigbeePassword = "zigbee-bridge-password";
     private const string BrokerConfig = """
         listener 1883
         allow_anonymous false
@@ -44,6 +45,7 @@ public sealed class DynSecFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await Task.WhenAll(_postgres.StartAsync(), _mosquitto.StartAsync());
+        await BrokerReadyAsync();
         App = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Development");
@@ -54,6 +56,8 @@ public sealed class DynSecFixture : IAsyncLifetime
             b.UseSetting("Mqtt:Password", AdminPassword);
             b.UseSetting("Mqtt:ClientId", "hive-api-dynsec");
             b.UseSetting("Mqtt:DynamicSecurity", "true");
+            b.UseSetting("Zigbee:Enabled", "true");
+            b.UseSetting("Zigbee:MqttPassword", ZigbeePassword);
             b.UseSetting("Telegram:Token", ""); // never the developer's real bot from deploy/.env
             b.UseSetting("Provisioning:MqttHost", Broker.Host);
             b.UseSetting("Provisioning:MqttPort", Broker.Port.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -63,6 +67,56 @@ public sealed class DynSecFixture : IAsyncLifetime
             b.UseSetting("Auth:AuthRequestsPerMinute", "10000");
         });
         _ = App.Server;
+        await WarmUpAsync();
+    }
+
+    /// <summary>
+    /// "running" in the broker log comes before it takes logins when the machine is busy (the whole suite in parallel). The api
+    /// gives its broker 10 s at start-up and retries 1, 2, 4, 8 s apart, so it starts only once the admin login is accepted.
+    /// </summary>
+    private async Task BrokerReadyAsync()
+    {
+        var options = new MqttClientOptionsBuilder().WithTcpServer(Broker.Host, Broker.Port).WithCredentials("admin", AdminPassword)
+            .WithClientId($"dynsec-ready-{Guid.NewGuid():N}").WithTimeout(TimeSpan.FromSeconds(5)).Build();
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (true)
+        {
+            using var client = new MqttClientFactory().CreateMqttClient();
+            try
+            {
+                await client.ConnectAsync(options);
+                await client.DisconnectAsync();
+                return;
+            }
+            catch (Exception) when (DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(500);
+            }
+        }
+    }
+
+    /// <summary>
+    /// On a broker that was just set up the api sets its own permissions during its first seconds and is dropped once while it does:
+    /// a dynamic security command sent in that window is lost. Tests start when enrolling a device works.
+    /// </summary>
+    private async Task WarmUpAsync()
+    {
+        var client = App.CreateClient();
+        using var login = await client.PostAsJsonAsync("/api/auth/login", new { login = "admin", password = HiveFixture.AdminPassword });
+        login.EnsureSuccessStatusCode();
+        var deadline = DateTime.UtcNow.AddSeconds(90);
+        while (DateTime.UtcNow < deadline)
+        {
+            using var code = await client.PostAsJsonAsync("/api/provision/codes", new { deviceId = "warm-up1", type = "meteo", name = "warm up" });
+            if (code.IsSuccessStatusCode)
+            {
+                var issued = await code.Content.ReadFromJsonAsync<Hive.Modules.Devices.EnrollmentCodeDto>();
+                using var enrolled = await App.CreateClient().PostAsJsonAsync("/api/provision/enroll", new { code = issued!.Code, mac = "02:00:00:00:ff:01" });
+                if (enrolled.IsSuccessStatusCode)
+                    return;
+            }
+            await Task.Delay(1000);
+        }
     }
 
     public async Task DisposeAsync()
@@ -129,6 +183,18 @@ public sealed class ProvisioningTests(DynSecFixture hive) : IClassFixture<DynSec
         var device = await hive.QueryAsync(db => db.Devices.SingleAsync(d => d.DeviceId == "guard-prov1"));
         Assert.NotNull(device.UploadTokenHash);
         Assert.Equal(1, device.ConfigRev);
+    }
+
+    [Fact]
+    public async Task An_enrolled_car_gets_the_key_of_its_camera_stream_and_its_light()
+    {
+        var admin = await hive.AdminAsync();
+        await admin.EnrollAsync(new HornetSpec { Id = "car-prov1", Type = Cars.Type }, CancellationToken.None);
+        var device = await hive.QueryAsync(db => db.Devices.SingleAsync(d => d.DeviceId == "car-prov1"));
+        var config = device.Config!.RootElement;
+        Assert.Matches("^[A-Za-z0-9]{24}$", config.GetProperty("car").GetProperty("stream_key").GetString());
+        Assert.Equal(60, config.GetProperty("car").GetProperty("max_run_s").GetInt32());
+        Assert.Equal("light", config.GetProperty("relay").GetProperty("channel").GetString());
     }
 
     [Fact]

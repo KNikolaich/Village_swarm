@@ -1,0 +1,5 @@
+{
+  "v": 1, "rev": 1, "name": "Кухонный термометр",
+  "health_interval_s": 60, "tele_interval_s": 60,
+  "ble": { "mac": "AA:BB:CC:DD:EE:FF", "dump": false }
+}

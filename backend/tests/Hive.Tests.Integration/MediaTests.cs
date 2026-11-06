@@ -105,6 +105,24 @@ public sealed class MediaTests(HiveFixture hive) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_frame_taken_before_the_event_keeps_its_own_time()
+    {
+        var (hornet, role, link) = await CameraAsync("guard-old1");
+        var eventId = await MotionAsync(hornet, role, link, DateTimeOffset.UtcNow);
+        var uploads = role.TakeUploads().ToList();
+        // The camera had no fresh frame for the first photo: it sends the one it took hours ago, with that time.
+        var takenAt = DateTimeOffset.UtcNow.AddHours(-4);
+        uploads[0] = uploads[0] with { Ts = takenAt.ToUnixTimeMilliseconds() };
+        foreach (var upload in uploads)
+            Assert.Equal(UploadOutcome.Uploaded, (await PhotoUploader.UploadAsync(_http, hornet.Id, upload, null, CancellationToken.None)).Outcome);
+
+        await hive.WaitForAsync(db => db.Events.AnyAsync(e => e.Id == eventId), "motion event ingested");
+        var evt = Assert.Single((await _http.GetFromJsonAsync<Page<EventDto>>("/api/events?device=guard-old1"))!.Items);
+        Assert.Equal(takenAt.ToUnixTimeMilliseconds(), evt.Photos[0].Ts.ToUnixTimeMilliseconds());
+        Assert.All(evt.Photos.Skip(1), p => Assert.True(p.Ts >= evt.Ts - TimeSpan.FromMinutes(1)));
+    }
+
+    [Fact]
     public async Task Range_requests_are_supported()
     {
         var photoId = $"{Ulid.New()}-0";
@@ -152,6 +170,29 @@ public sealed class MediaTests(HiveFixture hive) : IAsyncLifetime
         using (var r = await _http.SendAsync(Upload(TestJpeg, id, deviceId: "someone-else", token: "secret-token")))
             Assert.Equal(HttpStatusCode.Created, r.StatusCode);
         Assert.Equal("guard-tok1", await hive.QueryAsync(db => db.Media.Where(m => m.Id == id).Select(m => m.DeviceId).SingleAsync()));
+    }
+
+    [Fact]
+    public async Task A_camera_mounted_on_its_side_gets_its_photos_turned_once_when_stored()
+    {
+        await CameraAsync("guard-rot1");
+        await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == "guard-rot1"), "device registered");
+        var (width, height) = Hive.Modules.Media.ImageTools.Identify(TestJpeg)!.Value;
+
+        using (var refused = await _http.PutAsJsonAsync("/api/devices/guard-rot1/rotate", new { rotate = 45 }))
+            Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        using (var set = await _http.PutAsJsonAsync("/api/devices/guard-rot1/rotate", new { rotate = 90 }))
+            Assert.Equal(HttpStatusCode.NoContent, set.StatusCode);
+        var device = await _http.GetFromJsonAsync<Hive.Modules.Devices.DeviceDto>("/api/devices/guard-rot1");
+        Assert.Equal(90, device!.Rotate);
+
+        var id = $"{Ulid.New()}-0";
+        using (var r = await _http.SendAsync(Upload(TestJpeg, id, "guard-rot1")))
+            Assert.Equal(HttpStatusCode.Created, r.StatusCode);
+        var stored = await hive.QueryAsync(db => db.Media.SingleAsync(m => m.Id == id));
+        Assert.Equal((height, width), (stored.Width, stored.Height));
+        var bytes = await _http.GetByteArrayAsync($"/api/media/{id}");
+        Assert.Equal((height, width), Hive.Modules.Media.ImageTools.Identify(bytes));
     }
 
     [Fact]

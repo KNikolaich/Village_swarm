@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/drive.schema.json",
+  "title": "vs/v1/hive/drive/{id} (not retained, QoS 0): the wheels of a car, repeated while a control is held",
+  "type": "object",
+  "required": ["v", "ts", "left", "right"],
+  "properties": {
+    "v": { "const": 1 },
+    "ts": { "$ref": "common.schema.json#/$defs/unixMs" },
+    "left": { "type": "integer", "minimum": -100, "maximum": 100, "description": "Speed of the left wheels in percent of car.max_speed: positive forward, negative back, 0 stops them" },
+    "right": { "type": "integer", "minimum": -100, "maximum": 100, "description": "Speed of the right wheels" }
+  },
+  "additionalProperties": false
+}

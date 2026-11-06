@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Hive.Domain;
 using Hive.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,6 +20,9 @@ public sealed class TelemetryQueries(HiveDbContext db, TimeProvider time)
 {
     public const int MaxPoints = 500;
     public const int DefaultPoints = 120;
+
+    /// <summary>The finest bucket: the shortest monitoring interval.</summary>
+    public const int MinBucketS = 5;
     public static readonly TimeSpan MaxRange = TimeSpan.FromDays(366);
 
     /// <summary>Last value of every metric of every device seen in the past week (overview tiles).</summary>
@@ -49,8 +53,9 @@ public sealed class TelemetryQueries(HiveDbContext db, TimeProvider time)
         if (end - start > MaxRange)
             start = end - MaxRange;
         var count = Math.Clamp(points ?? DefaultPoints, 2, MaxPoints);
-        // Buckets are whole minutes at least: the hornets report no faster than that.
-        var bucket = Math.Max(60, Math.Ceiling((end - start).TotalSeconds / count / 60) * 60);
+        // Whole minutes for long windows; on short ones (monitoring mode reports every few seconds) steps of 5 s.
+        var raw = (end - start).TotalSeconds / count;
+        var bucket = raw > 60 ? Math.Ceiling(raw / 60) * 60 : Math.Max(MinBucketS, Math.Ceiling(raw / MinBucketS) * MinBucketS);
         return (start, end, bucket);
     }
 
@@ -59,11 +64,24 @@ public sealed class TelemetryQueries(HiveDbContext db, TimeProvider time)
         string device, string metric, DateTimeOffset? from, DateTimeOffset? to, int? points, CancellationToken ct)
     {
         var (start, end, bucket) = Window(from, to, points);
+        // Readings before the cut exist only as hourly aggregates (retention), later ones only raw: no overlap.
+        var cut = await db.Modes.AsNoTracking().Where(m => m.Key == Mode.TelemetryCut).Select(m => m.Value).FirstOrDefaultAsync(ct) is { } text
+                  && DateTimeOffset.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed)
+            ? parsed
+            : DateTimeOffset.UnixEpoch;
         var rows = await db.Database.SqlQuery<SeriesRow>($"""
+            WITH src AS (
+                SELECT ts, value AS a, value AS lo, value AS hi, 1 AS n
+                FROM telemetry
+                WHERE device_id = {device} AND metric = {metric} AND ts >= {start} AND ts < {end} AND ts >= {cut}
+                UNION ALL
+                SELECT hour, avg, min, max, count
+                FROM telemetry_hourly
+                WHERE device_id = {device} AND metric = {metric} AND hour >= {start} AND hour < {end} AND hour < {cut}
+            )
             SELECT date_bin(make_interval(secs => {bucket}), ts, TIMESTAMPTZ '2000-01-01') AS "Ts",
-                   avg(value) AS "Avg", min(value) AS "Min", max(value) AS "Max"
-            FROM telemetry
-            WHERE device_id = {device} AND metric = {metric} AND ts >= {start} AND ts < {end}
+                   (sum(a * n) / sum(n))::float8 AS "Avg", min(lo) AS "Min", max(hi) AS "Max"
+            FROM src
             GROUP BY 1
             ORDER BY 1
             """).ToListAsync(ct);
@@ -89,7 +107,9 @@ public sealed class TelemetryQueries(HiveDbContext db, TimeProvider time)
     /// <summary>Newest log lines of one device first; <paramref name="level"/> narrows to one level.</summary>
     public async Task<IReadOnlyList<DeviceLogDto>> LogsAsync(string device, string? level, int? limit, CancellationToken ct)
     {
-        var query = db.DeviceLogs.AsNoTracking().Where(l => l.DeviceId == device);
+        // Cleared on the device page: only what came after (the rows stay until the retention cleanup).
+        var since = await db.Devices.Where(d => d.DeviceId == device).Select(d => d.LogsClearedAt).FirstOrDefaultAsync(ct);
+        var query = db.DeviceLogs.AsNoTracking().Where(l => l.DeviceId == device && (since == null || l.Ts > since));
         if (!string.IsNullOrEmpty(level))
             query = query.Where(l => l.Level == level);
         var rows = await query.OrderByDescending(l => l.Ts).ThenByDescending(l => l.Id).Take(Math.Clamp(limit ?? 50, 1, 200)).ToListAsync(ct);

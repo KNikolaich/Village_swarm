@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://village-swarm.local/contracts/v1/display.schema.json",
+  "title": "vs/v1/hive/display/{id} (retained): what the hive wants a hornet's screen to show",
+  "type": "object",
+  "required": ["v", "ts", "items"],
+  "properties": {
+    "v": { "const": 1 },
+    "ts": { "$ref": "common.schema.json#/$defs/unixMs" },
+    "items": {
+      "type": "array",
+      "maxItems": 8,
+      "description": "Empty: nothing chosen (a monitor says so; the old meteo-c3oled build shows its own readings). Without size on any item: the automatic layout of up to 4 lines. With size: every item is drawn where x, y say, at that size",
+      "items": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "label": { "type": "string", "maxLength": 16, "description": "What it is (a zone, a device); may be absent" },
+          "text": { "type": "string", "maxLength": 24, "description": "The value, ready to show: 21.5°, 63%, 3.9V, --; a text the person typed (a caption without a source), up to 24 characters; or the hive's clock (14:05, 28 октября)" },
+          "x": { "type": "integer", "minimum": 0, "maximum": 1023, "description": "Placed layout: pixels from the left edge to the anchor of the text (align says which edge of the text). Absent: 0" },
+          "y": { "type": "integer", "minimum": 0, "maximum": 1023, "description": "Placed layout: pixels from the top edge to the top of the text (of the label when there is one; the label is drawn in the smallest font above the value). Absent: 0" },
+          "size": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Relative text height: size/10 of the screen height, at least 6 px; the screen takes its largest font not taller than that. Set on any item: the whole screen is placed by x, y, size" },
+          "align": { "enum": ["left", "center", "right"], "description": "Placed layout: which edge of the text x is. Absent: left" },
+          "font": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 40, "description": "Screens the hive draws (e-ink): the id of the font family (GET /api/display/fonts). Absent: the standard font. The panel only shows the picture; the small OLED ignores it" },
+          "px": { "type": "integer", "minimum": 6, "maximum": 120, "description": "Screens the hive draws: the size of the font in pixels. Absent: derived from size. Ignored by the small OLED" },
+          "bold": { "type": "boolean", "description": "Screens the hive draws: bold (a family without a bold face is emboldened)" },
+          "italic": { "type": "boolean", "description": "Screens the hive draws: italic (a family without an italic face is slanted)" },
+          "range": { "enum": ["low", "high"], "description": "The value is below (low) or above (high) the normal range set for this reading in the hive, the one the site paints light blue and pink. Absent: inside the range, no range set, or not a reading. The 0.42\" OLED draws it black on a white plate with an arrow up (high) or down (low)" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

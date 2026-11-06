@@ -1,0 +1,104 @@
+namespace Hive.Domain;
+
+/// <summary>
+/// A Dahua network video recorder the hive reads motion events and snapshots from (contracts/ipcam.md).
+/// Its cameras are the devices of its <see cref="Channels"/>; the password is kept encrypted.
+/// </summary>
+public class Nvr
+{
+    public int Id { get; set; }
+    public required string Name { get; set; }
+    public required string Host { get; set; }
+    public int Port { get; set; } = 80;
+
+    /// <summary>RTSP port, for frames grabbed from the stream when snapshot.cgi gives none.</summary>
+    public int RtspPort { get; set; } = 554;
+
+    /// <summary><see cref="NvrKinds"/>: an NVR with channels, or one camera on its own (a single channel 1, no parent device).</summary>
+    public string Kind { get; set; } = NvrKinds.Nvr;
+
+    /// <summary><see cref="CameraVendors"/>: Dahua's HTTP API, or ONVIF for any other camera.</summary>
+    public string Vendor { get; set; } = CameraVendors.Dahua;
+
+    /// <summary>ONVIF: the snapshot address (GetSnapshotUri); null: frames come from the stream only.</summary>
+    public string? SnapshotUrl { get; set; }
+
+    /// <summary>The streams when they are not Dahua's (ONVIF GetStreamUri, or typed in): main and sub, without the login.</summary>
+    public string? RtspMain { get; set; }
+
+    public string? RtspSub { get; set; }
+
+    /// <summary>ONVIF: the event service, when the camera can be subscribed to (PullPoint); null: snapshots only, no motion.</summary>
+    public string? EventsUrl { get; set; }
+    public required string Username { get; set; }
+
+    /// <summary>The password, encrypted with ASP.NET data protection; never sent to the browser.</summary>
+    public required string PasswordProtected { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+    public List<NvrChannel> Channels { get; set; } = [];
+}
+
+/// <summary>One NVR channel taken into the swarm as the device <see cref="DeviceId"/>.</summary>
+public class NvrChannel
+{
+    public int Id { get; set; }
+    public int NvrId { get; set; }
+
+    /// <summary>1-based, as in snapshot.cgi and the NVR's own screen (the event stream counts from 0).</summary>
+    public int Channel { get; set; }
+
+    public required string DeviceId { get; set; }
+
+    /// <summary>Photos on motion even when the guard is off (the event itself is always written).</summary>
+    public bool RecordWhenDisarmed { get; set; }
+
+    /// <summary>Where frames come from (<see cref="SnapshotSources"/>): auto tries the NVR's snapshot.cgi, then the RTSP stream.</summary>
+    public string SnapshotSource { get; set; } = SnapshotSources.Auto;
+
+    /// <summary>The way that gave the last frame (cgi or rtsp): tried first next time in auto.</summary>
+    public string? SnapshotVia { get; set; }
+
+    /// <summary>
+    /// <see cref="SnapshotQualities"/>: fast takes RTSP frames from the light sub-stream (the main stream only when it gives none),
+    /// detailed from the main stream (the sub-stream when it gives none in time, so an alarm never lacks a photo).
+    /// </summary>
+    public string SnapshotQuality { get; set; } = SnapshotQualities.Fast;
+}
+
+public static class NvrKinds
+{
+    public const string Nvr = "nvr";
+    public const string Camera = "camera";
+
+    public static bool IsKnown(string? s) => s is Nvr or Camera;
+}
+
+public static class CameraVendors
+{
+    public const string Dahua = "dahua";
+    public const string Onvif = "onvif";
+
+    public static bool IsKnown(string? s) => s is Dahua or Onvif;
+}
+
+public static class SnapshotQualities
+{
+    public const string Fast = "fast";
+    public const string Detailed = "detailed";
+
+    public static bool IsKnown(string? s) => s is Fast or Detailed;
+}
+
+/// <summary>
+/// How a frame of an NVR channel is taken. Third-party ONVIF cameras often get no snapshot from a Dahua NVR, so a frame is
+/// grabbed from the RTSP stream instead (contracts/ipcam.md).
+/// </summary>
+public static class SnapshotSources
+{
+    public const string Auto = "auto";
+    public const string Cgi = "cgi";
+    public const string Rtsp = "rtsp";
+
+    public static bool IsKnown(string? s) => s is Auto or Cgi or Rtsp;
+}

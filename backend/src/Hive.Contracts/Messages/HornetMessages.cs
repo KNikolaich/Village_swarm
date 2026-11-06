@@ -50,6 +50,9 @@ public sealed record HealthMessage : HornetMessage
     public required string ResetReason { get; init; }
     public int? Outbox { get; init; }
     public BrokerNode? Broker { get; init; }
+
+    /// <summary>Role car: why its motors stopped last (boot, deadman, link, max_run, hive).</summary>
+    public string? StoppedBy { get; init; }
 }
 
 /// <summary>vs/v1/dev/{id}/tele/{metric}</summary>
@@ -121,6 +124,22 @@ public enum OtaPhase
     Started,
     Applied,
     Failed,
+    [JsonStringEnumMemberName("rolled_back")] RolledBack,
+}
+
+/// <summary>vs/v1/dev/{id}/event/wifi</summary>
+public sealed record WifiEvent : EventMessage
+{
+    public required WifiPhase Phase { get; init; }
+    public required string Ssid { get; init; }
+    public string? Error { get; init; }
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<WifiPhase>))]
+public enum WifiPhase
+{
+    Staged,
+    Applied,
     [JsonStringEnumMemberName("rolled_back")] RolledBack,
 }
 

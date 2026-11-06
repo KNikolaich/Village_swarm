@@ -168,4 +168,117 @@ public sealed class DeviceConfigTests(HiveFixture hive)
         var now = DateTimeOffset.UtcNow;
         Assert.Equal(overdue, SleepingDeviceWatch.IsOverdue(sleepS, now.AddSeconds(-secondsSinceSeen), now));
     }
+    /// <summary>A hornet with a screen may show another device's reading: the hive keeps the choice in the config and feeds the ready text.</summary>
+    [Fact]
+    public async Task A_screen_shows_readings_of_other_devices_as_ready_texts()
+    {
+        await RegisterAsync("meteo-disp-a");
+        await RegisterAsync("meteo-disp-b");
+        await hive.QueryAsync(async db =>
+        {
+            await db.Database.ExecuteSqlRawAsync("""
+                INSERT INTO telemetry (device_id, metric, ts, value, received_at)
+                VALUES ('meteo-disp-b', 'temperature', now(), -3.24, now())
+                """);
+            return 0;
+        });
+        var admin = await hive.LoginAsync();
+
+        using var client = new MqttClientFactory().CreateMqttClient();
+        var texts = new List<string>();
+        client.ApplicationMessageReceivedAsync += m =>
+        {
+            lock (texts)
+                texts.Add(m.ApplicationMessage.ConvertPayloadToString());
+            return Task.CompletedTask;
+        };
+        await client.ConnectAsync(new MqttClientOptionsBuilder().WithTcpServer(hive.MqttHost, hive.MqttPort).WithClientId("disp-watch").Build());
+        await client.SubscribeAsync("vs/v1/hive/display/meteo-disp-a");
+
+        using var tooMany = await admin.PutAsJsonAsync("/api/devices/meteo-disp-a/display",
+            new { items = Enumerable.Range(0, 5).Select(_ => new { metric = "temperature" }).ToArray() });
+        Assert.Equal(HttpStatusCode.BadRequest, tooMany.StatusCode);
+
+        // -3.2 under a normal range from 0: the site paints it light blue, the screen is told "low"
+        using var range = await admin.PutAsJsonAsync("/api/ranges/meteo-disp-b/temperature", new { min = 0.0 });
+        Assert.Equal(HttpStatusCode.NoContent, range.StatusCode);
+        using var saved = await admin.PutAsJsonAsync("/api/devices/meteo-disp-a/display",
+            new { items = new object[] { new { device = "meteo-disp-b", metric = "temperature", label = "Улица" }, new { metric = "humidity" } } });
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+
+        JsonElement Last()
+        {
+            lock (texts)
+                return JsonDocument.Parse(texts.Last()).RootElement.Clone();
+        }
+        for (var i = 0; i < 50 && texts.Count == 0; i++)
+            await Task.Delay(100);
+        var message = Last();
+        var items = message.GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(("Улица", "-3.2°"), (items[0].GetProperty("label").GetString(), items[0].GetProperty("text").GetString()));
+        Assert.Equal("low", items[0].GetProperty("range").GetString());
+        Assert.Equal("--", items[1].GetProperty("text").GetString());   // no humidity of its own yet: no number is better than a wrong one
+        Assert.False(items[1].TryGetProperty("range", out _));
+        Assert.False(items[1].TryGetProperty("label", out _));
+
+        var back = await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-disp-a/display");
+        Assert.Equal(2, back.GetProperty("items").GetArrayLength());
+        var config = await hive.QueryAsync(db => db.Devices.AsNoTracking().SingleAsync(d => d.DeviceId == "meteo-disp-a"));
+        Assert.Equal("meteo-disp-b", config.Config!.RootElement.GetProperty("display").GetProperty("items")[0].GetProperty("device").GetString());
+
+        // placed by hand: x, y, size go to the config and the screen; only a typed label is drawn, the name of the device is not
+        var beforePlaced = texts.Count;
+        using var badSize = await admin.PutAsJsonAsync("/api/devices/meteo-disp-a/display",
+            new { items = new object[] { new { metric = "temperature", x = 0, y = 0, size = 11 } } });
+        Assert.Equal(HttpStatusCode.BadRequest, badSize.StatusCode);
+        using var placed = await admin.PutAsJsonAsync("/api/devices/meteo-disp-a/display",
+            new { items = new object[] { new { device = "meteo-disp-b", metric = "temperature", x = 2, y = 4, size = 6 }, new { metric = "humidity", x = 71, y = 30, size = 2, align = "right" } } });
+        Assert.Equal(HttpStatusCode.OK, placed.StatusCode);
+        for (var i = 0; i < 50 && texts.Count == beforePlaced; i++)
+            await Task.Delay(100);
+        var placedItems = Last().GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal((2, 4, 6), (placedItems[0].GetProperty("x").GetInt32(), placedItems[0].GetProperty("y").GetInt32(), placedItems[0].GetProperty("size").GetInt32()));
+        Assert.False(placedItems[0].TryGetProperty("label", out _));
+        Assert.False(placedItems[0].TryGetProperty("align", out _));
+        Assert.Equal("right", placedItems[1].GetProperty("align").GetString());
+        var placedBack = await admin.GetFromJsonAsync<JsonElement>("/api/devices/meteo-disp-a/display");
+        Assert.Equal(6, placedBack.GetProperty("items")[0].GetProperty("size").GetInt32());
+
+        // no choice any more: an empty list goes out, so the hornet shows its own readings again
+        var before = texts.Count;
+        using var cleared = await admin.PutAsJsonAsync("/api/devices/meteo-disp-a/display", new { items = Array.Empty<object>() });
+        Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
+        for (var i = 0; i < 50 && texts.Count == before; i++)
+            await Task.Delay(100);
+        Assert.Equal(0, Last().GetProperty("items").GetArrayLength());
+    }
+    /// <summary>The normal range of a reading is kept per device and metric; the screens colour the number by it.</summary>
+    [Fact]
+    public async Task The_normal_range_of_a_reading_is_kept_listed_and_removed()
+    {
+        await RegisterAsync("meteo-range1");
+        var admin = await hive.LoginAsync();
+
+        using var bad = await admin.PutAsJsonAsync("/api/ranges/meteo-range1/temperature", new { min = 26, max = 18 });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        using var stranger = await admin.PutAsJsonAsync("/api/ranges/nobody-here/temperature", new { min = 18, max = 26 });
+        Assert.Equal(HttpStatusCode.NotFound, stranger.StatusCode);
+
+        using var saved = await admin.PutAsJsonAsync("/api/ranges/meteo-range1/temperature", new { min = 18.5, max = 26 });
+        Assert.Equal(HttpStatusCode.NoContent, saved.StatusCode);
+        using var onlyMax = await admin.PutAsJsonAsync("/api/ranges/meteo-range1/humidity", new { max = 70 });
+        Assert.Equal(HttpStatusCode.NoContent, onlyMax.StatusCode);
+
+        var list = await admin.GetFromJsonAsync<JsonElement>("/api/ranges");
+        var mine = list.EnumerateArray().Where(r => r.GetProperty("deviceId").GetString() == "meteo-range1").ToList();
+        Assert.Equal(["humidity", "temperature"], mine.Select(r => r.GetProperty("metric").GetString()!).ToArray());
+        Assert.Equal(18.5, mine[1].GetProperty("min").GetDouble());
+        Assert.Equal(26, mine[1].GetProperty("max").GetDouble());
+        Assert.Equal(JsonValueKind.Null, mine[0].GetProperty("min").ValueKind);
+
+        using var gone = await admin.DeleteAsync("/api/ranges/meteo-range1/temperature");
+        Assert.Equal(HttpStatusCode.NoContent, gone.StatusCode);
+        list = await admin.GetFromJsonAsync<JsonElement>("/api/ranges");
+        Assert.DoesNotContain(list.EnumerateArray(), r => r.GetProperty("deviceId").GetString() == "meteo-range1" && r.GetProperty("metric").GetString() == "temperature");
+    }
 }

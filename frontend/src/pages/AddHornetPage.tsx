@@ -1,17 +1,23 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, CheckCircle2, Copy, Cpu, Download, Usb } from 'lucide-react'
-import { createElement, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Link } from 'react-router'
+import { ArrowLeft, ArrowRight, Copy, Cpu, Download, PartyPopper, RotateCcw, Terminal, Usb } from 'lucide-react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
+import { IpCamPanel } from '@/components/IpCamPanel'
+import { RemoteMonitorPanel } from '@/components/RemoteMonitorPanel'
+import { TasmotaPanel } from '@/components/TasmotaPanel'
+import { ZigbeePanel } from '@/components/ZigbeePanel'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
-import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui/primitives'
 import { getLanguage, t } from '@/i18n'
-import { translateEspWebTools } from '@/lib/espWebToolsRu'
-import { HornetSerial, serialSupported } from '@/lib/serial'
+import { SetupStages } from '@/components/SetupStages'
+import { SetupError, type SetupStage, setupHornet, setupStages } from '@/lib/hornetSetup'
+import { type SerialPortLike, serialSupported } from '@/lib/serial'
+import { SerialNotice } from '@/components/SerialNotice'
+import { hiveUrl } from '@/lib/hiveUrl'
 
-const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant']
+const typeCodes = ['guard-cam', 'meteo', 'relay', 'heat', 'leak', 'plant', 'ble', 'irrx', 'irtx', 'monitor', 'car']
 const types = typeCodes.map((code) => ({ code, get title() { return t(`deviceTypes.${code}`) } }))
 
 const idPattern = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
@@ -44,18 +50,36 @@ function defaultHiveUrl() {
  * → wait until the hornet is online. Every step also shows the manual way.
  */
 export function AddHornetPage() {
-  const [mode, setMode] = useState<'one' | 'batch'>('one')
+  const [params] = useSearchParams()
+  const presetTasmota = params.get('tasmota')
+  const [mode, setMode] = useState<'one' | 'batch' | 'tasmota' | 'zigbee' | 'ipcam' | 'remote'>(presetTasmota ? 'tasmota' : params.get('ipcam') ? 'ipcam' : params.get('remote') ? 'remote' : 'one')
+  const preset = useQuery({
+    queryKey: ['device', presetTasmota],
+    queryFn: async () => (await api.GET('/api/devices/{deviceId}', { params: { path: { deviceId: presetTasmota! } } })).data ?? null,
+    enabled: !!presetTasmota,
+  })
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">{t('swarm.add')}</h1>
         <Link to="/swarm" className="text-sm text-amber-400">{t('swarm.title')}</Link>
       </div>
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button variant={mode === 'one' ? 'default' : 'secondary'} onClick={() => setMode('one')}>{t('add.modeOne')}</Button>
         <Button variant={mode === 'batch' ? 'default' : 'secondary'} onClick={() => setMode('batch')}>{t('add.modeBatch')}</Button>
+        <Button variant={mode === 'tasmota' ? 'default' : 'secondary'} onClick={() => setMode('tasmota')}>{t('add.modeTasmota')}</Button>
+        <Button variant={mode === 'zigbee' ? 'default' : 'secondary'} onClick={() => setMode('zigbee')}>{t('add.modeZigbee')}</Button>
+        <Button variant={mode === 'ipcam' ? 'default' : 'secondary'} onClick={() => setMode('ipcam')}>{t('add.modeIpcam')}</Button>
+        <Button variant={mode === 'remote' ? 'default' : 'secondary'} onClick={() => setMode('remote')}>{t('add.modeRemote')}</Button>
       </div>
-      {mode === 'one' ? <OneHornet /> : <BatchPanel />}
+      {mode === 'one' && <OneHornet />}
+      {mode === 'batch' && <BatchPanel />}
+      {mode === 'zigbee' && <ZigbeePanel />}
+      {mode === 'ipcam' && <IpCamPanel />}
+      {mode === 'remote' && <RemoteMonitorPanel existingId={params.get('remote') ?? undefined} />}
+      {mode === 'tasmota' && (presetTasmota && !preset.data
+        ? null
+        : <TasmotaPanel presetId={preset.data?.deviceId} presetName={preset.data?.name} presetType={preset.data?.type} />)}
     </div>
   )
 }
@@ -156,6 +180,8 @@ function BatchPanel() {
 
   const idValid = /^[a-z][a-z0-9]*(-[a-z0-9]+)*-?$/.test(idPrefix) && idPrefix.length <= 28
   const current = items.find((i) => i.deviceId === active)
+  const next = items[items.findIndex((i) => i.deviceId === active) + 1]
+  const navigate = useNavigate()
 
   return (
     <div className="space-y-4">
@@ -209,8 +235,9 @@ function BatchPanel() {
               <CodeBox code={current.code} expiresAt={current.expiresAt} />
             </CardContent>
           </Card>
-          <FlashStep type={type} build={selectedBuild} />
-          <ConfigureStep key={current.code} code={current.code} deviceId={current.deviceId} />
+          <SetupStep key={current.code} type={type} build={selectedBuild} code={current.code} deviceId={current.deviceId}
+            doneLabel={t(next ? 'add.nextBoard' : 'add.next')}
+            onDone={() => (next ? setActive(next.deviceId) : void navigate('/swarm'))} />
         </>
       )}
     </div>
@@ -227,7 +254,30 @@ function OneHornet() {
   const [error, setError] = useState<string | null>(null)
   const { builds, loading } = useBuilds()
   const [build, setBuild] = useState('')
-  const selectedBuild = pickBuild(builds, type, build)
+  const selectedBuild = pickBuild(builds, type, build.startsWith('board:') ? (builds.find((b) => b.role === type && b.board === build.slice(6))?.build ?? '') : build)
+
+  // "Replace the board" from the swarm: the hornet is known, so the code is issued here and step 1 is already done.
+  const replaceId = useSearchParams()[0].get('replace')
+  const replacing = useRef(false)
+  const [replaceFailed, setReplaceFailed] = useState(false)
+  useEffect(() => {
+    if (!replaceId || replacing.current) return
+    replacing.current = true
+    void (async () => {
+      try {
+        const device = await call(api.GET('/api/devices/{deviceId}', { params: { path: { deviceId: replaceId } } }))
+        const issued = await call(api.POST('/api/devices/{deviceId}/replace', { params: { path: { deviceId: replaceId } } }))
+        setType(device.type)
+        setDeviceId(device.deviceId)
+        setName(device.name)
+        if (device.hw) setBuild(`board:${device.hw}`)
+        setCode({ code: issued.code, expiresAt: issued.expiresAt, replaces: true, key: `${device.deviceId}\n${device.type}\n${device.name.trim()}` })
+        setEditing(false)
+      } catch {
+        setReplaceFailed(true)
+      }
+    })()
+  }, [replaceId])
 
   // What the code was issued for: the board can change freely, the id, type and name need a new code.
   const key = `${deviceId}\n${type}\n${name.trim()}`
@@ -249,11 +299,14 @@ function OneHornet() {
     setEditing(false)
   }
 
+  const navigate = useNavigate()
   const idValid = idPattern.test(deviceId) && deviceId.length <= 32
   const typeTitle = types.find((x) => x.code === type)?.title ?? type
 
   return (
     <div className="space-y-4">
+      {replaceId && !replaceFailed && <p className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-2 text-sm text-amber-300">{t('add.replaceBanner').replace('{id}', replaceId)}</p>}
+      {replaceFailed && <p className="text-sm text-red-400">{t('add.replaceFailed')}</p>}
       <Card>
         <CardHeader><CardTitle>1. {t('add.step1')}</CardTitle>{code && !editing && <Badge tone="ok">{code.code}</Badge>}</CardHeader>
         <CardContent>
@@ -284,63 +337,27 @@ function OneHornet() {
         </CardContent>
       </Card>
 
-      {code && !editing && <FlashStep type={type} build={selectedBuild} />}
-      {code && !editing && <ConfigureStep key={code.code} code={code.code} deviceId={deviceId} />}
+      {code && !editing && (
+        <SetupStep key={code.code} type={type} build={selectedBuild} code={code.code} deviceId={deviceId}
+          doneLabel={t('add.next')} onDone={() => void navigate(`/swarm/${deviceId}`)} />
+      )}
     </div>
   )
 }
 
-/** Firefox, Safari and phone browsers have no Web Serial: say so instead of leaving the USB steps silently dead. */
-function SerialNotice() {
-  return (
-    <p role="alert" className="rounded border border-amber-500/40 bg-amber-500/10 p-2 text-amber-300">
-      {t('add.noSerial')}
-    </p>
-  )
-}
-
-function FlashStep({ type, build }: { type: string; build?: Build }) {
-  const [ready, setReady] = useState(false)
-  const available = build !== undefined
-  useEffect(() => {
-    if (!available || !serialSupported()) return
-    translateEspWebTools()
-    // ESP Web Tools (a web component, ~100 KB) is only loaded for this step.
-    void import('esp-web-tools/dist/web/install-button.js').then(() => setReady(true))
-  }, [available])
-
-  return (
-    <Card>
-      <CardHeader><CardTitle>2. {t('add.step2')}</CardTitle></CardHeader>
-      <CardContent className="space-y-2 text-sm">
-        {build && <p>{t('add.boardLine').replace('{board}', buildTitle(build))}{build.version && <span className="text-neutral-500"> · {build.version}</span>}</p>}
-        <p className="text-neutral-400">{t('add.flashHint')}</p>
-        {!serialSupported() && <SerialNotice />}
-        {!available && <p className="text-amber-300">{t('add.noFirmware').replace('{type}', type)}</p>}
-        {build && (
-          <div className="flex flex-wrap items-center gap-4">
-            {!serialSupported() && (
-              <Button disabled title={t('add.noSerialShort')}><Cpu />{t('add.flash')}</Button>
-            )}
-            {ready &&
-              createElement('esp-web-install-button', { key: build.build, manifest: `/api/firmware/${build.build}/manifest.json` },
-                createElement(Button, { slot: 'activate' } as never, createElement(Cpu), t('add.flash')))}
-            <a
-              href={`/api/firmware/${build.build}/firmware.bin?download=1`}
-              className="inline-flex items-center gap-2 text-amber-400 hover:underline"
-            >
-              <Download className="size-4" />{t('add.download')}
-            </a>
-          </div>
-        )}
-        {available && <p className="text-xs text-neutral-500">{t('add.downloadHint')}</p>}
-        <p className="text-xs text-neutral-500">{t('add.alreadyFlashed')}</p>
-      </CardContent>
-    </Card>
-  )
-}
-
-function ConfigureStep({ code, deviceId }: { code: string; deviceId: string }) {
+/**
+ * Step 2: the board on USB, one button. The browser writes the firmware, waits for the board to start, sends it the
+ * Wi-Fi and the one-time code over the same cable, and waits until the hive sees the new hornet online. Success ends in
+ * the swarm; a failure says at which stage and why, with the board's log and the way to the USB console.
+ */
+function SetupStep({ type, build, code, deviceId, onDone, doneLabel }: {
+  type: string
+  build?: Build
+  code: string
+  deviceId: string
+  onDone: () => void
+  doneLabel: string
+}) {
   const [ssid, setSsid] = useState('')
   const [pass, setPass] = useState('')
   const [hive, setHive] = useState(defaultHiveUrl)
@@ -355,63 +372,125 @@ function ConfigureStep({ code, deviceId }: { code: string; deviceId: string }) {
       setSaved(true)
     })
   }, [])
+  const [flashed, setFlashed] = useState(false)
   const [log, setLog] = useState<string[]>([])
-  const [state, setState] = useState<'idle' | 'sending' | 'enrolled' | 'failed'>('idle')
-  const serial = useRef<HornetSerial | null>(null)
-  const online = useQuery({
-    queryKey: ['device', deviceId],
-    queryFn: async () => (await api.GET('/api/devices/{deviceId}', { params: { path: { deviceId } } })).data ?? null,
-    refetchInterval: state === 'enrolled' ? 2000 : false,
-  })
-  const isOnline = online.data?.status === 'online' && state === 'enrolled'
+  const [stage, setStage] = useState<SetupStage | null>(null)
+  const [progress, setProgress] = useState(0)
+  const [result, setResult] = useState<'running' | 'done' | SetupError | null>(null)
+  const startedAt = useRef(0)
+  const stageNow = useRef<SetupStage>('port')
+  const onStage = (s: SetupStage) => {
+    stageNow.current = s
+    setStage(s)
+  }
 
-  useEffect(() => () => void serial.current?.close(), [])
+  // A bare address (192.168.10.4) gets http://: older firmware could not take one without it.
+  const commands = [`set ssid ${ssid}`, `set pass ${pass}`, `enroll ${hiveUrl(hive)} ${code}`]
+  const stages = setupStages.filter((s) => !(flashed && s === 'flash'))
 
-  const commands = [`set ssid ${ssid}`, `set pass ${pass}`, `enroll ${hive} ${code}`]
-
-  async function send() {
-    setState('sending')
+  async function run() {
     setLog([])
+    setProgress(0)
+    onStage('port')
+    setResult('running')
     try {
-      serial.current?.close()
-      serial.current = await HornetSerial.open((line) => {
-        setLog((l) => [...l.slice(-30), line])
-        if (line.startsWith('enrolled ')) setState('enrolled')
-        if (line.startsWith('enroll failed')) setState('failed')
+      const port = await (navigator as unknown as { serial: { requestPort(): Promise<SerialPortLike> } }).serial.requestPort()
+      startedAt.current = Date.now()
+      await setupHornet({
+        port,
+        build: flashed || !build ? undefined : { build: build.build, chipFamily: build.chipFamily },
+        commands,
+        onStage,
+        onProgress: setProgress,
+        onLog: (line) => setLog((l) => [...l.slice(-60), line]),
+        isOnline: async () => {
+          const d = (await api.GET('/api/devices/{deviceId}', { params: { path: { deviceId } } })).data
+          return d?.status === 'online' && !!d.lastSeenAt && new Date(d.lastSeenAt).getTime() >= startedAt.current - 5000
+        },
       })
-      await new Promise((r) => setTimeout(r, 2500)) // the board may have just rebooted
-      for (const c of commands) {
-        await serial.current.send(c)
-        await new Promise((r) => setTimeout(r, 300))
-      }
+      setResult('done')
     } catch (e) {
-      setState('failed')
-      setLog((l) => [...l, String(e)])
+      // closing the port picker is no failure: back to the button
+      if (e instanceof DOMException && e.name === 'NotFoundError') {
+        setResult(null)
+        setStage(null)
+        return
+      }
+      setResult(e instanceof SetupError ? e : new SetupError(stageNow.current, 'other', String(e)))
+      setLog((l) => [...l, String(e instanceof Error ? e.message : e)])
     }
   }
 
+  if (result === 'done')
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
+          <PartyPopper className="size-14 text-amber-400" />
+          <p className="text-base">{t('add.doneTitle')}</p>
+          <p className="text-xs text-neutral-500">{t('add.doneHint').replace('{id}', deviceId)}</p>
+          <Button onClick={onDone}>{doneLabel}<ArrowRight /></Button>
+        </CardContent>
+      </Card>
+    )
+
+  const running = result === 'running'
+  const failed = result instanceof SetupError ? result : null
   return (
     <Card>
-      <CardHeader><CardTitle>3. {t('add.step3')}</CardTitle>{isOnline && <Badge tone="ok"><CheckCircle2 className="size-3" />{t('status.online')}</Badge>}</CardHeader>
+      <CardHeader><CardTitle>2. {t('add.setupTitle')}</CardTitle></CardHeader>
       <CardContent className="space-y-2 text-sm">
+        {build && <p>{t('add.boardLine').replace('{board}', buildTitle(build))}{build.version && <span className="text-neutral-500"> · {build.version}</span>}</p>}
+        {!build && <p className="text-amber-300">{t('add.noFirmware').replace('{type}', type)}</p>}
         {saved && <p className="text-xs text-emerald-400">{t('add.wifiFromHive')}</p>}
-        <Input placeholder={t('add.ssid')} value={ssid} onChange={(e) => setSsid(e.target.value)} />
-        <PasswordInput placeholder={t('add.pass')} value={pass} onChange={(e) => setPass(e.target.value)} />
-        <Input placeholder="http://192.168.1.10:5080" value={hive} onChange={(e) => setHive(e.target.value)} />
+        <Input placeholder={t('add.ssid')} value={ssid} disabled={running} onChange={(e) => setSsid(e.target.value)} />
+        <Input placeholder={t('add.pass')} value={pass} disabled={running} autoComplete="off" onChange={(e) => setPass(e.target.value)} />
+        <Input placeholder="http://192.168.1.10:5080" value={hive} disabled={running} onChange={(e) => setHive(e.target.value)} />
         <p className="text-xs text-neutral-500">{t('add.hiveHint')}</p>
-        {!serialSupported() && <SerialNotice />}
-        {serialSupported() && (
-          <Button onClick={() => void send()} disabled={!ssid || !hive || state === 'sending'}><Usb />{t('add.send')}</Button>
+        <label className="flex items-center gap-2 text-xs text-neutral-300">
+          <input type="checkbox" checked={flashed || !build} disabled={running || !build} onChange={(e) => setFlashed(e.target.checked)} />
+          {t('add.alreadyFlashed')}
+        </label>
+        {serialSupported() ? (
+          <>
+            <p className="text-xs text-neutral-500">{t(flashed || !build ? 'add.sendHint' : 'add.flashHint')}</p>
+            <Button onClick={() => void run()} disabled={!ssid || !hive || running}>
+              {flashed || !build ? <Usb /> : <Cpu />}{t(flashed || !build ? 'add.send' : 'add.flashAndSend')}
+            </Button>
+          </>
+        ) : (
+          <>
+            <SerialNotice />
+            <Button disabled><Cpu />{t('add.flashAndSend')}</Button>
+          </>
         )}
-        {log.length > 0 && (
-          <pre className="max-h-40 overflow-auto rounded bg-neutral-950 p-2 text-xs text-neutral-400">{log.join('\n')}</pre>
+        {stage && <SetupStages stages={stages} stage={stage} running={running} failed={failed} progress={progress} />}
+        {failed && (
+          <div className="space-y-2 rounded-lg border border-red-900/60 bg-red-950/20 p-2">
+            <p className="text-red-300">{t(`add.why.${failed.reason}`, t('add.why.other'))}</p>
+            <div className="flex flex-wrap gap-3">
+              <Button variant="secondary" size="sm" onClick={() => void run()} disabled={!ssid || !hive}><RotateCcw />{t('add.retry')}</Button>
+              <Link to="/console" className="inline-flex items-center gap-1 text-sm text-amber-400 hover:underline"><Terminal className="size-4" />{t('add.openConsole')}</Link>
+            </div>
+          </div>
         )}
-        {state === 'enrolled' && !isOnline && <p className="text-amber-300">{t('add.waitingOnline')}</p>}
-        {isOnline && <p className="text-emerald-400">{t('add.done')}</p>}
-        {state === 'failed' && <p className="text-red-400">{t('add.failed')}</p>}
+        {log.length > 0 && (failed || running) && (
+          <details open={!!failed} className="text-xs text-neutral-500">
+            <summary className="cursor-pointer">{t('add.boardLog')}</summary>
+            <pre className="mt-1 max-h-48 overflow-auto rounded bg-neutral-950 p-2 text-neutral-400">{log.join('\n')}</pre>
+          </details>
+        )}
         <details className="text-xs text-neutral-500">
-          <summary className="cursor-pointer">{t('add.manual')}</summary>
-          <pre className="mt-1 whitespace-pre-wrap rounded bg-neutral-950 p-2">{commands.join('\n')}</pre>
+          <summary className="cursor-pointer">{t('add.otherWays')}</summary>
+          <div className="mt-1 space-y-1">
+            {build && (
+              <a href={`/api/firmware/${build.build}/firmware.bin?download=1`} className="inline-flex items-center gap-2 text-amber-400 hover:underline">
+                <Download className="size-4" />{t('add.download')}
+              </a>
+            )}
+            <p>{t('add.downloadHint')}</p>
+            <p>{t('add.manual')}:</p>
+            <pre className="whitespace-pre-wrap rounded bg-neutral-950 p-2">{commands.join('\n')}</pre>
+          </div>
         </details>
       </CardContent>
     </Card>

@@ -1,3 +1,4 @@
+#include "HiveUrl.h"
 #include "HornetCore.h"
 
 #include <espMqttClient.h>
@@ -9,6 +10,7 @@
 #include "Outbox.h"
 #include "Platform.h"
 #include "Ulid.h"
+#include "WifiChange.h"
 
 namespace hornet {
 
@@ -50,8 +52,14 @@ String macString() { return WiFi.macAddress(); }
 
 void Core::begin() {
     Serial.begin(115200);
+    // Before the first settings read: an ESP-01 flashed by USB from an older layout keeps its settings (LegacyFs.h).
+    if (platform::adoptOldSettings()) Serial.println("\n[hornet] settings moved from the old file system place");
     settings_.load();
     settings_.boot++;
+    // Counted as a failed boot until the broker is reached (onMqttConnected clears it): the main and the spare Wi-Fi
+    // network take turns while boots keep failing (cmd/wifi mode stage).
+    const uint32_t failedBootsBefore = settings_.wifiFails;
+    settings_.wifiFails++;
     settings_.saveBoot();
     Serial.printf("\n[hornet] %s fw=%s boot=%u reset=%s\n", role_.type(), HORNET_FW_VERSION, settings_.boot, platform::resetReason());
 
@@ -62,6 +70,8 @@ void Core::begin() {
     role_.setup(*this);
     // Over-the-air update, available to every role (spec 5.5).
     onCommand("ota", [this](JsonObjectConst payload) { return queueOta(payload); });
+    // Moving to another Wi-Fi network, with a way back (contracts/mqtt-topics.md).
+    onCommand("wifi", [this](JsonObjectConst payload) { return queueWifi(payload); });
     if (saved.length()) applyConfig(saved, false);
 
     if (!settings_.complete()) {
@@ -74,8 +84,17 @@ void Core::begin() {
     WiFi.setAutoReconnect(true);
     WiFi.persistent(false);
     WiFi.setHostname(settings_.deviceId.c_str());
+    // After cmd/wifi this boot tries the new network; the old one is still in settings_ and comes back if it fails.
+    wifiTrial_ = settings_.wifiNextSsid.length() > 0;
+    usingSpare_ = !wifiTrial_ && wifichange::useSpareAtBoot(settings_.wifi2Ssid.length() > 0, failedBootsBefore);
     platform::WifiHint hint;
-    if (sleepy() && platform::loadWifiHint(hint)) {
+    if (wifiTrial_) {
+        Serial.printf("[hornet] trying the new Wi-Fi \"%s\"\n", settings_.wifiNextSsid.c_str());
+        WiFi.begin(settings_.wifiNextSsid.c_str(), settings_.wifiNextPass.c_str());  // the hint belongs to the old access point
+    } else if (usingSpare_) {
+        Serial.printf("[hornet] the main network failed last time, trying the spare \"%s\"\n", settings_.wifi2Ssid.c_str());
+        WiFi.begin(settings_.wifi2Ssid.c_str(), settings_.wifi2Pass.c_str());
+    } else if (sleepy() && platform::loadWifiHint(hint)) {
         WiFi.begin(settings_.ssid.c_str(), settings_.pass.c_str(), hint.channel, hint.bssid);  // no scan
     } else {
         WiFi.begin(settings_.ssid.c_str(), settings_.pass.c_str());
@@ -86,9 +105,8 @@ void Core::begin() {
     configTime(0, 0, settings_.ntp.c_str(), settings_.mqttHost.c_str());
 
     willTopic = topics::status(settings_.deviceId.c_str()).c_str();
-    mqtt.setServer(settings_.mqttHost.c_str(), settings_.mqttPort);
+    bindBroker();
     mqtt.setClientId(settings_.deviceId.c_str());
-    if (settings_.mqttUser.length()) mqtt.setCredentials(settings_.mqttUser.c_str(), settings_.mqttPass.c_str());
     mqtt.setWill(willTopic.c_str(), 1, true, "offline");
     mqtt.setKeepAlive(15);
     mqtt.setCleanSession(true);
@@ -109,6 +127,17 @@ void Core::loop() {
         }
         if (ota_.queued && online()) runOta();
         checkOtaOutcome();
+        checkWifiTrial();  // before the sleep logic: a deep sleeper must decide before its awake limit
+        checkWifiSpare();
+        if (wifiRestartAtMs_ && millis() >= wifiRestartAtMs_) {
+            Serial.println("[wifi] restarting onto the new network");
+            mqtt.disconnect();
+            for (int i = 0; i < 10; ++i) {
+                mqtt.loop();
+                delay(10);
+            }
+            ESP.restart();
+        }
         if (sleepy()) {
             if (sleepAtMs_ && millis() >= sleepAtMs_) sleepNow();
             if (millis() > kAwakeLimitMs) {
@@ -139,6 +168,8 @@ AckResult Core::queueOta(JsonObjectConst payload) {
     const String md5 = payload["md5"] | "";
     const String version = payload["version"] | "";
     const uint32_t size = payload["size"] | 0U;
+    const String sig = payload["sig"] | "";
+    if (ota::signatureRequired() && sig.length() != 128) return AckResult(AckStatus::Rejected, "unsigned image refused");
     if (!url.startsWith("http://") || md5.length() != 32 || !size || !version.length()) return AckResult::error("bad ota command");
     if (ota_.queued) return AckResult::error("update already running");
     if (version == HORNET_FW_VERSION) return AckResult(AckStatus::Rejected, "already on " + version);
@@ -148,6 +179,7 @@ AckResult Core::queueOta(JsonObjectConst payload) {
     ota_.md5 = md5;
     ota_.size = size;
     ota_.version = version;
+    ota_.sig = sig;
     return AckResult::ok();
 }
 
@@ -163,7 +195,7 @@ void Core::runOta() {
     Serial.printf("[ota] %s (%u bytes)\n", ota_.url.c_str(), static_cast<unsigned>(ota_.size));
 
     String error;
-    const bool ok = ota::download(ota_.url, settings_.uploadToken, ota_.size, ota_.md5, error, platform::watchdogFeed);
+    const bool ok = ota::download(ota_.url, settings_.uploadToken, ota_.size, ota_.md5, ota_.sig, error, platform::watchdogFeed);
     if (!ok) {
         Serial.printf("[ota] failed: %s\n", error.c_str());
         JsonDocument failed;
@@ -202,6 +234,132 @@ void Core::checkOtaOutcome() {
     }
     // No old image to go back to (ESP8266): keep running, and report "applied" if it gets online later.
     settings_.otaPending = version;
+}
+
+// The command only stores the new network next to the old one and is acknowledged at once; loop() restarts onto it
+// once the ack has left. Nothing about the working network changes until the new one has proven itself.
+AckResult Core::queueWifi(JsonObjectConst payload) {
+    const String mode = payload["mode"] | "switch";
+    if (mode == "forget") {
+        // Drops the spare network (an old one that no longer leads to the hive). The network in use stays.
+        if (usingSpare_) return AckResult(AckStatus::Rejected, "running on the spare network now");
+        const String forgotten = settings_.wifi2Ssid;
+        settings_.wifi2Ssid = "";
+        settings_.wifi2Pass = "";
+        settings_.saveWifiSpare();
+        Serial.printf("[wifi] spare network \"%s\" forgotten\n", forgotten.c_str());
+        return AckResult::ok();
+    }
+    const std::string ssid = (payload["ssid"] | "");
+    const std::string pass = (payload["pass"] | "");
+    if (!wifichange::validCredentials(ssid, pass)) return AckResult::error("bad wifi command");
+    if (wifichange::sameAsCurrent(ssid, pass, settings_.ssid.c_str(), settings_.pass.c_str()))
+        return AckResult(AckStatus::Rejected, "already on this network");
+    if (wifiRestartAtMs_ || wifiTrial_) return AckResult::error("a wifi change is already running");
+    if (mode == "stage") {
+        // Only kept: nothing changes now. The spare takes over when the main network is gone.
+        settings_.wifi2Ssid = ssid.c_str();
+        settings_.wifi2Pass = pass.c_str();
+        settings_.saveWifiSpare();
+        JsonDocument staged;
+        staged["phase"] = "staged";
+        staged["ssid"] = settings_.wifi2Ssid;
+        publishEvent("wifi", staged);
+        return AckResult::ok();
+    }
+    settings_.wifiNextSsid = ssid.c_str();
+    settings_.wifiNextPass = pass.c_str();
+    settings_.wifiRolledBack = "";
+    settings_.saveWifiChange();
+    wifiRestartAtMs_ = millis() + 1500;
+    return AckResult::ok();
+}
+
+// Trial boot: the new network is the hornet's own once it has reached the broker over it; if it has not by the
+// deadline, the old one comes back. Which of the two happened is reported once the hornet is online again.
+void Core::checkWifiTrial() {
+    switch (wifichange::decide(wifiTrial_, online(), millis(), sleepy())) {
+        case wifichange::Trial::Commit: {
+            const String ssid = settings_.wifiNextSsid;
+            settings_.wifi2Ssid = settings_.ssid;  // the network it leaves stays as the spare
+            settings_.wifi2Pass = settings_.pass;
+            settings_.saveWifiSpare();
+            settings_.ssid = ssid;
+            settings_.pass = settings_.wifiNextPass;
+            settings_.wifiNextSsid = "";
+            settings_.wifiNextPass = "";
+            settings_.save();
+            settings_.saveWifiChange();
+            wifiTrial_ = false;
+            platform::clearWifiHint();  // channel and access point of the old network are of no use now
+            Serial.printf("[wifi] now on \"%s\"\n", ssid.c_str());
+            JsonDocument applied;
+            applied["phase"] = "applied";
+            applied["ssid"] = ssid;
+            publishEvent("wifi", applied);
+            break;
+        }
+        case wifichange::Trial::RollBack:
+            Serial.printf("[wifi] \"%s\" did not work, going back to the old network\n", settings_.wifiNextSsid.c_str());
+            settings_.wifiRolledBack = settings_.wifiNextSsid;
+            settings_.wifiFails = 0;  // this restart is not a failed boot of the main network
+            settings_.saveBoot();
+            settings_.wifiNextSsid = "";
+            settings_.wifiNextPass = "";
+            settings_.saveWifiChange();
+            delay(100);
+            ESP.restart();
+            break;
+        default:
+            break;
+    }
+}
+
+// The spare network (cmd/wifi mode stage): when it is the one that reached the broker it becomes the main network (and
+// the old one the spare); an awake hornet whose Wi-Fi stays down swaps networks itself, a sleeper does so boot by boot.
+void Core::checkWifiSpare() {
+    if (wifichange::promoteSpare(usingSpare_, online())) {
+        const String oldSsid = settings_.ssid;
+        const String oldPass = settings_.pass;
+        settings_.ssid = settings_.wifi2Ssid;
+        settings_.pass = settings_.wifi2Pass;
+        settings_.wifi2Ssid = oldSsid;
+        settings_.wifi2Pass = oldPass;
+        settings_.save();
+        settings_.saveWifiSpare();
+        usingSpare_ = false;
+        platform::clearWifiHint();  // channel and access point of the old network are of no use now
+        Serial.printf("[wifi] the spare network works, it is the main one now: \"%s\"\n", settings_.ssid.c_str());
+        JsonDocument applied;
+        applied["phase"] = "applied";
+        applied["ssid"] = settings_.ssid;
+        publishEvent("wifi", applied);
+        return;
+    }
+
+    // An awake hornet that stays without Wi-Fi, or with Wi-Fi but without the broker, tries the other network (a
+    // sleeper does it boot by boot, see begin()).
+    if (sleepy() || wifiTrial_ || online()) {
+        wifiDownSince_ = 0;
+        brokerDownSince_ = 0;
+        return;
+    }
+    const unsigned long now = millis();
+    const bool wifiUp = WiFi.status() == WL_CONNECTED;
+    if (!brokerDownSince_) brokerDownSince_ = now;
+    if (wifiUp) wifiDownSince_ = 0;
+    else if (!wifiDownSince_) wifiDownSince_ = now;
+    if (wifichange::swapNetworks(settings_.wifi2Ssid.length() > 0, wifiTrial_, wifiUp, wifiDownSince_ ? now - wifiDownSince_ : 0,
+                                 now - brokerDownSince_, usingSpare_)) {
+        usingSpare_ = !usingSpare_;
+        const String& ssid = usingSpare_ ? settings_.wifi2Ssid : settings_.ssid;
+        const String& pass = usingSpare_ ? settings_.wifi2Pass : settings_.pass;
+        Serial.printf("[wifi] %s, trying %s network \"%s\"\n", wifiUp ? "no broker" : "no connection", usingSpare_ ? "the spare" : "the main", ssid.c_str());
+        WiFi.disconnect();
+        WiFi.begin(ssid.c_str(), pass.c_str());
+        wifiDownSince_ = now;
+        brokerDownSince_ = now;
+    }
 }
 
 void Core::readingDone() {
@@ -255,7 +413,60 @@ String Core::stamp(JsonObject message, const String& presetId) {
     return id;
 }
 
+void Core::bindBroker() {
+    const bool city = usingSecond();
+    const String& user = city ? cityUser_ : settings_.mqttUser;
+    const String& pass = city ? cityPass_ : settings_.mqttPass;
+    mqtt.setServer(city ? cityHost_.c_str() : settings_.mqttHost.c_str(), city ? cityPort_ : settings_.mqttPort);
+    mqtt.setCredentials(user.length() ? user.c_str() : nullptr, user.length() ? pass.c_str() : nullptr);
+}
+
+// The city broker the hive named in config mqtt_city (host, port, user, pass); none: home only.
+void Core::applyCityBroker(JsonVariantConst city) {
+    const String host = city["host"] | "";
+    const String user = city["user"] | "";
+    const String pass = city["pass"] | "";
+    const uint16_t port = city["port"] | 1883;
+    // after_s / probe_s: a hornet that is moved between two hives (the city's own, carried to the dacha) settles on one within seconds.
+    failoverTimes_.downBeforeCityMs = (city["after_s"] | (failover::kHomeDownBeforeCityMs / 1000)) * 1000UL;
+    failoverTimes_.probeEveryMs = (city["probe_s"] | (failover::kHomeProbeEveryMs / 1000)) * 1000UL;
+    // Which hive is preferred: it is tried first, and looked at again from the other one (config mqtt_city.prefer_other).
+    const bool preferSecond = city["prefer_other"] | false;
+    if (preferSecond != preferSecond_) {
+        preferSecond_ = preferSecond;
+        appliedBroker_ = failover::Broker::Home;  // the preferred one first
+        failover_ = failover::State();
+        failover_.sinceMs = millis();
+        if (mqtt.connected()) mqtt.disconnect(true);
+        mqttAttempts_ = 0;
+        nextMqttAttemptMs_ = 0;
+        bindBroker();
+    }
+    if (host == cityHost_ && user == cityUser_ && pass == cityPass_ && port == cityPort_) return;
+    cityHost_ = host;
+    cityUser_ = user;
+    cityPass_ = pass;
+    cityPort_ = port;
+    if (!hasCity() && appliedBroker_ == failover::Broker::City) appliedBroker_ = failover::Broker::Home;
+    bindBroker();  // the client keeps pointers to these strings
+}
+
+// Home not answering for three minutes with the Wi-Fi up: the city broker; every five minutes a look at home again.
+// A sleeper keeps to home (it is awake for seconds only) and so does a hornet in the middle of a Wi-Fi change.
+void Core::checkBrokerFailover() {
+    if (sleepy() || wifiTrial_) return;
+    const auto want = failover::step(failover_, millis(), WiFi.status() == WL_CONNECTED, mqtt.connected(), hasCity(), failoverTimes_);
+    if (want == appliedBroker_) return;
+    Serial.printf("[hornet] %s\n", want == failover::Broker::City ? "the preferred broker does not answer: the other one" : "looking at the preferred broker again");
+    appliedBroker_ = want;
+    if (mqtt.connected()) mqtt.disconnect(true);
+    bindBroker();
+    mqttAttempts_ = 0;
+    nextMqttAttemptMs_ = 0;
+}
+
 void Core::connectMqtt() {
+    checkBrokerFailover();
     if (mqtt.connected()) {
         mqttWasConnected_ = true;
         return;
@@ -267,29 +478,51 @@ void Core::connectMqtt() {
     if (WiFi.status() != WL_CONNECTED || millis() < nextMqttAttemptMs_ || mqtt.disconnected() == false) return;
     // Exponential backoff with jitter (spec 4.5).
     nextMqttAttemptMs_ = millis() + backoffMs(mqttAttempts_++) + (random(1000));
-    Serial.printf("[hornet] mqtt connect %s:%u\n", settings_.mqttHost.c_str(), settings_.mqttPort);
+    Serial.printf("[hornet] mqtt connect (%s) %s:%u\n", usingSecond() ? "city" : "home",
+                  usingSecond() ? cityHost_.c_str() : settings_.mqttHost.c_str(),
+                  usingSecond() ? cityPort_ : settings_.mqttPort);
     mqtt.connect();
 }
 
 void Core::onMqttConnected() {
     mqttAttempts_ = 0;
+    if (settings_.wifiFails) {  // this boot got through: the next one starts with the main network again
+        settings_.wifiFails = 0;
+        settings_.saveBoot();
+    }
     const std::string dev = settings_.deviceId.c_str();
     Serial.printf("[hornet] online as %s, ip %s\n", dev.c_str(), WiFi.localIP().toString().c_str());
     mqtt.subscribe(topics::cmdWildcard(dev).c_str(), 1);
     mqtt.subscribe(topics::config(dev).c_str(), 1);
+    if (role_.wantsDisplay()) mqtt.subscribe(topics::display(dev).c_str(), 1);
+    if (role_.wantsDrive()) mqtt.subscribe(topics::drive(dev).c_str(), 0);
     mqtt.publish(willTopic.c_str(), 1, true, "online");
     if (settings_.otaPending.length() || settings_.otaRolledBack.length()) {
         JsonDocument outcome;
-        const bool rolledBack = settings_.otaRolledBack.length() > 0;
+        // "applied" only when the image that is running is the one that was ordered: an old image booting after an
+        // update (the new one was not taken) must not be reported as success.
+        const bool wrongImage = !settings_.otaRolledBack.length() && settings_.otaPending != HORNET_FW_VERSION;
+        const bool rolledBack = settings_.otaRolledBack.length() > 0 || wrongImage;
         outcome["phase"] = rolledBack ? "rolled_back" : "applied";
         if (rolledBack) outcome["severity"] = "warn";
-        outcome["version"] = rolledBack ? settings_.otaRolledBack : settings_.otaPending;
+        if (wrongImage) outcome["error"] = String("running ") + HORNET_FW_VERSION;
+        outcome["version"] = settings_.otaRolledBack.length() ? settings_.otaRolledBack : settings_.otaPending;
         publishEvent("ota", outcome);
         settings_.otaPending = "";
         settings_.otaRolledBack = "";
         settings_.saveOta();
     }
-    if (sleepy()) {
+    if (settings_.wifiRolledBack.length()) {
+        JsonDocument failed;
+        failed["phase"] = "rolled_back";
+        failed["severity"] = "warn";
+        failed["ssid"] = settings_.wifiRolledBack;
+        failed["error"] = "no connection to the hive over it";
+        publishEvent("wifi", failed);
+        settings_.wifiRolledBack = "";
+        settings_.saveWifiChange();
+    }
+    if (sleepy() && !wifiTrial_) {  // during a trial the hint of the old access point must not be overwritten
         platform::WifiHint hint;
         hint.channel = static_cast<uint8_t>(WiFi.channel());
         memcpy(hint.bssid, WiFi.BSSID(), sizeof hint.bssid);
@@ -316,6 +549,16 @@ void Core::handleMessage(const String& topic, const String& payload) {
     const String cfg = topics::config(dev.c_str()).c_str();
     if (topic == cfg) {
         if (payload.length()) applyConfig(payload, true);
+        return;
+    }
+    if (role_.wantsDisplay() && topic == String(topics::display(dev.c_str()).c_str())) {
+        JsonDocument message;
+        if (!deserializeJson(message, payload)) role_.applyDisplay(*this, message.as<JsonObjectConst>());
+        return;
+    }
+    if (role_.wantsDrive() && topic == String(topics::drive(dev.c_str()).c_str())) {
+        JsonDocument message;
+        if (!deserializeJson(message, payload)) role_.applyDrive(*this, message.as<JsonObjectConst>());
         return;
     }
     const String cmdPrefix = String(topics::device(dev.c_str()).c_str()) + "/cmd/";
@@ -394,6 +637,7 @@ void Core::applyConfig(const String& payload, bool fromHive) {
     configRev_ = rev;
     config_ = doc;
     healthIntervalS_ = doc["health_interval_s"] | 60U;
+    applyCityBroker(doc["mqtt_city"]);
     sleepS_ = doc["sleep_s"] | 0U;
     lightSleep_ = String(doc["sleep_mode"] | "deep") == "light";
     applyWifiPowerSave();
@@ -416,6 +660,9 @@ void Core::publishInfo() {
     info["ip"] = WiFi.localIP().toString();
     JsonArray caps = info["caps"].to<JsonArray>();
     for (auto c : role_.caps()) caps.add(c);
+    if (ota::signatureRequired()) caps.add("ota.signed");
+    caps.add("wifi.stage");  // can keep a spare Wi-Fi network (cmd/wifi mode stage)
+    caps.add("wifi.forget");  // and drop it again (cmd/wifi mode forget)  // the hive can tell which hornets only take signed images
     JsonArray metrics = info["metrics"].to<JsonArray>();
     for (auto m : role_.metrics()) metrics.add(m);
     JsonArray commands = info["commands"].to<JsonArray>();
@@ -437,7 +684,7 @@ void Core::publishHealth() {
     if (platform::hasPsram()) health["psram_free"] = platform::freePsram();
     health["reset_reason"] = platform::resetReason();
     health["outbox"] = outbox.size();
-    health["broker"] = "home";
+    health["broker"] = usingSecond() ? "city" : "home";
     role_.fillHealth(health.as<JsonObject>());
     String body;
     serializeJson(health, body);
@@ -486,6 +733,10 @@ void Core::log(LogLevel level, const String& msg) {
 
 void Core::onCommand(const char* name, CommandHandler handler) { commands_.emplace_back(name, std::move(handler)); }
 
+void Core::refreshInfo() {
+    if (online()) publishInfo();
+}
+
 bool Core::publish(const String& topic, const String& payload, bool retain, bool qos1, bool bufferIfOffline) {
     if (mqtt.connected() && mqtt.publish(topic.c_str(), qos1 ? 1 : 0, retain, payload.c_str()) != 0) return true;
     if (bufferIfOffline && !outbox.push(topic.c_str(), payload.c_str())) Serial.println("[hornet] outbox full, oldest message dropped");
@@ -500,9 +751,23 @@ void Core::flushOutbox() {
     }
 }
 
+void Core::printHelp() {
+    Serial.println("commands:");
+    Serial.println("  show                          what is stored (id, network, hive address, boot count, wifi switch state)");
+    Serial.println("  set <key> <value>             key: ssid pass mqtt mqttuser mqttpass id upload token ntp (the value may contain spaces)");
+    Serial.println("  enroll <hive-url> <code>      join a hive with a one-time code from the web UI (set ssid and pass first)");
+    Serial.println("  nospare                       forget the spare Wi-Fi network");
+    Serial.println("  awake                         do not sleep until reboot (battery hornets)");
+    Serial.println("  reboot                        restart");
+    Serial.println("  factory                       erase every setting");
+}
+
 void Core::serialConsole() {
     while (Serial.available()) {
         const char c = static_cast<char>(Serial.read());
+        // Somebody is at the console (the hive's USB console sends a newline twice a second): a battery hornet
+        // stays awake instead of going back to sleep in the middle of being set up.
+        stayAwake_ = true;
         if (c != '\n' && c != '\r') {
             if (consoleLine_.length() < 200) consoleLine_ += c;
             continue;
@@ -512,6 +777,13 @@ void Core::serialConsole() {
         line.trim();
         if (!line.length()) continue;
         if (line == "show") settings_.print(Serial);
+        else if (line == "help") printHelp();
+        else if (line == "nospare") {
+            settings_.wifi2Ssid = "";
+            settings_.wifi2Pass = "";
+            settings_.saveWifiSpare();
+            Serial.println("spare network removed");
+        }
         else if (line == "reboot") ESP.restart();
         else if (line == "awake") {
             stayAwake_ = true;
@@ -529,7 +801,7 @@ void Core::serialConsole() {
                 delay(200);
                 ESP.restart();
             }
-        } else if (!settings_.command(line, Serial)) Serial.println("commands: show | set <ssid|pass|mqtt|mqttuser|mqttpass|id|upload|token|ntp> <value> | enroll <hive-url> <code> | awake | reboot | factory");
+        } else if (!settings_.command(line, Serial)) printHelp();
     }
 }
 
@@ -568,8 +840,8 @@ bool Core::enroll(const String& hiveUrl, const String& code) {
     String body;
     serializeJson(request, body);
 
-    String url = hiveUrl;
-    if (url.endsWith("/")) url.remove(url.length() - 1);
+    // "192.168.10.4" works as well as "http://192.168.10.4" (HiveUrl.h).
+    const String url = hornet::hiveUrl(hiveUrl.c_str()).c_str();
     String response;
     const int status = platform::httpPost(url + "/api/provision/enroll", "application/json",
                                           reinterpret_cast<const uint8_t*>(body.c_str()), body.length(), {}, &response);

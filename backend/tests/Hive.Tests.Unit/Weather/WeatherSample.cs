@@ -7,7 +7,8 @@ public static class WeatherSample
         {
           "latitude": 59.95, "longitude": 31.05, "utc_offset_seconds": 10800, "timezone": "Europe/Moscow",
           "current": { "time": "2026-10-14T13:00", "interval": 900, "temperature_2m": 6.7, "apparent_temperature": 3.1,
-                       "relative_humidity_2m": 71, "precipitation": 0.0, "weathercode": 3, "windspeed_10m": 4.2, "winddirection_10m": 250 },
+                       "relative_humidity_2m": 71, "precipitation": 0.0, "weathercode": 3, "windspeed_10m": 4.2, "winddirection_10m": 250,
+                       "pressure_msl": 1015.3, "cloud_cover": 88 },
           "hourly": {
             "time": ["2026-10-14T11:00", "2026-10-14T12:00", "2026-10-14T13:00", "2026-10-14T14:00"],
             "temperature_2m": [5.0, 6.0, 6.7, null],
@@ -17,7 +18,9 @@ public static class WeatherSample
             "weathercode": [3, 61, 63, null],
             "windspeed_10m": [3.0, 4.0, 4.2, null],
             "winddirection_10m": [240, 245, 250, null],
-            "relative_humidity_2m": [70, 72, 71, null]
+            "relative_humidity_2m": [70, 72, 71, null],
+            "pressure_msl": [1014.0, 1014.8, 1015.3, null],
+            "cloud_cover": [40, 75, 88, null]
           },
           "daily": {
             "time": ["2026-10-14", "2026-10-15"],

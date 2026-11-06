@@ -18,17 +18,21 @@ In VS Code the PlatformIO toolbar does the same (✓ build, → upload, plug ico
 |---|---|---|
 | `guard-cam` | ESP32-CAM AI-Thinker | ESP32 |
 | `meteo-c3`, `relay-c3` | ESP32-C3 mini (SuperMini) | ESP32-C3 |
-| `meteo-c3oled` | ESP32-C3 with the 0.42" OLED (72×40) | ESP32-C3 |
+| `monitor-c3oled` | ESP32-C3 with the 0.42" OLED (72×40): a monitor, see **monitor** below | ESP32-C3 |
+| `monitor-epd154` | Waveshare ESP32-S3-ePaper-1.54 (200×200 e-ink): a remote monitor, not a hornet, see **monitor** below | ESP32-S3 |
+| `monitor-crowpanel37` | Elecrow CrowPanel ESP32 3.7" (240×416 e-ink, rocker): a remote monitor with tabs the hive draws, see **monitor** below | ESP32-S3 |
 | `meteo-d1mini`, `relay-d1mini` | Wemos D1 mini | ESP8266 |
 | `meteo-nodemcu`, `relay-nodemcu` | NodeMCU v3 | ESP8266 |
 | `meteo-esp01`, `relay-esp01` | ESP-01 / ESP-01S (1 MB), incl. "ESP-01 Relay v1.0" and DS18B20 modules | ESP8266 |
+| `heat-d1mini`, `heat-nodemcu`, `heat-esp01` | the universal ESP8266 hornet: thermometer, BME280, relay and heater, chosen per hornet (see **heat** below) | ESP8266 |
 | `meteo-esp01dht` | "ESP-01S DHT11 v1.0" module: DHT11 on GPIO2, powered 3.7–12 V through its own regulator | ESP8266 |
 
 Every build lands in `firmware/dist/<env>/` with a `build.json` (chip, flash offsets); the web flasher in
 "Добавить шершня" offers the boards that exist there for the chosen role.
 
-Default pins (override per hornet with the config `hw` section: `onewire_pin`, `sda_pin`, `scl_pin`,
-`relay_pin`, `relay_active_low`, `button_pin`):
+Default pins (override per hornet with the config `hw` section: `onewire_pin`, `dht_pin`, `sda_pin`, `scl_pin`,
+`relay_pin`, `relay_active_low`, `button_pin`). No board but the ESP-01S DHT11 module has a default DHT pin:
+the swarm screen shows it as "не задан" until one is set.
 
 | Board | 1-Wire (DS18B20) | I2C SDA/SCL (BME280) | Relay | Button |
 |---|---|---|---|---|
@@ -41,9 +45,11 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
 
 - **meteo**: detects a BME280 (0x76/0x77) and any number of DS18B20 at start. Publishes `temperature`,
   `humidity`, `pressure` (hPa) and further thermometers as `temperature_2`, `temperature_3`...
-- **DHT11** (`meteo-esp01dht`): temperature and humidity once per `tele_interval_s`; the DHT shares GPIO2 with
-  1-Wire and I2C on the ESP-01, so that build reads only the DHT. Accuracy ±2 °C / ±5 %, and the ESP next to it
-  warms it by a degree or two.
+- **DHT11 / DHT22** (any meteo or heat build): the feature `thermometer` reads DS18B20s by default; config
+  `hw.thermometer` = `dht11` or `dht22` makes it one DHT on `hw.dht_pin` instead (set both in the swarm screen,
+  pins panel), publishing `temperature` and `humidity`. `meteo-esp01dht` reads its DHT11 on GPIO2 by default; a
+  DHT22 on that module needs `hw.thermometer` = `dht22`, or every read fails ("DHT read failed: TIMEOUT").
+  DHT11 accuracy is ±2 °C / ±5 % (DHT22 ±0.5 °C / ±2 %), and the ESP next to it warms it by a degree or two.
 - **OTA**: every build can be updated over the air with the `ota` command (see [docs/ota.md](../docs/ota.md)); the version is
   `0.2.0+<commit>` (scripts/version.py) and goes into `build.json`. ESP8266 has no rollback.
 - **Battery mode** (any meteo build): config `sleep_s` (set in the swarm screen) makes the hornet wake, send one
@@ -55,13 +61,41 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
   have the ADC). ESP8266 has one ADC, A0: set `vbat_pin` to 17 (any number turns the reading on, A0 is read).
   The NodeMCU / D1 mini A0 divider is in parallel with R2, so calibrate: new ratio = ratio × multimeter / reading.
   Published as `battery_voltage` (V) every `tele_interval_s`.
-- **Screen** (`meteo-c3oled`): two values in large digits, `display.lines` in the config, e.g.
-  `["temperature", "battery_voltage"]`; by default the first two of temperature, humidity, temperature_2,
-  battery_voltage. A dot in the corner means the hornet is online.
+- NTC thermistor (meteo and monitor): set `hw.ntc_pin` (ESP32-C3: GPIO0–4, ADC1 only; ESP8266: A0 = 17) and, if not
+  10k/10k/B3950/3.3 V, `hw.ntc_side`, `ntc_r_series`, `ntc_r_nominal`, `ntc_beta`, `ntc_vcc`, `ntc_offset`. Median of 9
+  reads every 2 s, moving average, published as `temperature_ntc` (°C). With `hw.thermometer: "ntc"` (meteo only) the
+  NTC is the thermometer: read on `hw.ntc_pin` or A0 (GPIO0 on the C3), published as `temperature`. Wiring: docs/ntc-thermistor.md.
+- **monitor** (`monitor-c3oled`): a screen that measures nothing itself. It draws the texts the hive publishes to
+  `vs/v1/hive/display/{id}` for the readings chosen on the device page, "Экран" (config `display.items`, up to four
+  lines from any device; docs/display.md). A dot in the corner means it is online. A hornet on the old
+  `meteo-c3oled` build moves to it by an update over the air (the swarm screen offers the monitor build).
+  `monitor-epd154` is not a hornet: no MQTT, no enrollment, no updates over the air (flash it over USB). Added by hand
+  in the UI, it wakes on a timer, reads `GET /api/monitor/v1/frame.bin` with its screen token and the last ETag over
+  HTTPS (Let's Encrypt roots built in), draws the picture the hive made and deep-sleeps (contracts/monitor-http.md).
+  Settings come over USB from the hive's page right after flashing (console, 115200: `set ssid|pass|ssid2|pass2|url|token|interval|rot|insecure <value>`,
+  `show`, `go` = save and read now, answering `[monitor] frame <http code>` or `[monitor] wifi failed`, `save` = save and sleep;
+  after a reset it says `[monitor] ready` for 12 s and waits), or from its own Wi-Fi point "VillageSwarm-xxxx" (192.168.4.1; the
+  form takes `?ssid=&pass=&url=&token=&interval=` from the QR code on the hive's page): at first start, or hold BOOT for 2 s.
+  The whole 4 MB goes to one app slot (`huge_app.csv`): no updates over the air for this board.
+  Pins are those of the Waveshare examples for the V2 board (EPD on GPIO8-13, EPD power GPIO6, battery hold GPIO17).
 - **relay**: `cmd/relay {channel, set: on|off, for_s}`, channel `relay` unless config `relay.channel` says
   otherwise (e.g. `light`). Off at every boot; switches off by itself after `for_s` or `relay.max_on_s`,
-  whichever is shorter. The optional button toggles it locally. Heaters with a temperature failsafe will be a
-  separate role (spec 5.6).
+  whichever is shorter. The optional button toggles it locally.
+- **heat** (ESP8266 only): one image for a thermometer, a relay or a heater; the hornet's config `features`
+  (set in the UI under Pins, "Назначение") says which of `thermometer` (DS18B20), `bme280`, `relay`, `heater`
+  are wired, and only their pins are touched, so on the ESP-01 a relay on GPIO0 and a DS18B20 on GPIO2 or GPIO3
+  (RX) live together. Without `features`: thermometer + relay + heater. With `heater` the relay channel is
+  `heater` and the hornet keeps `failsafe.heater` by itself (lib/hornet-core/HeaterFailsafe.h, the same rules as
+  the simulator): below `min_c` it heats whatever the commands, above `max_c` it switches off and rejects "on",
+  no switch-on lasts longer than `max_on_s`, and with no reading for 3 minutes it runs 10 min on / 20 min off.
+  Each switch it makes by itself goes out as `event/failsafe {rule, heater, temperature}`. A meteo or relay
+  hornet on the same board can be moved to it over the air (the swarm screen offers the heat build).
+- **meteo** also honours `features` (`thermometer`, `bme280`) and then skips the bus that is not wired.
+  `monitor-crowpanel37` works the same way and reads `frame.bin?tab=n`: as many tabs as `X-Frame-Tabs` says (3: Weather,
+  Measure, Calendar), kept in LittleFS, flipped with the rocker (only the cell under the cursor is black, the press
+  chooses), partial refreshes of the UC8253; every tab is read at the interval, sooner while the hive monitors the panel
+  (`X-Frame-Refresh`, the 1.54" honours it too). MENU 2 s = settings point, EXIT = read now. With a
+  divider from the battery to GPIO8 it sends `X-Battery-mV` (docs/display.md).
 
 ESP8266 notes: 80 KB of RAM, so roles stay small; the watchdog is the chip's fixed one (~8 s). Settings live
 in LittleFS through the same Preferences API as NVS on ESP32.
@@ -73,6 +107,7 @@ in LittleFS through the same Preferences API as NVS on ESP32.
 | PIR OUT (HC-SR501 / AM312) | GPIO13 |
 | PIR VCC / GND | 5V / GND (AM312: 3V3) |
 | microSD | on-board slot, used in 1-bit mode (frees GPIO4/12/13) |
+| Light output (`cmd/relay`) | GPIO4 = on-board white flash LED; a relay module for a floodlight can go here too. Set `hw.relay_pin` / `hw.relay_active_low` to move it (GPIO12, GPIO33, GPIO1/3); camera, SD, PSRAM and PIR pins are refused |
 
 Power the board from a stable 5 V, 1 A or more: the camera and Wi-Fi together cause brownout resets
 on weak USB ports.
@@ -104,10 +139,20 @@ Other console commands: `factory` (wipe settings), `set mqttuser|mqttpass|token|
 
 - PIR rising edge, at most once per `cooldown_s` (20 s): publishes `event/motion` with photo ids, then
   takes `burst` frames (3, 700 ms apart) and uploads them to `/api/ingest/photo` in a background task.
-- Upload fails: the photo goes to `/outbox` on the SD card and is retried every 30 s.
+- SD card (FAT32): every photo is written to `/outbox` before it is uploaded, so a reboot does not lose it.
+  Delivered photos move to `/archive/<first 6 ULID chars>/` (about 17 minutes each); undelivered ones stay in
+  `/outbox` and are retried every 30 s, oldest first. The card is a ring: before each write the oldest archive
+  folders are deleted to keep max(5% of the card, 32 MB) free; only with an empty archive the oldest undelivered
+  photos go (logged as an error). Partial writes are removed and never count as pending.
+- No SD card, or the write failed: 3 upload attempts (now, +2 s, +5 s, 15 s HTTP timeout each), then the photo is lost.
+- The hive journal (`log`) gets the SD state once per boot, every failed upload with its reason (HTTP code,
+  `no wifi`, timeout), lost photos and SD write failures or clean-ups.
 - Broker gone: events wait in a RAM buffer (50) and are sent with their original ids on reconnect.
-- Commands: `arm {armed}`, `snapshot {count}`, `reboot`, `config_reload`; expired (`ttl_s`) and repeated
+- Commands: `arm {armed}`, `snapshot {count}`, `relay {channel, set, for_s}`, `reboot`, `config_reload`; expired (`ttl_s`) and repeated
   (`cid`) commands are handled per the contract.
-- Retained `config` (guard, camera, upload sections) is applied, saved to NVS and confirmed with
+- Light output: off at every boot, works like the relay role (channel `relay` unless `relay.channel` says
+  otherwise, `for_s` and `relay.max_on_s` limits, retained `state`). The flash LED gets hot if left on for long:
+  set `relay.max_on_s` when nothing else switches it off.
+- Retained `config` (guard, camera, upload, hw, relay sections) is applied, saved to NVS and confirmed with
   `event/config_applied`.
 - Watchdog: the board restarts if the main loop hangs for 30 s; the reason shows in the next `health`.

@@ -1,0 +1,3 @@
+{ "v": 1, "id": "01JC0DE5ZK8X4Q2W7N3M9P6R1T", "seq": 42, "boot": 3, "ts": 1762077600123,
+  "uptime_s": 815, "rssi": -58, "heap_free": 141220, "psram_free": 3912004, "reset_reason": "poweron", "outbox": 0,
+  "stopped_by": "deadman" }

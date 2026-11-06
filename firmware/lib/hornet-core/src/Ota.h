@@ -11,7 +11,14 @@ namespace ota {
 // Downloads `url` (plain HTTP, Bearer token when given), installs it and returns true when the image is complete and
 // its MD5 matches. On failure `error` says why and nothing is installed. `feed` runs while downloading (watchdog).
 // The caller restarts the chip.
-bool download(const String& url, const String& token, uint32_t expectedSize, const String& md5, String& error, void (*feed)());
+// `signatureHex` (Ed25519 over the image's SHA-512, 128 hex characters) is checked against the public key built into
+// the firmware before the image is marked for the bootloader; see OtaSignature.h.
+bool download(const String& url, const String& token, uint32_t expectedSize, const String& md5, const String& signatureHex,
+              String& error, void (*feed)());
+
+// This build carries a public key and only accepts images signed with the matching private key (unless it was built
+// to accept unsigned images too, HORNET_ALLOW_UNSIGNED=1 for development).
+bool signatureRequired();
 
 // Bytes available for a new image.
 uint32_t freeSpace();

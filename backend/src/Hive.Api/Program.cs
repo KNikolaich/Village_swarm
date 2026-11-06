@@ -1,14 +1,21 @@
 using System.Text.Json.Serialization;
+using Hive.Api;
 using Hive.Api.Live;
 using Microsoft.AspNetCore.DataProtection;
 using Hive.Infrastructure;
 using Hive.Infrastructure.Data;
 using Hive.Infrastructure.Identity;
 using Hive.Infrastructure.Mqtt;
+using Hive.Modules.Assistant;
+using Hive.Modules.Backup;
+using Hive.Modules.Cluster;
 using Hive.Modules.Devices;
 using Hive.Modules.Events;
+using Hive.Modules.IpCams;
 using Hive.Modules.Media;
+using Hive.Modules.Notes;
 using Hive.Modules.Notify;
+using Hive.Modules.Retention;
 using Hive.Modules.Rules;
 using Hive.Modules.Telemetry;
 using Hive.Modules.Telemetry.Ingest;
@@ -47,9 +54,16 @@ builder.Services.AddTelemetryModule();
 builder.Services.AddDevicesModule(builder.Configuration);
 builder.Services.AddEventsModule();
 builder.Services.AddMediaModule(builder.Configuration);
+builder.Services.AddIpCamsModule(builder.Configuration);
+builder.Services.AddNotesModule(builder.Configuration);
 builder.Services.AddNotifyModule(builder.Configuration);
+builder.Services.AddAssistantModule(builder.Configuration);
 builder.Services.AddWeatherModule(builder.Configuration);
 builder.Services.AddRulesModule();
+builder.Services.AddClusterModule(builder.Configuration);
+builder.Services.AddScoped<WifiRollout>();
+builder.Services.AddBackupModule(builder.Configuration);
+builder.Services.AddRetentionModule(builder.Configuration);
 
 builder.Services.AddSignalR().AddJsonProtocol(o => o.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter(System.Text.Json.JsonNamingPolicy.CamelCase)));
 builder.Services.AddSingleton<IIngestListener, LiveNotifier>();
@@ -108,18 +122,25 @@ if (behindProxy)
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseClusterReadOnly();
 
 app.MapUsersEndpoints();
 app.MapSettingsEndpoints();
 app.MapWifiEndpoints();
+app.MapWifiRolloutEndpoints();
 app.MapTelemetryEndpoints();
 app.MapDevicesEndpoints();
 app.MapZoneEndpoints();
 app.MapEventsEndpoints();
 app.MapMediaEndpoints();
+app.MapIpCamEndpoints();
+app.MapNotesEndpoints();
 app.MapNotifyEndpoints();
 app.MapWeatherEndpoints();
 app.MapRulesEndpoints();
+app.MapBackupEndpoints();
+app.MapRetentionEndpoints();
+app.MapClusterEndpoints();
 app.MapHub<LiveHub>(LiveHub.Path);
 app.MapGet("/api/monitor", (long? since, MqttMonitor monitor) => TypedResults.Ok(monitor.Since(since ?? 0)))
     .RequireAuthorization(HiveRoles.AdminOnly)

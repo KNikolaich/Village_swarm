@@ -1,5 +1,6 @@
 #include "Ota.h"
 
+#include "OtaSignature.h"
 #include "Platform.h"
 
 #if defined(ESP32)
@@ -16,6 +17,19 @@ namespace ota {
 namespace {
 constexpr uint32_t kStallMs = 15000;
 
+// Set by scripts/version.py from firmware/ota_public_key.hex; a build without it is a development build.
+#if defined(HORNET_OTA_PUBKEY)
+constexpr const char* kPublicKey = HORNET_OTA_PUBKEY;
+#else
+constexpr const char* kPublicKey = "";
+#endif
+#if defined(HORNET_OTA_ALLOW_UNSIGNED)
+constexpr bool kAllowUnsigned = true;
+#else
+constexpr bool kAllowUnsigned = false;
+#endif
+constexpr bool hasKey() { return kPublicKey[0] != 0; }
+
 String updateError() { return "update error " + String(static_cast<int>(Update.getError())); }
 
 // Drops a half-written image. The ESP8266 Updater has no abort(): ending it with the MD5 set fails on partial
@@ -31,6 +45,8 @@ void abortUpdate() {
 
 uint32_t freeSpace() { return ESP.getFreeSketchSpace(); }
 
+bool signatureRequired() { return hasKey() && !kAllowUnsigned; }
+
 bool rollBack() {
 #if defined(ESP32)
     return Update.canRollBack() && Update.rollBack();
@@ -39,7 +55,12 @@ bool rollBack() {
 #endif
 }
 
-bool download(const String& url, const String& token, uint32_t expectedSize, const String& md5, String& error, void (*feed)()) {
+bool download(const String& url, const String& token, uint32_t expectedSize, const String& md5, const String& signatureHex,
+              String& error, void (*feed)()) {
+    if (otasig::checkCommand(hasKey(), kAllowUnsigned, signatureHex.c_str()) == otasig::Verdict::RefuseUnsigned) {
+        error = "unsigned image refused";
+        return false;
+    }
     WiFiClient plain;
     HTTPClient http;
     http.setTimeout(kStallMs);
@@ -74,6 +95,7 @@ bool download(const String& url, const String& token, uint32_t expectedSize, con
     Update.setMD5(md5.c_str());
 
     WiFiClient* stream = http.getStreamPtr();
+    otasig::ImageHasher hasher;
     uint8_t buffer[512];
     uint32_t written = 0;
     uint32_t lastData = millis();
@@ -88,6 +110,7 @@ bool download(const String& url, const String& token, uint32_t expectedSize, con
                 http.end();
                 return false;
             }
+            hasher.update(buffer, n);
             written += n;
             lastData = millis();
         } else {
@@ -106,6 +129,17 @@ bool download(const String& url, const String& token, uint32_t expectedSize, con
         error = "incomplete: " + String(written) + " of " + String(length);
         abortUpdate();
         return false;
+    }
+    // The signature is judged on everything that was received, and before Update.end() marks the image for the
+    // bootloader: a rejected image is dropped and the running firmware is untouched.
+    if (hasKey() && signatureHex.length()) {
+        uint8_t digest[otasig::kDigestBytes];
+        hasher.finish(digest);
+        if (!otasig::verify(digest, signatureHex.c_str(), kPublicKey)) {
+            error = "signature does not match";
+            abortUpdate();
+            return false;
+        }
     }
     if (!Update.end()) {
         error = "md5 or end failed (" + updateError() + ")";

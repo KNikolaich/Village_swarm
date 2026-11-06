@@ -463,7 +463,7 @@ function ActionEditor({ action: a, onChange }: { action: RuleAction; onChange: (
           <datalist id="rule-modes-action"><option value="armed">{t('rules.modes.armed')}</option></datalist>
         </div>
       )}
-      {a.kind === 'snapshot' && <DeviceSelect value={a.device} onChange={(device) => set({ device })} types={['guard-cam']} />}
+      {a.kind === 'snapshot' && <DeviceSelect value={a.device} onChange={(device) => set({ device })} types={['guard-cam', 'ipcam']} />}
     </div>
   )
 }

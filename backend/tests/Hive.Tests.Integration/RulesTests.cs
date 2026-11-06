@@ -157,4 +157,33 @@ public sealed class RulesTests(HiveFixture hive)
         using var write = await viewer.PostAsJsonAsync("/api/rules", HeatBelow("x", "y", 5));
         Assert.Equal(HttpStatusCode.Forbidden, write.StatusCode);
     }
+
+    [Fact]
+    public async Task The_family_switches_a_rule_off_and_on_but_does_not_write_rules()
+    {
+        var admin = await hive.LoginAsync();
+        using var created = await admin.PostAsJsonAsync("/api/rules", HeatBelow("meteo-auto-a", "heat-auto-a", 5));
+        var saved = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var id = saved.GetProperty("id").GetInt32();
+
+        await hive.CreateUserAsync("member-auto", "member-auto-password", Hive.Infrastructure.Identity.HiveRoles.Member);
+        var member = await hive.LoginAsync("member-auto", "member-auto-password");
+        using var off = await member.PutAsJsonAsync($"/api/rules/{id}/enabled", new { enabled = false });
+        Assert.Equal(HttpStatusCode.OK, off.StatusCode);
+        var after = await admin.GetFromJsonAsync<JsonElement>($"/api/rules/{id}");
+        Assert.False(after.GetProperty("enabled").GetBoolean());
+        Assert.Equal(saved.GetProperty("name").GetString(), after.GetProperty("name").GetString());
+        Assert.Equal(2, after.GetProperty("definition").GetProperty("actions").GetArrayLength());
+        using var on = await member.PutAsJsonAsync($"/api/rules/{id}/enabled", new { enabled = true });
+        Assert.True((await on.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("enabled").GetBoolean());
+
+        using var write = await member.PutAsJsonAsync($"/api/rules/{id}", new { name = "mine", enabled = true, definition = saved.GetProperty("definition") });
+        Assert.Equal(HttpStatusCode.Forbidden, write.StatusCode);
+        await hive.CreateUserAsync("viewer-auto", "viewer-auto-password", Hive.Infrastructure.Identity.HiveRoles.Viewer);
+        var viewer = await hive.LoginAsync("viewer-auto", "viewer-auto-password");
+        using var viewerOff = await viewer.PutAsJsonAsync($"/api/rules/{id}/enabled", new { enabled = false });
+        Assert.Equal(HttpStatusCode.Forbidden, viewerOff.StatusCode);
+        using var missing = await admin.PutAsJsonAsync("/api/rules/99999/enabled", new { enabled = false });
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    }
 }

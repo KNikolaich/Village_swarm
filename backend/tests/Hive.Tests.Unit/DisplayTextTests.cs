@@ -1,0 +1,147 @@
+using Hive.Modules.Devices;
+
+namespace Hive.Tests.Unit;
+
+/// <summary>What a reading looks like on the tiny screen, and which choices of lines are accepted.</summary>
+public class DisplayTextTests
+{
+    [Theory]
+    [InlineData("temperature", -3.24, "-3.2°")]
+    [InlineData("temperature_2", 21.55, "21.6°")]
+    [InlineData("humidity", 63.4, "63%")]
+    [InlineData("battery_voltage", 3.94, "3.9V")]
+    [InlineData("pressure", 1013.4, "1013")]
+    [InlineData("lux", 12.34, "12.3")]
+    public void A_reading_is_written_the_way_the_firmware_writes_its_own(string metric, double value, string text) =>
+        Assert.Equal(text, DisplayText.Format(metric, value));
+
+    [Fact]
+    public void Up_to_four_lines_of_valid_metrics_and_devices_are_accepted()
+    {
+        Assert.Null(DisplayText.Validate([]));
+        Assert.Null(DisplayText.Validate([new DisplayItemDto(null, "temperature", null), new DisplayItemDto("meteo-out1", "humidity", "Улица")]));
+        Assert.NotNull(DisplayText.Validate(Enumerable.Repeat(new DisplayItemDto(null, "temperature", null), 5).ToList()));
+        Assert.NotNull(DisplayText.Validate([new DisplayItemDto(null, "Temperature", null)]));
+        Assert.NotNull(DisplayText.Validate([new DisplayItemDto("Bad Id", "temperature", null)]));
+        Assert.NotNull(DisplayText.Validate([new DisplayItemDto(null, "temperature", new string('x', 17))]));
+    }
+
+    [Fact]
+    public void Placed_items_may_be_up_to_eight_and_must_fit_the_screen()
+    {
+        var oled = new DisplayScreenDto(72, 40);
+        DisplayItemDto At(int x, int y, int size = 3, string? align = null) => new(null, "temperature", null, x, y, size, align);
+        Assert.Null(DisplayText.Validate(Enumerable.Range(0, 8).Select(i => At(0, i * 5)).ToList(), oled));
+        Assert.NotNull(DisplayText.Validate(Enumerable.Range(0, 9).Select(i => At(0, i * 4)).ToList(), oled));
+        Assert.Null(DisplayText.Validate([At(71, 39, 10, "right")], oled));
+        Assert.NotNull(DisplayText.Validate([At(72, 0)], oled));
+        Assert.NotNull(DisplayText.Validate([At(0, 40)], oled));
+        Assert.Null(DisplayText.Validate([At(500, 0)]));  // a board without a known screen: only the general limits
+        Assert.NotNull(DisplayText.Validate([At(0, 0, 0)]));
+        Assert.NotNull(DisplayText.Validate([At(0, 0, 11)]));
+        Assert.NotNull(DisplayText.Validate([At(0, 0, 3, "middle")]));
+        Assert.NotNull(DisplayText.Validate([At(-1, 0)]));
+    }
+
+    [Theory]
+    [InlineData(1, 40, 6)]    // never below the smallest font
+    [InlineData(3, 40, 12)]
+    [InlineData(5, 40, 20)]
+    [InlineData(10, 40, 40)]
+    [InlineData(5, 480, 240)]  // the same size reads the same on a large panel
+    [InlineData(1, 200, 20)]
+    public void A_size_is_a_share_of_the_screen_height(int size, int height, int pixels) =>
+        Assert.Equal(pixels, DisplayText.PixelHeight(size, height));
+
+    [Fact]
+    public void Fonts_pixels_and_captions_are_checked()
+    {
+        var epaper = new DisplayScreenDto(200, 200, Rendered: true);
+        DisplayItemDto Item(string? font = null, int? px = null, string? text = null, string metric = "temperature", int? size = 3) =>
+            new(null, metric, null, 0, 0, size, null, text, font, px);
+        Assert.Null(DisplayText.Validate([Item("anonymous-pro", 6), Item(px: 120)], epaper));
+        Assert.NotNull(DisplayText.Validate([Item(px: 5)], epaper));
+        Assert.NotNull(DisplayText.Validate([Item(px: 121)], epaper));
+        Assert.NotNull(DisplayText.Validate([Item("Bad Font")], epaper));
+        // a screen the hive does not draw (the firmware has its own fonts), or an item laid out by the screen: no fonts
+        Assert.NotNull(DisplayText.Validate([Item(px: 12)], new DisplayScreenDto(72, 40)));
+        Assert.NotNull(DisplayText.Validate([Item(px: 12, size: null)], epaper));
+        // a caption has a text and no source
+        Assert.Null(DisplayText.Validate([Item(text: "Улица", metric: "")], epaper));
+        Assert.NotNull(DisplayText.Validate([Item(text: "Улица")], epaper));
+        Assert.NotNull(DisplayText.Validate([Item(text: new string('x', 25), metric: "")], epaper));
+    }
+
+    [Theory]
+    [InlineData("HH:mm", "09:05")]
+    [InlineData("H:mm", "9:05")]
+    [InlineData("d MMMM", "29 октября")]
+    [InlineData("d MMM", "29 окт")]
+    [InlineData("dd.MM.yyyy", "29.10.2026")]
+    [InlineData("dddd", "четверг")]
+    [InlineData("ddd, d MMM", "чт, 29 окт")]
+    [InlineData("MMMM", "октябрь")]
+    public void The_clock_is_written_in_russian_without_culture_data(string format, string text) =>
+        Assert.Equal(text, DisplayText.ClockText(format, new DateTimeOffset(2026, 10, 29, 9, 5, 0, TimeSpan.FromHours(3))));
+
+    [Fact]
+    public void A_clock_item_has_a_kind_and_one_of_its_formats_and_nothing_to_read()
+    {
+        DisplayItemDto Clock(string kind, string? format = null, string metric = "") => new(null, metric, null, 0, 0, 3, Clock: kind, Format: format);
+        Assert.Null(DisplayText.Validate([Clock("time"), Clock("date", "d MMMM")]));
+        Assert.NotNull(DisplayText.Validate([Clock("week")]));
+        Assert.NotNull(DisplayText.Validate([Clock("time", "d MMMM")]));
+        Assert.NotNull(DisplayText.Validate([Clock("time", metric: "temperature")]));
+        Assert.NotNull(DisplayText.Validate([new DisplayItemDto(null, "temperature", null, Format: "HH:mm")]));
+    }
+
+    [Theory]
+    [InlineData("""{"relay":"on"}""", true)]
+    [InlineData("""{"relay":"ON"}""", true)]
+    [InlineData("""{"relay":"off"}""", false)]
+    [InlineData("""{"relay":true}""", true)]
+    [InlineData("""{"relay":0}""", false)]
+    [InlineData("""{"relay":2}""", true)]
+    [InlineData("""{"relay":"open"}""", true)]
+    [InlineData("""{"relay":"strange"}""", null)]
+    [InlineData("""{"other":"on"}""", null)]
+    public void A_state_is_on_or_off_or_not_known(string json, bool? expected)
+    {
+        using var state = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal(expected, DisplayFeedService.IsOn(state, "relay"));
+    }
+
+    [Fact]
+    public void A_state_is_written_in_words_of_the_person_or_vkl_and_vykl()
+    {
+        var plain = new DisplayItemDto(null, "relay", null, State: true);
+        Assert.Equal("вкл", DisplayFeedService.StateText(plain, true));
+        Assert.Equal("выкл", DisplayFeedService.StateText(plain, false));
+        Assert.Equal("--", DisplayFeedService.StateText(plain, null));
+        var own = plain with { OnText = "горит", OffText = "нет" };
+        Assert.Equal(("горит", "нет"), (DisplayFeedService.StateText(own, true), DisplayFeedService.StateText(own, false)));
+    }
+
+    [Fact]
+    public void Pictures_of_a_state_come_in_pairs_on_a_screen_the_hive_draws_with_the_items_placed()
+    {
+        var hive = new DisplayScreenDto(200, 200, Rendered: true);
+        var oled = new DisplayScreenDto(128, 64);
+        var pair = new DisplayItemDto(null, "relay", null, 0, 0, 3, State: true, OnImage: "0123456789abcdef", OffImage: "fedcba9876543210");
+        Assert.Null(DisplayText.Validate([pair], hive));
+        Assert.NotNull(DisplayText.Validate([pair with { OffImage = null }], hive));       // one picture is not a pair
+        Assert.NotNull(DisplayText.Validate([pair with { OnImage = "../etc" }], hive));    // an id is 16 hex digits
+        Assert.NotNull(DisplayText.Validate([pair], oled));                                // the small screen has no pictures
+        Assert.NotNull(DisplayText.Validate([pair with { Size = null, X = null, Y = null }], hive));  // placed by hand only
+        Assert.NotNull(DisplayText.Validate([new DisplayItemDto(null, "temperature", null, OnText: "x")]));  // words of a state only on a state
+        Assert.NotNull(DisplayText.Validate([new DisplayItemDto(null, "relay", null, State: true, OnText: new string('x', 13))]));
+    }
+
+    [Theory]
+    [InlineData(-3.2, 0.0, null, "low")]
+    [InlineData(31.0, null, 30.0, "high")]
+    [InlineData(30.0, 0.0, 30.0, null)] // on the line is inside, as on the site
+    [InlineData(12.0, null, null, null)]
+    public void A_reading_outside_its_normal_range_is_marked_for_the_screen(double value, double? min, double? max, string? range) =>
+        Assert.Equal(range, DisplayText.RangeOf(value, min, max));
+}

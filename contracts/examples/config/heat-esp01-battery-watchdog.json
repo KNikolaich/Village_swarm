@@ -1,0 +1,6 @@
+{
+  "v": 1, "rev": 3, "name": "Сторож батареи",
+  "health_interval_s": 60, "tele_interval_s": 300,
+  "features": [],
+  "hw": { "vbat_ratio": 1.0 }
+}

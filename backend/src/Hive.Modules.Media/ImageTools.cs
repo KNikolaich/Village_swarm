@@ -13,6 +13,64 @@ public static class ImageTools
         return codec is null ? null : (codec.Info.Width, codec.Info.Height);
     }
 
+    /// <summary>How flat an image is: mean and spread of the brightness (0..255), and the share of pixels within ±4 of the mean.</summary>
+    public sealed record Flatness(double Mean, double StdDev, double NearMean)
+    {
+        /// <summary>
+        /// A grey picture: what a video decoder gives when it starts on a frame that needs one it never saw (mid-GOP), grey with
+        /// at most a few fragments of whatever moved. A dark night picture is flat too but far from grey, and stays.
+        /// </summary>
+        public bool Grey => Mean is >= 100 and <= 156 && (StdDev < 6 || NearMean >= 0.95);
+
+        public override string ToString() =>
+            string.Create(System.Globalization.CultureInfo.InvariantCulture, $"mean {Mean:0}, spread {StdDev:0.0}, {NearMean:P0} near the mean");
+    }
+
+    /// <summary>Brightness statistics of a JPEG, decoded at about 64 px wide (cheap on the Pi); null when it cannot be decoded.</summary>
+    public static Flatness? MeasureFlatness(byte[] data)
+    {
+        using var stream = new SKMemoryStream(data);
+        using var codec = SKCodec.Create(stream);
+        if (codec is null)
+            return null;
+        var size = codec.GetScaledDimensions(Math.Min(1f, 64f / codec.Info.Width));
+        using var bitmap = SKBitmap.Decode(codec, new SKImageInfo(size.Width, size.Height, SKColorType.Rgba8888, SKAlphaType.Premul));
+        if (bitmap is null)
+            return null;
+        var luma = new double[bitmap.Width * bitmap.Height];
+        var i = 0;
+        for (var y = 0; y < bitmap.Height; y++)
+            for (var x = 0; x < bitmap.Width; x++)
+            {
+                var c = bitmap.GetPixel(x, y);
+                luma[i++] = 0.299 * c.Red + 0.587 * c.Green + 0.114 * c.Blue;
+            }
+        var mean = luma.Average();
+        var std = Math.Sqrt(luma.Average(v => (v - mean) * (v - mean)));
+        var near = luma.Count(v => Math.Abs(v - mean) <= 4) / (double)luma.Length;
+        return new Flatness(mean, std, near);
+    }
+
+    /// <summary>A JPEG turned clockwise by 90, 180 or 270 degrees (re-encoded at <paramref name="quality"/>); 0 gives it back as is.</summary>
+    public static byte[] Rotate(byte[] jpeg, int degrees, int quality = 92)
+    {
+        if (degrees is not (90 or 180 or 270))
+            return jpeg;
+        using var source = SKBitmap.Decode(jpeg) ?? throw new InvalidDataException("Not an image");
+        var swap = degrees != 180;
+        using var turned = new SKBitmap(swap ? source.Height : source.Width, swap ? source.Width : source.Height);
+        using (var canvas = new SKCanvas(turned))
+        {
+            canvas.Translate(turned.Width / 2f, turned.Height / 2f);
+            canvas.RotateDegrees(degrees);
+            canvas.Translate(-source.Width / 2f, -source.Height / 2f);
+            canvas.DrawBitmap(source, 0, 0);
+        }
+        using var image = SKImage.FromBitmap(turned);
+        using var data = image.Encode(SKEncodedImageFormat.Jpeg, quality);
+        return data.ToArray();
+    }
+
     /// <summary>Downscales to <paramref name="width"/> px wide (never upscales) and encodes WebP.</summary>
     public static byte[] Thumbnail(string sourcePath, int width, int quality = 75)
     {

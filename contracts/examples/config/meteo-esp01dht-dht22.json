@@ -1,0 +1,6 @@
+{
+  "v": 1, "rev": 5, "name": "Теплица",
+  "health_interval_s": 60, "tele_interval_s": 60,
+  "features": ["thermometer"],
+  "hw": { "thermometer": "dht22", "dht_pin": 2 }
+}

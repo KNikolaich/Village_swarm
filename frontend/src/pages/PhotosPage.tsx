@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, Pin, Play } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams, useSearchParams } from 'react-router'
 import type { MediaDto } from '@/api/client'
 import { useDevices, useMediaDay, useMediaDays } from '@/api/queries'
 import { Lightbox } from '@/components/Lightbox'
@@ -21,11 +21,13 @@ export function PhotosPage() {
     const d = parseIsoDate(selected)
     return new Date(d.getFullYear(), d.getMonth(), 1)
   })
-  const [device, setDevice] = useState('')
+  // The camera can come in the address (?device=), from a camera's "Photo archive" button.
+  const [searchParams] = useSearchParams()
+  const [device, setDevice] = useState(searchParams.get('device') ?? '')
   const [pinnedOnly, setPinnedOnly] = useState(false)
-  const devices = useDevices()
+  const devices = useDevices(true)
   // Only hornets that can have photos are offered: those with a camera role.
-  const cameras = (devices.data ?? []).filter((d) => d.type === 'guard-cam')
+  const cameras = (devices.data ?? []).filter((d) => d.type === 'guard-cam' || d.type === 'ipcam')
 
   return (
     <div className="space-y-4 md:grid md:grid-cols-[20rem_1fr] md:gap-4 md:space-y-0">
@@ -41,7 +43,7 @@ export function PhotosPage() {
           <input type="checkbox" checked={pinnedOnly} onChange={(e) => setPinnedOnly(e.target.checked)} className="size-4 accent-amber-400" />
           {t('photos.pinnedOnly')}
         </label>
-        <Calendar month={month} onMonth={setMonth} selected={selected} device={device || undefined} onSelect={(d) => navigate(`/photos/${d}`)} />
+        <Calendar month={month} onMonth={setMonth} selected={selected} device={device || undefined} onSelect={(d) => navigate({ pathname: `/photos/${d}`, search: device ? `?device=${encodeURIComponent(device)}` : '' })} />
       </div>
       <Day date={selected} device={device || undefined} pinnedOnly={pinnedOnly} />
     </div>
@@ -100,7 +102,7 @@ function Calendar({ month, onMonth, selected, device, onSelect }: {
 
 function Day({ date, device, pinnedOnly }: { date: string; device?: string; pinnedOnly: boolean }) {
   const media = useMediaDay(date, device)
-  const devices = useDevices()
+  const devices = useDevices(true)
   // The viewer opens on a list of photos and may start playing it as a timelapse.
   const [open, setOpen] = useState<{ photos: MediaDto[]; index: number; play: boolean } | null>(null)
   const items = useMemo(() => (media.data ?? []).filter((m) => !pinnedOnly || m.pinned), [media.data, pinnedOnly])

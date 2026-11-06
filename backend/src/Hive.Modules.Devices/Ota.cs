@@ -22,9 +22,11 @@ public enum OtaStatus
     UnknownBuild,
     Refused,
     BrokerDown,
+    /// <summary>Only checked: the build suits the hornet (used when an update is queued for a sleeper's next wake-up).</summary>
+    Valid,
 }
 
-public sealed record OtaResult(OtaStatus Status, string? Error = null, CommandDto? Command = null);
+public sealed record OtaResult(OtaStatus Status, string? Error = null, CommandDto? Command = null, string? Version = null);
 
 /// <summary>
 /// Over-the-air update (spec 5.5): checks that the build suits the hornet, then sends it the "ota" command with the
@@ -40,14 +42,30 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
         (await db.Modes.AsNoTracking().Where(m => m.Key == "hive.url").Select(m => m.Value).FirstOrDefaultAsync(ct))
         ?? options.Value.UploadUrl;
 
-    public async Task<OtaResult> StartAsync(string deviceId, string build, string by, CancellationToken ct)
+    /// <summary>
+    /// A meteo or relay hornet may move to the heat firmware of its board: heat does all they do (thermometer, BME280,
+    /// relay) and keeps the same pins, so a board with both a sensor and a relay needs no unsoldering to get both.
+    /// A meteo hornet with a screen (the 0.42" OLED board was a meteo build before) may move to the monitor firmware:
+    /// monitor builds exist only for boards with a screen, and the board check below still applies.
+    /// The hornet reports its new type in info after the restart.
+    /// </summary>
+    public static bool CanBecome(string type, string role) =>
+        (role == "heat" && type is ("meteo" or "relay")) || (role == "monitor" && type == "meteo");
+
+    /// <summary>
+    /// <paramref name="needOnline"/> false: a deep sleeper that has just woken (its status may not have caught up yet).
+    /// <paramref name="checkOnly"/>: validate and stop before anything is sent.
+    /// </summary>
+    public async Task<OtaResult> StartAsync(string deviceId, string build, string by, CancellationToken ct, bool needOnline = true, bool checkOnly = false)
     {
         var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId && d.Status != DeviceStatus.Disabled, ct);
         if (device is null)
             return new OtaResult(OtaStatus.UnknownDevice);
+        if (device.Driver != Drivers.Hornet)  // a remote monitor reads HTTP only: no MQTT to send the order over
+            return new OtaResult(OtaStatus.Refused, "this device is not a hornet: flash it over USB");
         if (ProvisioningEndpoints.ReadBuild(build, options.Value, env) is not { } b)
             return new OtaResult(OtaStatus.UnknownBuild);
-        if (b.Role != device.TypeCode)
+        if (b.Role != device.TypeCode && !CanBecome(device.TypeCode, b.Role))
             return new OtaResult(OtaStatus.Refused, $"build {build} is for {b.Role}, not {device.TypeCode}");
         if (!string.Equals(b.Board, device.Hw, StringComparison.Ordinal))
             return new OtaResult(OtaStatus.Refused, $"build {build} is for board {b.Board}, this hornet reports {device.Hw}");
@@ -55,7 +73,7 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
             return new OtaResult(OtaStatus.Refused, "the build has no version: rebuild the firmware");
         if (b.Version == device.FwVersion)
             return new OtaResult(OtaStatus.Refused, $"already on {b.Version}");
-        if (device.Status != DeviceStatus.Online)
+        if (needOnline && device.Status != DeviceStatus.Online)
             return new OtaResult(OtaStatus.Refused, "the hornet is not online");
 
         var file = Path.Combine(b.Dir, "firmware.bin");
@@ -66,7 +84,11 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
         if (string.IsNullOrEmpty(hive))
             return new OtaResult(OtaStatus.Refused, "set the hive address in Settings first");
 
-        var md5 = Convert.ToHexStringLower(MD5.HashData(await File.ReadAllBytesAsync(file, ct)));
+        if (checkOnly)
+            return new OtaResult(OtaStatus.Valid, null, null, b.Version);
+
+        var image = await File.ReadAllBytesAsync(file, ct);
+        var md5 = Convert.ToHexStringLower(MD5.HashData(image));
         var payload = new JsonObject
         {
             ["url"] = $"{hive.TrimEnd('/')}/api/ota/{build}/firmware.bin",
@@ -74,6 +96,16 @@ public sealed class OtaService(HiveDbContext db, CommandService commands, IOptio
             ["size"] = size,
             ["version"] = b.Version,
         };
+        // A signed build (scripts/ota_sign.py made it): the signature goes along, after a check that it belongs to the
+        // image on disk. A mismatch means the file changed since it was signed, and a hornet would refuse it anyway.
+        if (b.Signature is { } signature)
+        {
+            if (b.Sha512 is not null && !string.Equals(b.Sha512, Convert.ToHexStringLower(SHA512.HashData(image)), StringComparison.Ordinal))
+                return new OtaResult(OtaStatus.Refused, "the image does not match the signature in build.json: rebuild the firmware");
+            if (signature.Length != 128 || !signature.All(Uri.IsHexDigit))
+                return new OtaResult(OtaStatus.Refused, "build.json holds a malformed signature: rebuild the firmware");
+            payload["sig"] = signature.ToLowerInvariant();
+        }
         var (status, command) = await commands.SendAsync(deviceId, "ota", payload, by, 600, ct);
         return status switch
         {

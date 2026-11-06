@@ -1,0 +1,165 @@
+using Hive.Domain;
+using System.Security.Claims;
+using Hive.Infrastructure.Identity;
+using Hive.Modules.Devices;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.Threading.RateLimiting;
+
+namespace Hive.Modules.IpCams;
+
+/// <summary>IP cameras behind a Dahua NVR (contracts/ipcam.md): settings, "Проверить", live snapshots, the event stream.</summary>
+public static class IpCamsModule
+{
+    public const string Name = "ipcams";
+
+    /// <summary>Rate limit of PTZ commands: per user, enough for a held arrow (a move each 400 ms) and a few clicks.</summary>
+    public const string PtzRateLimit = "ptz";
+
+    public static IServiceCollection AddIpCamsModule(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<IpCamOptions>(configuration.GetSection(IpCamOptions.Section));
+        services.AddSingleton<IpCamWatch>();
+        services.AddHostedService(sp => sp.GetRequiredService<IpCamWatch>());
+        services.AddSingleton<IDirectDriver>(sp => sp.GetRequiredService<IpCamWatch>());
+        services.AddScoped<IpCamService>();
+        services.AddSingleton<Snapshots>();
+        services.AddSingleton<NvrLogins>();
+        services.AddSingleton<IpCamDiagnostics>();
+        services.AddSingleton<PtzControl>();
+        services.AddRateLimiter(o => o.AddPolicy(PtzRateLimit, ctx => RateLimitPartition.GetFixedWindowLimiter(
+            ctx.User.Identity?.Name ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromSeconds(1) })));
+        services.Configure<VideoOptions>(configuration.GetSection(VideoOptions.Section));
+        services.AddHttpClient(nameof(VideoStreams), (sp, c) =>
+        {
+            var url = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<VideoOptions>>().Value.Go2RtcUrl;
+            if (!string.IsNullOrWhiteSpace(url))
+                c.BaseAddress = new Uri(url.TrimEnd('/') + "/");
+            c.Timeout = TimeSpan.FromSeconds(10);
+        });
+        services.AddSingleton<VideoStreams>();
+        services.AddHostedService(sp => sp.GetRequiredService<VideoStreams>());
+        services.TryAddSingleton<IFrameGrabber, FfmpegFrameGrabber>();
+        return services;
+    }
+
+    public static IEndpointRouteBuilder MapIpCamEndpoints(this IEndpointRouteBuilder app)
+    {
+        // Live video (contracts/ipcam.md "Live video"): the cameras and their go2rtc streams for the widget, and the check
+        // Caddy makes before it lets a browser through to go2rtc (forward_auth): signed in, and a stream of the list.
+        var video = app.MapGroup("/api/video").WithTags("video");
+        video.MapGet("/streams", async Task<Ok<VideoStreamsDto>> (VideoStreams v, CancellationToken ct) => TypedResults.Ok(await v.ListAsync(ct)));
+        video.MapGet("/authorize", (HttpRequest request, VideoStreams v) =>
+                v.Allows(VideoStreams.SourceOf(request.Headers["X-Forwarded-Uri"])) ? Results.NoContent() : Results.StatusCode(StatusCodes.Status403Forbidden))
+            .ExcludeFromDescription();
+
+        var ipcams = app.MapGroup("/api/ipcams").WithTags("ipcams");
+
+        // PTZ of a camera on its own (contracts/ipcam.md "PTZ"): whether it turns and its presets, then moves, stops and presets.
+        ipcams.MapGet("/ptz/{deviceId}", async Task<Results<Ok<PtzStateDto>, NotFound>> (string deviceId, PtzControl ptz, CancellationToken ct) =>
+                await ptz.StateAsync(deviceId, ct) is (PtzResult.Ok, { } state) ? TypedResults.Ok(state) : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.CanControl);
+        ipcams.MapPost("/ptz/{deviceId}", async Task<Results<NoContent, NotFound, ValidationProblem, ProblemHttpResult>> (
+                string deviceId, PtzRequest r, ClaimsPrincipal user, PtzControl ptz, CancellationToken ct) =>
+            {
+                var (result, error) = await ptz.CommandAsync(deviceId, r, $"user:{user.Identity?.Name}", ct);
+                return result switch
+                {
+                    PtzResult.Ok => TypedResults.NoContent(),
+                    PtzResult.NotFound => TypedResults.NotFound(),
+                    PtzResult.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["request"] = [error!] }),
+                    PtzResult.NoPtz => TypedResults.Problem(error, title: "No PTZ", statusCode: StatusCodes.Status409Conflict),
+                    _ => TypedResults.Problem(error, title: "PTZ failed", statusCode: StatusCodes.Status502BadGateway),
+                };
+            })
+            .RequireAuthorization(HiveRoles.CanControl)
+            .RequireRateLimiting(PtzRateLimit);
+
+        ipcams.MapGet("", async Task<Ok<IReadOnlyList<NvrDto>>> (IpCamService s, CancellationToken ct) => TypedResults.Ok(await s.ListAsync(ct)))
+            .RequireAuthorization(HiveRoles.AdminOnly);
+        ipcams.MapGet("/{id:int}", async Task<Results<Ok<NvrDto>, NotFound>> (int id, IpCamService s, CancellationToken ct) =>
+                await s.GetAsync(id, ct) is { } nvr ? TypedResults.Ok(nvr) : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
+        // Before saving: the add form checks the address and the login it was given.
+        // Before saving: the add form checks the address and the login it was given. A camera on its own is tried as a Dahua,
+        // then as an ONVIF camera.
+        ipcams.MapPost("/probe", async Task<Results<Ok<ProbeResultDto>, ValidationProblem>> (NvrProbeRequest r, NvrLogins logins, CancellationToken ct) =>
+            {
+                if (IpCamService.HostError(r.Host, r.Port) is { } error)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["request"] = [error] });
+                var endpoint = new NvrEndpoint(IpCamService.Host(r.Host), r.Port ?? 80, r.Username.Trim(), r.Password);
+                return TypedResults.Ok(r.Kind == NvrKinds.Camera ? await CameraProbe.ProbeAsync(endpoint, logins, ct) : await ProbeNvrAsync(endpoint, logins, ct));
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
+        ipcams.MapPost("", async Task<Results<Ok<NvrDto>, ValidationProblem>> (NvrRequest r, ClaimsPrincipal user, IpCamService s, CancellationToken ct) =>
+            {
+                var (result, error, nvr) = await s.CreateAsync(r, $"user:{user.Identity?.Name}", ct);
+                return result == NvrChange.Ok
+                    ? TypedResults.Ok(nvr!)
+                    : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["request"] = [error!] });
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
+        ipcams.MapPut("/{id:int}", async Task<Results<Ok<NvrDto>, NotFound, ValidationProblem>> (
+                int id, NvrRequest r, ClaimsPrincipal user, IpCamService s, CancellationToken ct) =>
+            {
+                var (result, error, nvr) = await s.UpdateAsync(id, r, $"user:{user.Identity?.Name}", ct);
+                return result switch
+                {
+                    NvrChange.Ok => TypedResults.Ok(nvr!),
+                    NvrChange.NotFound => TypedResults.NotFound(),
+                    _ => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["request"] = [error!] }),
+                };
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
+        ipcams.MapDelete("/{id:int}", async Task<Results<NoContent, NotFound>> (int id, ClaimsPrincipal user, IpCamService s, CancellationToken ct) =>
+                await s.DeleteAsync(id, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
+        ipcams.MapPost("/{id:int}/probe", async Task<Results<Ok<ProbeResultDto>, NotFound>> (int id, IpCamService s, NvrLogins logins, CancellationToken ct) =>
+            {
+                if (await s.EndpointAsync(id, ct) is not { } endpoint)
+                    return TypedResults.NotFound();
+                return TypedResults.Ok(await s.IsCameraAsync(id, ct) ? await CameraProbe.ProbeAsync(endpoint, logins, ct) : await ProbeNvrAsync(endpoint, logins, ct));
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
+        // A live frame, not stored: the settings page's "Снимок" and a look before picking a channel. Taken the same way as
+        // photos (snapshot.cgi, then the RTSP stream); X-Snapshot-Via says which gave it, a 502 says why neither did.
+        ipcams.MapGet("/{id:int}/snapshot", async Task<Results<FileContentHttpResult, NotFound, ProblemHttpResult>> (
+                int id, int channel, HttpResponse response, IpCamService s, Snapshots snapshots, CancellationToken ct) =>
+            {
+                if (await s.EndpointAsync(id, ct) is not { } endpoint)
+                    return TypedResults.NotFound();
+                try
+                {
+                    var taken = await snapshots.TakeAsync(endpoint, await s.TargetAsync(id, channel, ct), SnapshotPurpose.Look, ct);
+                    response.Headers["X-Snapshot-Via"] = taken.Via;
+                    if (Hive.Modules.Media.ImageTools.Identify(taken.Jpeg) is { } size)
+                        response.Headers["X-Snapshot-Size"] = $"{size.Width}x{size.Height}";
+                    return TypedResults.File(taken.Jpeg, "image/jpeg");
+                }
+                catch (SnapshotFailedException ex)
+                {
+                    return TypedResults.Problem(ex.Message, title: "No snapshot", statusCode: StatusCodes.Status502BadGateway);
+                }
+            })
+            .Produces(StatusCodes.Status200OK, contentType: "image/jpeg");
+        return app;
+    }
+
+    private static async Task<ProbeResultDto> ProbeNvrAsync(NvrEndpoint endpoint, NvrLogins logins, CancellationToken ct)
+    {
+        using var client = new DahuaClient(endpoint, logins);
+        return await client.ProbeAsync(ct);
+    }
+}

@@ -8,6 +8,7 @@ using Hive.Infrastructure.Data;
 using Hive.Infrastructure.Mqtt;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Hive.Modules.Devices;
@@ -45,7 +46,15 @@ public sealed record EnrollMqtt(string Host, int Port, string? User, string? Pas
 
 public sealed record EnrollResponse(string DeviceId, EnrollMqtt Mqtt, string UploadUrl, string UploadToken, JsonElement Config);
 
+/// <summary>A Tasmota or OpenBeken device. MaxOnMinutes is the longest a heater may stay switched on without a new order.</summary>
+public sealed record CreateTasmotaRequest(string DeviceId, string Type, string Name, int? ZoneId = null, int? MaxOnMinutes = null, bool Ir = false);
+
+/// <summary>Console lines to paste into the device's Tasmota web console, in this order. The password is shown once and kept nowhere.</summary>
+public sealed record TasmotaSetup(string DeviceId, EnrollMqtt Mqtt, IReadOnlyList<string> Lines);
+
 public enum EnrollStatus { Ok, BadCode, BadRequest }
+
+public enum PurgeStatus { Purged, NotFound, WasSeen }
 
 /// <summary>Adding a hornet (spec 5.3): one-time code in the UI, the board trades it for its credentials.</summary>
 public sealed class ProvisioningService(
@@ -53,6 +62,7 @@ public sealed class ProvisioningService(
     DynamicSecurity dynsec,
     MqttGateway mqtt,
     IOptions<ProvisioningOptions> options,
+    Hive.Infrastructure.NodeState node,
     TimeProvider time)
 {
     // No 0/O, 1/I: typed from a screen.
@@ -138,6 +148,8 @@ public sealed class ProvisioningService(
             device = new Device { DeviceId = code.DeviceId, TypeCode = code.TypeCode, Name = code.Name, CreatedAt = now };
             db.Devices.Add(device);
         }
+        device.Local = true;   // made on this node (on the city: its own hornet, not a copy of home's)
+        node.MarkLocal(device.DeviceId);
         device.TypeCode = code.TypeCode;
         device.Name = code.Name;
         device.ZoneId = code.ZoneId ?? device.ZoneId;
@@ -175,6 +187,67 @@ public sealed class ProvisioningService(
             JsonSerializer.SerializeToElement(config)));
     }
 
+    /// <summary>
+    /// Adds a device that runs Tasmota or OpenBeken (contracts/tasmota.md): it gets its own broker login limited to its
+    /// topics, and the Tasmota console lines that point it at the hive. Asking again for the same id gives new credentials
+    /// (the board was replaced, or the old login is lost).
+    /// </summary>
+    public async Task<(TasmotaSetup? Setup, string? Error)> CreateTasmotaAsync(CreateTasmotaRequest r, string by, Uri requestBase, CancellationToken ct)
+    {
+        if (!Topics.IsValidDeviceId(r.DeviceId))
+            return (null, "device_id: латиница в нижнем регистре, цифры и дефисы, например heat-bedroom1");
+        if (!await db.DeviceTypes.AnyAsync(t => t.Code == r.Type, ct))
+            return (null, $"unknown type {r.Type}");
+        if (string.IsNullOrWhiteSpace(r.Name))
+            return (null, "name is required");
+
+        var now = time.GetUtcNow();
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == r.DeviceId, ct);
+        if (device is not null && device.Driver != Drivers.Tasmota && device.Status != DeviceStatus.Disabled)
+            return (null, $"{r.DeviceId} уже занят шершнем на нашей прошивке; выберите другой id");
+        if (device is null)
+        {
+            device = new Device { DeviceId = r.DeviceId, TypeCode = r.Type, Name = r.Name.Trim(), CreatedAt = now };
+            db.Devices.Add(device);
+        }
+        device.Local = true;
+        node.MarkLocal(device.DeviceId);
+        device.TypeCode = r.Type;
+        device.Name = r.Name.Trim();
+        device.ZoneId = r.ZoneId ?? device.ZoneId;
+        device.Driver = Drivers.Tasmota;
+        device.Hw = "tasmota";
+        device.Status = DeviceStatus.Pending;
+        device.MqttUser = DynamicSecurity.ClientName(device.DeviceId);
+        device.UploadTokenHash = null;
+        var switches = r.Type is "relay" or "heat";
+        device.Info = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            caps = (switches ? new[] { "relay" } : Array.Empty<string>()).Concat(r.Ir ? ["ir"] : []).ToArray(),
+            metrics = Array.Empty<string>(),
+            commands = (switches ? new[] { "relay", "reboot" } : ["reboot"]).Concat(r.Ir ? ["ir"] : []).ToArray(),
+        }));
+        Audit.Record(db, now, by, "device_add_tasmota", r.DeviceId);
+
+        var password = Secret();
+        await dynsec.ProvisionTasmotaAsync(device.DeviceId, password, ct);
+        await db.SaveChangesAsync(ct);
+
+        var host = string.IsNullOrEmpty(options.Value.MqttHost) ? requestBase.Host : options.Value.MqttHost;
+        var port = options.Value.MqttPort;
+        var lines = new List<string> { $"Backlog Topic {r.DeviceId}; DeviceName {r.DeviceId}; FriendlyName1 {r.DeviceId}" };
+        // A relay comes up switched off after a power cut, and reports every minute so the hive sees it is alive.
+        lines.Add("Backlog TelePeriod 60; SetOption19 0" + (switches ? "; PowerOnState 0; PowerRetain 0" : ""));
+        if (r.Type == "heat")
+        {
+            // The relay switches itself off after this long, even when the hive is gone (PulseTime: seconds plus 100).
+            var seconds = Math.Clamp(r.MaxOnMinutes ?? 360, 1, 1080) * 60;
+            lines.Add($"PulseTime1 {seconds + 100}");
+        }
+        lines.Add($"Backlog MqttHost {host}; MqttPort {port}; MqttUser {device.MqttUser}; MqttPassword {password}; MqttClient {r.DeviceId}");
+        return (new TasmotaSetup(device.DeviceId, new EnrollMqtt(host, port, device.MqttUser, dynsec.Enabled ? password : null), lines), null);
+    }
+
     /// <summary>DELETE /api/devices/{id}: revokes the broker login and upload token, keeps the history.</summary>
     public async Task<bool> DisableAsync(string deviceId, string by, CancellationToken ct)
     {
@@ -192,6 +265,30 @@ public sealed class ProvisioningService(
         return true;
     }
 
+    /// <summary>
+    /// Removes a device that never reached the hive (a flash that failed half way, a wrong id) for good, so its id is free
+    /// again. One that has been seen has history and stays in the archive (<see cref="DisableAsync"/>).
+    /// </summary>
+    public async Task<PurgeStatus> PurgeAsync(string deviceId, string by, CancellationToken ct)
+    {
+        var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId, ct);
+        if (device is null)
+            return PurgeStatus.NotFound;
+        if (device.LastSeenAt is not null)
+            return PurgeStatus.WasSeen;
+        db.EnrollmentCodes.RemoveRange(db.EnrollmentCodes.Where(c => c.DeviceId == deviceId));
+        db.DisplayImages.RemoveRange(db.DisplayImages.Where(i => i.DeviceId == deviceId));
+        db.Devices.Remove(device);
+        Audit.Record(db, time.GetUtcNow(), by, "device_purged", deviceId);
+        var hornet = device.Driver == Drivers.Hornet;
+        if (hornet)
+            await dynsec.RevokeHornetAsync(deviceId, ct);
+        await db.SaveChangesAsync(ct);
+        if (hornet && mqtt.IsConnected)
+            await mqtt.PublishAsync(Topics.Config(deviceId), "", retain: true, ct);
+        return PurgeStatus.Purged;
+    }
+
     /// <summary>Type defaults (device_types.default_config) plus what every hornet needs (spec 4.4 config).</summary>
     private async Task<JsonObject> InitialConfigAsync(Device device, string uploadUrl, CancellationToken ct)
     {
@@ -207,6 +304,14 @@ public sealed class ProvisioningService(
             config["guard"]!["armed"] = armed;
             config["camera"] ??= new JsonObject { ["frame"] = "SVGA", ["quality"] = 12, ["burst"] = 3, ["burst_interval_ms"] = 700 };
         }
+        if (device.TypeCode == Cars.Type)
+        {
+            config["camera"] ??= new JsonObject { ["frame"] = "VGA", ["quality"] = 14 };
+            config["relay"] ??= new JsonObject { ["channel"] = "light", ["max_on_s"] = 600 };
+            config["car"] ??= new JsonObject { ["max_run_s"] = 60, ["max_speed"] = 100 };
+            // The camera's stream is opened only by the hive's go2rtc, with this key.
+            config["car"]!["stream_key"] ??= RandomNumberGenerator.GetString("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", 24);
+        }
         config["upload"] = new JsonObject { ["primary"] = uploadUrl };
         return config;
     }
@@ -214,19 +319,58 @@ public sealed class ProvisioningService(
     private static string Secret() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(18)).Replace('+', '-').Replace('/', '_');
 }
 
-/// <summary>Sets dynsec defaults whenever the api (re)connects to the broker.</summary>
-public sealed class DynamicSecurityBootstrap(MqttGateway mqtt, DynamicSecurity dynsec) : IHostedService
+/// <summary>
+/// Sets dynsec defaults whenever the api (re)connects to the broker. A broker busy starting up may drop the answer (or the
+/// connection): that is logged and tried again in the background rather than stopping the api from starting.
+/// </summary>
+public sealed class DynamicSecurityBootstrap(MqttGateway mqtt, DynamicSecurity dynsec, ILogger<DynamicSecurityBootstrap> logger) : IHostedService
 {
-    public Task StartAsync(CancellationToken cancellationToken)
+    private readonly CancellationTokenSource _stop = new();
+
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         mqtt.Connected += dynsec.EnsureDefaultsAsync;
         // The gateway may have connected before this hook was added.
-        return mqtt.IsConnected ? dynsec.EnsureDefaultsAsync(cancellationToken) : Task.CompletedTask;
+        if (!mqtt.IsConnected)
+            return;
+        try
+        {
+            await dynsec.EnsureDefaultsAsync(cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            logger.LogWarning("The broker did not answer the dynamic security defaults at start-up; trying again in the background");
+            _ = RetryAsync(_stop.Token);
+        }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken)
+    private async Task RetryAsync(CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 30 && !ct.IsCancellationRequested; attempt++)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                await dynsec.EnsureDefaultsAsync(ct);
+                return;
+            }
+            catch (TimeoutException)
+            {
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Dynamic security defaults failed");
+            }
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
         mqtt.Connected -= dynsec.EnsureDefaultsAsync;
-        return Task.CompletedTask;
+        await _stop.CancelAsync();
     }
 }

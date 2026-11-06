@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { t } from '@/i18n'
 import { formatFixed, formatTick, formatWhen } from '@/lib/format'
+import { pickAt } from '@/lib/chartPick'
 import { seriesColors } from '@/lib/seriesColors'
 import { niceTicks, tickDecimals, timeTicks } from '@/lib/ticks'
 
@@ -9,7 +10,7 @@ export type ChartPoint = { ts: string; avg: number; min: number; max: number }
 export type ChartSeries = {
   name?: string
   /** Tailwind classes (written out in full so they are generated): line, marker dot, legend swatch. */
-  color?: { stroke: string; fill: string; bg: string }
+  color?: { stroke: string; fill: string; bg: string; band?: string }
   dashed?: boolean
   points: ChartPoint[]
 }
@@ -54,8 +55,10 @@ export function Chart({ points, from, to, format, axisFormat }: {
  * round value marks on the left with thin horizontal lines, and thin vertical lines at round times (labelled once
  * by <TimeAxis>). With several series the readout above lists each at the time under the pointer.
  */
-export function MultiChart({ series, from, to, format, axisFormat }: {
+export function MultiChart({ series, from, to, format, axisFormat, height }: {
   series: ChartSeries[]
+  /** Plot height in pixels (a modal draws it taller than the 150 of a page). */
+  height?: number
   from: Date
   to: Date
   /** Readout above the chart (the value under the pointer). */
@@ -70,20 +73,14 @@ export function MultiChart({ series, from, to, format, axisFormat }: {
     <div ref={ref}>
       {filled.length === 0
         ? <p className="py-6 text-center text-sm text-neutral-500">{t('device.noData')}</p>
-        : <ChartBody series={filled} from={from} to={to} width={width} format={format} axisFormat={axisFormat} />}
+        : <ChartBody series={filled} from={from} to={to} width={width} height={height ?? H} format={format} axisFormat={axisFormat} />}
     </div>
   )
 }
 
-function nearest(points: ChartPoint[], ms: number): number {
-  let best = 0
-  for (let i = 1; i < points.length; i++)
-    if (Math.abs(new Date(points[i].ts).getTime() - ms) < Math.abs(new Date(points[best].ts).getTime() - ms)) best = i
-  return best
-}
-
-function ChartBody({ series, from, to, width, format, axisFormat }: {
+function ChartBody({ series, from, to, width, height, format, axisFormat }: {
   series: ChartSeries[]
+  height: number
   from: Date
   to: Date
   width: number
@@ -97,11 +94,13 @@ function ChartBody({ series, from, to, width, format, axisFormat }: {
   const plotW = Math.max(1, width - PLOT.left - PLOT.right)
   const { ticks, min, max, step } = niceTicks(Math.min(...all.map((p) => p.min)), Math.max(...all.map((p) => p.max)))
   const x = (ms: number) => PLOT.left + ((ms - x0) / span) * plotW
-  const y = (v: number) => TOP + (1 - (v - min) / (max - min)) * (H - TOP - BOTTOM)
+  const y = (v: number) => TOP + (1 - (v - min) / (max - min)) * (height - TOP - BOTTOM)
   const decimals = tickDecimals(step)
   const label = axisFormat ?? ((v, d) => formatFixed(v, d))
   const vertical = timeTicks(from, to).ticks
   const single = series.length === 1
+  // A lone named line (one hornet on a zone chart) still says whose it is, in its own colour.
+  const legend = !single || series[0].name != null
 
   function onMove(e: React.PointerEvent<SVGSVGElement>) {
     // The svg is drawn at its real pixel size, so the pointer position is directly a plot coordinate.
@@ -109,30 +108,36 @@ function ChartBody({ series, from, to, width, format, axisFormat }: {
     setHoverMs(x0 + ((at - PLOT.left) / plotW) * span)
   }
 
-  // What the readout and the marker show: per series, the point nearest the pointer (or the newest one).
-  const picks = series.map((s) => s.points[hoverMs == null ? s.points.length - 1 : nearest(s.points, hoverMs)])
-  const markerMs = hoverMs == null ? null : new Date(picks[0].ts).getTime()
+  // What the readout and the marker show: per series, the point under the pointer (or the newest one). A series that has no
+  // reading there (a sensor that went quiet) shows a dash; the time shown is the pointer's own, not that of one series.
+  const picks = series.map((s) => pickAt(s.points, hoverMs))
+  const newest = Math.max(...series.map((s) => new Date(s.points[s.points.length - 1].ts).getTime()))
+  // One line: the time of the very point shown. Several: the pointer's time, which every line is read at.
+  const shownAt = hoverMs == null ? new Date(newest).toISOString()
+    : single && picks[0] ? picks[0].ts
+      : new Date(Math.min(Math.max(hoverMs, x0), to.getTime())).toISOString()
+  const markerMs = hoverMs == null ? null : Math.min(Math.max(hoverMs, x0), to.getTime())
 
   return (
     <div>
-      {single ? (
+      {!legend ? (
         <p className="text-right text-xs text-neutral-500">
-          <span className="tabular-nums text-neutral-200">{format(picks[0].avg)}</span> · {formatWhen(picks[0].ts)}
+          <span className="tabular-nums text-neutral-200">{picks[0] ? format(picks[0].avg) : '—'}</span> · {formatWhen(shownAt)}
         </p>
       ) : (
         <div className="flex flex-wrap justify-end gap-x-3 gap-y-0.5 text-xs text-neutral-500">
           {series.map((s, i) => (
             <span key={s.name ?? i} className="flex items-center gap-1">
               <span className={`size-2 rounded-full ${(s.color ?? seriesColors[i % seriesColors.length]).bg}`} />
-              {s.name} <span className="tabular-nums text-neutral-200">{format(picks[i].avg)}</span>
+              {s.name} <span className="tabular-nums text-neutral-200">{picks[i] ? format(picks[i].avg) : '—'}</span>
             </span>
           ))}
-          <span>{formatWhen(picks[0].ts)}</span>
+          <span className="tabular-nums">{formatWhen(shownAt)}</span>
         </div>
       )}
-      <svg width={width} height={H} viewBox={`0 0 ${width} ${H}`} className="mt-1 block touch-pan-y" role="img" onPointerMove={onMove} onPointerLeave={() => setHoverMs(null)}>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="mt-1 block touch-pan-y" role="img" onPointerMove={onMove} onPointerLeave={() => setHoverMs(null)}>
         {vertical.map((d) => (
-          <line key={d.getTime()} x1={x(d.getTime())} x2={x(d.getTime())} y1={TOP} y2={H - BOTTOM} className="stroke-white/10" />
+          <line key={d.getTime()} x1={x(d.getTime())} x2={x(d.getTime())} y1={TOP} y2={height - BOTTOM} className="stroke-white/10" />
         ))}
         {ticks.map((v) => (
           <g key={v}>
@@ -152,14 +157,14 @@ function ChartBody({ series, from, to, width, format, axisFormat }: {
           ].join(' ')
           return (
             <g key={s.name ?? i}>
-              {single && <polygon points={band} className="fill-amber-400/15" />}
+              {single && <polygon points={band} className={color.band ?? 'fill-amber-400/15'} />}
               <path d={line} fill="none" className={color.stroke} strokeWidth="2" strokeLinejoin="round" strokeDasharray={s.dashed ? '4 3' : undefined} />
               {s.points.length === 1 && <circle cx={x(times[0])} cy={y(s.points[0].avg)} r="4" className={color.fill} />}
-              {markerMs != null && <circle cx={x(new Date(picks[i].ts).getTime())} cy={y(picks[i].avg)} r="4" className={color.fill} />}
+              {markerMs != null && picks[i] && <circle cx={x(new Date(picks[i].ts).getTime())} cy={y(picks[i].avg)} r="4" className={color.fill} />}
             </g>
           )
         })}
-        {markerMs != null && <line x1={x(markerMs)} x2={x(markerMs)} y1={TOP} y2={H - BOTTOM} className="stroke-neutral-400" strokeDasharray="3 3" />}
+        {markerMs != null && <line x1={x(markerMs)} x2={x(markerMs)} y1={TOP} y2={height - BOTTOM} className="stroke-neutral-400" strokeDasharray="3 3" />}
       </svg>
     </div>
   )

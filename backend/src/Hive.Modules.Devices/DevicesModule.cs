@@ -8,18 +8,28 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Hive.Infrastructure.Mqtt;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Hive.Modules.Devices;
 
 public sealed record DeviceDto(
     string DeviceId, string Name, string Type, string Status, int? ZoneId, string? Zone,
     string? Hw, string? Fw, string? Mac, string? Ip, int? Rssi, int? Boot, DateTimeOffset? LastSeenAt,
-    JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev, int? SleepS, string SleepMode);
+    JsonElement? Info, JsonElement? State, int ConfigRev, int? ConfigAppliedRev, int? SleepS, string SleepMode, string Driver,
+    IReadOnlyList<string>? Features = null, IReadOnlyList<string>? SupportedFeatures = null, HeaterLimitsDto? Heater = null, int Sort = 0,
+    string? Thermometer = null, IReadOnlyList<string>? Dashboard = null, string? Parent = null, int Rotate = 0, bool Local = false, bool Visitor = false, string? PreferHive = null);
+
+/// <summary>The limits a heater keeps by itself (config failsafe.heater, or the firmware defaults).</summary>
+public sealed record HeaterLimitsDto(double MinC, double MaxC, int MaxOnS);
 
 /// <summary>Device registry reads (spec 6.5). Editing, commands and provisioning come in later steps.</summary>
 /// <summary>Pins of a hornet: what each function uses, from the board default or the config, and conflicts. VbatRatio is the battery divider ratio set in the config (null: 1.0).</summary>
-public sealed record PinsView(IReadOnlyList<BoardPins.PinRow> Pins, IReadOnlyList<string> Conflicts, double? VbatRatio);
+/// Thermometer is the sensor its feature "thermometer" reads (ds18b20, dht11, dht22, ntc; null for a role without one), ThermometerByHand whether the config sets it.
+/// Ntc: the thermistor's divider and calibration from the config (null fields: the firmware defaults).
+public sealed record PinsView(IReadOnlyList<BoardPins.PinRow> Pins, IReadOnlyList<string> Conflicts, double? VbatRatio, string? Thermometer = null, bool ThermometerByHand = false,
+    BoardPins.NtcSettings? Ntc = null);
 
 public sealed class DeviceQueries(HiveDbContext db)
 {
@@ -43,7 +53,28 @@ public sealed class DeviceQueries(HiveDbContext db)
     private static DeviceDto ToDto(Device d) => new(
         d.DeviceId, d.Name, d.TypeCode, d.Status.ToString().ToLowerInvariant(), d.ZoneId, d.Zone?.Name,
         d.Hw, d.FwVersion, d.Mac, d.Ip, d.Rssi, d.Boot, d.LastSeenAt,
-        d.Info?.RootElement.Clone(), d.State?.RootElement.Clone(), d.ConfigRev, d.ConfigAppliedRev, DeviceConfigService.SleepS(d), DeviceConfigService.SleepMode(d));
+        d.Info?.RootElement.Clone(), d.State?.RootElement.Clone(), d.ConfigRev, d.ConfigAppliedRev, DeviceConfigService.SleepS(d), DeviceConfigService.SleepMode(d), d.Driver,
+        Features(d), d.Driver == Drivers.Hornet ? DeviceFeatures.SupportedBy(d.TypeCode) : null, HeaterLimits(d), d.Sort,
+        Thermometer(d), d.Dashboard, d.ParentId, VideoRotation.Of(d.Config), d.Local, d.Visitor,
+        d.Config?.RootElement.TryGetProperty("prefer_hive", out var prefer) == true ? prefer.GetString() : null);
+
+    /// <summary>Features of a native hornet (Tasmota devices keep their own settings).</summary>
+    private static IReadOnlyList<string>? Features(Device d) =>
+        d.Driver == Drivers.Hornet ? DeviceFeatures.Effective(d.TypeCode, d.Config?.RootElement) : null;
+
+    /// <summary>The sensor a hornet with the feature "thermometer" reads (a DHT also gives humidity), else null.</summary>
+    private static string? Thermometer(Device d) =>
+        Features(d)?.Contains(DeviceFeatures.Thermometer) == true
+            ? BoardPins.ThermometerSensor(d.Hw, d.Config?.RootElement.TryGetProperty("hw", out var hw) == true ? hw : null)
+            : null;
+
+    private static HeaterLimitsDto? HeaterLimits(Device d)
+    {
+        if (Features(d)?.Contains(DeviceFeatures.Heater) != true)
+            return null;
+        var (minC, maxC, maxOnS) = DeviceConfigService.Heater(d) ?? (DeviceFeatures.DefaultMinC, DeviceFeatures.DefaultMaxC, DeviceFeatures.DefaultMaxOnS);
+        return new HeaterLimitsDto(minC, maxC, maxOnS);
+    }
 }
 
 public static class DevicesModule
@@ -54,22 +85,47 @@ public static class DevicesModule
     {
         services.Configure<ProvisioningOptions>(configuration.GetSection(ProvisioningOptions.Section));
         services.AddScoped<DeviceQueries>();
+        services.AddCars();
+        services.TryAddSingleton<TasmotaPending>();
         services.AddScoped<CommandService>();
         services.AddScoped<ArmService>();
         services.AddScoped<ZoneService>();
+        services.AddScoped<DashboardLayoutService>();
+        services.AddScoped<IrButtonService>();
+        services.AddScoped<ZigbeeService>();
         services.AddHostedService<ZoneBootstrap>();
         services.AddScoped<ProvisioningService>();
         services.AddHostedService<DynamicSecurityBootstrap>();
         services.AddHostedService<CommandTimeoutJob>();
         services.AddScoped<DeviceConfigService>();
         services.AddScoped<OtaService>();
+        services.AddScoped<DisplayFeedService>();
+        services.Configure<CityBrokerOptions>(configuration.GetSection("Cluster"));
+        services.AddScoped<FailoverService>();
+        services.AddHostedService<FailoverSync>();
+        services.AddScoped<DisplayFontCatalog>();
+        services.AddScreenAccess(configuration);
+        services.AddScoped<ValueRangeStore>();
+        services.AddHostedService<DisplayFeed>();
+        services.AddScoped<OtaPendingStore>();
+        services.AddSingleton<OtaWakeDelivery>();
+        services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<OtaWakeDelivery>());
+        services.AddSingleton<OtaRolloutRunner>();
+        services.AddHostedService(sp => sp.GetRequiredService<OtaRolloutRunner>());
         services.AddSingleton<SleepingDeviceWatch>();
         services.AddHostedService(sp => sp.GetRequiredService<SleepingDeviceWatch>());
+        services.AddScoped<TimelapseService>();
+        services.AddSingleton<TimelapseWatch>();
+        services.AddHostedService(sp => sp.GetRequiredService<TimelapseWatch>());
         return services;
     }
 
     public static IEndpointRouteBuilder MapDevicesEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapZigbeeEndpoints();
+        app.MapScreenAccessEndpoints();
+        app.MapCarEndpoints();
+        app.MapDisplayFontEndpoints();
         var devices = app.MapGroup("/api/devices").WithTags("devices");
         devices.MapGet("", (int? zone, string? type, string? status, DeviceQueries q, CancellationToken ct) =>
             q.ListAsync(zone, type, status, ct));
@@ -79,6 +135,9 @@ public static class DevicesModule
         devices.MapPost("/{deviceId}/commands", async Task<Results<Accepted<CommandDto>, NotFound, ValidationProblem, ProblemHttpResult>> (
                 string deviceId, SendCommandRequest request, ClaimsPrincipal user, CommandService commands, CancellationToken ct) =>
             {
+                // The Tasmota console can reconfigure a device: administrators only.
+                if (request.Name == "tasmota" && !user.IsInRole(HiveRoles.Admin))
+                    return TypedResults.Problem("Консоль Tasmota только для администратора", statusCode: StatusCodes.Status403Forbidden);
                 var (status, command) = await commands.SendAsync(deviceId, request.Name, request.Payload, $"user:{user.Identity?.Name}", request.TtlS, ct);
                 return status switch
                 {
@@ -92,8 +151,153 @@ public static class DevicesModule
         devices.MapGet("/{deviceId}/commands", async (string deviceId, int? limit, CommandService commands, CancellationToken ct) =>
             (await commands.ListAsync(deviceId, limit, ct)).Select(CommandDto.From).ToList())
             .RequireAuthorization(HiveRoles.CanControl);
+        // "Clear" on the device page: the history and the journal start afresh there, the rows go with the retention cleanup.
+        devices.MapDelete("/{deviceId}/commands", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, CommandService commands, CancellationToken ct) =>
+                await commands.ClearHistoryAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.CanControl);
+        devices.MapDelete("/{deviceId}/logs", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, CommandService commands, CancellationToken ct) =>
+                await commands.ClearLogsAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.CanControl);
         devices.MapGet("/{deviceId}/commands/{cid}", async Task<Results<Ok<CommandDto>, NotFound>> (string deviceId, string cid, CommandService commands, CancellationToken ct) =>
             await commands.GetAsync(deviceId, cid, ct) is { } c ? TypedResults.Ok(CommandDto.From(c)) : TypedResults.NotFound());
+
+        // Learned buttons of a Tasmota IR device (docs/tasmota.md): read by everyone who can see it, edited by those who control.
+        devices.MapGet("/{deviceId}/ir-buttons", async Task<Results<Ok<IrButtonsDto>, NotFound>> (string deviceId, IrButtonService ir, CancellationToken ct) =>
+            await ir.GetAsync(deviceId, ct) is { } b ? TypedResults.Ok(b) : TypedResults.NotFound());
+        devices.MapPut("/{deviceId}/ir-buttons", async Task<Results<Ok<IrButtonsDto>, NotFound, ValidationProblem>> (
+                string deviceId, IrButtonsDto request, ClaimsPrincipal user, IrButtonService ir, CancellationToken ct) =>
+            {
+                if (IrButtonService.Validate(request.Buttons) is { } error)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["buttons"] = [error] });
+                return await ir.SetAsync(deviceId, request.Buttons, $"user:{user.Identity?.Name}", ct)
+                    ? TypedResults.Ok((await ir.GetAsync(deviceId, ct))!)
+                    : TypedResults.NotFound();
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
+
+        // How a camera's picture is turned (config camera.rotate): live video in the browser, photos when stored.
+        devices.MapPut("/{deviceId}/rotate", async Task<Results<NoContent, NotFound, ValidationProblem>> (
+                string deviceId, DeviceConfigService.RotateRequest request, ClaimsPrincipal user, DeviceConfigService configs, CancellationToken ct) =>
+                await configs.SetRotateAsync(deviceId, request.Rotate, $"user:{user.Identity?.Name}", ct) switch
+                {
+                    ConfigUpdateStatus.Updated => TypedResults.NoContent(),
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    _ => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["rotate"] = ["0, 90, 180 или 270"] }),
+                })
+            .RequireAuthorization(HiveRoles.CanControl);
+
+        // The thermometer a Bluetooth bridge is paired with (docs/ble-thermometer.md).
+        devices.MapGet("/{deviceId}/ble", async Task<Results<Ok<DeviceConfigService.BleRequest>, NotFound>> (string deviceId, DeviceConfigService configs, CancellationToken ct) =>
+            await configs.GetBleAsync(deviceId, ct) is { } b ? TypedResults.Ok(b) : TypedResults.NotFound());
+        devices.MapPut("/{deviceId}/ble", async Task<Results<Ok<DeviceConfigService.BleRequest>, NotFound, ValidationProblem>> (
+                string deviceId, DeviceConfigService.BleRequest request, ClaimsPrincipal user, DeviceConfigService configs, CancellationToken ct) =>
+            {
+                if (DeviceConfigService.ValidateBle(request) is { } error)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["mac"] = [error] });
+                return await configs.SetBleAsync(deviceId, request, $"user:{user.Identity?.Name}", ct) == ConfigUpdateStatus.NotFound
+                    ? TypedResults.NotFound()
+                    : TypedResults.Ok((await configs.GetBleAsync(deviceId, ct))!);
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
+
+        // What a hornet's screen shows: its own readings or those of other devices (contracts/mqtt-topics.md, vs/v1/hive/display/{id}).
+        devices.MapGet("/{deviceId}/display", async Task<Results<Ok<DisplayItemsDto>, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
+            await feed.GetAsync(deviceId, ct) is { } display ? TypedResults.Ok(display) : TypedResults.NotFound());
+        // The frame the hive draws for a screen (e-ink monitors), as the screen will show it.
+        // A panel with tabs: ?tab=0..2 (contracts/monitor-http.md); absent: the person's own layout.
+        devices.MapGet("/{deviceId}/display/preview.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, int? tab, DisplayFeedService feed, CancellationToken ct) =>
+            await feed.PreviewAsync(deviceId, tab, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());
+        // The picture behind the items of a screen the hive draws: the file in the body, exactly the screen's size.
+        devices.MapGet("/{deviceId}/display/background.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
+            await feed.BackgroundAsync(deviceId, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());
+        devices.MapPut("/{deviceId}/display/background", async Task<Results<NoContent, NotFound, ValidationProblem>> (
+                string deviceId, HttpRequest request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+            {
+                var image = await DisplayFontEndpoints.ReadBodyAsync(request, DisplayFeedService.MaxBackgroundBytes, ct);
+                if (image is null)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = ["картинка: до 1 МБ"] });
+                var (status, error) = await feed.SetBackgroundAsync(deviceId, image, $"user:{user.Identity?.Name}", ct);
+                return status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = [error ?? "refused"] }),
+                    _ => TypedResults.NoContent(),
+                };
+            })
+            .WithBinaryBody()
+            .RequireAuthorization(HiveRoles.AdminOnly);
+        devices.MapDelete("/{deviceId}/display/background", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+                await feed.RemoveBackgroundAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.AdminOnly);
+        // Pictures of the state items (a relay lit or dark): at most 100x100, the file in the body; the answer is the id the item keeps.
+        devices.MapPost("/{deviceId}/display/images", async Task<Results<Ok<DisplayImageDto>, NotFound, ValidationProblem>> (
+                string deviceId, HttpRequest request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+            {
+                var image = await DisplayFontEndpoints.ReadBodyAsync(request, DisplayFeedService.MaxImageBytes, ct);
+                if (image is null)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = ["картинка: до 256 КБ"] });
+                var (status, error, saved) = await feed.AddImageAsync(deviceId, image, $"user:{user.Identity?.Name}", ct);
+                return status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = [error ?? "refused"] }),
+                    _ => TypedResults.Ok(saved!),
+                };
+            })
+            .WithBinaryBody()
+            .RequireAuthorization(HiveRoles.AdminOnly);
+        devices.MapGet("/{deviceId}/display/images/{imageId}.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, string imageId, DisplayFeedService feed, CancellationToken ct) =>
+            await feed.ImageAsync(deviceId, imageId, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());
+        // The picture a panel shows while it sleeps (a long press of EXIT): any size up to the screen's.
+        devices.MapGet("/{deviceId}/display/sleep.png", async Task<Results<FileContentHttpResult, NotFound>> (string deviceId, DisplayFeedService feed, CancellationToken ct) =>
+            await feed.SleepAsync(deviceId, ct) is { } png ? TypedResults.File(png, "image/png") : TypedResults.NotFound());
+        devices.MapPut("/{deviceId}/display/sleep", async Task<Results<NoContent, NotFound, ValidationProblem>> (
+                string deviceId, HttpRequest request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+            {
+                var image = await DisplayFontEndpoints.ReadBodyAsync(request, DisplayFeedService.MaxBackgroundBytes, ct);
+                if (image is null)
+                    return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = ["картинка: до 1 МБ"] });
+                var (status, error) = await feed.SetSleepAsync(deviceId, image, $"user:{user.Identity?.Name}", ct);
+                return status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["file"] = [error ?? "refused"] }),
+                    _ => TypedResults.NoContent(),
+                };
+            })
+            .WithBinaryBody()
+            .RequireAuthorization(HiveRoles.AdminOnly);
+        devices.MapDelete("/{deviceId}/display/sleep", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+                await feed.RemoveSleepAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? TypedResults.NoContent() : TypedResults.NotFound())
+            .RequireAuthorization(HiveRoles.AdminOnly);
+        // Monitoring of a panel far away: it reads its screen more often for a while (contracts/monitor-http.md, X-Frame-Refresh).
+        devices.MapPut("/{deviceId}/display/monitoring", async Task<Results<Ok<DisplayItemsDto>, NotFound, ValidationProblem>> (
+                string deviceId, DisplayMonitorRequest request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+            {
+                var (status, error) = await feed.SetMonitorAsync(deviceId, request, $"user:{user.Identity?.Name}", ct);
+                return status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["monitoring"] = [error ?? "refused"] }),
+                    _ => TypedResults.Ok((await feed.GetAsync(deviceId, ct))!),
+                };
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
+        devices.MapDelete("/{deviceId}/display/monitoring", async Task<Results<NoContent, NotFound>> (string deviceId, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+                (await feed.SetMonitorAsync(deviceId, null, $"user:{user.Identity?.Name}", ct)).Status == ConfigUpdateStatus.NotFound ? TypedResults.NotFound() : TypedResults.NoContent())
+            .RequireAuthorization(HiveRoles.CanControl);
+        devices.MapPut("/{deviceId}/display", async Task<Results<Ok<DisplayItemsDto>, NotFound, ValidationProblem>> (
+                string deviceId, DisplayItemsDto request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
+            {
+                var (status, error) = await feed.SaveAsync(deviceId, request.Items, request.Rotation, $"user:{user.Identity?.Name}", ct, request.Invert);
+                return status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["items"] = [error ?? "refused"] }),
+                    _ => TypedResults.Ok((await feed.GetAsync(deviceId, ct))!),
+                };
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
 
         devices.MapPatch("/{deviceId}/config", async Task<Results<Ok<DeviceDto>, NotFound, ValidationProblem>> (
                 string deviceId, UpdateDeviceConfigRequest request, ClaimsPrincipal user, DeviceConfigService configs, DeviceQueries q, CancellationToken ct) =>
@@ -121,7 +325,7 @@ public static class DevicesModule
 
         devices.MapGet("/{deviceId}/pins", async Task<Results<Ok<PinsView>, NotFound>> (string deviceId, DeviceConfigService configs, CancellationToken ct) =>
             await configs.GetPinsAsync(deviceId, ct) is { Status: ConfigUpdateStatus.Updated } r
-                ? TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio))
+                ? TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio, r.Thermometer, r.ThermometerByHand, r.Ntc))
                 : TypedResults.NotFound());
 
         devices.MapPut("/{deviceId}/pins", async Task<Results<Ok<PinsView>, NotFound, ValidationProblem>> (
@@ -132,18 +336,54 @@ public static class DevicesModule
                 {
                     ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
                     ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["pins"] = [r.Error ?? "bad pins"] }),
-                    _ => TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio)),
+                    _ => TypedResults.Ok(new PinsView(r.Rows, r.Conflicts, r.VbatRatio, r.Thermometer, r.ThermometerByHand, r.Ntc)),
                 };
             })
             .RequireAuthorization(HiveRoles.CanControl);
 
+        devices.MapPut("/{deviceId}/features", async Task<Results<Ok<DeviceDto>, NotFound, ValidationProblem>> (
+                string deviceId, DeviceConfigService.FeaturesRequest request, ClaimsPrincipal user, DeviceConfigService configs, DeviceQueries q, CancellationToken ct) =>
+            {
+                var r = await configs.SetFeaturesAsync(deviceId, request, $"user:{user.Identity?.Name}", ct);
+                return r.Status switch
+                {
+                    ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
+                    ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["features"] = [r.Error ?? "bad features"] }),
+                    _ => TypedResults.Ok((await q.GetAsync(deviceId, ct))!),
+                };
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly);
+
         app.MapProvisioningEndpoints();
         app.MapOtaEndpoints();
+        app.MapOtaPendingEndpoints();
+        app.MapFailoverEndpoints();
+        app.MapValueRangeEndpoints();
+        app.MapOtaRolloutEndpoints();
 
         var modes = app.MapGroup("/api/modes").WithTags("modes");
         modes.MapGet("/armed", (ArmService arm, CancellationToken ct) => arm.GetAsync(ct));
-        modes.MapPut("/armed", (SetArmedRequest request, ClaimsPrincipal user, ArmService arm, CancellationToken ct) =>
-                arm.SetAsync(request.Armed, $"user:{user.Identity?.Name}", ct))
+        modes.MapPut("/armed", async Task<Results<Ok<ArmedDto>, BadRequest>> (SetArmedRequest request, ClaimsPrincipal user, ArmService arm, CancellationToken ct) =>
+                await arm.SetAsync(request, $"user:{user.Identity?.Name}", ct) is { } state ? (Results<Ok<ArmedDto>, BadRequest>)TypedResults.Ok(state) : TypedResults.BadRequest())
+            .RequireAuthorization(HiveRoles.CanControl);
+
+        var timelapse = app.MapGroup("/api/timelapse").WithTags("devices");
+        timelapse.MapGet("", (TimelapseService t, CancellationToken ct) => t.ListAsync(ct));
+        timelapse.MapPut("/{deviceId}", async Task<Results<Ok<TimelapseDto>, NotFound, ValidationProblem>> (
+                string deviceId, SetTimelapseRequest request, ClaimsPrincipal user, TimelapseService t, CancellationToken ct) =>
+            {
+                var (status, error, dto) = await t.SetAsync(deviceId, request, $"user:{user.Identity?.Name}", ct);
+                return status switch
+                {
+                    TimelapseStatus.NotFound => TypedResults.NotFound(),
+                    TimelapseStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["timelapse"] = [error ?? "bad request"] }),
+                    _ => TypedResults.Ok(dto!),
+                };
+            })
+            .RequireAuthorization(HiveRoles.CanControl);
+        timelapse.MapDelete("/{deviceId}", async Task<Results<NoContent, NotFound>> (
+                string deviceId, ClaimsPrincipal user, TimelapseService t, CancellationToken ct) =>
+                await t.StopAsync(deviceId, $"user:{user.Identity?.Name}", ct) ? (Results<NoContent, NotFound>)TypedResults.NoContent() : TypedResults.NotFound())
             .RequireAuthorization(HiveRoles.CanControl);
         return app;
     }

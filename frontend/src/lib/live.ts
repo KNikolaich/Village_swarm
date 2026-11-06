@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import type { DeviceDto, EventDto, LatestValueDto } from '@/api/client'
 import { keys, patchEventInCache, type EventFilters } from '@/api/queries'
+import { addLiveReading, type SeriesPoint } from '@/lib/liveSeries'
 import { eventTypeLabel } from '@/i18n'
 
 // Messages pushed by the api on /hubs/live (backend/src/Hive.Api/Live/LiveHub.cs).
@@ -43,6 +44,7 @@ export function useLive(enabled: boolean): LiveState {
           pages: [{ ...data.pages[0], items: [e, ...data.pages[0].items] }, ...data.pages.slice(1)],
         })
       }
+      if (e.type.startsWith('monitor_')) void qc.invalidateQueries({ queryKey: keys.monitoring })
       if (e.severity === 'alarm' || e.severity === 'critical') {
         toast.error(`${eventTypeLabel(e.type)}: ${e.zone ?? e.deviceName ?? e.deviceId}`, { duration: 10_000 })
       }
@@ -62,6 +64,10 @@ export function useLive(enabled: boolean): LiveState {
         const rest = list.filter((x) => !(x.deviceId === t.deviceId && x.metric === t.metric))
         return [...rest, { deviceId: t.deviceId, metric: t.metric, ts: t.ts, value: t.value }]
       })
+      // Charts of this device and metric, whatever their window: ['telemetry', 'series', device, metric, hours].
+      for (const [key, data] of qc.getQueriesData<SeriesPoint[]>({ queryKey: ['telemetry', 'series', t.deviceId, t.metric] })) {
+        if (data) qc.setQueryData<SeriesPoint[]>(key, addLiveReading(data, t.ts, t.value, JSON.stringify(key)))
+      }
     })
 
     connection.on('DeviceStatus', (s: LiveDeviceStatus) => {

@@ -12,5 +12,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Hive.Tests.Unit" />
+    <InternalsVisibleTo Include="Hive.Tests.Integration" />
   </ItemGroup>
 </Project>

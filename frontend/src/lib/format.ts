@@ -24,6 +24,11 @@ export function formatWhen(iso: string, now = new Date()): string {
   return full().format(d)
 }
 
+/** A camera that could not take a fresh frame sends an older one with its own time; a minute of slack (as the hive). */
+export function takenBefore(photoTs: string, askedTs: string): boolean {
+  return new Date(photoTs).getTime() < new Date(askedTs).getTime() - 60_000
+}
+
 /** "только что" / "just now", "5 мин назад" / "5 min ago", "2 ч назад" / "2 h ago", then the date. */
 export function formatAgo(iso: string | null | undefined, now = new Date()): string {
   if (!iso) return '—'
@@ -48,10 +53,16 @@ export function parseIsoDate(s: string): Date {
 }
 
 export const metricUnit = (metric: string) =>
-  metric === 'temperature' || metric === 'cpu_temperature' ? '°' : metric === 'humidity' || metric === 'disk_used_pct' ? '%' : ''
+  metric.startsWith('temperature') || metric === 'cpu_temperature' ? '°'
+    : metric === 'humidity' || metric === 'disk_used_pct' ? '%'
+      : metric === 'battery_voltage' ? ' ' + t('units.volt')
+        : metric === 'pressure' ? ' ' + t('units.hpa')
+          : ''
 
 export function formatValue(metric: string, value: number): string {
-  return `${value.toLocaleString(locale(), { maximumFractionDigits: 1 })}${metricUnit(metric)}`
+  // Battery voltage needs hundredths: a 12 V battery's whole charge range is about 1.5 V.
+  const digits = metric === 'battery_voltage' ? 2 : 1
+  return `${value.toLocaleString(locale(), { maximumFractionDigits: digits })}${metricUnit(metric)}`
 }
 
 /** A number with a fixed count of decimals in the interface language, for axis labels. */
@@ -73,3 +84,16 @@ export const formatHm = (iso: string) =>
 /** "Ср" / "Wed" for a calendar date "2026-10-14" (a date has no zone, so it is read as UTC and shown as UTC). */
 export const formatWeekdayShort = (date: string) =>
   new Intl.DateTimeFormat(locale(), { weekday: 'short', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`))
+
+/** "12,4 МБ" / "12.4 MB": file sizes for backups. */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null) return '—'
+  const units = getLanguage() === 'en' ? ['B', 'KB', 'MB', 'GB'] : ['Б', 'КБ', 'МБ', 'ГБ']
+  let value = bytes
+  let i = 0
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024
+    i++
+  }
+  return `${value.toLocaleString(locale(), { maximumFractionDigits: value < 10 && i > 0 ? 1 : 0 })} ${units[i]}`
+}

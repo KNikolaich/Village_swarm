@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # Caddy with the built frontend inside (spec 13.2: the UI does not depend on the api image).
 #   docker buildx build --platform linux/arm64 -f deploy/docker/web.Dockerfile -t village-swarm-web .
 
@@ -7,6 +6,9 @@ WORKDIR /src/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
+# The page knows which hive build it belongs to: an old copy kept by a browser shows itself (sidebar, "↻").
+ARG HIVE_VERSION=dev
+ENV VITE_HIVE_VERSION=$HIVE_VERSION
 RUN npm run build
 
 FROM caddy:2-alpine

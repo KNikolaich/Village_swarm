@@ -37,6 +37,12 @@ public static partial class Topics
     public static string State(string id) => $"{Device(id)}/state";
     public static string Log(string id) => $"{Device(id)}/log";
     public static string Config(string id) => $"{Device(id)}/config";
+
+    /// <summary>What the hive wants the hornet's screen to show (retained).</summary>
+    public static string Display(string id) => $"{Prefix}/hive/display/{CheckId(id)}";
+
+    /// <summary>Wheel speeds for a car, while a control is held (contracts/mqtt-topics.md "Car").</summary>
+    public static string Drive(string id) => $"{Prefix}/hive/drive/{CheckId(id)}";
     public static string Tele(string id, string metric) => $"{Device(id)}/tele/{CheckSegment(metric)}";
     public static string Event(string id, string type) => $"{Device(id)}/event/{CheckSegment(type)}";
     public static string Cmd(string id, string name) => $"{Device(id)}/cmd/{CheckSegment(name)}";

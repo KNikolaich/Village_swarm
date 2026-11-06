@@ -1,0 +1,43 @@
+# Zigbee (docs/zigbee.md): the zigbee2mqtt container for a USB Zigbee dongle on the RPi, and the api switched on for it.
+# Off by default. To use it, add this file to COMPOSE_FILE in /opt/hive/.env:
+#   COMPOSE_FILE=compose.yaml:compose.home.yaml:compose.zigbee.yaml
+# and set ZIGBEE_DEVICE (the dongle's path, see docs/zigbee.md) and ZIGBEE_MQTT_PASSWORD there.
+services:
+  zigbee2mqtt:
+    image: koenkk/zigbee2mqtt:${ZIGBEE2MQTT_VERSION:-latest}
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    # The dongle appears as /dev/serial/by-id/usb-... (stable) or /dev/ttyACM0.
+    devices:
+      - ${ZIGBEE_DEVICE:?set ZIGBEE_DEVICE in .env (the Zigbee dongle, e.g. /dev/serial/by-id/usb-...)}:/dev/zigbee
+    environment:
+      TZ: ${HIVE_TIMEZONE:-Europe/Moscow}
+      # Settings through the environment (zigbee2mqtt reads ZIGBEE2MQTT_CONFIG_*): nothing to edit by hand.
+      ZIGBEE2MQTT_CONFIG_MQTT_SERVER: mqtt://mosquitto:1883
+      ZIGBEE2MQTT_CONFIG_MQTT_USER: zigbee2mqtt
+      ZIGBEE2MQTT_CONFIG_MQTT_PASSWORD: ${ZIGBEE_MQTT_PASSWORD:?set ZIGBEE_MQTT_PASSWORD in .env}
+      ZIGBEE2MQTT_CONFIG_SERIAL_PORT: /dev/zigbee
+      # Sonoff ZBDongle-E (EFR32): "ember". A ZBDongle-P or SLZB-06P (CC2652): "zstack". ConBee: "deconz".
+      ZIGBEE2MQTT_CONFIG_SERIAL_ADAPTER: ${ZIGBEE_ADAPTER:-ember}
+      # "online"/"offline" of every device (the hive marks a Zigbee sensor offline from it).
+      ZIGBEE2MQTT_CONFIG_AVAILABILITY_ENABLED: "true"
+      ZIGBEE2MQTT_CONFIG_PERMIT_JOIN: "false"
+      ZIGBEE2MQTT_CONFIG_FRONTEND_ENABLED: "false"
+      ZIGBEE2MQTT_CONFIG_HOMEASSISTANT_ENABLED: "false"
+    volumes:
+      # The network key and every paired device live here: lose it and each device has to be paired again (it is backed up).
+      - ${HIVE_DATA:-/srv/hive}/zigbee2mqtt:/app/data
+    depends_on:
+      mosquitto: { condition: service_started }
+    mem_limit: 192m
+
+  api:
+    environment:
+      Zigbee__Enabled: "true"
+      Zigbee__MqttPassword: ${ZIGBEE_MQTT_PASSWORD}
+
+  backup:
+    volumes:
+      - ${HIVE_DATA:-/srv/hive}/zigbee2mqtt:/source/zigbee2mqtt:ro

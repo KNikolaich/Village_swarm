@@ -17,8 +17,9 @@ export function EventsPage() {
     type: params.get('type') ?? undefined,
     device: params.get('device') ?? undefined,
     severity: params.get('severity') ?? undefined,
+    unacknowledged: params.get('unacknowledged') === '1' ? true : undefined,
   }
-  const devices = useDevices()
+  const devices = useDevices(true)
   const events = useEvents(filters)
   const [viewer, setViewer] = useState<{ photos: PhotoRef[]; index: number } | null>(null)
   const sentinel = useRef<HTMLDivElement>(null)
@@ -34,7 +35,7 @@ export function EventsPage() {
     return () => io.disconnect()
   }, [hasNextPage, isFetchingNextPage, fetchNextPage])
 
-  const setFilter = (key: keyof EventFilters, value: string) => {
+  const setFilter = (key: 'type' | 'device' | 'severity' | 'unacknowledged', value: string) => {
     const next = new URLSearchParams(params)
     if (value) next.set(key, value)
     else next.delete(key)
@@ -60,6 +61,10 @@ export function EventsPage() {
         <Select value={filters.severity ?? ''} onChange={(e) => setFilter('severity', e.target.value)}>
           <option value="">{t('events.allSeverities')}</option>
           {severities.map((x) => <option key={x} value={x}>{severityLabel(x)}+</option>)}
+        </Select>
+        <Select value={filters.unacknowledged ? '1' : ''} onChange={(e) => setFilter('unacknowledged', e.target.value)} aria-label={t('events.status')}>
+          <option value="">{t('events.allStatuses')}</option>
+          <option value="1">{t('events.unacknowledged')}</option>
         </Select>
         <Button
           variant="secondary"

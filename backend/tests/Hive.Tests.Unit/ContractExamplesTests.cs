@@ -31,11 +31,16 @@ public class ContractExamplesTests
         ["cmd-arm"] = typeof(ArmCommand),
         ["cmd-snapshot"] = typeof(SnapshotCommand),
         ["cmd-ota"] = typeof(OtaCommand),
+        ["cmd-ir"] = typeof(IrCommand),
         ["event-ota"] = typeof(OtaEvent),
+        ["cmd-wifi"] = typeof(WifiCommand),
+        ["event-wifi"] = typeof(WifiEvent),
         ["ack"] = typeof(AckMessage),
         ["config"] = typeof(DeviceConfig),
         ["heartbeat"] = typeof(HeartbeatMessage),
         ["active"] = typeof(ActiveNodeMessage),
+        ["display"] = typeof(DisplayMessage),
+        ["drive"] = typeof(DriveMessage),
     };
 
     public static TheoryData<string, string> ValidExamples() => Examples(invalid: false);

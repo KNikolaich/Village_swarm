@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Hive.Contracts;
 using Hive.Domain;
 using Hive.Simulator;
 using Hive.Simulator.Roles;
@@ -17,16 +18,24 @@ public sealed class OtaTests(HiveFixture hive)
 {
     private const string Board = "esp32c3-supermini"; // what the simulator meteo hornet reports as hw
 
-    private byte[] AddBuild(string name, string role, string board, string version, int size = 4096)
+    /// <summary>
+    /// A build in firmware/dist layout. <paramref name="signature"/> is what scripts/dist.py writes for a signed build
+    /// (the hive only passes it on, so any 128 hex characters stand in for it); <paramref name="staleDigest"/> makes
+    /// build.json describe another image than the one on disk, as after a rebuild without re-signing.
+    /// </summary>
+    private byte[] AddBuild(string name, string role, string board, string version, int size = 4096, string? signature = null, bool staleDigest = false)
     {
         var dir = Path.Combine(hive.FirmwareRoot, name);
         Directory.CreateDirectory(dir);
         var image = RandomNumberGenerator.GetBytes(size);
         File.WriteAllBytes(Path.Combine(dir, "firmware.bin"), image);
+        var sha512 = Convert.ToHexStringLower(SHA512.HashData(staleDigest ? [1, 2, 3] : image));
         File.WriteAllText(Path.Combine(dir, "build.json"), JsonSerializer.Serialize(new
         {
             env = name, role, board, version, chipFamily = "ESP32-C3",
             parts = new[] { new { file = "firmware.bin", offset = 0 } },
+            sha512 = signature is null ? null : sha512,
+            signature,
         }));
         return image;
     }
@@ -41,6 +50,23 @@ public sealed class OtaTests(HiveFixture hive)
         foreach (var m in hornet.OnConnected(DateTimeOffset.UtcNow))
             await link.PublishAsync(m.Topic, m.Payload, m.Retain, m.Qos1, CancellationToken.None);
         await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == id && d.Status == DeviceStatus.Online), "device online");
+    }
+
+    [Fact]
+    public async Task The_flasher_never_gets_an_image_from_a_cache()
+    {
+        var image = AddBuild("car-flash1", "car", "esp32cam-aithinker", "0.2.1+5f514e4");
+        using var client = await hive.LoginAsync();
+        using var manifest = await client.GetAsync("/api/firmware/car-flash1/manifest.json");
+        Assert.True(manifest.Headers.CacheControl?.NoStore, "the manifest is never cached");
+        var path = JsonDocument.Parse(await manifest.Content.ReadAsStringAsync()).RootElement
+            .GetProperty("builds")[0].GetProperty("parts")[0].GetProperty("path").GetString();
+        Assert.Equal("/api/firmware/car-flash1/firmware.bin?v=0.2.1%2B5f514e4", path); // a new version is a new address
+
+        using var part = await client.GetAsync(path);
+        Assert.Equal(HttpStatusCode.OK, part.StatusCode);
+        Assert.True(part.Headers.CacheControl?.NoStore, "the image is never cached");
+        Assert.Equal(image, await part.Content.ReadAsByteArrayAsync());
     }
 
     [Fact]
@@ -73,6 +99,64 @@ public sealed class OtaTests(HiveFixture hive)
         Assert.Equal(Convert.ToHexStringLower(MD5.HashData(image)), cmd.RootElement.GetProperty("md5").GetString());
         Assert.Equal(image.Length, cmd.RootElement.GetProperty("size").GetInt32());
         Assert.Equal("9.9.9+test", cmd.RootElement.GetProperty("version").GetString());
+    }
+
+    [Fact]
+    public async Task A_signed_build_sends_its_signature_and_one_that_no_longer_matches_it_is_refused()
+    {
+        var signature = new string('a', 128);
+        AddBuild("meteo-ota-signed", "meteo", Board, "9.9.9+signed", signature: signature);
+        AddBuild("meteo-ota-stale", "meteo", Board, "9.9.9+stale", signature: signature, staleDigest: true);
+        await RegisterAsync("meteo-ota-sig");
+
+        using var client = new MqttClientFactory().CreateMqttClient();
+        string? seen = null;
+        client.ApplicationMessageReceivedAsync += m =>
+        {
+            seen = m.ApplicationMessage.ConvertPayloadToString();
+            return Task.CompletedTask;
+        };
+        await client.ConnectAsync(new MqttClientOptionsBuilder().WithTcpServer(hive.MqttHost, hive.MqttPort).WithClientId("ota-sig-watch").Build());
+        await client.SubscribeAsync("vs/v1/dev/meteo-ota-sig/cmd/ota");
+
+        var admin = await hive.LoginAsync();
+        using var stale = await admin.PostAsJsonAsync("/api/devices/meteo-ota-sig/ota", new { build = "meteo-ota-stale" });
+        Assert.Equal(HttpStatusCode.BadRequest, stale.StatusCode);
+
+        using var ok = await admin.PostAsJsonAsync("/api/devices/meteo-ota-sig/ota", new { build = "meteo-ota-signed" });
+        Assert.Equal(HttpStatusCode.Accepted, ok.StatusCode);
+        for (var i = 0; i < 50 && seen is null; i++)
+            await Task.Delay(100);
+        using var cmd = JsonDocument.Parse(seen ?? throw new TimeoutException("no ota command"));
+        Assert.Equal(signature, cmd.RootElement.GetProperty("sig").GetString());
+
+        var builds = await admin.GetFromJsonAsync<JsonElement>("/api/firmware");
+        Assert.True(builds.EnumerateArray().Single(b => b.GetProperty("build").GetString() == "meteo-ota-signed").GetProperty("signed").GetBoolean());
+    }
+
+    [Fact]
+    public async Task An_unsigned_build_sends_no_signature()
+    {
+        AddBuild("meteo-ota-plain", "meteo", Board, "9.9.9+plain");
+        await RegisterAsync("meteo-ota-nosig");
+
+        using var client = new MqttClientFactory().CreateMqttClient();
+        string? seen = null;
+        client.ApplicationMessageReceivedAsync += m =>
+        {
+            seen = m.ApplicationMessage.ConvertPayloadToString();
+            return Task.CompletedTask;
+        };
+        await client.ConnectAsync(new MqttClientOptionsBuilder().WithTcpServer(hive.MqttHost, hive.MqttPort).WithClientId("ota-nosig-watch").Build());
+        await client.SubscribeAsync("vs/v1/dev/meteo-ota-nosig/cmd/ota");
+
+        var admin = await hive.LoginAsync();
+        using var ok = await admin.PostAsJsonAsync("/api/devices/meteo-ota-nosig/ota", new { build = "meteo-ota-plain" });
+        Assert.Equal(HttpStatusCode.Accepted, ok.StatusCode);
+        for (var i = 0; i < 50 && seen is null; i++)
+            await Task.Delay(100);
+        using var cmd = JsonDocument.Parse(seen ?? throw new TimeoutException("no ota command"));
+        Assert.False(cmd.RootElement.TryGetProperty("sig", out _));
     }
 
     [Fact]
@@ -117,4 +201,72 @@ public sealed class OtaTests(HiveFixture hive)
         Assert.Equal(image, await ok.Content.ReadAsByteArrayAsync());
         Assert.Equal(HttpStatusCode.NotFound, (await hornet.GetAsync("/api/ota/no-such-build/firmware.bin")).StatusCode);
     }
+    /// <summary>A deep sleeper cannot take a command while it sleeps: the hive keeps the wish and sends "ota" when the hornet wakes.</summary>
+    [Fact]
+    public async Task An_update_for_a_sleeper_waits_and_goes_out_when_the_hornet_wakes()
+    {
+        AddBuild("meteo-ota-sleep", "meteo", Board, "9.9.9+sleep");
+        await RegisterAsync("meteo-ota-sl");
+        await RegisterAsync("meteo-ota-awake");
+        var admin = await hive.LoginAsync();
+        using var sleepy = await admin.PatchAsJsonAsync("/api/devices/meteo-ota-sl/config", new { sleepS = 600 });
+        Assert.Equal(HttpStatusCode.OK, sleepy.StatusCode);
+
+        // only a deep sleeper may wait
+        using var refused = await admin.PutAsJsonAsync("/api/devices/meteo-ota-awake/ota/pending", new { build = "meteo-ota-sleep" });
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+
+        using var queued = await admin.PutAsJsonAsync("/api/devices/meteo-ota-sl/ota/pending", new { build = "meteo-ota-sleep" });
+        Assert.Equal(HttpStatusCode.NoContent, queued.StatusCode);
+        var list = await admin.GetFromJsonAsync<JsonElement>("/api/ota/pending");
+        var entry = list.EnumerateArray().Single(p => p.GetProperty("deviceId").GetString() == "meteo-ota-sl");
+        Assert.Equal(("meteo-ota-sleep", "9.9.9+sleep", 0), (entry.GetProperty("build").GetString(), entry.GetProperty("version").GetString(), entry.GetProperty("attempts").GetInt32()));
+
+        using var client = new MqttClientFactory().CreateMqttClient();
+        string? seen = null;
+        client.ApplicationMessageReceivedAsync += m =>
+        {
+            seen = m.ApplicationMessage.ConvertPayloadToString();
+            return Task.CompletedTask;
+        };
+        await client.ConnectAsync(new MqttClientOptionsBuilder().WithTcpServer(hive.MqttHost, hive.MqttPort).WithClientId("ota-sleep-watch").Build());
+        await client.SubscribeAsync("vs/v1/dev/meteo-ota-sl/cmd/ota");
+
+        // a health that is not from a wake-up sends nothing
+        await PublishHealthAsync(client, "meteo-ota-sl", "poweron");
+        await Task.Delay(1200);
+        Assert.Null(seen);
+
+        await PublishHealthAsync(client, "meteo-ota-sl", "deepsleep");
+        for (var i = 0; i < 50 && seen is null; i++)
+            await Task.Delay(100);
+        using var cmd = JsonDocument.Parse(seen ?? throw new TimeoutException("no ota command at the wake-up"));
+        Assert.Equal("9.9.9+sleep", cmd.RootElement.GetProperty("version").GetString());
+        // it stays queued (attempt 1) until the hornet reports the new version
+        await hive.WaitForAsync(async _ => (await admin.GetFromJsonAsync<JsonElement>("/api/ota/pending")).EnumerateArray()
+            .Any(p => p.GetProperty("deviceId").GetString() == "meteo-ota-sl" && p.GetProperty("attempts").GetInt32() == 1), "attempt counted");
+
+        // the hornet came back on the new version: the next wake-up finds nothing left to do
+        // (the health messages sent above may still be in the ingest queue, and writing the device row back: let them finish first)
+        await Task.Delay(1500);
+        await hive.QueryAsync(async db =>
+        {
+            (await db.Devices.SingleAsync(d => d.DeviceId == "meteo-ota-sl")).FwVersion = "9.9.9+sleep";
+            await db.SaveChangesAsync();
+            return 0;
+        });
+        seen = null;
+        await PublishHealthAsync(client, "meteo-ota-sl", "deepsleep");
+        await hive.WaitForAsync(async _ => !(await admin.GetFromJsonAsync<JsonElement>("/api/ota/pending")).EnumerateArray()
+            .Any(p => p.GetProperty("deviceId").GetString() == "meteo-ota-sl"), "the finished wish removed");
+        Assert.Null(seen);
+
+        // a version the hornet already runs is not queued
+        using var again = await admin.PutAsJsonAsync("/api/devices/meteo-ota-sl/ota/pending", new { build = "meteo-ota-sleep" });
+        Assert.Equal(HttpStatusCode.BadRequest, again.StatusCode);   // it already runs that version
+    }
+
+    private static Task PublishHealthAsync(IMqttClient client, string id, string resetReason) => client.PublishStringAsync(
+        $"vs/v1/dev/{id}/health",
+        JsonSerializer.Serialize(new { v = 1, id = Ulid.New(), ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), uptime_s = 3, rssi = -60, heap_free = 20000, reset_reason = resetReason }));
 }

@@ -16,6 +16,9 @@ public sealed class NativeHornetAdapter(IngestQueue queue, ILogger<NativeHornetA
 
     public ValueTask HandleAsync(string topic, ReadOnlyMemory<byte> payload, bool retained, DateTimeOffset receivedAt)
     {
+        // The hive's own cluster traffic (vs/v1/hive/..., vs/v1/sync/...) also reaches the subscriber: not ours, not worth a warning.
+        if (!IsDeviceTopic(topic))
+            return ValueTask.CompletedTask;
         var item = Parse(topic, payload.Span, receivedAt, out var error);
         if (error is not null)
             logger.LogWarning("Dropped {Topic}: {Error}", topic, error);
@@ -23,6 +26,8 @@ public sealed class NativeHornetAdapter(IngestQueue queue, ILogger<NativeHornetA
             queue.Enqueue(item);
         return ValueTask.CompletedTask;
     }
+
+    public static bool IsDeviceTopic(string topic) => topic.StartsWith(Topics.Prefix + "/dev/", StringComparison.Ordinal);
 
     public static DateTimeOffset EffectiveTs(long ts, DateTimeOffset receivedAt) => MessageTime.Effective(ts, receivedAt);
 

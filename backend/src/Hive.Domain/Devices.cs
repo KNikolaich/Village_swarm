@@ -24,6 +24,21 @@ public class Zone
     public int Id { get; set; }
     public required string Name { get; set; }
     public ZoneKind Kind { get; set; }
+
+    /// <summary>Place in lists (swarm groups, climate cards): lower first, equal ones by id.</summary>
+    public int Sort { get; set; }
+}
+
+/// <summary>
+/// How the overview is laid out on one kind of screen ("desktop" or "phone"): the widgets in order, each with its
+/// width in twelfths of a row and whether it is hidden. One for the whole family, set by an administrator.
+/// </summary>
+public class DashboardLayout
+{
+    public required string Screen { get; set; }
+    public required JsonDocument Items { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public string? UpdatedBy { get; set; }
 }
 
 /// <summary>Kind of hornet: guard-cam, meteo, heat... Seeded; provisioning picks one (spec 6.4).</summary>
@@ -36,6 +51,58 @@ public class DeviceType
 
     /// <summary>No health for this long marks the device offline.</summary>
     public int OfflineAfterS { get; set; } = 180;
+}
+
+/// <summary>How a device talks MQTT. Hornets use the vs/v1 contract; Tasmota and OpenBeken use cmnd/stat/tele (contracts/tasmota.md).</summary>
+public static class Drivers
+{
+    public const string Hornet = "hornet";
+    public const string Tasmota = "tasmota";
+    public const string Zigbee = "zigbee";
+
+    /// <summary>A channel of a Dahua NVR: the hive itself reads its events and snapshots over HTTP (contracts/ipcam.md).</summary>
+    public const string IpCam = "ipcam";
+
+    /// <summary>
+    /// A monitor far away that only reads its screen over HTTPS with its token (contracts/monitor-http.md): no MQTT, no
+    /// enrollment. Added by hand in the UI; seen when it last read.
+    /// </summary>
+    public const string Http = "http";
+}
+
+/// <summary>Device types that take photos: our guard-cams and IP cameras behind an NVR.</summary>
+public static class Cameras
+{
+    public const string GuardCam = "guard-cam";
+    public const string IpCam = "ipcam";
+
+    /// <summary>A Dahua NVR as a device of its own: the parent of its camera channels in the swarm (not a camera itself).</summary>
+    public const string Nvr = "nvr";
+
+    /// <summary>For queries: <c>Cameras.Types.Contains(d.TypeCode)</c> translates to SQL.</summary>
+    public static readonly string[] Types = [GuardCam, IpCam];
+}
+
+/// <summary>
+/// How a camera's picture is turned clockwise (config camera.rotate: 0, 90, 180, 270), for any device with a picture: a
+/// guard-cam, a car, an IP camera. The browser turns live video; the hive turns photos when it stores them.
+/// </summary>
+public static class VideoRotation
+{
+    public static readonly int[] Allowed = [0, 90, 180, 270];
+
+    public static int Of(JsonDocument? config) =>
+        config is not null && config.RootElement.ValueKind == JsonValueKind.Object
+        && config.RootElement.TryGetProperty("camera", out var camera) && camera.ValueKind == JsonValueKind.Object
+        && camera.TryGetProperty("rotate", out var r) && r.TryGetInt32(out var deg) && Allowed.Contains(deg)
+            ? deg
+            : 0;
+}
+
+/// <summary>A car: an ESP32-CAM on two motors, driven from the hive (contracts/mqtt-topics.md "Car").</summary>
+public static class Cars
+{
+    public const string Type = "car";
 }
 
 /// <summary>A hornet. <see cref="DeviceId"/> is the MQTT id (guard-gate1), <see cref="Id"/> the surrogate key.</summary>
@@ -52,6 +119,9 @@ public class Device
     public string? FwVersion { get; set; }
     public DeviceStatus Status { get; set; } = DeviceStatus.Pending;
     public DateTimeOffset? LastSeenAt { get; set; }
+
+    /// <summary>When the family was told this hornet is gone (null: not reported, or back again).</summary>
+    public DateTimeOffset? OfflineReportedAt { get; set; }
     public string? Ip { get; set; }
     public int? Rssi { get; set; }
     public int? Boot { get; set; }
@@ -65,11 +135,116 @@ public class Device
     public JsonDocument? Config { get; set; }
     public int ConfigRev { get; set; }
     public int? ConfigAppliedRev { get; set; }
+
+    /// <summary>A monitoring session in progress (Hive.Modules.Telemetry.Monitoring): frequent readings for a while; null when off.</summary>
+    public JsonDocument? Monitor { get; set; }
+
+    /// <summary>A camera's timelapse (Hive.Modules.Devices.Timelapse): a photo every so often, with its light if asked; null when off.</summary>
+    public JsonDocument? Timelapse { get; set; }
+
     public string? MqttUser { get; set; }
+
+    /// <summary>
+    /// The device this one belongs to (an NVR for its camera channels): the swarm lists it under that one. Null: on its own.
+    /// </summary>
+    public string? ParentId { get; set; }
+
+    /// <summary>Who speaks for the device on the broker: our own firmware or a Tasmota/OpenBeken one (see <see cref="Drivers"/>).</summary>
+    public string Driver { get; set; } = Drivers.Hornet;
 
     /// <summary>SHA-256 (hex) of the bearer token the hornet uses for photo uploads; issued at provisioning.</summary>
     public string? UploadTokenHash { get; set; }
 
+    /// <summary>
+    /// SHA-256 (hex) of the token a monitor reads its screen with from anywhere (GET /api/monitor/v1/frame, ScreenAccess).
+    /// Read only: it opens nothing but the texts of this device's own screen. Null: no access from outside.
+    /// </summary>
+    public string? ScreenTokenHash { get; set; }
+
+    public DateTimeOffset? ScreenTokenIssuedAt { get; set; }
+
+    /// <summary>The last read with the screen token: when, from which address, and whether it came from the internet.</summary>
+    public DateTimeOffset? ScreenReadAt { get; set; }
+
+    public string? ScreenReadFrom { get; set; }
+    public bool ScreenReadExternal { get; set; }
+
+    /// <summary>The picture behind the items of a screen the hive draws (PNG, the size of the screen as it is turned), with its short hash.</summary>
+    public byte[]? ScreenBackground { get; set; }
+
+    public string? ScreenBackgroundSha { get; set; }
+
+    /// <summary>The picture a panel shows while it sleeps (PNG, at most the size of the screen as it is turned), with its short hash.</summary>
+    public byte[]? ScreenSleep { get; set; }
+
+    public string? ScreenSleepSha { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public string? Notes { get; set; }
+
+    /// <summary>
+    /// Made on this node (enrolled through its own screen), not a copy of the other node's device. The city keeps its own hornets next
+    /// to the copies of home's: only these can be changed there, and their rules and notifications run there.
+    /// </summary>
+    public bool Local { get; set; }
+
+    /// <summary>
+    /// A hornet of the other hive that is let in here (the city's own hornet, carried to the dacha): shown as a guest, and not reported as
+    /// missing while it is away.
+    /// </summary>
+    public bool Visitor { get; set; }
+
+    /// <summary>Place in the swarm list inside its group: lower first, equal ones in the usual order (trouble first, then id).</summary>
+    public int Sort { get; set; }
+
+    /// <summary>
+    /// What the zone cards and the overview show of this hornet: its readings by metric (temperature_2...) and its
+    /// buttons (snapshot, light, relay). Null: the defaults of its kind, chosen by the UI.
+    /// </summary>
+    public List<string>? Dashboard { get; set; }
+
+    /// <summary>
+    /// "Cleared" on the hornet's page: its command history and its journal show only what came after. The rows stay
+    /// until the retention cleanup takes them (logs after a month, commands with the rest of the housekeeping).
+    /// </summary>
+    public DateTimeOffset? CommandsClearedAt { get; set; }
+
+    public DateTimeOffset? LogsClearedAt { get; set; }
+}
+
+/// <summary>
+/// A small picture of a screen's item (a relay shown as a picture: lit and dark): at most 100x100 pixels, kept as PNG, named by the
+/// first 16 hex digits of its SHA-256 so that the same file is one row.
+/// </summary>
+public class DisplayImage
+{
+    public required string DeviceId { get; set; }
+    public required string Id { get; set; }
+    public required byte[] Png { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// A font a person uploaded for the screens the hive draws (TTF/OTF): one face (regular, bold, italic or bold italic) of a family.
+/// The fonts that come with the hive are not here; they are built into it.
+/// </summary>
+public class DisplayFont
+{
+    /// <summary>Family id (a slug of its name) and the style: "my-font", "my-font-b", "my-font-i", "my-font-bi".</summary>
+    public required string Id { get; set; }
+
+    public required string FamilyId { get; set; }
+    public required string Family { get; set; }
+    public bool Bold { get; set; }
+    public bool Italic { get; set; }
+
+    /// <summary>It has Russian letters / only digits and a few signs (a segment display): the picker says so.</summary>
+    public bool Cyrillic { get; set; }
+
+    public bool DigitsOnly { get; set; }
+    public required byte[] Data { get; set; }
+    public required string Sha { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 }

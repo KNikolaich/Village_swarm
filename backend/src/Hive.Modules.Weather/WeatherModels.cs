@@ -1,14 +1,14 @@
 namespace Hive.Modules.Weather;
 
-/// <summary>Weather now. Wind speed is m/s, temperatures °C, precipitation mm.</summary>
+/// <summary>Weather now. Wind speed is m/s, temperatures °C, precipitation mm, pressure hPa at sea level, clouds percent.</summary>
 public sealed record WeatherCurrentDto(
     DateTimeOffset Time, double Temperature, double? Apparent, double? Humidity, double? Precipitation,
-    int WeatherCode, double? WindSpeed, int? WindDirection);
+    int WeatherCode, double? WindSpeed, int? WindDirection, double? Pressure = null, int? CloudCover = null);
 
 /// <summary>One hour. <see cref="PrecipitationProbability"/> is percent, null when the model has none for that hour.</summary>
 public sealed record WeatherHourDto(
     DateTimeOffset Time, double Temperature, double? Apparent, int? PrecipitationProbability, double Precipitation,
-    int WeatherCode, double? WindSpeed, int? WindDirection, double? Humidity);
+    int WeatherCode, double? WindSpeed, int? WindDirection, double? Humidity, double? Pressure = null, int? CloudCover = null);
 
 public sealed record WeatherDayDto(
     DateOnly Date, double TemperatureMin, double TemperatureMax, double PrecipitationSum, int? PrecipitationProbabilityMax,

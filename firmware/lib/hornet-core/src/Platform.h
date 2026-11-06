@@ -47,6 +47,10 @@ bool loadWifiHint(WifiHint& hint);
 void saveWifiHint(const WifiHint& hint);
 void clearWifiHint();
 
+// ESP-01 flashed by USB from a build with the older file system layout: copies its settings to this build's place
+// (LegacyFs.h). Runs before anything opens the settings; true when settings were copied.
+bool adoptOldSettings();
+
 using Headers = std::vector<std::pair<String, String>>;
 
 // Plain HTTP POST; returns the status code (negative on connection errors) and fills response.

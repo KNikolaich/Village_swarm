@@ -4,6 +4,7 @@ using DotNet.Testcontainers.Containers;
 using Hive.Infrastructure.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Testcontainers.PostgreSql;
 
@@ -33,14 +34,30 @@ public sealed class HiveFixture : IAsyncLifetime
 
     public const string AdminPassword = "test-admin-password";
 
-    /// <summary>HttpClient with a logged-in session cookie.</summary>
+    /// <summary>Letters the hive "sends" (Smtp:PickupDirectory): one .eml file each.</summary>
+    public string MailRoot { get; } = Path.Combine(Path.GetTempPath(), $"hive-mail-{Guid.NewGuid():N}");
+
+    /// <summary>HttpClient with a logged-in session cookie. A new device of a user with Telegram types the code the bot sent.</summary>
     public async Task<HttpClient> LoginAsync(string login = "admin", string password = AdminPassword)
     {
         var client = App.CreateClient();
         using var response = await client.PostAsJsonAsync("/api/auth/login", new { login, password });
         response.EnsureSuccessStatusCode();
+        var status = (await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("status").GetString();
+        if (status == "codeRequired")
+        {
+            using var second = await client.PostAsJsonAsync("/api/auth/totp", new { code = LastLoginCode() });
+            second.EnsureSuccessStatusCode();
+        }
+        else
+            Assert.Equal("ok", status);
         return client;
     }
+
+    /// <summary>The code from the newest "Код для входа" message the bot sent.</summary>
+    public string LastLoginCode() =>
+        Telegram.Outbox.Reverse().Select(s => System.Text.RegularExpressions.Regex.Match(s.Text ?? "", @"Код для входа в Улей: <code>(\d{6})</code>"))
+            .First(m => m.Success).Groups[1].Value;
 
     /// <summary>Creates a user with the given role directly through Identity.</summary>
     public async Task CreateUserAsync(string login, string password, string role)
@@ -58,10 +75,20 @@ public sealed class HiveFixture : IAsyncLifetime
 
     public FakeTelegram Telegram { get; private set; } = null!;
 
+    public FakeLlm Llm { get; private set; } = null!;
+
+    /// <summary>Stands in for ffmpeg: IP camera frames taken from the RTSP stream (IpCamTests).</summary>
+    public FakeFrameGrabber Grabber { get; } = new();
+
+    /// <summary>go2rtc's stream API (VideoTests).</summary>
+    public FakeGo2Rtc Go2Rtc { get; private set; } = null!;
+
     public async Task InitializeAsync()
     {
         await Task.WhenAll(_postgres.StartAsync(), _mosquitto.StartAsync());
         Telegram = await FakeTelegram.StartAsync();
+        Llm = await FakeLlm.StartAsync();
+        Go2Rtc = await FakeGo2Rtc.StartAsync();
 
         App = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
@@ -78,10 +105,23 @@ public sealed class HiveFixture : IAsyncLifetime
             b.UseSetting("Hive:TimeZone", "Europe/Moscow");
             b.UseSetting("Auth:BootstrapAdminPassword", AdminPassword);
             b.UseSetting("Auth:AuthRequestsPerMinute", "10000");
+            b.UseSetting("Screen:ReadsPerMinute", "10000");
+            // As behind Caddy: AuthTests give each "device" its own address with X-Forwarded-For.
+            b.UseSetting("ForwardedHeaders:Enabled", "true");
+            b.UseSetting("Smtp:From", "hive@example.org");
+            b.UseSetting("Smtp:PickupDirectory", MailRoot);
             b.UseSetting("Telegram:Token", FakeTelegram.Token);
             b.UseSetting("Telegram:Endpoints:0:BaseUrl", Telegram.BaseUrl);
             b.UseSetting("Telegram:PollTimeoutS", "1");
             b.UseSetting("Telegram:PhotoWaitS", "8");
+            b.UseSetting("Assistant:ApiKey", FakeLlm.ApiKey);
+            b.UseSetting("Assistant:BaseUrl", Llm.BaseUrl);
+            // IpCamTests: a cut NVR takes its cameras offline in seconds, not a minute.
+            b.UseSetting("IpCams:OfflineAfterS", "3");
+            b.UseSetting("IpCams:AuthRetryS", "2");
+            b.UseSetting("Video:Go2RtcUrl", Go2Rtc.BaseUrl);
+            b.UseSetting("Video:SyncEveryS", "2");
+            b.ConfigureTestServices(s => s.AddSingleton<Hive.Modules.IpCams.IFrameGrabber>(Grabber));
         });
         _ = App.Server; // start the host: migrations, MQTT gateway, ingest pipeline
     }
@@ -90,11 +130,15 @@ public sealed class HiveFixture : IAsyncLifetime
     {
         await App.DisposeAsync();
         await Telegram.DisposeAsync();
+        await Llm.DisposeAsync();
+        await Go2Rtc.DisposeAsync();
         await Task.WhenAll(_postgres.DisposeAsync().AsTask(), _mosquitto.DisposeAsync().AsTask());
         if (Directory.Exists(MediaRoot))
             Directory.Delete(MediaRoot, recursive: true);
         if (Directory.Exists(FirmwareRoot))
             Directory.Delete(FirmwareRoot, recursive: true);
+        if (Directory.Exists(MailRoot))
+            Directory.Delete(MailRoot, recursive: true);
     }
 
     public async Task<T> QueryAsync<T>(Func<HiveDbContext, Task<T>> query)

@@ -1,17 +1,22 @@
 import { ChevronLeft, ChevronRight, Download, Pause, Pin, PinOff, Play, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link } from 'react-router'
 import { usePin } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { t } from '@/i18n'
 
+export type LightboxLink = { to: string; label: string; icon: ReactNode }
+
 export type LightboxPhoto = { id: string; url: string; thumbUrl: string; caption?: string; pinned?: boolean }
 
 /** Full-screen viewer: arrows, swipe, Esc; download and "keep forever" (spec 8.2 screen 3). */
-export function Lightbox({ photos, index, autoplay = false, onIndex, onClose }: {
+export function Lightbox({ photos, index, autoplay = false, links = [], onIndex, onClose }: {
   photos: LightboxPhoto[]
   index: number
   /** Start playing as a timelapse (a frame every 700 ms, stops on the last photo). */
   autoplay?: boolean
+  /** Buttons beside "keep" that go elsewhere (a camera's photo archive and events); the viewer closes on the way. */
+  links?: LightboxLink[]
   onIndex: (i: number) => void
   onClose: () => void
 }) {
@@ -85,6 +90,18 @@ export function Lightbox({ photos, index, autoplay = false, onIndex, onClose }: 
               {playing ? <Pause /> : <Play />}
             </Button>
           )}
+          {links.map((l) => (
+            <Link
+              key={l.to}
+              to={l.to}
+              title={l.label}
+              aria-label={l.label}
+              onClick={onClose}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg px-2.5 text-sm font-medium text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 [&_svg]:size-4"
+            >
+              {l.icon}<span className="hidden sm:inline">{l.label}</span>
+            </Link>
+          ))}
           <Button
             variant="ghost"
             size="icon"

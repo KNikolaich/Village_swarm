@@ -16,4 +16,4 @@ Hornets upload photos over HTTP, separately from MQTT (spec 5.4, 7.2).
 Responses:
 - `201 Created`: stored. `200 OK`: this `X-Photo-Id` was already stored (safe retry, no duplicate).
 - `400`: not a JPEG, bad ids. `413`: too large. Do not retry these.
-- `401`: bad or missing token. `5xx` / network errors: keep the photo (SD outbox) and retry later.
+- `401`: bad or missing token. `5xx` / network errors: keep the photo and retry later (the guard-cam keeps it in its SD outbox, or retries a few times from RAM without a card). Photos stay on the card after delivery as a ring archive on the hornet; the hive is not told about it.

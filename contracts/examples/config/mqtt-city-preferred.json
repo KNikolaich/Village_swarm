@@ -1,0 +1,6 @@
+{
+  "v": 1, "rev": 9, "name": "Тестовый шершень (живёт в городе)",
+  "health_interval_s": 60, "tele_interval_s": 60,
+  "prefer_hive": "other",
+  "mqtt_city": { "host": "192.168.10.4", "port": 1883, "user": "meteo-test1", "pass": "Q3nUe8wX1mZpLr4TgB7aYc2KdV9sHf6J", "after_s": 20, "probe_s": 900, "prefer_other": true }
+}
