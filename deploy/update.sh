@@ -42,8 +42,8 @@ set_env HIVE_VERSION "$version"
 [ -n "$tarball" ] || docker compose pull api web
 docker compose up -d --remove-orphans
 
-say "Проверяю $version"
-for _ in $(seq 1 40); do
+say "Проверяю $version (жду до 4 минут: первый запуск применяет изменения базы, на RPi это небыстро)"
+for _ in $(seq 1 80); do
 	if curl -fsk https://localhost/readyz >/dev/null 2>&1; then
 		say "Готово: $previous → $version"
 		docker image prune -f >/dev/null
@@ -63,7 +63,11 @@ for _ in $(seq 1 40); do
 done
 
 say "Версия $version не ответила, возвращаю $previous"
-docker compose logs --tail 50 api || true
+# Why: which check of /readyz fails (database or mqtt), what the containers are doing, and the end of the api log.
+echo "--- /readyz:"; curl -sk https://localhost/readyz || echo "(нет ответа: api не слушает порт)"; echo
+echo "--- контейнеры:"; docker compose ps || true
+echo "--- журнал api (последние 120 строк):"
+docker compose logs --tail 120 api || true
 set_env HIVE_VERSION "$previous"
 docker compose up -d
 cat <<EOF
