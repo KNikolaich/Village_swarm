@@ -15,8 +15,9 @@
 // "Нет связи" screen (docs/display.md, "Нет связи").
 //
 // Buttons: rocker up/down = cursor, rocker press = choose, EXIT short = sleep until a button (or leave the cursor), EXIT for
-// 2 s = the help screen, MENU short = read now,
-// MENU for 2 s = the settings point (Wi-Fi "VillageSwarm-xxxx", http://192.168.4.1).
+// 2 s = the help screen, MENU short = read now, MENU for 2 s = the book reader (reader_crowpanel37.cpp: books from the TF card,
+// no Wi-Fi; EXIT for 2 s there comes back here). The settings point (Wi-Fi "VillageSwarm-xxxx", http://192.168.4.1): MENU held
+// 2 s on the help screen, or by itself while the panel is not set up.
 // Console (115200, lines): set ssid|pass|ssid2|pass2|url|token|interval|insecure <value>, show, go, save; as remote_epd154.cpp.
 //
 // Battery: the board does not bring it to a pin. With a 2 x 220 kOhm divider from B+ to GPIO8 (100 nF across the lower one)
@@ -43,6 +44,7 @@
 #include <time.h>
 
 #include "../../lib/hornet-core/src/RemoteMonitor.h"
+#include "crowpanel37.h"
 
 namespace {
 
@@ -56,7 +58,7 @@ constexpr size_t kFrameBytes = frameBytes(kWidth, kHeight);
 constexpr int kPinSck = 12, kPinMosi = 11, kPinCs = 45, kPinDc = 46, kPinRst = 47, kPinBusy = 48;
 constexpr gpio_num_t kPinEpdPower = GPIO_NUM_7;  // HIGH = e-paper powered
 constexpr gpio_num_t kPinLed = GPIO_NUM_41;      // the power LED: off, it only drains the battery
-constexpr gpio_num_t kPinSdPower = GPIO_NUM_42;  // the TF card: off, not used
+constexpr gpio_num_t kPinSdPower = GPIO_NUM_42;  // the TF card: off but in the reader
 constexpr gpio_num_t kPinExit = GPIO_NUM_1;
 constexpr gpio_num_t kPinMenu = GPIO_NUM_2;
 constexpr gpio_num_t kPinDown = GPIO_NUM_4;
@@ -314,6 +316,7 @@ void epdSleep() {
 uint8_t shown[kFrameBytes];     // on the screen now
 uint8_t picture[kFrameBytes];   // to be shown
 bool haveShown = false;
+bool shownUnsaved = false;      // the reader turns pages faster than the flash should be written: kept when going to sleep
 
 /// Puts <picture> on the screen: partial from what is there, full now and then (and when nothing is known of the screen).
 void present() {
@@ -329,7 +332,12 @@ void present() {
     partials = full ? 0 : partials + 1;
     memcpy(shown, picture, kFrameBytes);
     haveShown = true;
-    writeFile(kShownPath, shown, kFrameBytes);
+    shownUnsaved = true;
+}
+
+/// What is on the screen into the flash (the old picture of the next partial refresh after deep sleep).
+void keepShown() {
+    if (shownUnsaved && writeFile(kShownPath, shown, kFrameBytes)) shownUnsaved = false;
 }
 
 // ------------------------------------------------------------------ marks the panel draws itself (in the hive's turn)
@@ -389,6 +397,7 @@ void showMessage(const char* title, std::initializer_list<String> lines) {
     }
     endMarks();
     present();
+    keepShown();
     messageShown = true;
     loadingShown = false;
     bannerCause = Offline::None;
@@ -403,6 +412,7 @@ void showPicture(int cursor, const String& banner) {
         endMarks();
     }
     present();
+    keepShown();
     messageShown = false;
     loadingShown = banner == kLoadingText;
     bannerCause = Offline::None;
@@ -934,7 +944,7 @@ void showOfflineMessage(Offline cause, const Reply& reply, uint32_t retryMin, in
     switch (cause) {
         case Offline::NoWifi:
             showMessage("Нет Wi-Fi", {"Сеть " + settings.ssid[0] + (settings.ssid[1].length() ? " и " + settings.ssid[1] : String()) + " не отвечает.",
-                                      "Проверьте роутер (Wi-Fi 2,4 ГГц).", retry, "MENU 2 с — настройка", batteryLine(battery)});
+                                      "Проверьте роутер (Wi-Fi 2,4 ГГц).", retry, "EXIT 2 с, потом MENU 2 с: настройка", batteryLine(battery)});
             break;
         case Offline::WrongFrame:
             showMessage("Не тот кадр", {"Улей прислал " + String(reply.width) + "x" + String(reply.height) + ", нужно " + String(kWidth) + "x" + String(kHeight) + ":",
@@ -942,7 +952,7 @@ void showOfflineMessage(Offline cause, const Reply& reply, uint32_t retryMin, in
             break;
         default:
             showMessage("Нет связи с Ульем", {"Wi-Fi есть, Улей не отвечает (" + String(failureText(reply.fail, reply.code).c_str()) + ").",
-                                              "Проверьте Улей и интернет у него.", retry, "MENU 2 с — настройка", batteryLine(battery)});
+                                              "Проверьте Улей и интернет у него.", retry, "EXIT 2 с, потом MENU 2 с: настройка", batteryLine(battery)});
             break;
     }
 }
@@ -1012,7 +1022,7 @@ void readWorked() {
             if (bannerCause != Offline::None || messageShown || loadingShown) showTab(currentTab, -1, String());  // take the banner off
             break;
         case Answer::BadToken:
-            showMessage("Токен не принят", {"Выдайте новый на странице", "монитора в Улье и введите его:", "MENU 2 с — настройка", batteryLine(battery)});
+            showMessage("Токен не принят", {"Выдайте новый на странице", "монитора в Улье и введите его:", "EXIT 2 с, потом MENU 2 с: настройка", batteryLine(battery)});
             sleepFor(kBadTokenSleepMin * 60);
         case Answer::NotDrawn:
             showMessage("Нет картинки", {"Улей не рисует этот экран:", "на странице монитора выберите", "плату CrowPanel 3,7\".", batteryLine(battery)});
@@ -1118,6 +1128,7 @@ bool isSleepingTab(const uint8_t* bits) {
             }
             memcpy(picture, incoming, kFrameBytes);
             present();
+            keepShown();
             drawn = true;
         } else if (reply.answer == Answer::NotDrawn || reply.answer == Answer::BadToken) {
             cause = Offline::None;  // the hive answered: the link is there
@@ -1129,6 +1140,7 @@ bool isSleepingTab(const uint8_t* bits) {
     if (!drawn && cause != Offline::None && readFile(kSleepPath, picture, kFrameBytes)) {
         Serial.println("[monitor] sleep: offline, the kept sleep picture");
         present();
+        keepShown();
         drawn = true;
     }
     if (!drawn && cause != Offline::None) {
@@ -1153,8 +1165,8 @@ bool isSleepingTab(const uint8_t* bits) {
 
 /// EXIT held for 2 s: what the buttons do. EXIT again gives the screen back; a few quiet seconds do the same. True: MENU held, the settings point is up.
 bool showHelp() {
-    showMessage("Кнопки", {"Вверх/вниз: вкладки", "Нажать: выбрать вкладку", "MENU: обновить сейчас", "MENU 2 с: настройки", "  http://192.168.4.1",
-                           "EXIT: сон до кнопки", "EXIT 2 с: эта справка", "здесь EXIT: назад"});
+    showMessage("Кнопки", {"Вверх/вниз: вкладки, нажать: выбрать", "MENU: обновить, MENU 2 с: читалка", "EXIT: сон до кнопки",
+                           "EXIT 2 с: эта справка", "здесь MENU 2 с: настройки", "  http://192.168.4.1", "здесь EXIT: назад"});
     waitRelease();
     const uint32_t started = millis();
     while (millis() - started < kHelpTimeoutMs) {
@@ -1175,7 +1187,7 @@ bool showHelp() {
 }
 
 [[noreturn]] void saveAndSleep() {
-    showMessage("Настроено", {"Wi-Fi: " + settings.ssid[0], "Первое чтение через минуту у этой сети", "MENU 2 с — настройка"});
+    showMessage("Настроено", {"Wi-Fi: " + settings.ssid[0], "Первое чтение через минуту у этой сети", "EXIT 2 с, потом MENU 2 с: настройка"});
     sleepFor(60);
 }
 
@@ -1215,8 +1227,12 @@ void setup() {
     const uint64_t buttons = cause == ESP_SLEEP_WAKEUP_EXT1 ? esp_sleep_get_ext1_wakeup_status() : 0;
     Serial.printf("[monitor] wake: cause %d, buttons 0x%llx, %s, offline tries %lu\n", static_cast<int>(cause), static_cast<unsigned long long>(buttons),
                   asleep ? "was asleep" : "awake", static_cast<unsigned long>(failures));
-    const bool wantPortal = !settings.ready() || ((buttons & (1ULL << kPinMenu)) && menuHeld());
-    if (wantPortal) {
+    if (crowpanel37::readerOn()) crowpanel37::runReader(buttons, false);  // it was reading: it goes on, no Wi-Fi
+    if ((buttons & (1ULL << kPinMenu)) && menuHeld()) {
+        asleep = false;
+        crowpanel37::runReader(0, true);  // MENU 2 s: the reader
+    }
+    if (!settings.ready()) {
         asleep = false;
         portalMode = true;
         startPortal();
@@ -1264,8 +1280,49 @@ void loop() {
         portalMode = false;
         if (settings.ready()) readAndSleep();  // the old settings stay: read with them (says so if there is no link)
         // nothing set: the "Настройка" screen must not stay as if the point were still up
-        showMessage("Не настроено", {"Панель не знает Wi-Fi и Улей.", "MENU 2 с — настройка с телефона,", "или прошейте со страницы монитора.", "", "Панель спит до кнопки."});
+        showMessage("Не настроено", {"Панель не знает Wi-Fi и Улей.", "Настройка с телефона: EXIT 2 с,", "потом MENU 2 с; или прошейте", "со страницы монитора.", "MENU 2 с: читалка книг с карты", "Панель спит до кнопки."});
         sleepFor(0);
     }
     delay(2);
 }
+
+// ------------------------------------------------------------------ for the reader (crowpanel37.h)
+
+namespace crowpanel37 {
+
+GFXcanvas1& canvas() { return ::canvas; }
+U8G2_FOR_ADAFRUIT_GFX& text() { return ::text; }
+
+void present(bool keepInFlash) {
+    memcpy(picture, ::canvas.getBuffer(), kFrameBytes);
+    ::present();
+    if (keepInFlash) keepShown();
+    messageShown = true;  // the hive's tab is not on the screen: the next read draws it even on 304
+    loadingShown = false;
+    bannerCause = Offline::None;
+}
+
+void wipeNext() { partials = kPartialsBeforeFull; }
+int batteryMv() { return readBatteryMv(); }
+int batteryPercent(int mv) { return hornet::remote::batteryPercent(mv); }
+bool pressed(gpio_num_t pin) { return ::pressed(pin); }
+bool held(gpio_num_t pin) { return ::held(pin); }
+void waitRelease() { ::waitRelease(); }
+void watchButtons() { ::watchButtons(); }
+int takeSteps() { return ::takeSteps(); }
+bool takePress() { return ::takePress(); }
+
+[[noreturn]] void sleepUntilButton() {
+    keepShown();
+    sleepFor(0);
+}
+
+[[noreturn]] void backToMonitor() {
+    wipeNext();
+    if (settings.ready()) readAndSleep(true);
+    showMessage("Не настроено", {"Панель не знает Wi-Fi и Улей.", "Настройка с телефона: EXIT 2 с,", "потом MENU 2 с.", "MENU 2 с: читалка книг с карты", "",
+                                 "Панель спит до кнопки."});
+    sleepFor(0);
+}
+
+}  // namespace crowpanel37
