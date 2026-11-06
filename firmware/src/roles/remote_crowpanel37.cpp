@@ -464,8 +464,7 @@ Order runCommand(String line) {
                       settings.ssid[1].c_str(), settings.url.c_str(), settings.token.isEmpty() ? "-" : "set", settings.intervalMin,
                       settings.insecure, currentTab);
         const int cell = readBatteryMv();  // -1: no divider soldered
-        Serial.printf("[monitor] battery=%s
-", cell > 0 ? (String(cell) + " mV").c_str() : "none (no divider on GPIO8)");
+        Serial.printf("[monitor] battery=%s\n", cell > 0 ? (String(cell) + " mV").c_str() : "none (no divider on GPIO8)");
         Serial.printf("[monitor] link: %s, code %d, failures %lu, mac=%s, fw=%s\n", lastFail == Fail::None ? "ok" : failureText(lastFail, lastFailCode).c_str(),
                       lastFailCode, static_cast<unsigned long>(failures), deviceMac().c_str(), HORNET_FW_VERSION);
         return Order::None;
