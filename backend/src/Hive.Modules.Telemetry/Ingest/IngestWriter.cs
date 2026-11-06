@@ -91,7 +91,8 @@ public sealed class IngestWriter(HiveDbContext db)
         }
     }
 
-    private static string? Keep(string? fresh, string? known) => string.IsNullOrWhiteSpace(fresh) ? known : fresh;
+    /// <summary>The fresh value, or the known one when the fresh one is empty (an info a panel sent before it knew its MAC or build).</summary>
+    public static string? Keep(string? fresh, string? known) => string.IsNullOrWhiteSpace(fresh) ? known : fresh;
 
     private async Task ApplyAcksAsync(List<CommandAckReceived> acks, CancellationToken ct)
     {

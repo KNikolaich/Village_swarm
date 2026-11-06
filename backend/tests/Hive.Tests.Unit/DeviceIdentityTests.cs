@@ -1,5 +1,6 @@
 using Hive.Domain;
 using Hive.Modules.Devices;
+using Hive.Modules.Telemetry.Ingest;
 
 namespace Hive.Tests.Unit;
 
@@ -46,4 +47,13 @@ public class DeviceIdentityTests
         Assert.True(ScreenAccessService.NoteIdentity(device, "a0:b7:65:12:34:56", null));
         Assert.Equal(("A0:B7:65:12:34:56", null), (device.Mac, device.FwVersion));
     }
+
+    [Theory]
+    [InlineData("A0:B7:65:12:34:56", "OLD", "A0:B7:65:12:34:56")]
+    [InlineData("", "A0:B7:65:12:34:56", "A0:B7:65:12:34:56")]
+    [InlineData("  ", "A0:B7:65:12:34:56", "A0:B7:65:12:34:56")]
+    [InlineData(null, "0.2.0+a", "0.2.0+a")]
+    [InlineData("", null, null)]
+    public void An_info_with_nothing_in_it_keeps_the_last_known_value(string? fresh, string? known, string? expected) =>
+        Assert.Equal(expected, IngestWriter.Keep(fresh, known));
 }

@@ -471,7 +471,7 @@ public sealed class ScreenAccessTests(HiveFixture hive)
     }
 
     [Fact]
-    public async Task A_panel_that_speaks_only_http_tells_its_mac_and_build_with_its_reads_and_an_info_without_them_keeps_them()
+    public async Task A_panel_that_speaks_only_http_tells_its_mac_and_build_with_its_reads()
     {
         var admin = await hive.LoginAsync();
         var anonymous = hive.App.CreateClient();
@@ -503,13 +503,6 @@ public sealed class ScreenAccessTests(HiveFixture hive)
         // an empty or malformed value never replaces what is known
         using (var empty = await anonymous.SendAsync(Read("", "bad value")))
             Assert.Equal(HttpStatusCode.OK, empty.StatusCode);
-        Assert.Equal(("A0:B7:65:12:34:56", "0.2.0+a1b2c3d"), await Known());
-
-        // an info over MQTT with nothing in it keeps the last known MAC and build too
-        var ingest = hive.App.Services.GetRequiredService<Hive.Modules.Telemetry.Ingest.IngestQueue>();
-        var now = DateTimeOffset.UtcNow;
-        ingest.Enqueue(new DeviceInfoReceived("monitor-ident1", Hive.Contracts.Ulid.New(now), now, now, "monitor", "", "", "", null, 1, JsonDocument.Parse("{}")));
-        await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == "monitor-ident1" && d.Boot == 1), "info written");
         Assert.Equal(("A0:B7:65:12:34:56", "0.2.0+a1b2c3d"), await Known());
     }
 
