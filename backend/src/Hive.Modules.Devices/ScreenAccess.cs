@@ -129,7 +129,8 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
     /// As above, for one <paramref name="tab"/> of a panel with tabs (0 when absent; beyond its tabs: no picture), noting the
     /// battery the panel told (millivolts) as its battery_voltage reading.
     /// </summary>
-    public async Task<ScreenFrame?> FrameAsync(string? bearer, bool bitmap, string? from, bool external, int? tab, int? batteryMv, CancellationToken ct, bool sleep = false)
+    public async Task<ScreenFrame?> FrameAsync(string? bearer, bool bitmap, string? from, bool external, int? tab, int? batteryMv, CancellationToken ct, bool sleep = false,
+        string? mac = null, string? fw = null)
     {
         if (string.IsNullOrEmpty(bearer))
             return null;
@@ -152,7 +153,9 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
         var (basis, etag) = await BasisAsync(device, message, bitmap, ct);
 
         // The city only watches (its copy of the database is not written): it answers but does not note the read.
-        if (!node.ReadOnly && (device.ScreenReadAt is not { } last || now - last >= NoteEvery || device.ScreenReadFrom != from || device.ScreenReadExternal != external
+        // A panel that speaks only HTTP never publishes its info: its MAC and build come with the read (X-Device-Mac, X-Fw-Version).
+        var identified = !node.ReadOnly && NoteIdentity(device, mac, fw);
+        if (!node.ReadOnly && (identified || device.ScreenReadAt is not { } last || now - last >= NoteEvery || device.ScreenReadFrom != from || device.ScreenReadExternal != external
             || (device.Driver == Drivers.Http && device.Status != DeviceStatus.Online)))
         {
             device.ScreenReadAt = now;
@@ -187,6 +190,38 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
             cache.Plan(device.DeviceId, shown, sleep, now, every, monitored.Until);
         }
         return new ScreenFrame(bits, "application/octet-stream", tag, screen!.Width, screen.Height, Tabs: tabs, Rotation: rotation, RefreshS: refresh);
+    }
+
+    /// <summary>"A0:B7:65:12:34:56" in any case, with colons or dashes; anything else is not a MAC.</summary>
+    private static readonly System.Text.RegularExpressions.Regex MacPattern = new("^[0-9A-Fa-f]{2}([:-][0-9A-Fa-f]{2}){5}$");
+
+    /// <summary>A build as the firmware writes it ("0.2.0+a1b2c3d"): short, printable, no spaces.</summary>
+    private static readonly System.Text.RegularExpressions.Regex FwPattern = new("^[0-9A-Za-z][0-9A-Za-z._+~-]{0,39}$");
+
+    /// <summary>The MAC in the form the hornets publish (upper case, colons), or null for a value that is not one.</summary>
+    public static string? NormalizeMac(string? mac) =>
+        mac is not null && MacPattern.IsMatch(mac.Trim()) ? mac.Trim().Replace('-', ':').ToUpperInvariant() : null;
+
+    public static string? NormalizeFw(string? fw) => fw is not null && FwPattern.IsMatch(fw.Trim()) ? fw.Trim() : null;
+
+    /// <summary>
+    /// Keeps the MAC and build a panel told with a read on its device. Empty or malformed values change nothing: a known value is
+    /// never overwritten with nothing. True when something changed (the caller saves it).
+    /// </summary>
+    public static bool NoteIdentity(Device device, string? mac, string? fw)
+    {
+        var changed = false;
+        if (NormalizeMac(mac) is { } m && device.Mac != m)
+        {
+            device.Mac = m;
+            changed = true;
+        }
+        if (NormalizeFw(fw) is { } f && device.FwVersion != f)
+        {
+            device.FwVersion = f;
+            changed = true;
+        }
+        return changed;
     }
 
     /// <summary>What the frame is made of (the items, and for a picture the background, the turn, the fonts, the state pictures) and its ETag before the picture is drawn.</summary>
@@ -285,6 +320,9 @@ public static class ScreenAccessEndpoints
     /// <summary>The panel's battery in millivolts, with every read (contracts/monitor-http.md).</summary>
     private const string BatteryHeader = "X-Battery-mV";
 
+    /// <summary>The panel's MAC and firmware build, with every read, so the hive can show them for a panel that has no MQTT.</summary>
+    private const string MacHeader = "X-Device-Mac", FwHeader = "X-Fw-Version";
+
     /// <summary>Reads a minute per address: a panel needs one a minute at most, a guesser gets nowhere.</summary>
     public const int ReadsPerMinute = 12;
 
@@ -353,7 +391,7 @@ public static class ScreenAccessEndpoints
         int? tab = int.TryParse(http.Request.Query["tab"], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : null;
         int? battery = int.TryParse(http.Request.Headers[BatteryHeader], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var mv) ? mv : null;
         var frame = await access.FrameAsync(token, bitmap, http.Connection.RemoteIpAddress?.ToString(), http.Request.Headers.ContainsKey(ExternalHeader), tab, battery, ct,
-            sleep: http.Request.Query["sleep"] == "1");
+            sleep: http.Request.Query["sleep"] == "1", mac: http.Request.Headers[MacHeader].ToString(), fw: http.Request.Headers[FwHeader].ToString());
         http.Response.Headers.CacheControl = "no-store";
         if (frame is null)
             return Results.Unauthorized();

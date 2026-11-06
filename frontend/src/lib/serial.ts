@@ -13,6 +13,15 @@ type SerialLike = { requestPort(): Promise<SerialPortLike> }
 
 export const serialSupported = () => 'serial' in navigator
 
+/**
+ * Chrome says "NetworkError: Failed to open serial port" when another program (Arduino IDE, a serial monitor, another tab) holds
+ * the port, and the same for a cable that was pulled a moment ago: the page can only tell the person to look at both.
+ */
+export function isPortBusy(e: unknown): boolean {
+  const name = (e as { name?: string } | null)?.name
+  return name === 'NetworkError' || /failed to open/i.test(String((e as { message?: string } | null)?.message ?? e))
+}
+
 export type ConsoleLine = (line: string) => void
 
 /** An open serial console: send lines, read lines, close. */
@@ -31,9 +40,16 @@ export class HornetSerial {
 
   /** The console on a port already picked (by the setup wizard, right after flashing through it). */
   static async attach(port: SerialPortLike, onLine: ConsoleLine): Promise<HornetSerial> {
-    await port.open({ baudRate: 115200 })
+    try {
+      await port.open({ baudRate: 115200 })
+    } catch (e) {
+      // Already open (an earlier try of ours that was not closed): close and open it again. Anything else is the caller's to judge.
+      if ((e as { name?: string } | null)?.name !== 'InvalidStateError') throw e
+      await port.close().catch(() => {})
+      await port.open({ baudRate: 115200 })
+    }
     // ESP32-CAM-MB wires DTR/RTS to EN/IO0: release both so the board runs the firmware, not the bootloader.
-    await port.setSignals({ dataTerminalReady: false, requestToSend: false })
+    await port.setSignals({ dataTerminalReady: false, requestToSend: false }).catch(() => {})
     const s = new HornetSerial(port, onLine)
     void s.readLoop()
     return s
@@ -65,7 +81,11 @@ export class HornetSerial {
     }
   }
 
-  /** Resets the board through the adapter's RTS line (ESP32-CAM-MB and similar boards wire it to EN). */
+  /**
+   * Resets the board through the adapter's lines: RTS low-to-high on EN with DTR (IO0) released, so the board starts its
+   * firmware and not the bootloader. The same sequence resets the native USB of an ESP32-S3/C3. A board whose adapter wires
+   * nothing there ignores it; then the person presses RST.
+   */
   async pulseReset() {
     await this.port.setSignals({ dataTerminalReady: false, requestToSend: true })
     await new Promise((resolve) => setTimeout(resolve, 150))

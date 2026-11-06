@@ -97,3 +97,13 @@ export function formatBytes(bytes: number | null | undefined): string {
   }
   return `${value.toLocaleString(locale(), { maximumFractionDigits: value < 10 && i > 0 ? 1 : 0 })} ${units[i]}`
 }
+
+/** A value the hive does not know (never reported, or an empty string) is not shown as an empty cell. */
+export function isBlank(v: unknown): boolean {
+  return v == null || v === '' || (typeof v === 'string' && v.trim() === '')
+}
+
+/** The last known value, or a dash when it was never known: the device page always has the row. */
+export function orDash(v: string | null | undefined): string {
+  return isBlank(v) ? '—' : (v as string)
+}

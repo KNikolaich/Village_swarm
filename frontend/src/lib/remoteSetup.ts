@@ -2,7 +2,7 @@
 // send the Wi-Fi, the hive's address and the screen token, and either let it read the picture at once (the answer tells
 // whether it all works) or only save (the panel is to stand at another Wi-Fi). The console is described in
 // firmware/src/roles/remote_epd154.cpp.
-import { flashBoard, reopenConsole, SetupError, type SetupStage, sleep } from '@/lib/hornetSetup'
+import { awaitConsole, type ConsoleStatus, flashBoard, reopenConsole, SetupError, type SetupStage, sleep } from '@/lib/hornetSetup'
 import type { HornetSerial, SerialPortLike } from '@/lib/serial'
 
 export const remoteStages: SetupStage[] = ['port', 'flash', 'restart', 'settings', 'read']
@@ -63,6 +63,8 @@ export type RemoteSetupOptions = {
   onStage: (stage: SetupStage) => void
   onProgress: (percent: number) => void
   onLog: (line: string) => void
+  /** What the page does while it waits for the panel (listening, resetting it, reopening the port). */
+  onStatus?: (status: ConsoleStatus) => void
 }
 
 /** Resolves when the panel took the settings (and, with readNow, read its picture); throws SetupError otherwise. */
@@ -74,9 +76,16 @@ export async function setupRemote(o: RemoteSetupOptions) {
       await flashBoard(o.port, o.build, o)
     }
     o.onStage('restart')
-    board = await reopenConsole(o.port, o.onLog)
-    // After a reset the panel says "ready" for twelve seconds and waits for the console.
-    if ((await board.waitForLine((l) => panelLine(l) === 'ready', 20_000)) === null) throw new SetupError('restart', 'noAnswer')
+    // After a power-on or a reset the panel says "ready" for twelve seconds and waits for the console (a line sent keeps it
+    // open a minute). The board also resets when the port is opened, so that window is often missed: awaitConsole nudges the
+    // panel, resets it through DTR/RTS, reopens the port and listens again before it gives up.
+    const up = await awaitConsole({
+      open: () => reopenConsole(o.port, o.onLog),
+      ready: (l) => panelLine(l) === 'ready',
+      onStatus: o.onStatus,
+    })
+    board = up.board
+    if (up.line === null) throw new SetupError('restart', 'noAnswer')
 
     o.onStage('settings')
     const token = await o.issueToken()

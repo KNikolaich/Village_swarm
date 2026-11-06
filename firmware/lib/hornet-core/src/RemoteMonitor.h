@@ -64,6 +64,82 @@ inline const char* causeText(Offline cause) {
     }
 }
 
+// ------------------------------------------------------------------ why the hive did not answer
+
+/// What went wrong reaching the hive, as far as the panel can tell (the banner says it in ASCII; the log and "show" carry the detail).
+enum class Fail : uint8_t {
+    None,
+    NoWifi,   // not joined to any network
+    Dns,      // the hive's name did not resolve
+    Tls,      // the handshake failed (certificate, clock, a middlebox)
+    Refused,  // the connection was refused or reset at once
+    Timeout,  // nothing answered in time (connect or read)
+    Http,     // the hive answered with a status that is not a picture
+    Frame,    // 200 with a picture of the wrong size
+    Other,
+};
+
+/// The host of an address ("https://h.example:8088/x" -> "h.example"); empty when there is none.
+inline std::string hostOf(const std::string& url) {
+    const size_t scheme = url.find("://");
+    if (scheme == std::string::npos) return "";
+    const size_t begin = scheme + 3;
+    size_t end = url.find_first_of("/?#", begin);
+    if (end == std::string::npos) end = url.size();
+    std::string authority = url.substr(begin, end - begin);
+    const size_t at = authority.rfind('@');
+    if (at != std::string::npos) authority = authority.substr(at + 1);
+    if (!authority.empty() && authority[0] == '[') {  // an IPv6 literal
+        const size_t close = authority.find(']');
+        return close == std::string::npos ? "" : authority.substr(1, close - 1);
+    }
+    const size_t colon = authority.find(':');
+    return colon == std::string::npos ? authority : authority.substr(0, colon);
+}
+
+/// HTTPClient's negative codes (Arduino-ESP32 3.x): -1 refused, -4 not connected, -5 connection lost, -11 read timeout.
+constexpr int kHttpRefused = -1, kHttpNotConnected = -4, kHttpLost = -5, kHttpReadTimeout = -11;
+
+/// Why a read failed. <dnsOk>: the name resolved; <tlsError>: the TLS library's error code (0 when none); <elapsedMs> and
+/// <connectTimeoutMs>: how long the attempt took and how long it was allowed (a refusal comes at once, a timeout takes all of it).
+inline Fail classifyFailure(int httpCode, bool dnsOk, int tlsError, uint32_t elapsedMs, uint32_t connectTimeoutMs) {
+    if (!dnsOk) return Fail::Dns;
+    if (httpCode == 200) return Fail::Frame;
+    if (httpCode > 0) return Fail::Http;
+    if (tlsError != 0) return Fail::Tls;
+    if (httpCode == kHttpReadTimeout) return Fail::Timeout;
+    if (httpCode == kHttpRefused || httpCode == kHttpNotConnected || httpCode == kHttpLost)
+        return elapsedMs + 500 >= connectTimeoutMs ? Fail::Timeout : Fail::Refused;
+    return Fail::Other;
+}
+
+/// Short ASCII text for the e-ink banner (no Russian: the small fonts of the panel may lack it, and the log is read by people with a cable).
+inline std::string failureText(Fail fail, int httpCode = 0) {
+    switch (fail) {
+        case Fail::NoWifi: return "no WiFi";
+        case Fail::Dns: return "DNS failed";
+        case Fail::Tls: return "TLS failed";
+        case Fail::Refused: return "refused";
+        case Fail::Timeout: return "timeout";
+        case Fail::Http: return "HTTP " + std::to_string(httpCode);
+        case Fail::Frame: return "bad frame";
+        case Fail::Other: return "no reply " + std::to_string(httpCode);
+        default: return "";
+    }
+}
+
+/// "A0:B7:65:12:34:56" from the six bytes of the Wi-Fi station address (the factory address on the chip, lowest byte first).
+inline std::string macText(const uint8_t* bytes) {
+    static const char kHex[] = "0123456789ABCDEF";
+    std::string out;
+    for (int i = 0; i < 6; i++) {
+        if (i) out += ':';
+        out += kHex[bytes[i] >> 4];
+        out += kHex[bytes[i] & 15];
+    }
+    return out;
+}
+
 /// Minutes to the next try after <failures> failed reads in a row (1 = the first): 5, 10, 20, then 30, and never longer than
 /// the panel's own interval. The first success starts it over.
 inline uint32_t retryMinutes(uint32_t failures, int intervalMin) {
@@ -93,8 +169,11 @@ inline std::string ageText(Age age) {
 }
 
 /// The banner over the old picture: "нет Wi-Fi, данные 40 мин назад"; <brief> for a narrow screen: "нет Wi-Fi, 40 мин".
-inline std::string offlineBanner(Offline cause, Age age, bool brief) {
-    return std::string(causeText(cause)) + (brief ? ", " : ", данные ") + ageText(age) + (brief ? "" : " назад");
+/// <reason>: why the hive could not be read (failureText, ASCII, e.g. "DNS failed"); the banner of a hive that does not answer says it.
+inline std::string offlineBanner(Offline cause, Age age, bool brief, const std::string& reason = "") {
+    std::string what = causeText(cause);
+    if (cause == Offline::NoHive && !reason.empty()) what = "Улей: " + reason;
+    return what + (brief ? ", " : ", данные ") + ageText(age) + (brief ? "" : " назад");
 }
 
 /// The banner (or the full message) is redrawn at most this often while the cause stays the same: e-ink flashes on every refresh.
@@ -138,6 +217,40 @@ inline Answer classify(int httpCode, size_t bytes, int width, int height, int ex
         default: return Answer::Retry;
     }
 }
+
+// ------------------------------------------------------------------ the console window after a power-on or a reset
+
+/// The moment after a power-on or a reset when the panel listens to its USB console before it reads (the hive's page flashes it and
+/// sends the settings then). The board resets when the page opens the port, and Windows may take seconds to hand the port over,
+/// so a bare 12 s is not enough: input keeps the window open for a minute, and so does a USB host that is attached (a
+/// computer, not a charger). Time is the caller's millis() since the window opened; nothing here waits.
+struct ConsoleWindow {
+    static constexpr uint32_t kFirstMs = 12000;    // nobody there: as before
+    static constexpr uint32_t kActiveMs = 60000;   // each line typed keeps it open this long
+    static constexpr uint32_t kMaxMs = 300000;     // never longer than this in all: a panel left on a computer still reads
+    static constexpr uint32_t kReadyEveryMs = 500; // "[monitor] ready" this often while it is open
+
+    /// Input arrived at <nowMs>.
+    void touch(uint32_t nowMs) {
+        lastInputMs_ = nowMs;
+        touched_ = true;
+    }
+
+    /// Whether the window is still open at <nowMs>; <hostAttached>: a USB host is there (the console port is open on the other side).
+    bool open(uint32_t nowMs, bool hostAttached) const {
+        if (nowMs >= kMaxMs) return false;
+        if (nowMs < kFirstMs) return true;
+        if (hostAttached) return true;
+        return touched_ && nowMs - lastInputMs_ < kActiveMs;
+    }
+
+    /// Whether "ready" is due again; <lastReadyMs> is when it was said last (0 = never).
+    static bool readyDue(uint32_t nowMs, uint32_t lastReadyMs) { return lastReadyMs == 0 || nowMs - lastReadyMs >= kReadyEveryMs; }
+
+private:
+    uint32_t lastInputMs_ = 0;
+    bool touched_ = false;
+};
 
 // ------------------------------------------------------------------ panels with tabs (contracts/monitor-http.md, tabs)
 

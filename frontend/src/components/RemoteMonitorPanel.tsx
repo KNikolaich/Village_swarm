@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, Cpu, PartyPopper, RotateCcw, Terminal } from 'lucide-react'
+import { ArrowRight, Cpu, PartyPopper, RotateCcw, Terminal, Usb } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { api, call } from '@/api/client'
@@ -13,7 +13,8 @@ import { t } from '@/i18n'
 import { SetupError, type SetupStage } from '@/lib/hornetSetup'
 import { publicHiveUrl, rememberHiveUrl } from '@/lib/publicUrl'
 import { remoteStages, setupRemote } from '@/lib/remoteSetup'
-import { type SerialPortLike, serialSupported } from '@/lib/serial'
+import { serialSupported } from '@/lib/serial'
+import { statusText, usePickedPort } from '@/lib/usbPort'
 import { SerialNotice } from '@/components/SerialNotice'
 
 /** Boards whose picture the hive draws (DisplayScreens.RenderedBoards) and the firmware build for each. */
@@ -72,20 +73,25 @@ export function RemoteMonitorPanel({ existingId }: { existingId?: string }) {
   const [token, setToken] = useState<string | null>(null)
   const created = useRef(false)
   const stageNow = useRef<SetupStage>('port')
+  const usb = usePickedPort()
+  // Once the board is flashed a retry does not flash again: only the console and the settings are tried anew.
+  const flashDone = useRef(false)
   const onStage = (s: SetupStage) => {
     stageNow.current = s
     setStage(s)
   }
 
-  async function run() {
+  /** <reuse>: the retry button; the port of the last try is used again without asking. */
+  async function run(reuse = false) {
     setLog([])
     setProgress(0)
     setResult('running')
+    usb.setStatus(null)
     onStage('port')
-    let port: SerialPortLike
+    let port
     try {
       // first, while the click is fresh: the browser lets a page ask for a port only then
-      port = await (navigator as unknown as { serial: { requestPort(): Promise<SerialPortLike> } }).serial.requestPort()
+      port = await usb.port(reuse)
     } catch {
       setResult(null)  // the picker was closed: nothing happened
       setStage(null)
@@ -104,7 +110,7 @@ export function RemoteMonitorPanel({ existingId }: { existingId?: string }) {
       rememberHiveUrl(hive)
       await setupRemote({
         port,
-        build: flashed || !build ? undefined : { build: build.build, chipFamily: build.chipFamily },
+        build: flashed || flashDone.current || !build ? undefined : { build: build.build, chipFamily: build.chipFamily },
         settings: { ssid, pass, url: hive, intervalMin: interval },
         issueToken: async () => {
           const issued = await api.POST('/api/devices/{deviceId}/screen-access', { params: { path: { deviceId: id } } })
@@ -113,13 +119,19 @@ export function RemoteMonitorPanel({ existingId }: { existingId?: string }) {
           return issued.data.token
         },
         readNow: here,
-        onStage,
+        onStage: (st) => {
+          if (st === 'restart' && build && !flashed) flashDone.current = true  // the image is on the board now
+          onStage(st)
+        },
         onProgress: setProgress,
         onLog: (line) => setLog((l) => [...l.slice(-60), line]),
+        onStatus: usb.setStatus,
       })
       await qc.invalidateQueries({ queryKey: keys.devices })
+      usb.setStatus(null)
       setResult('done')
     } catch (e) {
+      usb.setStatus(null)
       setResult(e instanceof SetupError ? e : new SetupError(stageNow.current, 'other', String(e)))
       setLog((l) => [...l, String(e instanceof Error ? e.message : e)])
     }
@@ -209,11 +221,15 @@ export function RemoteMonitorPanel({ existingId }: { existingId?: string }) {
         )}
         {!build && !firmware.isLoading && <p className="text-xs text-amber-300">{t('remoteMonitor.noBuild').replace('{build}', remoteBoards.find((x) => x.board === board)?.build ?? '')}</p>}
         {stage && <SetupStages stages={stages} stage={stage} running={running} failed={failed} progress={progress} names="remoteMonitor.stage" />}
+        {running && usb.status && <p className="text-xs text-amber-300" role="status">{statusText(usb.status)}</p>}
         {failed && (
           <div className="space-y-2 rounded-lg border border-red-900/60 bg-red-950/20 p-2">
             <p className="text-red-300">{t(`remoteMonitor.why.${failed.reason}`, t(`add.why.${failed.reason}`, t('add.why.other')))}</p>
             <div className="flex flex-wrap gap-3">
-              <Button variant="secondary" size="sm" onClick={() => void run()} disabled={!ready}><RotateCcw />{t('add.retry')}</Button>
+              <Button variant="secondary" size="sm" onClick={() => void run(usb.hasPort())} disabled={!ready}>
+                <RotateCcw />{t(usb.hasPort() ? 'usbSetup.retrySame' : 'add.retry')}
+              </Button>
+              {usb.hasPort() && <Button variant="secondary" size="sm" onClick={() => void run(false)} disabled={!ready}><Usb />{t('usbSetup.pickAgain')}</Button>}
               <Link to="/console" className="inline-flex items-center gap-1 text-sm text-amber-400 hover:underline"><Terminal className="size-4" />{t('add.openConsole')}</Link>
             </div>
           </div>

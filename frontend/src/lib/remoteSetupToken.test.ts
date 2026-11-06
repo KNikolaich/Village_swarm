@@ -15,6 +15,7 @@ vi.mock('@/lib/hornetSetup', async (actual) => ({
       return null
     },
     send: async (line: string) => { panel.sent.push(line) },
+    pulseReset: async () => { panel.log.push('reset') },
     close: async () => {},
   })),
 }))

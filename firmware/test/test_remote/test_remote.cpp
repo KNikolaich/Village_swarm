@@ -166,6 +166,88 @@ static void test_a_tab_read_lately_is_not_asked_for_again() {
     TEST_ASSERT_EQUAL_UINT32(900u, secondsToDue(900u, 0u, 880u));     // age not known: the usual pause
 }
 
+static void test_why_the_hive_did_not_answer() {
+    // name first: a failed lookup is DNS whatever else came back
+    TEST_ASSERT_EQUAL(Fail::Dns, classifyFailure(-1, false, 0, 50, 10000));
+    // the hive answered, just not with a picture
+    TEST_ASSERT_EQUAL(Fail::Http, classifyFailure(502, true, 0, 300, 10000));
+    TEST_ASSERT_EQUAL(Fail::Http, classifyFailure(429, true, 0, 300, 10000));
+    TEST_ASSERT_EQUAL(Fail::Frame, classifyFailure(200, true, 0, 300, 10000));
+    // a handshake that went wrong shows as a refused connect to HTTPClient, but the TLS library knows
+    TEST_ASSERT_EQUAL(Fail::Tls, classifyFailure(kHttpRefused, true, -0x7780, 900, 10000));
+    // refused at once, or nothing for the whole connect time
+    TEST_ASSERT_EQUAL(Fail::Refused, classifyFailure(kHttpRefused, true, 0, 120, 10000));
+    TEST_ASSERT_EQUAL(Fail::Timeout, classifyFailure(kHttpRefused, true, 0, 9800, 10000));
+    TEST_ASSERT_EQUAL(Fail::Timeout, classifyFailure(kHttpReadTimeout, true, 0, 15000, 10000));
+    TEST_ASSERT_EQUAL(Fail::Other, classifyFailure(-7, true, 0, 100, 10000));
+
+    TEST_ASSERT_EQUAL_STRING("DNS failed", failureText(Fail::Dns).c_str());
+    TEST_ASSERT_EQUAL_STRING("TLS failed", failureText(Fail::Tls).c_str());
+    TEST_ASSERT_EQUAL_STRING("refused", failureText(Fail::Refused).c_str());
+    TEST_ASSERT_EQUAL_STRING("timeout", failureText(Fail::Timeout).c_str());
+    TEST_ASSERT_EQUAL_STRING("HTTP 502", failureText(Fail::Http, 502).c_str());
+    TEST_ASSERT_EQUAL_STRING("no WiFi", failureText(Fail::NoWifi).c_str());
+    TEST_ASSERT_EQUAL_STRING("", failureText(Fail::None).c_str());
+    for (const Fail f : {Fail::NoWifi, Fail::Dns, Fail::Tls, Fail::Refused, Fail::Timeout, Fail::Http, Fail::Frame, Fail::Other})
+        for (const char c : failureText(f, 503)) TEST_ASSERT_TRUE(static_cast<unsigned char>(c) < 128);  // ASCII only: the e-ink fonts may lack more
+}
+
+static void test_the_banner_says_the_reason_in_ascii() {
+    TEST_ASSERT_EQUAL_STRING("Улей: DNS failed, 40 мин", offlineBanner(Offline::NoHive, {40, true}, true, "DNS failed").c_str());
+    TEST_ASSERT_EQUAL_STRING("Улей: HTTP 502, данные 3 ч назад", offlineBanner(Offline::NoHive, {180, true}, false, "HTTP 502").c_str());
+    TEST_ASSERT_EQUAL_STRING("Улей не отвечает, ~3 ч", offlineBanner(Offline::NoHive, {180, false}, true, "").c_str());  // no reason known: as before
+    TEST_ASSERT_EQUAL_STRING("нет Wi-Fi, 40 мин", offlineBanner(Offline::NoWifi, {40, true}, true, "no WiFi").c_str());    // the cause says it already
+}
+
+static void test_the_host_of_an_address() {
+    TEST_ASSERT_EQUAL_STRING("hive.x.keenetic.pro", hostOf("https://hive.x.keenetic.pro/api/monitor/v1/frame.bin").c_str());
+    TEST_ASSERT_EQUAL_STRING("192.168.1.5", hostOf("http://192.168.1.5:8088/api").c_str());
+    TEST_ASSERT_EQUAL_STRING("h", hostOf("https://user:pw@h:8443").c_str());
+    TEST_ASSERT_EQUAL_STRING("::1", hostOf("http://[::1]:80/x").c_str());
+    TEST_ASSERT_EQUAL_STRING("h.example", hostOf("https://h.example?x=1").c_str());
+    TEST_ASSERT_EQUAL_STRING("", hostOf("hive.x").c_str());
+}
+
+static void test_mac_as_the_hive_shows_it() {
+    const uint8_t bytes[6] = {0xA0, 0xB7, 0x65, 0x12, 0x34, 0x0F};
+    TEST_ASSERT_EQUAL_STRING("A0:B7:65:12:34:0F", macText(bytes).c_str());
+}
+
+// The console window after a power-on or a reset (the hive's page flashes and configures the panel in it).
+static void test_console_window_stays_open_while_somebody_is_there() {
+    ConsoleWindow w;
+    TEST_ASSERT_TRUE(w.open(0, false));
+    TEST_ASSERT_TRUE(w.open(11999, false));
+    TEST_ASSERT_FALSE(w.open(12000, false));  // nobody came: as before, 12 s
+    // a line typed at 10 s keeps it open for a minute more
+    w.touch(10000);
+    TEST_ASSERT_TRUE(w.open(12000, false));
+    TEST_ASSERT_TRUE(w.open(69999, false));
+    TEST_ASSERT_FALSE(w.open(70000, false));
+    // more input moves the end on
+    w.touch(60000);
+    TEST_ASSERT_TRUE(w.open(119999, false));
+    TEST_ASSERT_FALSE(w.open(120000, false));
+}
+
+static void test_console_window_waits_for_a_usb_host_but_not_forever() {
+    ConsoleWindow w;
+    TEST_ASSERT_TRUE(w.open(12000, true));    // a computer is attached: no end at 12 s
+    TEST_ASSERT_TRUE(w.open(200000, true));
+    TEST_ASSERT_FALSE(w.open(ConsoleWindow::kMaxMs, true));  // a panel left on a computer still reads, after five minutes
+    w.touch(290000);
+    TEST_ASSERT_FALSE(w.open(ConsoleWindow::kMaxMs + 1, false));  // typing never goes past the limit either
+    TEST_ASSERT_FALSE(w.open(30000, false));  // no host, no input: closed
+    TEST_ASSERT_TRUE(ConsoleWindow::kActiveMs >= 60000);
+}
+
+static void test_console_says_ready_twice_a_second() {
+    TEST_ASSERT_TRUE(ConsoleWindow::readyDue(0, 0));
+    TEST_ASSERT_FALSE(ConsoleWindow::readyDue(499, 1));
+    TEST_ASSERT_TRUE(ConsoleWindow::readyDue(501, 1));
+    TEST_ASSERT_FALSE(ConsoleWindow::readyDue(700, 400));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_frame_url_from_what_people_paste);
@@ -179,5 +261,12 @@ int main() {
     RUN_TEST(test_tab_weights);
     RUN_TEST(test_clock_and_battery);
     RUN_TEST(test_a_tab_read_lately_is_not_asked_for_again);
+    RUN_TEST(test_why_the_hive_did_not_answer);
+    RUN_TEST(test_the_banner_says_the_reason_in_ascii);
+    RUN_TEST(test_the_host_of_an_address);
+    RUN_TEST(test_mac_as_the_hive_shows_it);
+    RUN_TEST(test_console_window_stays_open_while_somebody_is_there);
+    RUN_TEST(test_console_window_waits_for_a_usb_host_but_not_forever);
+    RUN_TEST(test_console_says_ready_twice_a_second);
     return UNITY_END();
 }

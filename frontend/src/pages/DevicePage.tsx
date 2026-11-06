@@ -24,7 +24,7 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
 import { hasRelay, showsMetric } from '@/lib/features'
-import { formatAgo, formatFixed, formatValue, formatWhen, metricUnit } from '@/lib/format'
+import { formatAgo, formatFixed, formatValue, formatWhen, isBlank, metricUnit, orDash } from '@/lib/format'
 import { ranges, rangeLabel } from '@/lib/ranges'
 import { ZoneSelect } from '@/pages/ClimatePage'
 import { DeviceName } from '@/components/DeviceName'
@@ -244,7 +244,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return (
     <div className="min-w-0">
       <dt className="text-xs text-neutral-500">{label}</dt>
-      <dd className="truncate text-sm tabular-nums">{children ?? '—'}</dd>
+      <dd className="truncate text-sm tabular-nums">{isBlank(children) ? '—' : children}</dd>
     </div>
   )
 }
@@ -362,8 +362,8 @@ export function DevicePage() {
             <Field label={t('device.zone')}>{isAdmin ? <ZoneSelect device={device} zones={zones.data ?? []} /> : device.zone}</Field>
             <Field label={t('device.sort')}>{isAdmin ? <SortInput value={device.sort ?? 0} onSave={saveSort} label={t('device.sort')} /> : device.sort ?? 0}</Field>
             <Field label={t('device.board')}>{device.hw}</Field>
-            <Field label={t('device.firmware')}>{device.fw}</Field>
-            <Field label="MAC">{device.mac}</Field>
+            <Field label={t('device.firmware')}>{orDash(device.fw)}</Field>
+            <Field label="MAC">{orDash(device.mac)}</Field>
             <Field label="IP">{device.ip}</Field>
             <Field label={t('device.signal')}>{device.rssi != null ? `${device.rssi} dBm` : null}</Field>
             <Field label={t('device.lastSeen')}>{formatAgo(device.lastSeenAt)}</Field>

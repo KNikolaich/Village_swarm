@@ -471,6 +471,49 @@ public sealed class ScreenAccessTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task A_panel_that_speaks_only_http_tells_its_mac_and_build_with_its_reads_and_an_info_without_them_keeps_them()
+    {
+        var admin = await hive.LoginAsync();
+        var anonymous = hive.App.CreateClient();
+        using var added = await admin.PostAsJsonAsync("/api/devices/remote-monitors", new { deviceId = "monitor-ident1", name = "Дача", board = "waveshare-s3-epaper-154" });
+        Assert.Equal(HttpStatusCode.Created, added.StatusCode);
+        using var issued = await admin.PostAsync("/api/devices/monitor-ident1/screen-access", null);
+        var token = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+
+        HttpRequestMessage Read(string? mac, string? fw)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, "/api/monitor/v1/frame.bin");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            if (mac is not null)
+                request.Headers.TryAddWithoutValidation("X-Device-Mac", mac);
+            if (fw is not null)
+                request.Headers.TryAddWithoutValidation("X-Fw-Version", fw);
+            return request;
+        }
+        async Task<(string?, string?)> Known()
+        {
+            var d = await hive.QueryAsync(db => db.Devices.AsNoTracking().SingleAsync(x => x.DeviceId == "monitor-ident1"));
+            return (d.Mac, d.FwVersion);
+        }
+
+        using (var first = await anonymous.SendAsync(Read("a0:b7:65:12:34:56", "0.2.0+a1b2c3d")))
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(("A0:B7:65:12:34:56", "0.2.0+a1b2c3d"), await Known());
+
+        // an empty or malformed value never replaces what is known
+        using (var empty = await anonymous.SendAsync(Read("", "bad value")))
+            Assert.Equal(HttpStatusCode.OK, empty.StatusCode);
+        Assert.Equal(("A0:B7:65:12:34:56", "0.2.0+a1b2c3d"), await Known());
+
+        // an info over MQTT with nothing in it keeps the last known MAC and build too
+        var ingest = hive.App.Services.GetRequiredService<Hive.Modules.Telemetry.Ingest.IngestQueue>();
+        var now = DateTimeOffset.UtcNow;
+        ingest.Enqueue(new DeviceInfoReceived("monitor-ident1", Hive.Contracts.Ulid.New(now), now, now, "monitor", "", "", "", null, 1, JsonDocument.Parse("{}")));
+        await hive.WaitForAsync(db => db.Devices.AnyAsync(d => d.DeviceId == "monitor-ident1" && d.Boot == 1), "info written");
+        Assert.Equal(("A0:B7:65:12:34:56", "0.2.0+a1b2c3d"), await Known());
+    }
+
+    [Fact]
     public async Task A_monitor_far_away_is_added_by_hand_and_reads_the_picture_the_hive_draws()
     {
         var admin = await hive.LoginAsync();

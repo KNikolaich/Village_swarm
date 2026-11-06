@@ -73,6 +73,12 @@ A panel may say its battery with every read: request header `X-Battery-mV` (inte
 it cannot measure it). The hive keeps it as the monitor's `battery_voltage` reading (volts) and draws the battery on the
 tabs that have one; a value outside the range is ignored.
 
+A panel may also say who it is with every read (`frame` and `frame.bin`): request headers `X-Device-Mac` (its Wi-Fi MAC, `A0:B7:65:12:34:56`,
+colons or dashes, any case) and `X-Fw-Version` (its build, e.g. `0.2.0+a1b2c3d`: letters, digits and `. _ + ~ -`, up to 40
+characters). A panel that speaks only HTTP never publishes its info over MQTT, so this is how the hive knows its MAC and firmware.
+The hive keeps them on the monitor's device (MAC upper case with colons); a missing, empty or malformed value is ignored and never
+replaces a value the hive already knows.
+
 Monitors far away that speak only HTTP (no MQTT, no enrollment) are added by hand in the UI: `POST /api/devices/remote-monitors`
 `{deviceId, name, board}` (admin), then a token on their page. Their first read marks them online; the time of the last read
 is when the hive last saw them.

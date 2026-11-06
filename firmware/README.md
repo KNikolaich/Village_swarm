@@ -74,7 +74,7 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
   HTTPS (Let's Encrypt roots built in), draws the picture the hive made and deep-sleeps (contracts/monitor-http.md).
   Settings come over USB from the hive's page right after flashing (console, 115200: `set ssid|pass|ssid2|pass2|url|token|interval|rot|insecure <value>`,
   `show`, `go` = save and read now, answering `[monitor] frame <http code>` or `[monitor] wifi failed`, `save` = save and sleep;
-  after a reset it says `[monitor] ready` for 12 s and waits), or from its own Wi-Fi point "VillageSwarm-xxxx" (192.168.4.1; the
+  after a reset it says `[monitor] ready` for 12 s and waits; a line sent, or a USB host that is attached, keeps the window open for a minute or more), or from its own Wi-Fi point "VillageSwarm-xxxx" (192.168.4.1; the
   form takes `?ssid=&pass=&url=&token=&interval=` from the QR code on the hive's page): at first start, or hold BOOT for 2 s.
   The whole 4 MB goes to one app slot (`huge_app.csv`): no updates over the air for this board.
   Pins are those of the Waveshare examples for the V2 board (EPD on GPIO8-13, EPD power GPIO6, battery hold GPIO17).

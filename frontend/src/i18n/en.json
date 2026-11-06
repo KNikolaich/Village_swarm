@@ -974,10 +974,12 @@
     },
     "why": {
       "download": "Could not download the firmware files from the hive. Reload the page and try again.",
-      "noBootloader": "The board does not answer its bootloader. Check the cable (it must carry data) and the port; an ESP32-CAM without the MB adapter needs IO0 held while powering up.",
+      "noBootloader": "The board does not answer its bootloader (the page tried three times). Check the cable (it must carry data) and the port; close programs that hold the port. ESP32-S3/C3: hold BOOT, press and release RST, release BOOT and press Retry; an ESP32-CAM without the MB adapter needs IO0 held while powering up.",
+      "flashFailed": "The board answered its bootloader but the writing broke off (the page tried three times, slower too). Change the cable or the USB port (straight into the computer, no hub) and press Retry.",
+      "portBusy": "The port is held by another program, or the cable was just pulled. Close Arduino IDE, a serial monitor, PlatformIO and other tabs with this page, replug the cable and press Retry.",
       "wrongChip": "The board has another chip: pick the board you actually have in step 1.",
       "portGone": "After the restart the board did not come back on USB. Replug the cable and press Retry with \"already flashed\" ticked.",
-      "noAnswer": "The board did not answer the settings. Press RESET on the board or replug the USB cable (ESP32-CAM-MB adapters sometimes do not start the board after flashing) and press «Retry» with «The board is already flashed». What it prints at start is in the board's log below.",
+      "noAnswer": "The board did not answer the settings although the page restarted it over USB several times. Press RESET on the board or replug the USB cable (ESP32-CAM-MB adapters sometimes do not start the board after flashing) and press Retry; no need to flash again. Close programs that hold the port. What the board prints at start is in the log below.",
       "enrollFailed": "The board could not join: check the Wi-Fi, the hive address (as the board sees it) and that the code has not expired. The reason is in the board log below.",
       "notOnline": "The board joined but did not come online within a minute and a half. Check in the USB console that its Wi-Fi reaches the hive (MQTT).",
       "other": "Something went wrong. Details are in the board log below; the USB console helps to find out more."
@@ -1650,8 +1652,20 @@
       "tooMany": "The hive asks not to read so often. Wait a minute and retry.",
       "noHive": "The panel joined the Wi-Fi, but the hive did not answer at this address. Check the address from the internet (KeenDNS) and that the hive is on. To test at your place you need an address that opens from this network.",
       "wifiFailed": "The panel could not join the Wi-Fi: name and password right? If the network is far from here, untick \"check the link\": the settings are saved without a check.",
-      "noAnswer": "The panel did not answer over USB. Press RST or replug the cable and retry."
+      "noAnswer": "The panel did not answer over USB in several tries: the page waited, sent Enter, restarted it with the DTR/RTS signals and reopened the port. Press RST on the panel and press Retry at once; replug the USB cable (it must carry data); close Arduino IDE, a serial monitor and other tabs with this page. No need to flash again or to pick the port again.",
+      "portBusy": "The port is held by another program, or the cable was just pulled. Close Arduino IDE, a serial monitor, PlatformIO and other tabs with this page, replug the cable and press Retry.",
+      "flashFailed": "The firmware writing broke off (the page tried three times, slower too). Change the cable or the USB port (straight into the computer, no hub) and press Retry."
     }
+  },
+  "usbSetup": {
+    "status": {
+      "listen": "Try {attempt} of {of}: waiting for the board to answer…",
+      "reset": "Try {attempt} of {of}: restarting the board over USB (DTR/RTS signals)…",
+      "reopen": "Try {attempt} of {of}: reopening the port…"
+    },
+    "retrySame": "Retry (same port)",
+    "pickAgain": "Pick the port again",
+    "checklist": "What to do: press the RST button on the board and press Retry at once; replug the USB cable (it must carry data, not only charge); close whatever holds the port: Arduino IDE, a serial monitor, PlatformIO, other tabs with this page."
   },
   "phoneSetup": {
     "title": "Set up from a phone on the spot (QR code)",

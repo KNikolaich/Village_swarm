@@ -13,7 +13,8 @@ import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select } from '
 import { getLanguage, t } from '@/i18n'
 import { SetupStages } from '@/components/SetupStages'
 import { SetupError, type SetupStage, setupHornet, setupStages } from '@/lib/hornetSetup'
-import { type SerialPortLike, serialSupported } from '@/lib/serial'
+import { serialSupported } from '@/lib/serial'
+import { statusText, usePickedPort } from '@/lib/usbPort'
 import { SerialNotice } from '@/components/SerialNotice'
 import { hiveUrl } from '@/lib/hiveUrl'
 
@@ -379,6 +380,8 @@ function SetupStep({ type, build, code, deviceId, onDone, doneLabel }: {
   const [result, setResult] = useState<'running' | 'done' | SetupError | null>(null)
   const startedAt = useRef(0)
   const stageNow = useRef<SetupStage>('port')
+  const usb = usePickedPort()
+  const flashDone = useRef(false)  // once flashed, a retry only tries the console and the settings again
   const onStage = (s: SetupStage) => {
     stageNow.current = s
     setStage(s)
@@ -388,28 +391,36 @@ function SetupStep({ type, build, code, deviceId, onDone, doneLabel }: {
   const commands = [`set ssid ${ssid}`, `set pass ${pass}`, `enroll ${hiveUrl(hive)} ${code}`]
   const stages = setupStages.filter((s) => !(flashed && s === 'flash'))
 
-  async function run() {
+  /** <reuse>: the retry button; the port of the last try is used again without asking. */
+  async function run(reuse = false) {
     setLog([])
     setProgress(0)
     onStage('port')
     setResult('running')
+    usb.setStatus(null)
     try {
-      const port = await (navigator as unknown as { serial: { requestPort(): Promise<SerialPortLike> } }).serial.requestPort()
+      const port = await usb.port(reuse)
       startedAt.current = Date.now()
       await setupHornet({
         port,
-        build: flashed || !build ? undefined : { build: build.build, chipFamily: build.chipFamily },
+        build: flashed || flashDone.current || !build ? undefined : { build: build.build, chipFamily: build.chipFamily },
         commands,
-        onStage,
+        onStage: (st) => {
+          if (st === 'restart' && build && !flashed) flashDone.current = true  // the image is on the board now
+          onStage(st)
+        },
         onProgress: setProgress,
         onLog: (line) => setLog((l) => [...l.slice(-60), line]),
+        onStatus: usb.setStatus,
         isOnline: async () => {
           const d = (await api.GET('/api/devices/{deviceId}', { params: { path: { deviceId } } })).data
           return d?.status === 'online' && !!d.lastSeenAt && new Date(d.lastSeenAt).getTime() >= startedAt.current - 5000
         },
       })
+      usb.setStatus(null)
       setResult('done')
     } catch (e) {
+      usb.setStatus(null)
       // closing the port picker is no failure: back to the button
       if (e instanceof DOMException && e.name === 'NotFoundError') {
         setResult(null)
@@ -464,11 +475,15 @@ function SetupStep({ type, build, code, deviceId, onDone, doneLabel }: {
           </>
         )}
         {stage && <SetupStages stages={stages} stage={stage} running={running} failed={failed} progress={progress} />}
+        {running && usb.status && <p className="text-xs text-amber-300" role="status">{statusText(usb.status)}</p>}
         {failed && (
           <div className="space-y-2 rounded-lg border border-red-900/60 bg-red-950/20 p-2">
             <p className="text-red-300">{t(`add.why.${failed.reason}`, t('add.why.other'))}</p>
             <div className="flex flex-wrap gap-3">
-              <Button variant="secondary" size="sm" onClick={() => void run()} disabled={!ssid || !hive}><RotateCcw />{t('add.retry')}</Button>
+              <Button variant="secondary" size="sm" onClick={() => void run(usb.hasPort())} disabled={!ssid || !hive}>
+                <RotateCcw />{t(usb.hasPort() ? 'usbSetup.retrySame' : 'add.retry')}
+              </Button>
+              {usb.hasPort() && <Button variant="secondary" size="sm" onClick={() => void run(false)} disabled={!ssid || !hive}><Usb />{t('usbSetup.pickAgain')}</Button>}
               <Link to="/console" className="inline-flex items-center gap-1 text-sm text-amber-400 hover:underline"><Terminal className="size-4" />{t('add.openConsole')}</Link>
             </div>
           </div>

@@ -67,10 +67,11 @@ public sealed class IngestWriter(HiveDbContext db)
                     break;
                 case DeviceInfoReceived info:
                     device.TypeCode = info.TypeCode;
-                    device.Hw = info.Hw;
-                    device.FwVersion = info.Fw;
-                    device.Mac = info.Mac;
-                    device.Ip = info.Ip;
+                    // an info without a value (a panel that does not know it yet) keeps the last known one
+                    device.Hw = Keep(info.Hw, device.Hw);
+                    device.FwVersion = Keep(info.Fw, device.FwVersion);
+                    device.Mac = Keep(info.Mac, device.Mac);
+                    device.Ip = Keep(info.Ip, device.Ip);
                     device.Boot = info.Boot;
                     device.Info = info.Info;
                     break;
@@ -89,6 +90,8 @@ public sealed class IngestWriter(HiveDbContext db)
             }
         }
     }
+
+    private static string? Keep(string? fresh, string? known) => string.IsNullOrWhiteSpace(fresh) ? known : fresh;
 
     private async Task ApplyAcksAsync(List<CommandAckReceived> acks, CancellationToken ct)
     {

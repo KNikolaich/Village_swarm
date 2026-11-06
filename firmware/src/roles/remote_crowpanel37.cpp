@@ -131,6 +131,8 @@ RTC_DATA_ATTR int rotation = 270;        // how the hive turned the picture (X-F
 RTC_DATA_ATTR uint32_t clockUnix = 0;    // the hive's time at the last read, plus what was slept since
 RTC_DATA_ATTR uint32_t offlineMin = 0;  // minutes slept since the last read that worked: the data's age while the clock is not known
 RTC_DATA_ATTR uint32_t failures = 0;    // failed reads in a row: the next try is later each time (retryMinutes)
+RTC_DATA_ATTR Fail lastFail = Fail::None;  // why the last read failed (RemoteMonitor.h): the banner says it, "show" too
+RTC_DATA_ATTR int lastFailCode = 0;        // its HTTP code or HTTPClient error
 RTC_DATA_ATTR Offline bannerCause = Offline::None;  // what the screen says about the link now (None: nothing)
 RTC_DATA_ATTR uint32_t bannerAgeMin = 0;            // the data's age it says
 RTC_DATA_ATTR int partials = kPartialsBeforeFull;  // full refresh first after power-on
@@ -421,6 +423,12 @@ String batteryLine(int mv) {
 
 // ------------------------------------------------------------------ console over USB
 
+#ifndef HORNET_FW_VERSION
+#define HORNET_FW_VERSION ""
+#endif
+
+String deviceMac();  // below, with the headers of a read
+
 [[noreturn]] void readAndSleep(bool loading = false);
 
 String consoleLine;
@@ -444,6 +452,8 @@ Order runCommand(String line) {
         Serial.printf("[monitor] ssid=%s ssid2=%s url=%s token=%s interval=%d insecure=%d tab=%d\n", settings.ssid[0].c_str(),
                       settings.ssid[1].c_str(), settings.url.c_str(), settings.token.isEmpty() ? "-" : "set", settings.intervalMin,
                       settings.insecure, currentTab);
+        Serial.printf("[monitor] link: %s, code %d, failures %lu, mac=%s, fw=%s\n", lastFail == Fail::None ? "ok" : failureText(lastFail, lastFailCode).c_str(),
+                      lastFailCode, static_cast<unsigned long>(failures), deviceMac().c_str(), HORNET_FW_VERSION);
         return Order::None;
     }
     if (!line.startsWith("set ")) {
@@ -802,19 +812,58 @@ uint8_t incoming[kFrameBytes];
 
 struct Reply {
     int code = -1;
+    Fail fail = Fail::None;  // why it failed, when it did
+    int tlsError = 0;
+    uint32_t tookMs = 0;
     Answer answer = Answer::Retry;
     int width = 0, height = 0;  // the size the hive said
 };
+
+/// The panel's MAC (its Wi-Fi station address, from the chip: readable before Wi-Fi is up), as the hive's device page shows it.
+String deviceMac() {
+    const uint64_t efuse = ESP.getEfuseMac();
+    return String(macText(reinterpret_cast<const uint8_t*>(&efuse)).c_str());
+}
+
+/// Who is asking, with every read (contracts/monitor-http.md): a panel that speaks only HTTP never tells the hive its MAC and build otherwise.
+void addIdentity(HTTPClient& http) {
+    http.addHeader("X-Device-Mac", deviceMac());
+    if (HORNET_FW_VERSION[0]) http.addHeader("X-Fw-Version", HORNET_FW_VERSION);
+}
+
+/// A USB host on the other side of the console (a computer, not a charger): the console window waits for it.
+bool usbHostAttached() {
+#if ARDUINO_USB_CDC_ON_BOOT
+    return Serial.isConnected();
+#else
+    return false;
+#endif
+}
+
+/// Whether the hive's name resolves (an address needs no lookup): told apart from a TLS or a connect failure.
+bool resolves(const std::string& url) {
+    const std::string host = hostOf(url);
+    if (host.empty()) return true;  // not an address: begin() refuses it below
+    IPAddress ip;
+    return WiFi.hostByName(host.c_str(), ip) == 1;
+}
 
 /// Reads one tab; a new picture lands in the flash (and its ETag beside it). <sleep>: the sleeping picture, which is only shown (it lands in <incoming>).
 Reply fetchTab(int tab, int batteryMv, bool sleep = false) {
     Reply reply;
     const std::string url = tabUrl(settings.url.c_str(), tab, sleep);
+    const uint32_t connectTimeoutMs = sleep ? 5000 : 8000;
+    const uint32_t startedMs = millis();
+    if (!resolves(url)) {
+        reply.fail = Fail::Dns;
+        reply.tookMs = millis() - startedMs;
+        return reply;
+    }
     WiFiClientSecure secure;
     WiFiClient plain;
     HTTPClient http;
     http.setTimeout(sleep ? 6000 : 10000);  // going to sleep: the screen must not sit on "засыпаю..." for long
-    http.setConnectTimeout(sleep ? 5000 : 8000);
+    http.setConnectTimeout(connectTimeoutMs);
     http.setReuse(false);
     bool begun;
     if (isHttps(url)) {
@@ -824,7 +873,11 @@ Reply fetchTab(int tab, int batteryMv, bool sleep = false) {
     } else {
         begun = http.begin(plain, url.c_str());
     }
-    if (!begun) return reply;
+    if (!begun) {
+        reply.fail = Fail::Other;
+        return reply;
+    }
+    addIdentity(http);
     http.addHeader("Authorization", "Bearer " + settings.token);
     const String tag = readTag(tab);
     if (!sleep && tag.length() && haveTab(tab)) http.addHeader("If-None-Match", tag);
@@ -832,6 +885,10 @@ Reply fetchTab(int tab, int batteryMv, bool sleep = false) {
     const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Rotation", "Date", "X-Frame-Tabs", "X-Frame-Refresh", "X-Frame-Tab-Weights"};
     http.collectHeaders(keys, 8);
     reply.code = http.GET();
+    if (isHttps(url)) {
+        char why[64] = "";
+        reply.tlsError = secure.lastError(why, sizeof why);  // 0 unless the handshake went wrong
+    }
     size_t bytes = 0;
     if (reply.code == 200) {
         FrameSink sink(incoming);
@@ -853,6 +910,8 @@ Reply fetchTab(int tab, int batteryMv, bool sleep = false) {
     reply.width = http.header("X-Frame-Width").toInt();
     reply.height = http.header("X-Frame-Height").toInt();
     reply.answer = classify(reply.code, bytes, reply.width, reply.height, kWidth, kHeight);
+    reply.tookMs = millis() - startedMs;
+    if (reply.answer == Answer::Retry) reply.fail = classifyFailure(reply.code, true, reply.tlsError, reply.tookMs, connectTimeoutMs);
     if (reply.code == 200 && reply.answer != Answer::Draw)
         Serial.printf("[monitor] frame of %dx%d, %u bytes: expected %dx%d\n", reply.width, reply.height, static_cast<unsigned>(bytes), kWidth, kHeight);
     if (reply.answer == Answer::Draw && !sleep) {
@@ -882,7 +941,7 @@ void showOfflineMessage(Offline cause, const Reply& reply, uint32_t retryMin, in
                                         "на странице монитора выберите", "плату CrowPanel 3,7\".", retry, batteryLine(battery)});
             break;
         default:
-            showMessage("Нет связи с Ульем", {"Wi-Fi есть, Улей не отвечает" + (reply.code > 0 ? " (" + String(reply.code) + ")." : String(".")),
+            showMessage("Нет связи с Ульем", {"Wi-Fi есть, Улей не отвечает (" + String(failureText(reply.fail, reply.code).c_str()) + ").",
                                               "Проверьте Улей и интернет у него.", retry, "MENU 2 с — настройка", batteryLine(battery)});
             break;
     }
@@ -902,11 +961,17 @@ void readWorked() {
     const Age age = dataAge(nowUnix(), tabReadAt[currentTab], offlineMin);
     const bool have = haveTab(currentTab);
     const bool due = bannerDue(cause, bannerCause, age.minutes, bannerAgeMin) || loadingShown || (have && messageShown);
+    const Fail fail = cause == Offline::NoWifi ? Fail::NoWifi : cause == Offline::WrongFrame ? Fail::Frame : reply.fail;
+    const std::string reason = failureText(fail, reply.code);
+    lastFail = fail;
+    lastFailCode = reply.code;
+    Serial.printf("[monitor] why: %s, http %d, tls %d, took %lu ms, host %s\n", reason.c_str(), reply.code, reply.tlsError,
+                  static_cast<unsigned long>(reply.tookMs), hostOf(settings.url.c_str()).c_str());
     Serial.printf("[monitor] offline: %s (http %d), failure %lu, data %lu min old%s, next try in %lu min, %s\n", kCauseNames[static_cast<int>(cause)],
                   reply.code, static_cast<unsigned long>(failures), static_cast<unsigned long>(age.minutes), age.exact ? "" : " (counted)",
                   static_cast<unsigned long>(retryMin), due ? "screen redrawn" : "screen kept");
     if (due) {
-        if (!have || !showTab(currentTab, -1, String(offlineBanner(cause, age, false).c_str()))) showOfflineMessage(cause, reply, retryMin, battery);
+        if (!have || !showTab(currentTab, -1, String(offlineBanner(cause, age, false, reason).c_str()))) showOfflineMessage(cause, reply, retryMin, battery);
         bannerCause = cause;
         bannerAgeMin = age.minutes;
     }
@@ -1043,7 +1108,7 @@ bool isSleepingTab(const uint8_t* bits) {
     bool drawn = false;
     if (joinWifi(kSleepWifiMs)) {
         const Reply reply = fetchTab(currentTab, battery, true);
-        Serial.printf("[monitor] sleep frame %d\n", reply.code);
+        Serial.printf("[monitor] sleep frame %d (%s)\n", reply.code, failureText(reply.fail, reply.code).c_str());
         if (reply.answer == Answer::Draw) {
             if (isSleepingTab(incoming)) {
                 Serial.println("[monitor] sleep: the hive's sleeping tab (no picture of the person's)");
@@ -1115,18 +1180,18 @@ bool showHelp() {
 }
 
 Order consoleWindow() {
-    constexpr uint32_t kWaitMs = 12000, kMaxMs = 120000;
     const uint32_t started = millis();
-    uint32_t until = kWaitMs, lastBanner = 0;
+    ConsoleWindow window;
+    uint32_t lastReady = 0;
     for (;;) {
         bool activity = false;
         const Order order = pollConsole(activity);
         if (order != Order::None) return order;
         const uint32_t now = millis() - started;
-        if (activity) until = now + kWaitMs < kMaxMs ? now + kWaitMs : kMaxMs;
-        if (now >= until) return Order::None;
-        if (now - lastBanner >= 500 || lastBanner == 0) {
-            lastBanner = now;
+        if (activity) window.touch(now);  // a line typed keeps the window open for a minute; so does a USB host that is attached
+        if (!window.open(now, usbHostAttached())) return Order::None;
+        if (ConsoleWindow::readyDue(now, lastReady)) {
+            lastReady = now == 0 ? 1 : now;
             Serial.println("[monitor] ready");
         }
         delay(20);
