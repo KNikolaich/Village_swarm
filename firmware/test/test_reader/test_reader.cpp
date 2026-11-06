@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "../../lib/hornet-core/src/Invert.h"
 #include "../../lib/hornet-core/src/Reader.h"
 #include "tiny_epub.h"
 
@@ -368,6 +369,41 @@ static void test_history_keeps_the_last_starts() {
     TEST_ASSERT_FALSE(h.pop(s));
 }
 
+// A 1-bit screen in memory, as GFXcanvas1 looks from outside.
+struct FakeCanvas {
+    int w, h;
+    std::vector<int> px;
+    FakeCanvas(int w_, int h_) : w(w_), h(h_), px(w_ * h_, 0) {}
+    bool getPixel(int x, int y) const { return px[y * w + x] != 0; }
+    void drawPixel(int x, int y, int c) { px[y * w + x] = c; }
+};
+
+static void test_a_chosen_row_is_the_same_text_flipped() {
+    FakeCanvas c(8, 6);
+    // some "text" in rows 1 and 2: the same pixels in the chosen row as in an ordinary one
+    for (int x : {1, 2, 5}) { c.drawPixel(x, 1, 1); c.drawPixel(x, 4, 1); }
+    FakeCanvas before = c;
+    invertRect(c, 0, 3, 8, 2, c.w, c.h);  // rows 3 and 4
+    for (int y = 0; y < c.h; y++)
+        for (int x = 0; x < c.w; x++)
+            TEST_ASSERT_EQUAL(y == 3 || y == 4 ? !before.getPixel(x, y) : before.getPixel(x, y), c.getPixel(x, y));
+    // the text of row 4 (ink) is now white on a black bar
+    TEST_ASSERT_FALSE(c.getPixel(1, 4));
+    TEST_ASSERT_TRUE(c.getPixel(0, 4));
+    // flipping twice is the original
+    invertRect(c, 0, 3, 8, 2, c.w, c.h);
+    TEST_ASSERT_TRUE(c.px == before.px);
+}
+
+static void test_inverting_stays_inside_the_screen() {
+    FakeCanvas c(4, 4);
+    invertRect(c, -2, -2, 10, 10, c.w, c.h);  // more than the screen: no pixel outside is touched, no crash
+    for (int p : c.px) TEST_ASSERT_EQUAL(1, p);
+    invertRect(c, 3, 3, 5, 5, c.w, c.h);
+    TEST_ASSERT_EQUAL(0, c.getPixel(3, 3) ? 1 : 0);
+    TEST_ASSERT_TRUE(c.getPixel(2, 3));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_utf8_passes_and_broken_bytes_become_one_mark_each);
@@ -386,5 +422,7 @@ int main() {
     RUN_TEST(test_notes_round_trip_and_a_changed_book_starts_over);
     RUN_TEST(test_folders_first_then_books_alphabetically);
     RUN_TEST(test_history_keeps_the_last_starts);
+    RUN_TEST(test_a_chosen_row_is_the_same_text_flipped);
+    RUN_TEST(test_inverting_stays_inside_the_screen);
     return UNITY_END();
 }

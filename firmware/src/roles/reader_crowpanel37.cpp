@@ -21,6 +21,7 @@
 
 #include <memory>
 
+#include "../../lib/hornet-core/src/Invert.h"
 #include "../../lib/hornet-core/src/Reader.h"
 #include "crowpanel37.h"
 #include "miniz.h"  // the ROM's inflate (tinfl)
@@ -318,12 +319,8 @@ void showBrowser() {
     for (int i = first; i < first + rows && i < static_cast<int>(entries.size()); i++) {
         const int y = top + 2 + (i - first) * kRowHeight;
         const std::string name = entries[i].folder ? entries[i].name + "/" : entries[i].name;
-        if (i == cursor) {
-            c.fillRect(0, y, c.width(), kRowHeight, 1);
-            t.setForegroundColor(0);
-        }
-        drawText(6, y + 14, fitWidth(name, c.width() - 12, measure));
-        t.setForegroundColor(1);
+        drawText(6, y + 14, fitWidth(name, c.width() - 12, measure));  // every row alike: the same font and ink
+        if (i == cursor) invertRect(c, 0, y, c.width(), kRowHeight, c.width(), c.height());  // the chosen one is then flipped: black bar, white text
     }
     present(false);
     view = View::Browser;
@@ -750,12 +747,8 @@ void showMenu() {
     };
     int y = top + 4;
     for (int i = 0; i < RowCount; i++, y += kRowHeight) {
-        if (i == menuRow) {
-            c.fillRect(0, y, c.width(), kRowHeight, 1);
-            t.setForegroundColor(0);
-        }
         drawText(6, y + 14, fitWidth(rows[i], c.width() - 12, measure));
-        t.setForegroundColor(1);
+        if (i == menuRow) invertRect(c, 0, y, c.width(), kRowHeight, c.width(), c.height());
     }
     y += 8;
     drawText(6, y + 12, "Вверх/вниз: выбор,");
