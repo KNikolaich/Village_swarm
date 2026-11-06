@@ -13,6 +13,18 @@ export type RemoteSettings = {
   url: string
   token: string
   intervalMin: number
+  /** Do not check the hive's certificate (an address that is an IP, or a certificate the hive made itself). Left out: the panel keeps what it has. */
+  insecure?: boolean
+}
+
+/** An https address of the hive by IP number cannot have a certificate for its name: the panel must not check it. */
+export function needsInsecure(url: string): boolean {
+  try {
+    const u = new URL(url.trim())
+    return u.protocol === 'https:' && /^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname)
+  } catch {
+    return false
+  }
 }
 
 /** What the panel's console line says. */
@@ -33,9 +45,10 @@ export function panelLine(line: string): PanelLine {
 
 /** Console lines for the settings. A name or a password may hold spaces: the rest of the line is the value. */
 export function remoteCommands(s: RemoteSettings, readNow: boolean): string[] {
+  // "go" and "save" are sent here, never typed by the person: both write the settings to the panel's flash ("go" then reads at once).
   return [
     `set ssid ${s.ssid}`, `set pass ${s.pass}`, `set url ${s.url.trim()}`, `set token ${s.token.trim()}`,
-    `set interval ${s.intervalMin}`, readNow ? 'go' : 'save',
+    `set interval ${s.intervalMin}`, ...(s.insecure === undefined ? [] : [`set insecure ${s.insecure ? 1 : 0}`]), readNow ? 'go' : 'save',
   ]
 }
 
@@ -65,6 +78,8 @@ export type RemoteSetupOptions = {
   onLog: (line: string) => void
   /** What the page does while it waits for the panel (listening, resetting it, reopening the port). */
   onStatus?: (status: ConsoleStatus) => void
+  /** How long each try listens and how often it nudges (tests make them short). */
+  wait?: { waitMs: number; nudgeMs: number }
 }
 
 /** Resolves when the panel took the settings (and, with readNow, read its picture); throws SetupError otherwise. */
@@ -83,6 +98,7 @@ export async function setupRemote(o: RemoteSetupOptions) {
       open: () => reopenConsole(o.port, o.onLog),
       ready: (l) => panelLine(l) === 'ready',
       onStatus: o.onStatus,
+      ...o.wait,
     })
     board = up.board
     if (up.line === null) throw new SetupError('restart', 'noAnswer')
@@ -91,7 +107,8 @@ export async function setupRemote(o: RemoteSetupOptions) {
     const token = await o.issueToken()
     const answer = board.waitForLine((l) => {
       const p = panelLine(l)
-      return p === 'saved' || p === 'wifiFailed' || (typeof p === 'object' && p !== null)
+      // "saved" comes first, before the panel reads: with readNow only what the read said ends the wait
+      return (!o.readNow && p === 'saved') || p === 'wifiFailed' || (typeof p === 'object' && p !== null)
     }, o.readNow ? 90_000 : 15_000)
     for (const command of remoteCommands({ ...o.settings, token }, o.readNow)) {
       await board.send(command)

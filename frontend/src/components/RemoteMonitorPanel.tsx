@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Cpu, PartyPopper, RotateCcw, Terminal, Usb } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
+import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { keys } from '@/api/queries'
 import { HelpTip } from '@/components/HelpTip'
@@ -13,6 +14,7 @@ import { t } from '@/i18n'
 import { SetupError, type SetupStage } from '@/lib/hornetSetup'
 import { publicHiveUrl, rememberHiveUrl } from '@/lib/publicUrl'
 import { remoteStages, setupRemote } from '@/lib/remoteSetup'
+import { preparePhoneSetup } from '@/lib/phoneSetupFlow'
 import { serialSupported } from '@/lib/serial'
 import { statusText, usePickedPort } from '@/lib/usbPort'
 import { SerialNotice } from '@/components/SerialNotice'
@@ -81,6 +83,39 @@ export function RemoteMonitorPanel({ existingId }: { existingId?: string }) {
     setStage(s)
   }
 
+  /** The monitor is in the hive: created once, unless this is the page of one that is already there. */
+  async function ensureMonitor() {
+    if (existingId || created.current) return
+    const { error, response } = await api.POST('/api/devices/remote-monitors', { body: { deviceId, name: name.trim(), board } })
+    if (!response.ok) {
+      const text = (error as { errors?: Record<string, string[]> } | undefined)?.errors?.deviceId?.[0]
+      throw new SetupError('port', 'other', text ?? t('errors.generic'))
+    }
+    created.current = true
+    await qc.invalidateQueries({ queryKey: keys.devices })
+  }
+
+  const [phoneBusy, setPhoneBusy] = useState(false)
+  /** The QR for the phone, whatever became of USB: the monitor if it is not made yet, then a token on demand. */
+  async function showPhoneQr() {
+    setPhoneBusy(true)
+    try {
+      rememberHiveUrl(hive)
+      setToken(await preparePhoneSetup({
+        ensureMonitor,
+        issueToken: async () => {
+          const issued = await api.POST('/api/devices/{deviceId}/screen-access', { params: { path: { deviceId: id } } })
+          if (!issued.response.ok || !issued.data) throw new SetupError('settings', 'other', t('errors.generic'))
+          return issued.data.token
+        },
+      }))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('errors.generic'))
+    } finally {
+      setPhoneBusy(false)
+    }
+  }
+
   /** <reuse>: the retry button; the port of the last try is used again without asking. */
   async function run(reuse = false) {
     setLog([])
@@ -98,15 +133,7 @@ export function RemoteMonitorPanel({ existingId }: { existingId?: string }) {
       return
     }
     try {
-      if (!existingId && !created.current) {
-        const { error, response } = await api.POST('/api/devices/remote-monitors', { body: { deviceId, name: name.trim(), board } })
-        if (!response.ok) {
-          const text = (error as { errors?: Record<string, string[]> } | undefined)?.errors?.deviceId?.[0]
-          throw new SetupError('port', 'other', text ?? t('errors.generic'))
-        }
-        created.current = true
-        await qc.invalidateQueries({ queryKey: keys.devices })
-      }
+      await ensureMonitor()
       rememberHiveUrl(hive)
       await setupRemote({
         port,
@@ -240,7 +267,15 @@ export function RemoteMonitorPanel({ existingId }: { existingId?: string }) {
             <pre className="mt-1 max-h-48 overflow-auto rounded bg-neutral-950 p-2 text-neutral-400">{log.join('\n')}</pre>
           </details>
         )}
-        {token && <PhoneSetup url={hive} token={token} ssid={ssid} pass={pass} intervalMin={interval} />}
+        {failed && !token && <p className="text-xs text-amber-300">{t('remoteMonitor.phoneInstead')}</p>}
+        {token
+          ? <PhoneSetup url={hive} token={token} ssid={ssid} pass={pass} intervalMin={interval} open={!!failed} />
+          : (
+            <div className="space-y-1 text-xs text-neutral-500">
+              <Button variant="secondary" size="sm" disabled={running || phoneBusy || !ready} onClick={() => void showPhoneQr()}>{t('remoteMonitor.phoneQr')}</Button>
+              <p>{t('remoteMonitor.phoneQrHint')}</p>
+            </div>
+          )}
       </CardContent>
     </Card>
   )
