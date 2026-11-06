@@ -21,6 +21,7 @@
 
 #include <memory>
 
+#include "../../lib/hornet-core/src/Buttons.h"
 #include "../../lib/hornet-core/src/Invert.h"
 #include "../../lib/hornet-core/src/Reader.h"
 #include "crowpanel37.h"
@@ -872,28 +873,21 @@ void onEvent(Event e, int count = 1) {
     }
 }
 
-/// MENU or EXIT: a short press when let go, a long one at 2 s (while still held).
+/// MENU or EXIT: a short press when let go, a long one at 2 s (while still held). The contacts chatter and a screen refresh blocks
+/// the loop, so the level is debounced and a press that begins right after the screen changed is ignored (Buttons.h, native tests).
 struct Hold {
     gpio_num_t pin;
     Event shortPress, longPress;
-    uint32_t since = 0;
-    bool fired = false;
+    hornet::buttons::Button button;
 
     Event poll() {
-        const bool down = pressed(pin);
-        if (down && !since) since = millis() | 1;
-        if (down && !fired && millis() - since >= 2000) {
-            fired = true;
-            return longPress;
+        switch (button.poll(pressed(pin), millis())) {
+            case hornet::buttons::Out::Short: return shortPress;
+            case hornet::buttons::Out::Long: return longPress;
+            default: return Event::None;
         }
-        if (!down && since) {
-            const bool tap = !fired && millis() - since >= 30;  // bounce is no press
-            since = 0;
-            fired = false;
-            if (tap) return shortPress;
-        }
-        return Event::None;
     }
+    bool busy() const { return button.busy(); }
 };
 
 /// Awake for a few seconds after the last button (paging on needs no wake-up), then deep sleep until the next.
@@ -902,6 +896,9 @@ struct Hold {
     Hold menu{kPinMenu, Event::Menu, Event::MenuLong};
     Hold exit{kPinExit, Event::Exit, Event::ExitLong};
     uint32_t last = millis();
+    // The press that woke the panel was already acted on: a replay of it (bounce) within this time is not a new press.
+    menu.button.lockFor(last, hornet::buttons::kMenuLockMs);
+    exit.button.lockFor(last, hornet::buttons::kExitLockMs);
     for (;;) {
         Event e = Event::None;
         int count = 1;
@@ -916,8 +913,12 @@ struct Hold {
         if (e != Event::None) {
             onEvent(e, count);
             last = millis();
+            // The screen has just been redrawn (it took a second or two): a second press of the same button now is bounce or a finger
+            // that did not let go, not a new wish. EXIT would otherwise close the book right after leaving the settings.
+            menu.button.lockFor(last, hornet::buttons::kMenuLockMs);
+            exit.button.lockFor(last, hornet::buttons::kExitLockMs);
         }
-        if (millis() - last > kAwakeMs && !menu.since && !exit.since) break;
+        if (millis() - last > kAwakeMs && !menu.busy() && !exit.busy()) break;
         delay(10);
     }
     Serial.println("[reader] asleep until a button");
