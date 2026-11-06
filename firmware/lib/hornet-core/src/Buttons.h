@@ -11,10 +11,10 @@
 
 namespace hornet::buttons {
 
-constexpr uint32_t kStableMs = 30;
+constexpr uint32_t kStableMs = 50;     // a level counts after it held this long: a touch shorter than this is no press either
 constexpr uint32_t kLongMs = 2000;
-constexpr uint32_t kExitLockMs = 400;  // after any action a second EXIT is not believed for this long
-constexpr uint32_t kMenuLockMs = 200;
+constexpr uint32_t kExitLockMs = 600;  // after any action a second EXIT is not believed for this long
+constexpr uint32_t kMenuLockMs = 300;
 
 enum class Out : uint8_t { None, Short, Long };
 

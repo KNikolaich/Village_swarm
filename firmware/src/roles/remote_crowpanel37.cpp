@@ -44,6 +44,7 @@
 #include <time.h>
 
 #include "../../lib/hornet-core/src/RemoteMonitor.h"
+#include "../../lib/hornet-core/src/Buttons.h"
 #include "crowpanel37.h"
 
 namespace {
@@ -517,7 +518,7 @@ constexpr uint32_t kHelpTimeoutMs = 30000;  // the help screen waits this long f
 constexpr gpio_num_t kButtons[] = {kPinExit, kPinMenu, kPinDown, kPinConf, kPinUp};
 
 // Presses that come while the panel is busy (Wi-Fi, the hive's answer, the screen refresh) are counted by interrupts, so none is lost:
-// the rocker's up and down and the press. A falling edge counts when the button had been up for 40 ms (bounce is not a press).
+// the rocker's up and down and the press. A falling edge counts when the button had been up for 40 ms, the press for 60 ms (bounce is not a press).
 // The handler runs from IRAM and may come while the flash is written, so it touches only DRAM and IRAM-safe calls
 // (the input register, esp_timer_get_time), and the counters are shared under a spinlock.
 volatile uint8_t pendingPress[3] = {0, 0, 0};  // up, down, press
@@ -530,7 +531,8 @@ void IRAM_ATTR onEdge(void* arg) {
     const int64_t now = esp_timer_get_time();
     const bool down = (REG_READ(GPIO_IN_REG) & (1UL << kWatched[i])) == 0;
     portENTER_CRITICAL_ISR(&pressMux);
-    if (down && now - lastEdgeUs[i] > 40000 && pendingPress[i] < 8) pendingPress[i] = pendingPress[i] + 1;
+    // up and down (the rocker turning) count after 40 ms of quiet, its press (index 2) after 60 ms: that contact chatters in longer bursts
+    if (down && now - lastEdgeUs[i] > (i == 2 ? 60000 : 40000) && pendingPress[i] < 8) pendingPress[i] = pendingPress[i] + 1;
     lastEdgeUs[i] = now;
     portEXIT_CRITICAL_ISR(&pressMux);
 }
@@ -1063,15 +1065,18 @@ void readWorked() {
     if (takePress()) chosen(cursor);
     showTab(currentTab, cursor, String());
     uint32_t lastInput = millis();
+    hornet::buttons::Button exit;  // debounced, and a second press right after the screen changed is ignored (Buttons.h)
+    exit.lockFor(millis(), hornet::buttons::kExitLockMs);
     while (millis() - lastInput < kCursorTimeoutMs) {
         if (const int step = takeSteps(); step != 0) {
             cursor = stepTab(cursor, step, tabs);
             showTab(currentTab, cursor, String());
             lastInput = millis();
+            exit.lockFor(lastInput, hornet::buttons::kExitLockMs);
             continue;
         }
         if (takePress()) chosen(cursor);
-        if (pressed(kPinExit)) {
+        if (exit.poll(pressed(kPinExit), millis()) == hornet::buttons::Out::Short) {
             waitRelease();
             break;
         }
@@ -1081,14 +1086,28 @@ void readWorked() {
     sleepFor(nextReadSeconds());
 }
 
-/// Woken by a button: held for 2 s = the long press (MENU: the settings point, EXIT: the help screen).
+/// Woken by a button: held for 2 s = the long press (MENU: the settings point, EXIT: the help screen). The button is debounced
+/// (Buttons.h): a glitch of the contact in the middle of the hold no longer makes a long press look short. False for a short press or
+/// a button already let go.
 bool held(gpio_num_t pin) {
-    const uint32_t started = millis();
-    while (millis() - started < 2000) {
-        if (!pressed(pin)) return false;
-        delay(20);
+    hornet::buttons::Button button;
+    uint32_t quietSince = 0;
+    for (;;) {
+        const uint32_t now = millis();
+        switch (button.poll(pressed(pin), now)) {
+            case hornet::buttons::Out::Long: return true;
+            case hornet::buttons::Out::Short: return false;
+            default: break;
+        }
+        if (button.busy()) {
+            quietSince = 0;
+        } else if (!quietSince) {
+            quietSince = now | 1;
+        } else if (now - quietSince >= 100) {
+            return false;  // it was let go before the panel looked (a tap that woke it)
+        }
+        delay(10);
     }
-    return true;
 }
 
 bool menuHeld() { return held(kPinMenu); }
@@ -1172,14 +1191,18 @@ bool showHelp() {
                            "EXIT 2 с: эта справка", "здесь MENU 2 с: настройки", "  http://192.168.4.1", "здесь EXIT: назад"});
     waitRelease();
     const uint32_t started = millis();
+    hornet::buttons::Button exitButton, menuButton;  // debounced; the press that opened the help (and its bounce) is not believed
+    exitButton.lockFor(started, hornet::buttons::kExitLockMs);
+    menuButton.lockFor(started, hornet::buttons::kMenuLockMs);
     while (millis() - started < kHelpTimeoutMs) {
-        if (pressed(kPinExit)) {
+        if (exitButton.poll(pressed(kPinExit), millis()) == hornet::buttons::Out::Short) {
             waitRelease();
             break;
         }
-        if (pressed(kPinMenu)) {
-            if (menuHeld()) return true;
-            readAndSleep(true);
+        switch (menuButton.poll(pressed(kPinMenu), millis())) {
+            case hornet::buttons::Out::Long: return true;       // MENU 2 s: the settings point
+            case hornet::buttons::Out::Short: readAndSleep(true);  // MENU: read now
+            default: break;
         }
         if (const int step = takeSteps(); step != 0) chooseTab(step);
         if (takePress()) chooseTab(0);

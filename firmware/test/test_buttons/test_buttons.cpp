@@ -35,7 +35,7 @@ static void test_a_clean_short_press_says_short_once_when_let_go() {
     const auto out = play(b, {{100, true}, {300, false}}, 1000);
     TEST_ASSERT_EQUAL(1, out.size());
     TEST_ASSERT_TRUE(out[0].second == Out::Short);
-    TEST_ASSERT_TRUE(out[0].first >= 330 && out[0].first <= 340);  // after the release has been steady for 30 ms
+    TEST_ASSERT_TRUE(out[0].first >= 350 && out[0].first <= 360);  // after the release has been steady for 50 ms
 }
 
 static void test_chatter_on_press_and_on_release_is_one_press() {
@@ -43,6 +43,29 @@ static void test_chatter_on_press_and_on_release_is_one_press() {
     // down, up, down, up, down for a few ms each, then held; the same on the way out
     const auto out = play(b, {{100, true}, {105, false}, {110, true}, {115, false}, {120, true},
                               {300, false}, {305, true}, {310, false}, {315, true}, {320, false}}, 1000);
+    TEST_ASSERT_EQUAL(1, out.size());
+    TEST_ASSERT_TRUE(out[0].second == Out::Short);
+}
+
+// Chatter in bursts of 5 to 20 ms, repeated for 100 ms, then the level settles: one press at the press, one release at the release.
+static void test_bursts_of_chatter_for_100_ms_are_still_one_press() {
+    Button b;
+    std::vector<Step> steps;
+    uint32_t t = 100;
+    bool level = true;
+    for (uint32_t i = 0, widths[] = {5, 12, 7, 20, 9, 15, 6, 11}; i < 8 && t < 200; i++) {  // the burst: 100 ms of toggling
+        steps.push_back({t, level});
+        t += widths[i];
+        level = !level;
+    }
+    steps.push_back({t, true});  // settles pressed (t is about 185 ms)
+    for (uint32_t i = 0, widths[] = {6, 14, 5, 18, 8, 12, 10, 9}; i < 8; i++) {  // the same on the way out, from 600 ms
+        if (i == 0) t = 600;
+        steps.push_back({t, i % 2 ? true : false});
+        t += widths[i];
+    }
+    steps.push_back({t, false});  // settles released
+    const auto out = play(b, steps, 1500);
     TEST_ASSERT_EQUAL(1, out.size());
     TEST_ASSERT_TRUE(out[0].second == Out::Short);
 }
@@ -57,7 +80,7 @@ static void test_a_glitch_in_the_middle_of_a_hold_is_not_a_second_press() {
 
 static void test_a_touch_shorter_than_the_stable_time_is_nothing() {
     Button b;
-    TEST_ASSERT_EQUAL(0, play(b, {{100, true}, {120, false}}, 1000).size());
+    TEST_ASSERT_EQUAL(0, play(b, {{100, true}, {140, false}}, 1000).size());  // 40 ms is a touch, not a press
 }
 
 static void test_a_long_press_says_long_once_while_held_and_no_short_after() {
@@ -79,7 +102,7 @@ static void test_a_press_right_after_a_view_change_is_ignored_whole() {
 static void test_a_press_after_the_lock_counts_again() {
     Button b;
     b.lockFor(0, kExitLockMs);
-    const auto out = play(b, {{500, true}, {700, false}}, 1500);
+    const auto out = play(b, {{700, true}, {900, false}}, 1800);
     TEST_ASSERT_EQUAL(1, out.size());
     TEST_ASSERT_TRUE(out[0].second == Out::Short);
 }
@@ -117,6 +140,7 @@ int main() {
     UNITY_BEGIN();
     RUN_TEST(test_a_clean_short_press_says_short_once_when_let_go);
     RUN_TEST(test_chatter_on_press_and_on_release_is_one_press);
+    RUN_TEST(test_bursts_of_chatter_for_100_ms_are_still_one_press);
     RUN_TEST(test_a_glitch_in_the_middle_of_a_hold_is_not_a_second_press);
     RUN_TEST(test_a_touch_shorter_than_the_stable_time_is_nothing);
     RUN_TEST(test_a_long_press_says_long_once_while_held_and_no_short_after);
