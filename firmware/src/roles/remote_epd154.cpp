@@ -928,6 +928,7 @@ void setup() {
     powerOn();
     Serial.begin(115200);
     settings.load();
+    Serial.printf("[monitor] boot fw=%s\n", HORNET_FW_VERSION);  // a sign of life at once for the hive's page
 
     // A start that ended the wired wait is a timer or a button, not a power-on: no console window, the button it remembered.
     const bool fromWired = wiredRestart;

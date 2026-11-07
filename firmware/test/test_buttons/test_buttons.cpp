@@ -249,6 +249,33 @@ static void test_one_tap_through_the_whole_chain_is_one_event_and_one_change() {
     TEST_ASSERT_TRUE(settingsAction(Key::Press) == SettingsAction::None);
 }
 
+// The press that woke the panel is already down at the first poll (the rocker's press held 2 s opens the settings point).
+static void test_a_press_already_down_at_the_first_poll_is_long_after_two_seconds_or_short_when_let_go() {
+    Button held;
+    std::vector<std::pair<uint32_t, Out>> out;
+    for (uint32_t t = 0; t <= 3000; t += 10) {
+        const Out o = held.poll(true, t);  // the finger stays on the button
+        if (o != Out::None) out.push_back({t, o});
+    }
+    TEST_ASSERT_EQUAL(1, out.size());
+    TEST_ASSERT_TRUE(out[0].second == Out::Long);
+    TEST_ASSERT_TRUE(out[0].first >= 2000 && out[0].first <= 2020);
+
+    Button tap;
+    std::vector<std::pair<uint32_t, Out>> tapped;
+    for (uint32_t t = 0; t <= 1000; t += 10) {
+        const Out o = tap.poll(t < 120, t);  // let go after 120 ms: a short press (the tab cursor), not the settings point
+        if (o != Out::None) tapped.push_back({t, o});
+    }
+    TEST_ASSERT_EQUAL(1, tapped.size());
+    TEST_ASSERT_TRUE(tapped[0].second == Out::Short);
+
+    Button glitchy;  // a glitch of 25 ms in the middle of the hold does not turn it into a short press
+    Out last = Out::None;
+    for (uint32_t t = 0; t <= 2500; t += 5) last = glitchy.poll(!(t >= 800 && t < 825), t) == Out::Long ? Out::Long : last;
+    TEST_ASSERT_TRUE(last == Out::Long);
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_a_clean_short_press_says_short_once_when_let_go);
@@ -274,6 +301,7 @@ int main() {
     RUN_TEST(test_in_the_settings_one_rocker_press_changes_nothing);
     RUN_TEST(test_in_the_settings_menu_changes_one_row_per_press_and_the_rocker_moves);
     RUN_TEST(test_a_book_opens_its_settings_by_the_press_or_a_held_menu);
+    RUN_TEST(test_a_press_already_down_at_the_first_poll_is_long_after_two_seconds_or_short_when_let_go);
     RUN_TEST(test_one_tap_through_the_whole_chain_is_one_event_and_one_change);
     return UNITY_END();
 }

@@ -43,6 +43,11 @@ export function panelLine(line: string): PanelLine {
   return null
 }
 
+/** A line that says the panel is up but busy ("[monitor] boot ...", "[monitor] flash: formatting ..."): wait for it, do not reset it. */
+export function panelBusy(line: string): boolean {
+  return /^\[monitor\] (boot|flash:)/.test(line)
+}
+
 /** Console lines for the settings. A name or a password may hold spaces: the rest of the line is the value. */
 export function remoteCommands(s: RemoteSettings, readNow: boolean): string[] {
   // "go" and "save" are sent here, never typed by the person: both write the settings to the panel's flash ("go" then reads at once).
@@ -97,6 +102,9 @@ export async function setupRemote(o: RemoteSetupOptions) {
     const up = await awaitConsole({
       open: () => reopenConsole(o.port, o.onLog),
       ready: (l) => panelLine(l) === 'ready',
+      alive: panelBusy,
+      // right after a flash the panel formats its file system on the first start (many seconds of silence): the first try waits long
+      firstWaitMs: o.build ? 45_000 : undefined,
       onStatus: o.onStatus,
       ...o.wait,
     })

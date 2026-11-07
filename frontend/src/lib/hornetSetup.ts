@@ -154,6 +154,25 @@ export type AwaitConsoleOptions = {
   /** How long each try listens. Every newline sent meanwhile keeps a panel's console window open (it lasts only 12 s after power-on). */
   waitMs?: number
   nudgeMs?: number
+  /** How long the first try listens: a board that was just flashed may spend a long time on its first start (formatting its flash). */
+  firstWaitMs?: number
+  /** A line that says "I am busy, wait" (not "ready"): the wait starts over, up to maxWaitMs in all, and the board is not reset meanwhile. */
+  alive?: (line: string) => boolean
+  maxWaitMs?: number
+}
+
+/** Listens for <ready>; a line that says the board is busy starts the wait over (within maxWaitMs), silence for waitMs ends it. */
+async function listen(board: HornetSerial, o: AwaitConsoleOptions, waitMs: number): Promise<string | null> {
+  const hardStop = Date.now() + (o.maxWaitMs ?? 120_000)
+  let deadline = Date.now() + waitMs
+  for (;;) {
+    const left = deadline - Date.now()
+    if (left <= 0) return null
+    const line = await board.waitForLine((l) => o.ready(l) || (o.alive?.(l) ?? false), left)
+    if (line === null) return null
+    if (o.ready(line)) return line
+    deadline = Math.min(Date.now() + waitMs, hardStop)  // busy: wait again, the board is alive
+  }
 }
 
 /**
@@ -178,7 +197,7 @@ export async function awaitConsole(o: AwaitConsoleOptions): Promise<{ board: Hor
       await board.pulseReset().catch(() => {})
     }
     o.onStatus?.({ step: 'listen', attempt, of: attempts })
-    const wait = board.waitForLine(o.ready, waitMs)
+    const wait = listen(board, o, attempt === 1 && o.firstWaitMs ? o.firstWaitMs : waitMs)
     const nudge = setInterval(() => void board.send('').catch(() => {}), nudgeMs)
     let line: string | null
     try {

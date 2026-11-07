@@ -190,6 +190,13 @@ struct Settings {
 
 String tabPath(int tab) { return String("/t") + tab + ".bin"; }
 String tagPath(int tab) { return String("/t") + tab + ".tag"; }
+/// Mounts the flash file system. The first start after a flash formats it (many seconds): says so before it starts, so the page waits.
+void mountFlash() {
+    if (LittleFS.begin(false)) return;
+    Serial.println("[monitor] flash: first start, formatting the file system (up to 30 s), please wait");
+    if (!LittleFS.begin(true)) Serial.println("[monitor] flash: no file system, tabs are read anew every time");
+}
+
 const char* kShownPath = "/shown.bin";  // what is on the screen: the "old" picture of a partial refresh
 const char* kSleepPath = "/sleep.bin";  // the person's sleep picture as the hive last sent it: shown when the panel goes to sleep offline
 
@@ -1211,7 +1218,7 @@ bool isSleepingTab(const uint8_t* bits) {
 /// EXIT held for 2 s: what the buttons do. EXIT again gives the screen back; a few quiet seconds do the same. True: MENU held, the settings point is up.
 bool showHelp() {
     showMessage("Кнопки", {"Вверх/вниз: вкладки, нажать: выбрать", "MENU: обновить, MENU 2 с: читалка", "EXIT: сон до кнопки",
-                           "EXIT 2 с: эта справка", "здесь MENU 2 с: настройки", "  http://192.168.4.1", "здесь EXIT: назад"});
+                           "EXIT 2 с: эта справка", "Нажать качельку 2 с: настройки", "здесь MENU 2 с: то же", "  http://192.168.4.1", "здесь EXIT: назад"});
     waitRelease();
     const uint32_t started = millis();
     hornet::buttons::Button exitButton, menuButton;  // debounced; the press that opened the help (and its bounce) is not believed
@@ -1265,11 +1272,16 @@ void setup() {
     powerOn();
     Serial.begin(115200);
     settings.load();
-    if (!LittleFS.begin(true)) Serial.println("[monitor] flash: no file system, tabs are read anew every time");
-    haveShown = readFile(kShownPath, shown, kFrameBytes);
+    // A sign of life at once: the hive's page waits for the console after flashing and must see the board is up.
+    Serial.printf("[monitor] boot fw=%s\n", HORNET_FW_VERSION);
 
+    // The console window comes BEFORE the file system is mounted. The first start after a flash formats the 1.4 MB file system, which takes
+    // many seconds of silence; the page resets a board that does not answer in 12 s, a reset in the middle of the format starts it over,
+    // and the board never got to the console (the page ended with "no answer" while a plain `pio upload` worked: nobody reset it then).
     const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
     const Order order = cause == ESP_SLEEP_WAKEUP_UNDEFINED ? consoleWindow() : Order::None;
+    mountFlash();
+    haveShown = readFile(kShownPath, shown, kFrameBytes);
     if (order == Order::Save) saveAndSleep();
     if (cause == ESP_SLEEP_WAKEUP_UNDEFINED) partials = kPartialsBeforeFull;  // after power-on the screen may hold anything
 
@@ -1288,6 +1300,14 @@ void setup() {
         return;
     }
     watchButtons();  // from here on a press that comes while the panel is busy is counted, not lost
+    // The rocker's press held for 2 s (the panel was asleep and it woke it): the settings point at once, VillageSwarm-xxxx at 192.168.4.1.
+    // A short press keeps its meaning (the tab cursor). held() reads the button debounced (Buttons.h), so a glitch in the hold does not spoil it.
+    if ((buttons & (1ULL << kPinConf)) && held(kPinConf)) {
+        asleep = false;
+        portalMode = true;
+        startPortal();
+        return;
+    }
     if (asleep && buttons) {
         // the panel was put to sleep: any button only wakes it, with the tab it had
         asleep = false;
