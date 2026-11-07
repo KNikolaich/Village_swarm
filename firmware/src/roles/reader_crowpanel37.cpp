@@ -82,6 +82,7 @@ constexpr int kOrientationCount = 4;
 
 struct Look {
     int family = 0, size = 1, orientation = 0;
+    int spacing = kDefaultSpacingTenths;  // line spacing, tenths of the font height (10..20)
     bool swapRocker = false;
 
     void load() {
@@ -90,6 +91,7 @@ struct Look {
         family = constrain(p.getInt("family", 0), 0, kFamilyCount - 1);
         size = constrain(p.getInt("size", 1), 0, kFamilies[family].count - 1);
         orientation = constrain(p.getInt("orient", 0), 0, kOrientationCount - 1);
+        spacing = clampSpacing(p.getInt("spacing", kDefaultSpacingTenths));
         swapRocker = p.getBool("swap", false);
         p.end();
     }
@@ -99,6 +101,7 @@ struct Look {
         p.putInt("family", family);
         p.putInt("size", size);
         p.putInt("orient", orientation);
+        p.putInt("spacing", spacing);
         p.putBool("swap", swapRocker);
         p.end();
     }
@@ -584,7 +587,7 @@ PageBox pageBox() {
     PageBox box;
     box.width = canvas().width() - 8;
     box.height = canvas().height() - kHeaderFontHeight - 4;
-    box.lineHeight = t.getFontAscent() - t.getFontDescent() + 2;
+    box.lineHeight = lineHeightFor(t.getFontAscent() - t.getFontDescent(), look.spacing);  // the font height times the setting (default 1.2)
     box.indent = measure("  ", 2);
     return box;
 }
@@ -742,7 +745,10 @@ bool bookReady() {
 
 // ------------------------------------------------------------------ the settings
 
-enum MenuRow { RowFont, RowSize, RowOrientation, RowRocker, RowBack, RowCount };
+enum MenuRow { RowFont, RowSize, RowSpacing, RowOrientation, RowRocker, RowBack, RowCount };
+
+/// 13 -> "1,3": the line spacing as the settings show it.
+std::string spacingText(int tenths) { return std::to_string(tenths / 10) + "," + std::to_string(tenths % 10); }
 
 void showMenu() {
     beginDrawing();
@@ -753,6 +759,7 @@ void showMenu() {
     const std::string rows[RowCount] = {
         std::string("Шрифт: ") + kFamilies[look.family].name,
         std::string("Размер: ") + kFamilies[look.family].sizes[look.size].label,
+        std::string("Интервал: ") + spacingText(look.spacing),
         std::string("Экран: ") + kOrientations[look.orientation].name,
         std::string("Качелька: ") + (look.swapRocker ? "наоборот" : "обычная"),
         "Назад к книге",
@@ -764,7 +771,7 @@ void showMenu() {
     }
     y += 8;
     drawText(6, y + 12, "Вверх/вниз: выбор,");
-    drawText(6, y + 28, "нажатие или MENU: изменить,");
+    drawText(6, y + 28, "MENU: изменить значение,");
     drawText(6, y + 44, "EXIT: назад к книге.");
     c.drawFastHLine(0, y + 54, c.width(), 1);
     t.setFont(look.font());  // a sample of the font chosen
@@ -781,6 +788,9 @@ void changeMenuRow() {
             break;
         case RowSize:
             look.size = (look.size + 1) % kFamilies[look.family].count;
+            break;
+        case RowSpacing:
+            look.spacing = nextSpacing(look.spacing);  // the page is laid out anew from the same first character when the settings close
             break;
         case RowOrientation:
             look.orientation = (look.orientation + 1) % kOrientationCount;
@@ -806,7 +816,7 @@ void leaveMenu() {
 
 // ------------------------------------------------------------------ buttons
 
-enum class Event { None, Up, Down, Press, Menu, MenuLong, Exit, ExitLong };
+using Event = hornet::buttons::Key;  // None, Up, Down, Press, Menu, MenuLong, Exit, ExitLong (Buttons.h says what each does in the settings)
 
 /// Into the monitor: the reading place is kept already; the card goes off.
 [[noreturn]] void leave() {
@@ -858,7 +868,7 @@ void onEvent(Event e, int count = 1) {
                 closeBook();
                 return;
             }
-            if (e == Event::Press) {
+            if (hornet::buttons::opensSettings(e)) {  // the rocker's press, or MENU held 2 s
                 menuRow = 0;
                 showMenu();
                 return;
@@ -871,14 +881,21 @@ void onEvent(Event e, int count = 1) {
             return;
         }
         case View::Menu:
-            if (e == Event::Up || e == Event::Down) {
-                menuRow = stepRow(menuRow, e == Event::Down ? count : -count, RowCount);
-                showMenu();
-            } else if (e == Event::Press || e == Event::Menu) {
-                if (menuRow == RowBack) leaveMenu();
-                else changeMenuRow();
-            } else if (e == Event::Exit) {
-                leaveMenu();
+            switch (hornet::buttons::settingsAction(e)) {  // the rocker's press does nothing here (it fired twice from one tap)
+                case hornet::buttons::SettingsAction::MoveUp:
+                case hornet::buttons::SettingsAction::MoveDown:
+                    menuRow = stepRow(menuRow, e == Event::Down ? count : -count, RowCount);
+                    showMenu();
+                    break;
+                case hornet::buttons::SettingsAction::Change:
+                    if (menuRow == RowBack) leaveMenu();
+                    else changeMenuRow();
+                    break;
+                case hornet::buttons::SettingsAction::Back:
+                    leaveMenu();
+                    break;
+                default:
+                    break;
             }
             return;
     }
@@ -892,11 +909,13 @@ struct Hold {
     hornet::buttons::Button button;
 
     Event poll() {
-        switch (button.poll(pressed(pin), millis())) {
-            case hornet::buttons::Out::Short: return shortPress;
-            case hornet::buttons::Out::Long: return longPress;
-            default: return Event::None;
-        }
+        const hornet::buttons::Out out = button.poll(pressed(pin), millis());
+        if (out == hornet::buttons::Out::None) return Event::None;
+        if (debugButtons())
+            Serial.printf("[buttons] %s %s: accepted, %lu ms after the previous, %lu raw edges since it\n", pin == kPinMenu ? "menu" : "exit",
+                          out == hornet::buttons::Out::Long ? "long" : "short", static_cast<unsigned long>(button.lastGapMs()),
+                          static_cast<unsigned long>(button.lastEdges()));
+        return out == hornet::buttons::Out::Long ? longPress : shortPress;
     }
     bool busy() const { return button.busy(); }
 };
@@ -970,6 +989,11 @@ bool readerOn() {
         else if (bookPath[0]) openBook(bookPath);
         else showBrowser();
         awake();
+    }
+    // Edges the interrupt counted since the panel woke (the bounce of the very press that woke it) are not new presses.
+    if (buttons) {
+        takeSteps();
+        takePress();
     }
     const Event e = wokenBy(buttons);
     Serial.printf("[reader] woken by 0x%llx\n", static_cast<unsigned long long>(buttons));

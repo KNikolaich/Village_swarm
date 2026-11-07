@@ -1011,6 +1011,21 @@ struct Page {
     std::vector<Line> lines;
 };
 
+/// Line spacing as a factor of the font's height, in tenths (10 = 1.0 ... 20 = 2.0): what the reader's settings offer.
+constexpr int kMinSpacingTenths = 10, kMaxSpacingTenths = 20, kDefaultSpacingTenths = 12;
+
+inline int clampSpacing(int tenths) { return tenths < kMinSpacingTenths ? kDefaultSpacingTenths : tenths > kMaxSpacingTenths ? kDefaultSpacingTenths : tenths; }
+
+/// The next value of the setting, going round (2.0 is followed by 1.0).
+inline int nextSpacing(int tenths) { return tenths >= kMaxSpacingTenths ? kMinSpacingTenths : clampSpacing(tenths) + 1; }
+
+/// The height of a line: the font's height (ascent minus descent) times the factor, to whole pixels, and at least the font's height plus one
+/// pixel (lines never touch, whatever the factor).
+inline int lineHeightFor(int fontHeight, int tenths) {
+    const int h = (fontHeight * clampSpacing(tenths) + 5) / 10;  // rounded
+    return std::max(fontHeight + 1, h);
+}
+
 inline int linesPerPage(const PageBox& box) { return std::max(1, box.height / std::max(1, box.lineHeight)); }
 
 /// A window onto the book's text: <text> holds its bytes from <offset> on; <size> is the whole text's.

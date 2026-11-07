@@ -404,6 +404,50 @@ static void test_inverting_stays_inside_the_screen() {
     TEST_ASSERT_TRUE(c.getPixel(2, 3));
 }
 
+// ---- line spacing as a factor of the font height
+
+static void test_line_height_is_the_font_height_times_the_factor_never_less_than_one_pixel_more() {
+    TEST_ASSERT_EQUAL(14, lineHeightFor(13, 10));  // 1.0 would be 13: the minimum is the font height plus 1
+    TEST_ASSERT_EQUAL(16, lineHeightFor(13, 12));  // 15.6 -> 16
+    TEST_ASSERT_EQUAL(17, lineHeightFor(13, 13));  // 16.9 -> 17
+    TEST_ASSERT_EQUAL(26, lineHeightFor(13, 20));
+    TEST_ASSERT_EQUAL(24, lineHeightFor(20, 12));
+    TEST_ASSERT_EQUAL(21, lineHeightFor(20, 10));  // the minimum again: 20 + 1
+    for (int h = 8; h <= 40; h++)
+        for (int t = kMinSpacingTenths; t <= kMaxSpacingTenths; t++) TEST_ASSERT_TRUE(lineHeightFor(h, t) >= h + 1);
+}
+
+static void test_the_factor_steps_from_1_0_to_2_0_and_round() {
+    int t = kMinSpacingTenths;
+    int steps = 0;
+    do {
+        t = nextSpacing(t);
+        steps++;
+    } while (t != kMinSpacingTenths && steps < 50);
+    TEST_ASSERT_EQUAL(11, steps);  // eleven values: 1.0 1.1 ... 2.0
+    TEST_ASSERT_EQUAL(kMinSpacingTenths, nextSpacing(kMaxSpacingTenths));
+    TEST_ASSERT_EQUAL(13, nextSpacing(12));
+    TEST_ASSERT_EQUAL(kDefaultSpacingTenths, clampSpacing(7));    // a stored value that makes no sense: the default
+    TEST_ASSERT_EQUAL(kDefaultSpacingTenths, clampSpacing(99));
+    TEST_ASSERT_EQUAL(12, kDefaultSpacingTenths);
+}
+
+static void test_more_spacing_fits_fewer_lines_and_the_page_starts_at_the_same_character() {
+    std::string text;
+    for (int i = 0; i < 400; i++) text += "слово ";
+    TextWindow w{text, 0, static_cast<uint32_t>(text.size())};
+    const uint32_t first = 6 * 37;  // somewhere in the middle: the first character on the page now
+    PageBox tight{100, 300, lineHeightFor(12, 10), 0};
+    PageBox loose{100, 300, lineHeightFor(12, 20), 0};
+    const Page a = layoutPage(w, first, tight, mono);
+    const Page b = layoutPage(w, first, loose, mono);
+    TEST_ASSERT_TRUE(a.lines.size() > b.lines.size());          // roomier lines: fewer of them on a page
+    TEST_ASSERT_EQUAL_UINT32(first, a.start);                    // the same first character at the top either way
+    TEST_ASSERT_EQUAL_UINT32(a.start, b.start);
+    TEST_ASSERT_EQUAL_UINT32(a.lines[0].start, b.lines[0].start);
+    TEST_ASSERT_TRUE(b.next < a.next);                           // so the next page starts earlier with the looser spacing
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_utf8_passes_and_broken_bytes_become_one_mark_each);
@@ -422,6 +466,9 @@ int main() {
     RUN_TEST(test_notes_round_trip_and_a_changed_book_starts_over);
     RUN_TEST(test_folders_first_then_books_alphabetically);
     RUN_TEST(test_history_keeps_the_last_starts);
+    RUN_TEST(test_line_height_is_the_font_height_times_the_factor_never_less_than_one_pixel_more);
+    RUN_TEST(test_the_factor_steps_from_1_0_to_2_0_and_round);
+    RUN_TEST(test_more_spacing_fits_fewer_lines_and_the_page_starts_at_the_same_character);
     RUN_TEST(test_a_chosen_row_is_the_same_text_flipped);
     RUN_TEST(test_inverting_stays_inside_the_screen);
     return UNITY_END();
