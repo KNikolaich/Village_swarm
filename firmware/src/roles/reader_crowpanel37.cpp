@@ -50,15 +50,26 @@ struct Size {
 };
 struct Family {
     const char* name;
-    Size sizes[4];
+    Size sizes[8];  // the built-in families have up to 4; a generated one up to 8
     int count;
 };
+// Fonts made from any TTF by firmware/tools/make-reader-fonts.ps1 (which fonts and sizes: firmware/tools/reader-fonts.json): U8g2 has no
+// proportional Cyrillic of 18 or 20 px. The header, with READER_GENERATED_FAMILIES (one table entry per font), exists only after that
+// script ran; without it nothing is offered beyond the built-in families and the firmware builds as before.
+#if __has_include("../../lib/reader-fonts/ReaderFonts.h")
+#include "../../lib/reader-fonts/ReaderFonts.h"
+#endif
+
 // The Cyrillic fonts of U8g2 (ASCII and Cyrillic only: Reader.h printable() replaces the rest).
+// New families go at the end: the chosen family is kept in the panel's memory by its number.
 const Family kFamilies[] = {
     {"Моноширинный", {{"13 узкий", u8g2_font_6x13_t_cyrillic}, {"13", u8g2_font_8x13_t_cyrillic}, {"15", u8g2_font_9x15_t_cyrillic}, {"20", u8g2_font_10x20_t_cyrillic}}, 4},
     {"Юникод", {{"16", u8g2_font_unifont_t_cyrillic}}, 1},
     {"Пропорциональный", {{"12", u8g2_font_cu12_t_cyrillic}}, 1},
     {"Крупный", {{"24", u8g2_font_inr24_t_cyrillic}, {"30", u8g2_font_inr30_t_cyrillic}}, 2},
+#ifdef READER_GENERATED_FAMILIES
+    READER_GENERATED_FAMILIES
+#endif
 };
 constexpr int kFamilyCount = sizeof kFamilies / sizeof kFamilies[0];
 
