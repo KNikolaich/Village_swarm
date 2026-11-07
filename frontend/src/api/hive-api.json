@@ -5631,6 +5631,38 @@
           }
         }
       },
+      "BatteryLayout": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "x": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "y": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "scale": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "BleRequest": {
         "type": "object",
         "properties": {
@@ -6511,6 +6543,16 @@
             "type": [
               "null",
               "boolean"
+            ]
+          },
+          "battery": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BatteryLayout"
+              }
             ]
           }
         }

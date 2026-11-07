@@ -289,7 +289,7 @@ public static class DevicesModule
         devices.MapPut("/{deviceId}/display", async Task<Results<Ok<DisplayItemsDto>, NotFound, ValidationProblem>> (
                 string deviceId, DisplayItemsDto request, ClaimsPrincipal user, DisplayFeedService feed, CancellationToken ct) =>
             {
-                var (status, error) = await feed.SaveAsync(deviceId, request.Items, request.Rotation, $"user:{user.Identity?.Name}", ct, request.Invert);
+                var (status, error) = await feed.SaveAsync(deviceId, request.Items, request.Rotation, $"user:{user.Identity?.Name}", ct, request.Invert, request.Battery);
                 return status switch
                 {
                     ConfigUpdateStatus.NotFound => TypedResults.NotFound(),

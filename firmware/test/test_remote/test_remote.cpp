@@ -69,10 +69,23 @@ static void test_age_of_the_data() {
 static void test_battery_percent() {
     TEST_ASSERT_EQUAL(-1, batteryPercent(-1));
     TEST_ASSERT_EQUAL(0, batteryPercent(3000));
-    TEST_ASSERT_EQUAL(100, batteryPercent(4300));
+    TEST_ASSERT_EQUAL(0, batteryPercent(3300));
+    TEST_ASSERT_EQUAL(50, batteryPercent(3700));
+    TEST_ASSERT_EQUAL(65, batteryPercent(3800));
+    TEST_ASSERT_EQUAL(90, batteryPercent(4100));
+    TEST_ASSERT_EQUAL(57, batteryPercent(3750));  // between 50 and 65
+    // a cell on its charger reads 4.17-4.20 V: full
+    TEST_ASSERT_EQUAL(100, batteryPercent(4180));
     TEST_ASSERT_EQUAL(100, batteryPercent(4200));
-    TEST_ASSERT_EQUAL(55, batteryPercent(3800));
-    TEST_ASSERT_EQUAL(42, batteryPercent(3750));  // between 30 and 55
+    TEST_ASSERT_EQUAL(100, batteryPercent(4300));
+    TEST_ASSERT_TRUE(batteryPercent(4170) >= 97);
+    // never down as the voltage goes up
+    int last = -1;
+    for (int mv = 3000; mv <= 4400; mv += 10) {
+        const int now = batteryPercent(mv);
+        TEST_ASSERT_TRUE(now >= last);
+        last = now;
+    }
 }
 
 static void test_answers() {

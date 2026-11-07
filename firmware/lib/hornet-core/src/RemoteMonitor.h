@@ -187,13 +187,15 @@ inline bool bannerDue(Offline cause, Offline shown, uint32_t ageMin, uint32_t sh
     return ageMin >= shownAgeMin + kBannerEveryMin || ageMin < shownAgeMin;
 }
 
-/// A Li-ion cell's charge from its voltage, roughly (no load), 0..100; -1 when the voltage is not known.
+/// A one-cell lithium battery's charge from its voltage, roughly (no load), 0..100; -1 when the voltage is not known. A cell on its charger reads
+/// 4.17-4.20 V (the charge ends at 4.20 V, the ADC is not exact): 4.18 V and more is 100. The hive's ScreenTabs.BatteryPercent has the same curve.
 inline int batteryPercent(int mv) {
     if (mv <= 0) return -1;
-    static const int kMv[] = {3300, 3600, 3700, 3800, 3900, 4000, 4100, 4200};
-    static const int kPct[] = {0, 10, 30, 55, 70, 80, 90, 100};
+    static const int kMv[] = {3300, 3500, 3600, 3700, 3800, 3900, 4000, 4100, 4150, 4180};
+    static const int kPct[] = {0, 10, 25, 50, 65, 77, 85, 90, 97, 100};
+    constexpr int kPoints = sizeof kMv / sizeof kMv[0];
     if (mv <= kMv[0]) return 0;
-    for (int i = 1; i < 8; i++)
+    for (int i = 1; i < kPoints; i++)
         if (mv <= kMv[i]) return kPct[i - 1] + (kPct[i] - kPct[i - 1]) * (mv - kMv[i - 1]) / (kMv[i] - kMv[i - 1]);
     return 100;
 }

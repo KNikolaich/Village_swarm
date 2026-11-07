@@ -691,7 +691,11 @@ Reply fetchFrame(bool sleep = false) {
     }
     addIdentity(http);
     http.addHeader("Authorization", "Bearer " + settings.token);
-    if (const int mv = batteryReading(); mv > 0) http.addHeader("X-Battery-mV", String(mv));
+    if (const int mv = batteryReading(); mv > 0) {
+        http.addHeader("X-Battery-mV", String(mv));
+        // whether it is on external power (wiredNow, the same rule that keeps it awake): the hive draws a bolt instead of the percent
+        http.addHeader("X-Charging", wiredNow(settings.wired, mv, wiredLastMv, usbHostAttached()) ? "1" : "0");
+    }
     if (!sleep && lastEtag[0] && haveFrame) http.addHeader("If-None-Match", lastEtag);
     const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Refresh", "Date"};
     http.collectHeaders(keys, 5);
