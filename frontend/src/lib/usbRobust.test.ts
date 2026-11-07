@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { awaitConsole, flashAttempts, type ConsoleStatus } from '@/lib/hornetSetup'
+import { panelBusy } from '@/lib/remoteSetup'
 import { HornetSerial, isPortBusy, type SerialPortLike } from '@/lib/serial'
 
 /** A serial port that does what a board does: after a reset it says "ready" if it is awake, and it can refuse to open. */
@@ -136,5 +137,64 @@ describe('flashing: the connection is tried again, slower the last time', () => 
   it('has three tries and the last one is the slowest', () => {
     expect(flashAttempts).toHaveLength(3)
     expect(Math.min(...flashAttempts.map((a) => a.baud))).toBe(flashAttempts.at(-1)!.baud)
+  })
+})
+
+describe('a board that is busy on its first start (formatting its flash) is waited for, not reset', () => {
+  it('treats a busy line as a sign of life: the wait starts over and the board is not reset', async () => {
+    const port = new FakePort()
+    port.readyAfterResets = 99
+    const seen: string[] = []
+    const open = async () => {
+      const b = await HornetSerial.attach(port, () => {})
+      port.say('[monitor] boot fw=0.2.0\n')                 // at once
+      setTimeout(() => port.say('[monitor] flash: first start, formatting the file system\n'), 40)
+      setTimeout(() => port.say('[monitor] flash: still formatting\n'), 90)  // the board keeps saying it is busy
+      setTimeout(() => port.say('[monitor] ready\n'), 130)   // after more than one 60 ms wait
+      return b
+    }
+    const { board, line } = await awaitConsole({
+      open, ready: (l) => l === '[monitor] ready', alive: panelBusy, onStatus: (s) => seen.push(s.step), waitMs: 60, nudgeMs: 10,
+    })
+    expect(line).toBe('[monitor] ready')
+    expect(seen).toEqual(['listen'])                           // never a reset or a reopen
+    expect(port.signals.some((s) => s.requestToSend)).toBe(false)
+    await board.close()
+  })
+
+  it('without a busy line the silence still ends the wait and the board is reset', async () => {
+    const port = new FakePort()
+    port.readyAfterResets = 1
+    const seen: string[] = []
+    const { board, line } = await awaitConsole({
+      open: () => HornetSerial.attach(port, () => {}), ready: (l) => l === '[monitor] ready', alive: panelBusy, onStatus: (s) => seen.push(s.step), ...quick,
+    })
+    expect(line).toBe('[monitor] ready')
+    expect(seen).toContain('reset')
+    await board.close()
+  })
+
+  it('listens longer on the first try after a flash', async () => {
+    const port = new FakePort()
+    port.readyAfterResets = 99
+    const seen: string[] = []
+    const open = async () => {
+      const b = await HornetSerial.attach(port, () => {})
+      setTimeout(() => port.say('[monitor] ready\n'), 150)    // later than the usual wait of 60 ms, inside the first one of 300 ms
+      return b
+    }
+    const { board, line } = await awaitConsole({
+      open, ready: (l) => l === '[monitor] ready', onStatus: (s) => seen.push(s.step), waitMs: 60, nudgeMs: 10, firstWaitMs: 300,
+    })
+    expect(line).toBe('[monitor] ready')
+    expect(seen).toEqual(['listen'])
+    await board.close()
+  })
+
+  it('knows which panel lines mean "busy, wait"', () => {
+    expect(panelBusy('[monitor] boot fw=0.2.0+abc')).toBe(true)
+    expect(panelBusy('[monitor] flash: first start, formatting the file system (up to 30 s), please wait')).toBe(true)
+    expect(panelBusy('[monitor] ready')).toBe(false)
+    expect(panelBusy('ESP-ROM:esp32s3-20210327')).toBe(false)
   })
 })
