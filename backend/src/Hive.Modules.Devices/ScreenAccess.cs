@@ -130,7 +130,7 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
     /// battery the panel told (millivolts) as its battery_voltage reading.
     /// </summary>
     public async Task<ScreenFrame?> FrameAsync(string? bearer, bool bitmap, string? from, bool external, int? tab, int? batteryMv, CancellationToken ct, bool sleep = false,
-        string? mac = null, string? fw = null)
+        string? mac = null, string? fw = null, bool? charging = null)
     {
         if (string.IsNullOrEmpty(bearer))
             return null;
@@ -145,7 +145,13 @@ public sealed class ScreenAccessService(HiveDbContext db, DisplayFeedService fee
         var message = await feed.BuildAsync(device, ct);
         var now = time.GetUtcNow();
         if (batteryMv is >= MinBatteryMv and <= MaxBatteryMv && !node.ReadOnly)
-            ingest.Enqueue(new TelemetryReceived(device.DeviceId, Ulid.New(now), now, now, [("battery_voltage", batteryMv.Value / 1000.0)]));
+        {
+            // the cell, and with it whether the panel is on external power (X-Charging), under the same time: the hive draws a bolt for it
+            List<(string, double)> readings = [("battery_voltage", batteryMv.Value / 1000.0)];
+            if (charging is { } on)
+                readings.Add(("charging", on ? 1.0 : 0.0));
+            ingest.Enqueue(new TelemetryReceived(device.DeviceId, Ulid.New(now), now, now, readings));
+        }
         var tabs = screen?.Tabs ?? 0;
         var shown = tab ?? 0;
         if (bitmap && tabs > 0 && (shown < 0 || shown >= tabs))
@@ -323,6 +329,9 @@ public static class ScreenAccessEndpoints
     /// <summary>The panel's MAC and firmware build, with every read, so the hive can show them for a panel that has no MQTT.</summary>
     private const string MacHeader = "X-Device-Mac", FwHeader = "X-Fw-Version";
 
+    /// <summary>"1" when the panel is on external power and charging, "0" when it is not (with X-Battery-mV; absent: it does not know).</summary>
+    private const string ChargingHeader = "X-Charging";
+
     /// <summary>Reads a minute per address: a panel needs one a minute at most, a guesser gets nowhere.</summary>
     public const int ReadsPerMinute = 12;
 
@@ -391,7 +400,8 @@ public static class ScreenAccessEndpoints
         int? tab = int.TryParse(http.Request.Query["tab"], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : null;
         int? battery = int.TryParse(http.Request.Headers[BatteryHeader], System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var mv) ? mv : null;
         var frame = await access.FrameAsync(token, bitmap, http.Connection.RemoteIpAddress?.ToString(), http.Request.Headers.ContainsKey(ExternalHeader), tab, battery, ct,
-            sleep: http.Request.Query["sleep"] == "1", mac: http.Request.Headers[MacHeader].ToString(), fw: http.Request.Headers[FwHeader].ToString());
+            sleep: http.Request.Query["sleep"] == "1", mac: http.Request.Headers[MacHeader].ToString(), fw: http.Request.Headers[FwHeader].ToString(),
+            charging: http.Request.Headers[ChargingHeader].ToString() switch { "1" => true, "0" => false, _ => null });
         http.Response.Headers.CacheControl = "no-store";
         if (frame is null)
             return Results.Unauthorized();

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input, Select } from '@/components/ui/primitives'
 import { metricLabel, t } from '@/i18n'
 import {
-  type Align, backgroundSize, clampToScreen, type ClockKind, clockFormats, clockText, fontBadge, type FontInfo, labelHeight, maxAuto, maxPlaced,
+  type Align, backgroundSize, batteryBase, type BatteryState, batteryBox, bringBack, type ClockKind, dragBattery, dragRow, outsideScreen, pointToScreen, rowExtent, clockFormats, clockText, fontBadge, type FontInfo, labelHeight, maxAuto, maxPlaced,
   isOn, moved, nearestSize, pixelHeight, rotations, type Screen, screenText, sizeForPx, stackedPlaces, stateText, switchChannels, textAnchor,
 } from '@/lib/display'
 
@@ -62,20 +62,50 @@ function FieldLabel({ text, help }: { text: string; help: string }) {
   return <span className="flex items-center gap-1 text-xs text-neutral-400">{text}<HelpTip text={help} /></span>
 }
 
+let measuring: CanvasRenderingContext2D | null | undefined
+
+/** The width in screen points of a text set in a sans-serif font of <px> points: close to the hive's font, a guide only. */
+function textWidth(text: string, px: number, bold: boolean, italic: boolean): number {
+  if (measuring === undefined) {
+    try {
+      measuring = document.createElement('canvas').getContext('2d')
+    } catch {
+      measuring = null
+    }
+  }
+  if (!measuring) return text.length * px * 0.55
+  measuring.font = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}${px}px sans-serif`
+  return measuring.measureText(text).width
+}
+
+/** The room a row takes: the width of its text or caption and its height with the caption (the value's capitals are about 0.72 of its font). */
+function rowBox(row: Row, text: string, screenHeight: number): { width: number; height: number } {
+  const labeled = !!row.label && row.text === null
+  const cap = row.px === null ? pixelHeight(row.size, screenHeight) : row.px * 0.72
+  const labelPx = row.px === null ? 7 : Math.max(6, Math.round(row.px / 2))
+  const width = Math.max(textWidth(text, cap / 0.72, row.bold, row.italic), labeled ? textWidth(row.label, labelPx, false, false) : 0)
+  const height = !labeled ? cap : (row.px === null ? labelHeight : labelPx * 0.72 + Math.max(2, labelPx / 3)) + cap
+  return { width, height }
+}
+
 /**
  * What the screen will look like, drawn at its own pixels and scaled up. Placed rows can be dragged to their spot; the
  * fonts are close to the screen's, not the same, so the picture is a guide. As an <overlay> it lies over the picture the
  * hive drew: the rows are marks to drag where they are now, the picture under them shows them where they were saved.
  */
-function ScreenPreview({ screen, rows, texts, onMove, editable, overlay = false }: {
+function ScreenPreview({ screen, rows, texts, onMove, editable, overlay = false, battery = null, onBattery }: {
   screen: Screen; rows: Row[]; texts: string[]; onMove: (i: number, x: number, y: number) => void; editable: boolean; overlay?: boolean
+  /** The battery icon of the layout (a screen the hive draws without tabs): a box to drag, in the screen's own points. */
+  battery?: BatteryState | null; onBattery?: (x: number, y: number) => void
 }) {
   const svg = useRef<SVGSVGElement>(null)
-  const drag = useRef<{ i: number; dx: number; dy: number } | null>(null)
+  /** What is held: a row (by its number) or the battery icon, and where it was taken, as the offset from its anchor. */
+  const drag = useRef<{ i: number | 'battery'; dx: number; dy: number } | null>(null)
 
+  /** The screen point under the pointer: the preview may be scaled to any size, the box of the picture says how much. */
   function point(e: ReactPointerEvent) {
     const box = svg.current!.getBoundingClientRect()
-    return { x: ((e.clientX - box.left) / box.width) * screen.width, y: ((e.clientY - box.top) / box.height) * screen.height }
+    return pointToScreen(e.clientX, e.clientY, box, screen)
   }
 
   return (
@@ -85,8 +115,19 @@ function ScreenPreview({ screen, rows, texts, onMove, editable, overlay = false 
       onPointerMove={(e) => {
         if (!drag.current) return
         const p = point(e)
-        const { x, y } = clampToScreen(p.x - drag.current.dx, p.y - drag.current.dy, screen)
-        onMove(drag.current.i, x, y)
+        const held = drag.current
+        if (held.i === 'battery') {
+          if (!battery || !onBattery) return
+          const at = dragBattery(p, held, battery, screen)
+          onBattery(at.x, at.y)
+          return
+        }
+        // the anchor of a row is the left edge, the middle or the right edge of its text: the range depends on it, and on the text's width
+        const row = rows[held.i]
+        if (!row) return
+        const size = rowBox(row, texts[held.i] ?? '', screen.height)
+        const at = dragRow(p, held, row.align, size.width, size.height, screen)
+        onMove(held.i, at.x, at.y)
       }}
       onPointerUp={() => { drag.current = null }}
       onPointerLeave={() => { drag.current = null }}>
@@ -108,11 +149,29 @@ function ScreenPreview({ screen, rows, texts, onMove, editable, overlay = false 
             {labeled && (
               <text x={row.x} y={row.px === null ? row.y : row.y + labelPx * 0.72} dominantBaseline={row.px === null ? 'hanging' : 'alphabetic'} textAnchor={textAnchor(row.align)} fontSize={labelPx} fill={overlay ? '#f59e0b' : '#fff'} fillOpacity={overlay ? 0.5 : 1} fontFamily="monospace">{row.label}</text>
             )}
+            {/* the anchor: where x and y are (the left edge, the middle or the right edge of the text, by its alignment) */}
+            <path d={`M${row.x - 3} ${row.y}h6M${row.x} ${row.y - 3}v6`} stroke={overlay ? '#f59e0b' : '#60a5fa'} strokeWidth={0.8} fill="none" />
             {/* digits take about 0.72 of the font size from the top */}
             <text x={row.x} y={row.px === null ? valueTop : valueTop + cap} dominantBaseline={row.px === null ? 'hanging' : 'alphabetic'} textAnchor={textAnchor(row.align)} fontSize={cap / 0.72} fill={overlay ? '#f59e0b' : '#fff'} fillOpacity={overlay ? 0.5 : 1} fontFamily="sans-serif" fontWeight={row.bold ? 700 : 400} fontStyle={row.italic ? 'italic' : 'normal'}>{texts[i]}</text>
           </g>
         )
       })}
+      {battery && battery.enabled && (() => {
+        const box = batteryBox(battery, screen)
+        return (
+          <g className={editable ? 'cursor-move' : undefined}
+            onPointerDown={(e) => {
+              if (!editable) return
+              const p = point(e)
+              drag.current = { i: 'battery', dx: p.x - box.left, dy: p.y - box.top }
+              svg.current?.setPointerCapture(e.pointerId)
+            }}>
+            <rect x={box.left} y={box.top} width={box.width} height={box.height} fill="#f59e0b" fillOpacity={0.25} stroke="#f59e0b" strokeWidth={0.8} />
+            {/* the nub, as drawn over the picture */}
+            <rect x={box.left + (3 * box.width) / batteryBase.width} y={box.top} width={(4 * box.width) / batteryBase.width} height={(2 * box.height) / batteryBase.height} fill="#f59e0b" fillOpacity={0.6} />
+          </g>
+        )
+      })()}
     </svg>
   )
 }
@@ -132,6 +191,8 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
   const [placed, setPlaced] = useState(false)
   const [rotation, setRotation] = useState(0)
   const [invert, setInvert] = useState(false)
+  /** The battery icon of a screen the hive draws without tabs (display.battery); x, y null: the top right corner. */
+  const [battery, setBattery] = useState<BatteryState>({ enabled: true, x: null, y: null, scale: 1 })
   const fonts = useQuery({ queryKey: ['display-fonts'], queryFn: () => call(api.GET('/api/display/fonts')) })
   const screen: Screen = current.data?.screen ?? fallbackScreen
   useEffect(() => {
@@ -146,6 +207,10 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
     setPlaced(current.data.items.some((i) => i.size != null))
     setRotation(current.data.rotation ?? 0)
     setInvert(current.data.invert ?? false)
+    setBattery({
+      enabled: current.data.battery?.enabled ?? true, x: current.data.battery?.x ?? null, y: current.data.battery?.y ?? null,
+      scale: current.data.battery?.scale ?? 1,
+    })
   }, [current.data])
 
   // The readings each device has had lately: a screen can only show what the hive has seen.
@@ -221,6 +286,11 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
   const texts = rows.map((r) => (r.clock ? clockText(r.format, now)
     : r.state ? stateText(stateOf(r.device || deviceId, r.metric), r.onText, r.offText)
     : r.text ?? screenText(r.metric, valueOf(r.device || deviceId, r.metric))))
+  // how much room each row takes, and whether some of it is outside the screen (as far as the preview can tell)
+  const boxes = rows.map((r, i) => {
+    const size = rowBox({ ...r, px: styled ? pxOf(r) : r.px }, texts[i] ?? '', screen.height)
+    return { ...size, out: outsideScreen(rowExtent(r, size.width, size.height), screen) }
+  })
   const number = (v: string, min: number, max: number) => Math.min(max, Math.max(min, Math.round(Number(v) || 0)))
 
   async function save() {
@@ -241,7 +311,12 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
       }
     })
     const { response } = await api.PUT('/api/devices/{deviceId}/display', {
-      params: { path: { deviceId } }, body: { items, ...(rendered ? { rotation, invert } : {}) },
+      params: { path: { deviceId } },
+      body: {
+        items, ...(rendered ? { rotation, invert } : {}),
+        // the battery icon: only a screen the hive draws without tabs has it; null for x and y is the top right corner
+        ...(rendered && tabs === 0 ? { battery: { enabled: battery.enabled, x: battery.x, y: battery.y, scale: battery.scale } } : {}),
+      },
     })
     if (!response.ok) {
       toast.error(t('errors.generic'))
@@ -369,9 +444,10 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
                   <img src={picture(tab)} alt={tab === null ? t('display.rendered') : t(`display.tab${tab}`)} width={screen.width} height={screen.height}
                     className="block h-auto w-full rounded border border-neutral-700 bg-white" style={{ imageRendering: 'pixelated' }} />
                   {/* the rows of Measure (or of the only screen) are dragged right on its picture */}
-                  {placed && editable && rows.length > 0 && (tab === null || tab === measureTab) && (
-                    <ScreenPreview overlay screen={screen} rows={rows.map((r) => ({ ...r, px: styled ? pxOf(r) : r.px }))} texts={texts} editable
-                      onMove={(i, x, y) => setRow(i, { x, y })} />
+                  {editable && (tab === null || tab === measureTab) && ((placed && rows.length > 0) || (tabs === 0 && battery.enabled)) && (
+                    <ScreenPreview overlay screen={screen} rows={placed ? rows.map((r) => ({ ...r, px: styled ? pxOf(r) : r.px })) : []} texts={placed ? texts : []} editable
+                      onMove={(i, x, y) => setRow(i, { x, y })}
+                      battery={tabs === 0 ? battery : null} onBattery={(x, y) => setBattery((b) => ({ ...b, x, y }))} />
                   )}
                 </div>
                 {tab !== null && <figcaption className="text-xs text-neutral-500">{t(`display.tab${tab}`)}</figcaption>}
@@ -427,6 +503,53 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
               )}
             </div>
           </div>
+        </div>
+      )}
+      {/* the battery icon: where it stands and how big (the hive draws it over the picture, in steps of five percent) */}
+      {rendered && tabs === 0 && (
+        <div className="space-y-2 rounded-lg border border-neutral-800 p-2">
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
+            <label className="flex h-9 items-center gap-2 text-xs text-neutral-300">
+              <input type="checkbox" checked={battery.enabled} disabled={!editable} onChange={(e) => setBattery({ ...battery, enabled: e.target.checked })} />
+              {t('display.battery')}
+              <HelpTip text={t('display.batteryHelp')} />
+            </label>
+            {battery.enabled && (<>
+              <label className="space-y-1">
+                <FieldLabel text={t('display.batteryScale')} help={t('display.batteryScaleHelp')} />
+                <Select value={battery.scale} disabled={!editable} onChange={(e) => setBattery({ ...battery, scale: Number(e.target.value) })}>
+                  {Array.from({ length: batteryBase.maxScale }, (_, k) => k + 1).map((k) => (
+                    <option key={k} value={k}>{`×${k} (${batteryBase.width * k}×${batteryBase.height * k})`}</option>
+                  ))}
+                </Select>
+              </label>
+              <label className="space-y-1">
+                <FieldLabel text="X" help={t('display.batteryXHelp')} />
+                <Input className="h-9 w-20 text-sm" type="number" value={batteryBox(battery, screen).left} disabled={!editable}
+                  onChange={(e) => setBattery({ ...battery, x: number(e.target.value, -100, 400), y: battery.y ?? batteryBox(battery, screen).top })} />
+              </label>
+              <label className="space-y-1">
+                <FieldLabel text="Y" help={t('display.batteryXHelp')} />
+                <Input className="h-9 w-20 text-sm" type="number" value={batteryBox(battery, screen).top} disabled={!editable}
+                  onChange={(e) => setBattery({ ...battery, y: number(e.target.value, -100, 400), x: battery.x ?? batteryBox(battery, screen).left })} />
+              </label>
+              <Button variant="outline" size="sm" disabled={!editable || (battery.x === null && battery.y === null)} onClick={() => setBattery({ ...battery, x: null, y: null })}>
+                {t('display.batteryCorner')}
+              </Button>
+            </>)}
+          </div>
+          {battery.enabled && <p className="text-xs text-neutral-500">{t('display.batteryDrag')}</p>}
+        </div>
+      )}
+      {/* a row whose text, as far as the preview can tell, is drawn outside the screen: shown, with a way back */}
+      {placed && boxes.some((b) => b.out) && (
+        <div className="space-y-1 rounded-lg border border-amber-700/60 bg-amber-950/20 p-2 text-xs text-amber-200">
+          {rows.map((r, i) => !boxes[i].out ? null : (
+            <div key={i} className="flex flex-wrap items-center gap-2">
+              <span>{t('display.outside').replace('{n}', String(i + 1)).replace('{text}', texts[i] ?? '')}</span>
+              <Button variant="outline" size="sm" disabled={!editable} onClick={() => setRow(i, bringBack(r, boxes[i].width, boxes[i].height, screen))}>{t('display.bringBack')}</Button>
+            </div>
+          ))}
         </div>
       )}
       {/* right under the pictures: what can be done with the rows, then the rows themselves */}

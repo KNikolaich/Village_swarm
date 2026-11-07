@@ -329,6 +329,17 @@
           "type": "boolean",
           "description": "Screens the hive draws (e-ink): black and white swapped on every tab, white on black (a dark screen). Absent: false"
         },
+        "battery": {
+          "type": "object",
+          "description": "Screens the hive draws without tabs (Waveshare 1.54\"): the battery icon with its percent (or a bolt while charging) the hive draws over the picture. Absent: shown in the top right corner at the base size 10 by 18 points. x, y: its top left corner; scale: a whole number of times the base size; enabled false takes it away",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "x": { "type": "integer", "minimum": -100, "maximum": 400 },
+            "y": { "type": "integer", "minimum": -100, "maximum": 400 },
+            "scale": { "type": "integer", "minimum": 1, "maximum": 4 }
+          },
+          "additionalProperties": false
+        },
         "monitor": {
           "type": "object",
           "description": "Monitoring of a monitor far away (contracts/monitor-http.md, X-Frame-Refresh): until the time is up it reads its screen every every_min minutes, then at its own interval. Kept by the hive; set on the monitor's page",

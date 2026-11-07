@@ -6573,6 +6573,15 @@ export interface components {
         BatchDto: {
             items: components["schemas"]["EnrollmentCodeDto"][];
         };
+        BatteryLayout: {
+            enabled?: null | boolean;
+            /** Format: int32 */
+            x?: null | number;
+            /** Format: int32 */
+            y?: null | number;
+            /** Format: int32 */
+            scale?: null | number;
+        };
         BleRequest: {
             mac?: null | string;
             /** @default false */
@@ -6803,6 +6812,7 @@ export interface components {
             rotation?: null | number;
             monitor?: null | components["schemas"]["DisplayMonitorDto"];
             invert?: null | boolean;
+            battery?: null | components["schemas"]["BatteryLayout"];
         };
         DisplayMonitorDto: {
             /** Format: date-time */

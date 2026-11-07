@@ -551,6 +551,85 @@ public sealed class ScreenAccessTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task The_battery_icon_is_placed_by_the_screen_layout_and_a_charging_panel_gets_a_bolt()
+    {
+        var admin = await hive.LoginAsync();
+        var anonymous = hive.App.CreateClient();
+        using var added = await admin.PostAsJsonAsync("/api/devices/remote-monitors", new { deviceId = "monitor-icon1", name = "Икона", board = "waveshare-s3-epaper-154" });
+        Assert.Equal(HttpStatusCode.Created, added.StatusCode);
+        using var issued = await admin.PostAsync("/api/devices/monitor-icon1/screen-access", null);
+        var token = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+
+        async Task<(string ETag, byte[] Bits)> Read(int? mv, string? charging = null)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, "/api/monitor/v1/frame.bin");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            if (mv is { } v)
+                request.Headers.Add("X-Battery-mV", v.ToString());
+            if (charging is not null)
+                request.Headers.Add("X-Charging", charging);
+            using var response = await anonymous.SendAsync(request);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            return (response.Headers.ETag!.Tag, await response.Content.ReadAsByteArrayAsync());
+        }
+        async Task<(string ETag, byte[] Bits)> UntilChanged((string ETag, byte[] Bits) was, int mv, string? charging)
+        {
+            var now = was;
+            for (var i = 0; i < 40 && now.ETag == was.ETag; i++)
+            {
+                now = await Read(mv, charging);
+                if (now.ETag == was.ETag)
+                    await Task.Delay(250);
+            }
+            Assert.NotEqual(was.ETag, now.ETag);
+            return now;
+        }
+        static int Ink(byte[] bits, int x0, int y0, int x1, int y1)
+        {
+            var n = 0;
+            for (var y = y0; y < y1; y++)
+                for (var x = x0; x < x1; x++)
+                    n += (bits[y * 25 + x / 8] >> (7 - x % 8)) & 1;
+            return n;
+        }
+
+        // the cell is told at 4.18 V: a full battery in the corner (default place), 100 percent
+        var first = await UntilChanged(await Read(null), 4180, null);
+        Assert.True(Ink(first.Bits, 184, 4, 194, 22) > 30);
+
+        // the person moves it and makes it twice as big: the corner is empty, the new place holds it
+        var layout = new { enabled = true, x = 20, y = 120, scale = 2 };
+        using var put = await admin.PutAsJsonAsync("/api/devices/monitor-icon1/display", new { items = Array.Empty<object>(), battery = layout });
+        Assert.Equal(HttpStatusCode.OK, put.StatusCode);
+        var shown = (await put.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("battery");
+        Assert.Equal((true, 20, 120, 2), (shown.GetProperty("enabled").GetBoolean(), shown.GetProperty("x").GetInt32(), shown.GetProperty("y").GetInt32(), shown.GetProperty("scale").GetInt32()));
+        var moved = await Read(4180);
+        Assert.NotEqual(first.ETag, moved.ETag);
+        Assert.Equal(0, Ink(moved.Bits, 150, 0, 200, 40));
+        Assert.True(Ink(moved.Bits, 20, 120, 40, 156) > 60);
+
+        // charging: a bolt instead of the percent, from the header; "0" takes it back
+        var bolt = await UntilChanged(moved, 4180, "1");
+        Assert.NotEqual(Ink(moved.Bits, 0, 100, 40, 160), Ink(bolt.Bits, 0, 100, 40, 160));
+        var back = await UntilChanged(bolt, 4180, "0");
+        Assert.Equal(moved.ETag, back.ETag);
+
+        // an old client that does not know the field leaves the place as it is; a wrong size is refused; "off" takes it away
+        using var old = await admin.PutAsJsonAsync("/api/devices/monitor-icon1/display", new { items = Array.Empty<object>() });
+        Assert.Equal(HttpStatusCode.OK, old.StatusCode);
+        Assert.Equal(2, (await old.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("battery").GetProperty("scale").GetInt32());
+        using var bad = await admin.PutAsJsonAsync("/api/devices/monitor-icon1/display", new { items = Array.Empty<object>(), battery = new { scale = 9 } });
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        using var off = await admin.PutAsJsonAsync("/api/devices/monitor-icon1/display", new { items = Array.Empty<object>(), battery = new { enabled = false } });
+        Assert.Equal(HttpStatusCode.OK, off.StatusCode);
+        var gone = await Read(4180);
+        Assert.Equal(0, Ink(gone.Bits, 150, 0, 200, 40) + Ink(gone.Bits, 20, 120, 60, 160));  // neither the corner nor the moved place
+        using var reset = await admin.PutAsJsonAsync("/api/devices/monitor-icon1/display", new { items = Array.Empty<object>(), battery = new { } });
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
+        Assert.True(Ink((await Read(4180)).Bits, 184, 4, 194, 22) > 30);  // the defaults are back
+    }
+
+    [Fact]
     public async Task A_monitor_far_away_is_added_by_hand_and_reads_the_picture_the_hive_draws()
     {
         var admin = await hive.LoginAsync();

@@ -51,7 +51,8 @@ public sealed record DisplayScreenDto(int Width, int Height, bool Rendered = fal
 /// white (a dark screen); either absent when saving: unchanged.
 /// </summary>
 public sealed record DisplayItemsDto(
-    IReadOnlyList<DisplayItemDto> Items, DisplayScreenDto? Screen = null, int? Rotation = null, DisplayMonitorDto? Monitor = null, bool? Invert = null);
+    IReadOnlyList<DisplayItemDto> Items, DisplayScreenDto? Screen = null, int? Rotation = null, DisplayMonitorDto? Monitor = null, bool? Invert = null,
+    BatteryLayout? Battery = null);
 
 /// <summary>
 /// Monitoring of a panel far away: until <see cref="Until"/> it reads its screen every <see cref="EveryMin"/> minutes
@@ -284,7 +285,7 @@ public sealed class DisplayFeedService(
             return null;
         var rotation = RotationOf(device);
         return new DisplayItemsDto(ItemsOf(device), DisplayScreens.For(device.Hw, rotation) is { } screen ? screen with { Background = device.ScreenBackground is not null, Sleep = device.ScreenSleep is not null } : null, rotation,
-            MonitorOf(device, time.GetUtcNow()), InvertOf(device));
+            MonitorOf(device, time.GetUtcNow()), InvertOf(device), BatteryOf(device));
     }
 
     /// <summary>What a panel may be monitored for: as long and as often as a person can choose (the same hours as a thermometer).</summary>
@@ -343,6 +344,15 @@ public sealed class DisplayFeedService(
             && display.TryGetProperty("rotation", out var r) && r.TryGetInt32(out var degrees) && DisplayScreens.Rotations.Contains(degrees)
             ? degrees : DisplayScreens.DefaultRotation(device.Hw);
 
+    /// <summary>Where the battery icon stands (config display.battery); the defaults (top right corner, base size, shown) when absent.</summary>
+    public static BatteryLayout BatteryOf(Device device)
+    {
+        if (device.Config is null || !device.Config.RootElement.TryGetProperty("display", out var display)
+            || !display.TryGetProperty("battery", out var b) || b.ValueKind != JsonValueKind.Object)
+            return new BatteryLayout(true);
+        return new BatteryLayout(!(b.TryGetProperty("enabled", out var on) && on.ValueKind == JsonValueKind.False), Int(b, "x"), Int(b, "y"), Int(b, "scale"));
+    }
+
     /// <summary>Whether the picture of a screen the hive draws is dark: white on black (config display.invert).</summary>
     public static bool InvertOf(Device device) =>
         device.Config is not null && device.Config.RootElement.TryGetProperty("display", out var display)
@@ -384,7 +394,7 @@ public sealed class DisplayFeedService(
     /// with its reason (checked against the screen of the board too).
     /// </summary>
     public async Task<(ConfigUpdateStatus Status, string? Error)> SaveAsync(
-        string deviceId, IReadOnlyList<DisplayItemDto> items, int? rotation, string by, CancellationToken ct, bool? invert = null)
+        string deviceId, IReadOnlyList<DisplayItemDto> items, int? rotation, string by, CancellationToken ct, bool? invert = null, BatteryLayout? battery = null)
     {
         var device = await db.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId && (d.Driver == Drivers.Hornet || d.Driver == Drivers.Http), ct);
         if (device is null)
@@ -393,6 +403,12 @@ public sealed class DisplayFeedService(
             return (ConfigUpdateStatus.BadRequest, "поворот: 0, 90, 180 или 270, и только у экранов, которые рисует Улей");
         if (invert == true && DisplayScreens.For(device.Hw) is not { Rendered: true })
             return (ConfigUpdateStatus.BadRequest, "инверсия бывает только у экранов, которые рисует Улей");
+        if (battery is not null && DisplayScreens.For(device.Hw) is not { Rendered: true, Tabs: 0 })
+            return (ConfigUpdateStatus.BadRequest, "значок батареи рисует Улей только на экране без вкладок (Waveshare 1,54\")");
+        if (battery is { Scale: { } scale } && scale is < 1 or > BatteryLayout.MaxScale)
+            return (ConfigUpdateStatus.BadRequest, $"значок батареи: масштаб от 1 до {BatteryLayout.MaxScale}");
+        if (battery is { X: { } bx } && bx is < -100 or > 400 || battery is { Y: { } by0 } && by0 is < -100 or > 400)
+            return (ConfigUpdateStatus.BadRequest, "значок батареи: X и Y от -100 до 400");
         var newRotation = rotation ?? RotationOf(device);
         if (DisplayText.Validate(items, DisplayScreens.For(device.Hw, newRotation)) is { } error)
             return (ConfigUpdateStatus.BadRequest, error);
@@ -469,6 +485,23 @@ public sealed class DisplayFeedService(
             display["invert"] = true;
         else if (invert == false)
             display.Remove("invert");
+        if (battery is not null)
+        {
+            // only what differs from the defaults is kept: an old layout (and a reset) has no "battery" at all
+            var icon = new JsonObject();
+            if (battery.Enabled == false)
+                icon["enabled"] = false;
+            if (battery.X is { } ix)
+                icon["x"] = ix;
+            if (battery.Y is { } iy)
+                icon["y"] = iy;
+            if (battery.Scale is { } isc and not 1)
+                icon["scale"] = isc;
+            if (icon.Count == 0)
+                display.Remove("battery");
+            else
+                display["battery"] = icon;
+        }
         // A turn that changes the screen's shape (a panel on its side) makes the background image the wrong size: it goes.
         if (device.ScreenBackground is not null && DisplayScreens.For(device.Hw, newRotation) is { } shape && DisplayScreens.For(device.Hw, RotationOf(device)) is { } before
             && (shape.Width != before.Width || shape.Height != before.Height))
@@ -564,7 +597,7 @@ public sealed class DisplayFeedService(
         try
         {
             var bitmap = DisplayRender.Render(message, screen, set, background, images);
-            ScreenTabs.DrawBatteryCorner(bitmap, set, corner);
+            ScreenTabs.DrawBatteryCorner(bitmap, set, corner?.Percent, corner?.Charging ?? false, BatteryOf(device));
             return InvertOf(device) ? DisplayRender.Invert(bitmap) : bitmap;
         }
         finally
@@ -577,14 +610,36 @@ public sealed class DisplayFeedService(
     /// <summary>What besides the items makes the picture what it is (background, turn, fonts): a panel redraws when it changes.</summary>
     public async Task<string> PictureTagAsync(Device device, CancellationToken ct) =>
         $"{device.ScreenBackgroundSha}/{RotationOf(device)}{(InvertOf(device) ? "/dark" : "")}/{await fonts.VersionAsync(ct)}/{ImageIds(device)}"
-        + (await CornerBatteryAsync(device, DisplayScreens.For(device.Hw), ct) is { } pct ? $"/bat{pct}" : "");
+        + (await CornerBatteryAsync(device, DisplayScreens.For(device.Hw), ct) is { } c ? $"/bat{c.Percent}{(c.Charging ? "c" : "")}{BatteryTag(device)}" : "");
+
+    /// <summary>The icon's place and size in the picture's tag: moving it redraws the picture.</summary>
+    private static string BatteryTag(Device device) => BatteryOf(device) is { } b ? $"@{b.X},{b.Y},{b.Scale}" : "";
 
     /// <summary>
     /// The battery for the corner of a picture the hive draws for a screen without tabs (the small panel), in steps of five; null when
     /// the panel has not told it lately or the screen is not one the hive draws. Tabs draw their own battery.
     /// </summary>
-    private async Task<int?> CornerBatteryAsync(Device device, DisplayScreenDto? screen, CancellationToken ct) =>
-        screen is { Rendered: true, Tabs: 0 } && await BatteryAsync(device.DeviceId, ct) is { } pct ? ScreenTabs.CornerPercent(pct) : null;
+    private async Task<(int Percent, bool Charging)?> CornerBatteryAsync(Device device, DisplayScreenDto? screen, CancellationToken ct)
+    {
+        if (screen is not { Rendered: true, Tabs: 0 } || BatteryOf(device).Enabled == false)
+            return null;
+        return await BatteryAsync(device.DeviceId, ct) is { } pct ? (ScreenTabs.CornerPercent(pct), await ChargingAsync(device.DeviceId, ct)) : null;
+    }
+
+    /// <summary>
+    /// Whether the panel told it is on external power (X-Charging: 1) with its latest battery reading, which is under two hours old.
+    /// A "charging" told earlier than the latest battery reading does not count: the panel stopped saying it (unplugged, or an old firmware).
+    /// </summary>
+    private async Task<bool> ChargingAsync(string deviceId, CancellationToken ct)
+    {
+        var since = time.GetUtcNow().AddHours(-2);
+        var latest = await db.Telemetry.AsNoTracking()
+            .Where(t => t.DeviceId == deviceId && (t.Metric == "charging" || t.Metric == "battery_voltage") && t.Ts >= since)
+            .OrderByDescending(t => t.Ts).Take(4).Select(t => new { t.Metric, t.Ts, t.Value }).ToListAsync(ct);
+        var battery = latest.FirstOrDefault(t => t.Metric == "battery_voltage");
+        var charging = latest.FirstOrDefault(t => t.Metric == "charging");
+        return battery is not null && charging is not null && charging.Value >= 0.5 && Math.Abs((charging.Ts - battery.Ts).TotalSeconds) < 5;
+    }
 
     /// <summary>The pictures the state items of the screen are drawn with: another choice is another picture.</summary>
     private static string ImageIds(Device device) =>
@@ -648,7 +703,7 @@ public sealed class DisplayFeedService(
         }
         var set = await fonts.LoadAsync(message.Items.Select(i => i.Font).Concat(ScreenTabs.Families), ct);
         using var background = tab == ScreenTabs.Measure && device.ScreenBackground is { } png ? SKBitmap.Decode(png) : null;
-        var context = new TabContext(now, options.ToLocal, await BatteryAsync(device.DeviceId, ct), weather, events, asleep);
+        var context = new TabContext(now, options.ToLocal, await BatteryAsync(device.DeviceId, ct), weather, events, asleep, await ChargingAsync(device.DeviceId, ct));
         var images = tab == ScreenTabs.Measure ? await ImagesAsync(device, ct) : new Dictionary<int, SKBitmap>();
         try
         {

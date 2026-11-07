@@ -217,9 +217,104 @@ public class ScreenTabsTests
     public void Battery_follows_the_curve_of_a_lithium_cell()
     {
         Assert.Equal(0, ScreenTabs.BatteryPercent(3.2));
-        Assert.Equal(50, ScreenTabs.BatteryPercent(3.8));
+        Assert.Equal(50, ScreenTabs.BatteryPercent(3.7));
+        Assert.Equal(65, ScreenTabs.BatteryPercent(3.8));
+        Assert.Equal(90, ScreenTabs.BatteryPercent(4.1));
+        Assert.InRange(ScreenTabs.BatteryPercent(3.725), 51, 64);
+        // a cell on its charger reads 4.17-4.20 V: that is full, and shows as 100 in the corner's steps of five
+        Assert.Equal(100, ScreenTabs.BatteryPercent(4.18));
+        Assert.Equal(100, ScreenTabs.BatteryPercent(4.2));
         Assert.Equal(100, ScreenTabs.BatteryPercent(4.25));
-        Assert.InRange(ScreenTabs.BatteryPercent(3.725), 26, 39);
+        Assert.Equal(100, ScreenTabs.CornerPercent(ScreenTabs.BatteryPercent(4.17)));
+        Assert.Equal(100, ScreenTabs.CornerPercent(ScreenTabs.BatteryPercent(4.2)));
+        // never going down as the voltage goes up
+        var last = -1;
+        for (var v = 3.0; v <= 4.4; v += 0.01)
+        {
+            var now = ScreenTabs.BatteryPercent(v);
+            Assert.True(now >= last, $"{v:0.00} V gave {now} after {last}");
+            last = now;
+        }
+    }
+
+    // ---- the icon: exactly mirror symmetric at every size, where the layout puts it
+
+    private static (int Left, int Top, int W, int H) IconBox(BatteryLayout? layout, int screenWidth)
+    {
+        var s = Math.Clamp(layout?.Scale ?? 1, 1, BatteryLayout.MaxScale);
+        return (layout?.X ?? screenWidth - 6 * s - BatteryLayout.BaseWidth * s, layout?.Y ?? 4, BatteryLayout.BaseWidth * s, BatteryLayout.BaseHeight * s);
+    }
+
+    [Theory]
+    [InlineData(1, 0)]
+    [InlineData(1, 37)]
+    [InlineData(1, 100)]
+    [InlineData(2, 55)]
+    [InlineData(3, 100)]
+    [InlineData(4, 15)]
+    public void The_battery_icon_is_mirror_symmetric_left_to_right_at_every_size(int scale, int percent)
+    {
+        using var bitmap = Blank();
+        var layout = new BatteryLayout(true, 40, 30, scale);
+        ScreenTabs.DrawBatteryCorner(bitmap, TabFonts(), percent, false, layout);
+        var (left, top, w, h) = IconBox(layout, 200);
+        for (var y = top; y < top + h; y++)
+            for (var x = left; x < left + w; x++)
+                Assert.Equal(bitmap.GetPixel(x, y).Red < 128, bitmap.GetPixel(left + w - 1 - (x - left), y).Red < 128);
+        // something is there, and the nub is on top: the row above the shell has only the middle columns
+        Assert.True(Black(bitmap, new SKRectI(left, top, left + w, top + h)) > 20 * scale);
+    }
+
+    [Fact]
+    public void The_icon_goes_where_the_layout_says_at_the_size_it_says_and_an_old_layout_keeps_the_corner()
+    {
+        // no layout at all (an old screen): the top right corner at the base size
+        using var old = Blank();
+        ScreenTabs.DrawBatteryCorner(old, TabFonts(), 64, false, null);
+        using var asDefault = Blank();
+        ScreenTabs.DrawBatteryCorner(asDefault, TabFonts(), 64, false, new BatteryLayout());
+        Assert.Equal(Bytes(old), Bytes(asDefault));
+        Assert.True(Black(old, new SKRectI(184, 4, 194, 22)) > 30);  // 200 - 6 - 10 = 184
+
+        // moved and magnified: the corner is empty, the new place holds it
+        using var moved = Blank();
+        ScreenTabs.DrawBatteryCorner(moved, TabFonts(), 64, false, new BatteryLayout(true, 20, 120, 3));
+        Assert.Equal(0, Black(moved, new SKRectI(130, 0, 200, 30)));
+        Assert.True(Black(moved, new SKRectI(20, 120, 50, 174)) > 100);   // 30 by 54 points, the shell is 3 points thick
+        Assert.Equal(0, Black(moved, new SKRectI(20, 175, 200, 200)));   // nothing under it: the percent stands to its LEFT, not below
+
+        // taken away
+        using var off = Blank();
+        ScreenTabs.DrawBatteryCorner(off, TabFonts(), 64, false, new BatteryLayout(false));
+        Assert.Equal(0, Black(off, new SKRectI(0, 0, 200, 200)));
+    }
+
+    [Fact]
+    public void A_charging_icon_has_a_bolt_where_the_percent_would_stand_and_no_percent()
+    {
+        using var plain = Blank();
+        using var charging = Blank();
+        ScreenTabs.DrawBatteryCorner(plain, TabFonts(), 80, false, null);
+        ScreenTabs.DrawBatteryCorner(charging, TabFonts(), 80, true, null);
+        var icon = new SKRectI(184, 4, 194, 22);
+        Assert.Equal(Black(plain, icon), Black(charging, icon));           // the cell itself is the same
+        var left = new SKRectI(150, 0, 183, 30);
+        Assert.NotEqual(Bytes(plain), Bytes(charging));
+        Assert.InRange(Black(charging, left), 20, 80);                      // a bolt of 9 by 15 points: not the text of the percent
+        // the bolt is a column of ink from top to bottom, narrower than the text "80%"
+        Assert.True(Black(charging, new SKRectI(172, 7, 182, 24)) > 25);
+        Assert.Equal(0, Black(charging, new SKRectI(150, 0, 170, 30)));
+    }
+
+    private static byte[] Bytes(SKBitmap b) => b.Bytes;
+
+    [Fact]
+    public void The_percent_text_grows_with_the_icon_and_stays_beside_it()
+    {
+        using var big = Blank();
+        ScreenTabs.DrawBatteryCorner(big, TabFonts(), 64, false, new BatteryLayout(true, 140, 10, 2));
+        Assert.True(Black(big, new SKRectI(60, 10, 137, 50)) > 30);   // "65%" in 20 px letters to the left of the icon
+        Assert.Equal(0, Black(big, new SKRectI(0, 60, 200, 200)));
     }
 
     [Fact]

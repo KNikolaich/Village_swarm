@@ -69,9 +69,14 @@ tab is read at the panel's own interval. Times are the hive's time zone.
 reads at the shorter of this and its own interval; when the header is gone, the monitoring is over and its own interval
 holds again.
 
+A panel that knows it is on external power may say so with its battery: request header `X-Charging` (`1`: on external power, charging; `0`:
+on its cell; absent: it does not know). It counts only with an `X-Battery-mV` of the same read. The hive keeps it as the monitor's `charging`
+reading (1 or 0) beside `battery_voltage` and draws a lightning bolt on the battery icon, instead of the percent, while the latest battery
+reading is under two hours old and told it; a `charging` older than the latest battery reading is ignored.
+
 A panel may say its battery with every read: request header `X-Battery-mV` (integer millivolts, 2500..4500; absent when
 it cannot measure it). The hive keeps it as the monitor's `battery_voltage` reading (volts) and draws the battery on the
-tabs that have one and, for a screen without tabs (the Waveshare 1.54"), in the top right corner of the picture in steps of five percent (the `ETag` follows it); a value outside the range is ignored.
+tabs that have one and, for a screen without tabs (the Waveshare 1.54"), at the place the person chose (default: the top right corner, 10 by 18 points; `display.battery` in the monitor's config, `PUT /api/devices/{id}/display` field `battery`: `enabled`, `x`, `y`, `scale`) in steps of five percent (the `ETag` follows it); a value outside the range is ignored.
 
 A panel may also say who it is with every read (`frame` and `frame.bin`): request headers `X-Device-Mac` (its Wi-Fi MAC, `A0:B7:65:12:34:56`,
 colons or dashes, any case) and `X-Fw-Version` (its build, e.g. `0.2.0+a1b2c3d`: letters, digits and `. _ + ~ -`, up to 40

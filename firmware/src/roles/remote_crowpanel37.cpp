@@ -926,7 +926,11 @@ Reply fetchTab(int tab, int batteryMv, bool sleep = false) {
     http.addHeader("Authorization", "Bearer " + settings.token);
     const String tag = readTag(tab);
     if (!sleep && tag.length() && haveTab(tab)) http.addHeader("If-None-Match", tag);
-    if (batteryMv > 0) http.addHeader("X-Battery-mV", String(batteryMv));
+    if (batteryMv > 0) {
+        http.addHeader("X-Battery-mV", String(batteryMv));
+        // this panel can tell external power only by a USB host on the console (nothing else on the board says it): "1" then, else it says nothing
+        if (usbHostAttached()) http.addHeader("X-Charging", "1");
+    }
     const char* keys[] = {"ETag", "X-Frame-Width", "X-Frame-Height", "X-Frame-Rotation", "Date", "X-Frame-Tabs", "X-Frame-Refresh", "X-Frame-Tab-Weights"};
     http.collectHeaders(keys, 8);
     reply.code = http.GET();
