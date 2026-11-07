@@ -631,9 +631,15 @@ void showPage() {
     drawPage(page);
 }
 
+/// "set debug 1": where the time of a page turn goes (layout, the screen, the reading place), to see what makes the panel slow.
+void logTurn(const char* what, uint32_t layoutMs, uint32_t drawMs, uint32_t saveMs) {
+    if (debugButtons()) Serial.printf("[reader] %s: layout %lu ms, screen %lu ms, place %lu ms\n", what, static_cast<unsigned long>(layoutMs), static_cast<unsigned long>(drawMs), static_cast<unsigned long>(saveMs));
+}
+
 void forward(int pages) {
     Page page;
     bool moved = false;
+    const uint32_t t0 = millis();
     for (int i = 0; i < pages && pageNext < textSize && pageNext > pageStart; i++) {
         history.push(pageStart);
         pageStart = pageNext;
@@ -643,13 +649,17 @@ void forward(int pages) {
         moved = true;
     }
     if (!moved) return;  // the last page: nothing to turn
+    const uint32_t t1 = millis();
     drawPage(page);
+    const uint32_t t2 = millis();
     savePosition();
+    logTurn("forward", t1 - t0, t2 - t1, millis() - t2);
 }
 
 void back(int pages) {
     Page page;
     bool moved = false;
+    const uint32_t t0 = millis();
     for (int i = 0; i < pages && pageStart > 0; i++) {
         uint32_t start = 0;
         if (history.pop(start) && start < pageStart) {
@@ -666,8 +676,11 @@ void back(int pages) {
         moved = true;
     }
     if (!moved) return;
+    const uint32_t t1 = millis();
     drawPage(page);
+    const uint32_t t2 = millis();
     savePosition();
+    logTurn("back", t1 - t0, t2 - t1, millis() - t2);
 }
 
 /// Opens a book at its saved place, making its text first when needed.

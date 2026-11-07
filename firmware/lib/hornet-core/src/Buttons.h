@@ -9,17 +9,17 @@
 //    ignored whole, and the button must be let go before it counts again.
 //  - PressCounter: the rocker's up, down and press, read from their edges in an interrupt. Only the press edge (falling) counts, never the
 //    release; it counts only when the contact had been let go and was quiet for kReleaseQuietUs, and not within kRockerGapUs of the last
-//    accepted press: nobody clicks twice in a quarter of a second, so every edge in that time is chatter.
+//    accepted press, so the edges of one click (and its bounce) count once.
 #include <cstdint>
 
 namespace hornet::buttons {
 
-constexpr uint32_t kStableMs = 50;     // a level counts after it held this long: a touch shorter than this is no press either
+constexpr uint32_t kStableMs = 30;     // a level counts after it held this long: a touch shorter than this is no press either
 constexpr uint32_t kLongMs = 2000;
-constexpr uint32_t kExitLockMs = 600;  // after any action a second EXIT is not believed for this long
-constexpr uint32_t kMenuLockMs = 400;  // MENU too (a page turn): more than the quarter second a person can click in
+constexpr uint32_t kExitLockMs = 250;  // after the screen changed a press of EXIT that begins within this is not believed (it closes things: careful)
+constexpr uint32_t kMenuLockMs = 150;  // MENU (a page turn): short, it is counted from the END of the refresh, so a click right after it must pass
 
-constexpr int64_t kRockerGapUs = 300000;      // after an accepted press every edge of that contact is ignored this long
+constexpr int64_t kRockerGapUs = 150000;      // after an accepted press every edge of that contact is ignored this long (a click lasts about 100 ms)
 constexpr int64_t kReleaseQuietUs = 40000;    // it must have been let go and stable this long before it can fire again
 
 enum class Out : uint8_t { None, Short, Long };

@@ -35,7 +35,7 @@ static void test_a_clean_short_press_says_short_once_when_let_go() {
     const auto out = play(b, {{100, true}, {300, false}}, 1000);
     TEST_ASSERT_EQUAL(1, out.size());
     TEST_ASSERT_TRUE(out[0].second == Out::Short);
-    TEST_ASSERT_TRUE(out[0].first >= 350 && out[0].first <= 360);  // after the release has been steady for 50 ms
+    TEST_ASSERT_TRUE(out[0].first >= 330 && out[0].first <= 340);  // after the release has been steady for 30 ms
 }
 
 static void test_chatter_on_press_and_on_release_is_one_press() {
@@ -80,7 +80,7 @@ static void test_a_glitch_in_the_middle_of_a_hold_is_not_a_second_press() {
 
 static void test_a_touch_shorter_than_the_stable_time_is_nothing() {
     Button b;
-    TEST_ASSERT_EQUAL(0, play(b, {{100, true}, {140, false}}, 1000).size());  // 40 ms is a touch, not a press
+    TEST_ASSERT_EQUAL(0, play(b, {{100, true}, {130, false}}, 1000).size());  // 30 ms is a touch, not a press
 }
 
 static void test_a_long_press_says_long_once_while_held_and_no_short_after() {
@@ -95,7 +95,7 @@ static void test_a_press_right_after_a_view_change_is_ignored_whole() {
     Button b;
     b.lockFor(1000, kExitLockMs);  // the screen just changed
     // a second press 150 ms later (bounce, or an impatient finger): nothing
-    const auto out = play(b, {{1150, true}, {1300, false}}, 1000, 2000);
+    const auto out = play(b, {{1100, true}, {1250, false}}, 1000, 2000);
     TEST_ASSERT_EQUAL(0, out.size());
 }
 
@@ -118,7 +118,7 @@ static void test_a_finger_still_down_when_the_screen_changes_is_not_a_new_press(
 
 static void test_a_press_that_began_in_the_lock_stays_ignored_after_it_ends() {
     Button b;
-    b.lockFor(0, kExitLockMs);
+    b.lockFor(0, 400);
     // begins at 300 (locked), held past the end of the lock, let go at 800: ignored; the next clean press counts
     const auto out = play(b, {{300, true}, {800, false}, {1000, true}, {1200, false}}, 2000);
     TEST_ASSERT_EQUAL(1, out.size());
@@ -164,15 +164,15 @@ static void test_chatter_around_a_click_is_one_press() {
 
 static void test_a_bounce_after_the_release_but_inside_the_gap_is_ignored() {
     PressCounter c;
-    // the release at 100, then a bounce at 160: let go for 60 ms (more than the 40 ms quiet) but only 160 ms after the press
-    TEST_ASSERT_EQUAL(1, accepted(c, {{0, true}, {100, false}, {160, true}, {200, false}}));
+    // the release at 100, then a bounce at 145: let go for 45 ms (more than the 40 ms quiet) but only 145 ms after the press
+    TEST_ASSERT_EQUAL(1, accepted(c, {{0, true}, {100, false}, {145, true}, {190, false}}));
 }
 
 static void test_a_second_click_after_the_gap_counts() {
     PressCounter c;
-    TEST_ASSERT_EQUAL(2, accepted(c, {{0, true}, {100, false}, {400, true}, {500, false}}));
+    TEST_ASSERT_EQUAL(2, accepted(c, {{0, true}, {100, false}, {300, true}, {400, false}}));  // 300 ms apart: two clicks
     PressCounter d;
-    TEST_ASSERT_EQUAL(1, accepted(d, {{0, true}, {80, false}, {250, true}, {330, false}}));  // 250 ms: inside the 300 ms gap
+    TEST_ASSERT_EQUAL(1, accepted(d, {{0, true}, {80, false}, {120, true}, {200, false}}));  // 120 ms: inside the 150 ms gap
 }
 
 static void test_a_new_press_needs_the_contact_let_go_and_quiet() {
@@ -242,7 +242,7 @@ static void test_a_book_opens_its_settings_by_the_press_or_a_held_menu() {
 static void test_one_tap_through_the_whole_chain_is_one_event_and_one_change() {
     // the rocker contact: a tap with chatter, then a late bounce while the screen refreshes: one press accepted
     PressCounter c;
-    const int presses = accepted(c, {{0, true}, {6, false}, {12, true}, {110, false}, {170, true}, {175, false}, {240, true}, {250, false}});
+    const int presses = accepted(c, {{0, true}, {6, false}, {12, true}, {110, false}, {125, true}, {130, false}});
     TEST_ASSERT_EQUAL(1, presses);
     // in a book that press opens the settings; in the settings it changes nothing; MENU is what changes a value
     TEST_ASSERT_TRUE(opensSettings(Key::Press));
