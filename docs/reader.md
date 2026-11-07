@@ -74,7 +74,7 @@
 скачает с GitHub olikraus/u8g2, показав SHA-256):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File firmware	ools\make-reader-fonts.ps1
+powershell -ExecutionPolicy Bypass -File firmware\tools\make-reader-fonts.ps1
 ```
 
 Скрипт делает TTF → BDF (`ttf2bdf.py`) → шрифт U8g2 (`bdfconv`), пишет `firmware/lib/reader-fonts/ReaderFonts.h` (его надо закоммитить), печатает,
