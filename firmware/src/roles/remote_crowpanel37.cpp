@@ -44,6 +44,7 @@
 #include <time.h>
 
 #include "../../lib/hornet-core/src/RemoteMonitor.h"
+#include "../../lib/hornet-core/src/Buttons.h"
 #include "crowpanel37.h"
 
 namespace {
@@ -150,6 +151,7 @@ struct Settings {
     String ssid[2], pass[2], url, token;
     int intervalMin = kDefaultIntervalMin;
     bool insecure = false;
+    bool debug = false;  // "set debug 1": every accepted button press is logged with its timing (crowpanel37::debugButtons)
 
     bool ready() const { return ssid[0].length() > 0 && frameUrl(url.c_str()).length() > 0 && token.length() > 0; }
 
@@ -164,6 +166,7 @@ struct Settings {
         token = p.getString("token", "");
         intervalMin = clampInterval(p.getInt("interval", kDefaultIntervalMin));
         insecure = p.getBool("insecure", false);
+        debug = p.getBool("debug", false);
         p.end();
     }
 
@@ -178,6 +181,7 @@ struct Settings {
         p.putString("token", token);
         p.putInt("interval", intervalMin);
         p.putBool("insecure", insecure);
+        p.putBool("debug", debug);
         p.end();
     }
 } settings;
@@ -486,6 +490,7 @@ Order runCommand(String line) {
     else if (key == "rot") {
         // the hive turns the picture (its page); kept so the hive's setup page may send it like for the 1.54"
     } else if (key == "insecure") settings.insecure = value == "1";
+    else if (key == "debug") settings.debug = value == "1";
     else {
         Serial.printf("[monitor] error: unknown key %s\n", key.c_str());
         return Order::None;
@@ -517,12 +522,18 @@ constexpr uint32_t kHelpTimeoutMs = 30000;  // the help screen waits this long f
 constexpr gpio_num_t kButtons[] = {kPinExit, kPinMenu, kPinDown, kPinConf, kPinUp};
 
 // Presses that come while the panel is busy (Wi-Fi, the hive's answer, the screen refresh) are counted by interrupts, so none is lost:
-// the rocker's up and down and the press. A falling edge counts when the button had been up for 40 ms (bounce is not a press).
+// the rocker's up and down and the press. Only the press edge (falling) counts, never the release; a contact must have been let go and
+// quiet for 40 ms, and no edge counts within 300 ms of the last accepted press (PressCounter in Buttons.h: nobody clicks twice in a quarter
+// of a second, so that is chatter). At most ONE press per contact is kept while the panel is busy: a refresh takes a second or two, and
+// edges stacked in it used to be replayed as several page turns afterwards.
 // The handler runs from IRAM and may come while the flash is written, so it touches only DRAM and IRAM-safe calls
 // (the input register, esp_timer_get_time), and the counters are shared under a spinlock.
-volatile uint8_t pendingPress[3] = {0, 0, 0};  // up, down, press
-volatile int64_t lastEdgeUs[3] = {0, 0, 0};
+volatile uint8_t pendingPress[3] = {0, 0, 0};  // up, down, press: 0 or 1
+hornet::buttons::PressCounter counters[3];
+volatile uint32_t acceptedGapMs[3] = {0, 0, 0};   // about the press waiting in pendingPress, for the debug log
+volatile uint32_t acceptedEdges[3] = {0, 0, 0};
 DRAM_ATTR const gpio_num_t kWatched[3] = {kPinUp, kPinDown, kPinConf};  // all below GPIO 32
+const char* const kWatchedNames[3] = {"up", "down", "press"};
 portMUX_TYPE pressMux = portMUX_INITIALIZER_UNLOCKED;
 
 void IRAM_ATTR onEdge(void* arg) {
@@ -530,8 +541,11 @@ void IRAM_ATTR onEdge(void* arg) {
     const int64_t now = esp_timer_get_time();
     const bool down = (REG_READ(GPIO_IN_REG) & (1UL << kWatched[i])) == 0;
     portENTER_CRITICAL_ISR(&pressMux);
-    if (down && now - lastEdgeUs[i] > 40000 && pendingPress[i] < 8) pendingPress[i] = pendingPress[i] + 1;
-    lastEdgeUs[i] = now;
+    if (counters[i].onEdge(down, now) && pendingPress[i] == 0) {
+        pendingPress[i] = 1;
+        acceptedGapMs[i] = counters[i].lastGapMs;
+        acceptedEdges[i] = counters[i].lastEdges;
+    }
     portEXIT_CRITICAL_ISR(&pressMux);
 }
 
@@ -539,21 +553,32 @@ void watchButtons() {
     for (int i = 0; i < 3; i++) attachInterruptArg(kWatched[i], onEdge, reinterpret_cast<void*>(static_cast<intptr_t>(i)), CHANGE);
 }
 
+/// "set debug 1": what each accepted press looked like (the contact, ms since the previous accepted one, raw edges since it), so a log shows
+/// whether a double press was one click with chatter or two clicks.
+void logPress(const char* name, uint32_t gapMs, uint32_t edges) {
+    if (settings.debug) Serial.printf("[buttons] %s: accepted, %lu ms after the previous, %lu raw edges since it\n", name, static_cast<unsigned long>(gapMs), static_cast<unsigned long>(edges));
+}
+
 /// Steps of the cursor asked for meanwhile: down minus up; takes them.
 int takeSteps() {
     portENTER_CRITICAL(&pressMux);
-    const int steps = static_cast<int>(pendingPress[1]) - static_cast<int>(pendingPress[0]);
+    const int up = pendingPress[0], down = pendingPress[1];
+    const uint32_t gapUp = acceptedGapMs[0], edgesUp = acceptedEdges[0], gapDown = acceptedGapMs[1], edgesDown = acceptedEdges[1];
     pendingPress[0] = 0;
     pendingPress[1] = 0;
     portEXIT_CRITICAL(&pressMux);
-    return steps;
+    if (up) logPress(kWatchedNames[0], gapUp, edgesUp);
+    if (down) logPress(kWatchedNames[1], gapDown, edgesDown);
+    return down - up;
 }
 
 bool takePress() {
     portENTER_CRITICAL(&pressMux);
     const bool was = pendingPress[2] > 0;
+    const uint32_t gap = acceptedGapMs[2], edges = acceptedEdges[2];
     pendingPress[2] = 0;
     portEXIT_CRITICAL(&pressMux);
+    if (was) logPress(kWatchedNames[2], gap, edges);
     return was;
 }
 
@@ -1063,15 +1088,18 @@ void readWorked() {
     if (takePress()) chosen(cursor);
     showTab(currentTab, cursor, String());
     uint32_t lastInput = millis();
+    hornet::buttons::Button exit;  // debounced, and a second press right after the screen changed is ignored (Buttons.h)
+    exit.lockFor(millis(), hornet::buttons::kExitLockMs);
     while (millis() - lastInput < kCursorTimeoutMs) {
         if (const int step = takeSteps(); step != 0) {
             cursor = stepTab(cursor, step, tabs);
             showTab(currentTab, cursor, String());
             lastInput = millis();
+            exit.lockFor(lastInput, hornet::buttons::kExitLockMs);
             continue;
         }
         if (takePress()) chosen(cursor);
-        if (pressed(kPinExit)) {
+        if (exit.poll(pressed(kPinExit), millis()) == hornet::buttons::Out::Short) {
             waitRelease();
             break;
         }
@@ -1081,14 +1109,28 @@ void readWorked() {
     sleepFor(nextReadSeconds());
 }
 
-/// Woken by a button: held for 2 s = the long press (MENU: the settings point, EXIT: the help screen).
+/// Woken by a button: held for 2 s = the long press (MENU: the settings point, EXIT: the help screen). The button is debounced
+/// (Buttons.h): a glitch of the contact in the middle of the hold no longer makes a long press look short. False for a short press or
+/// a button already let go.
 bool held(gpio_num_t pin) {
-    const uint32_t started = millis();
-    while (millis() - started < 2000) {
-        if (!pressed(pin)) return false;
-        delay(20);
+    hornet::buttons::Button button;
+    uint32_t quietSince = 0;
+    for (;;) {
+        const uint32_t now = millis();
+        switch (button.poll(pressed(pin), now)) {
+            case hornet::buttons::Out::Long: return true;
+            case hornet::buttons::Out::Short: return false;
+            default: break;
+        }
+        if (button.busy()) {
+            quietSince = 0;
+        } else if (!quietSince) {
+            quietSince = now | 1;
+        } else if (now - quietSince >= 100) {
+            return false;  // it was let go before the panel looked (a tap that woke it)
+        }
+        delay(10);
     }
-    return true;
 }
 
 bool menuHeld() { return held(kPinMenu); }
@@ -1172,14 +1214,18 @@ bool showHelp() {
                            "EXIT 2 с: эта справка", "здесь MENU 2 с: настройки", "  http://192.168.4.1", "здесь EXIT: назад"});
     waitRelease();
     const uint32_t started = millis();
+    hornet::buttons::Button exitButton, menuButton;  // debounced; the press that opened the help (and its bounce) is not believed
+    exitButton.lockFor(started, hornet::buttons::kExitLockMs);
+    menuButton.lockFor(started, hornet::buttons::kMenuLockMs);
     while (millis() - started < kHelpTimeoutMs) {
-        if (pressed(kPinExit)) {
+        if (exitButton.poll(pressed(kPinExit), millis()) == hornet::buttons::Out::Short) {
             waitRelease();
             break;
         }
-        if (pressed(kPinMenu)) {
-            if (menuHeld()) return true;
-            readAndSleep(true);
+        switch (menuButton.poll(pressed(kPinMenu), millis())) {
+            case hornet::buttons::Out::Long: return true;       // MENU 2 s: the settings point
+            case hornet::buttons::Out::Short: readAndSleep(true);  // MENU: read now
+            default: break;
         }
         if (const int step = takeSteps(); step != 0) chooseTab(step);
         if (takePress()) chooseTab(0);
@@ -1309,6 +1355,7 @@ void wipeNext() { partials = kPartialsBeforeFull; }
 int batteryMv() { return readBatteryMv(); }
 int batteryPercent(int mv) { return hornet::remote::batteryPercent(mv); }
 bool pressed(gpio_num_t pin) { return ::pressed(pin); }
+bool debugButtons() { return settings.debug; }
 bool held(gpio_num_t pin) { return ::held(pin); }
 void waitRelease() { ::waitRelease(); }
 void watchButtons() { ::watchButtons(); }

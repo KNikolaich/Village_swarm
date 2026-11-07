@@ -32,6 +32,8 @@ void wipeNext();
 int batteryMv();
 int batteryPercent(int mv);
 bool pressed(gpio_num_t pin);
+/// "set debug 1" is on: the buttons log every accepted press.
+bool debugButtons();
 /// Held for 2 s from now (false: let go sooner).
 bool held(gpio_num_t pin);
 void waitRelease();

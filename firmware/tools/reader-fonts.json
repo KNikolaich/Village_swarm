@@ -1,0 +1,24 @@
+{
+  "fonts": [
+    {
+      "id": "literata",
+      "name": "Literata",
+      "ttf": "fonts/Literata-VF.ttf",
+      "axes": { "weight": 400, "optical": "size" },
+      "sizes": [14, 16, 18, 20]
+    },
+    {
+      "id": "ptserif",
+      "name": "PT Serif",
+      "ttf": "fonts/PT_Serif-Web-Regular.ttf",
+      "sizes": [14, 16, 18, 20]
+    },
+    {
+      "id": "robotomono",
+      "name": "Roboto Mono",
+      "ttf": "fonts/RobotoMono-VF.ttf",
+      "axes": { "weight": 400 },
+      "sizes": [14, 16, 18]
+    }
+  ]
+}

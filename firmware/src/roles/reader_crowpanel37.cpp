@@ -50,15 +50,26 @@ struct Size {
 };
 struct Family {
     const char* name;
-    Size sizes[4];
+    Size sizes[8];  // the built-in families have up to 4; a generated one up to 8
     int count;
 };
+// Fonts made from any TTF by firmware/tools/make-reader-fonts.ps1 (which fonts and sizes: firmware/tools/reader-fonts.json): U8g2 has no
+// proportional Cyrillic of 18 or 20 px. The header, with READER_GENERATED_FAMILIES (one table entry per font), exists only after that
+// script ran; without it nothing is offered beyond the built-in families and the firmware builds as before.
+#if __has_include("../../lib/reader-fonts/ReaderFonts.h")
+#include "../../lib/reader-fonts/ReaderFonts.h"
+#endif
+
 // The Cyrillic fonts of U8g2 (ASCII and Cyrillic only: Reader.h printable() replaces the rest).
+// New families go at the end: the chosen family is kept in the panel's memory by its number.
 const Family kFamilies[] = {
     {"Моноширинный", {{"13 узкий", u8g2_font_6x13_t_cyrillic}, {"13", u8g2_font_8x13_t_cyrillic}, {"15", u8g2_font_9x15_t_cyrillic}, {"20", u8g2_font_10x20_t_cyrillic}}, 4},
     {"Юникод", {{"16", u8g2_font_unifont_t_cyrillic}}, 1},
     {"Пропорциональный", {{"12", u8g2_font_cu12_t_cyrillic}}, 1},
     {"Крупный", {{"24", u8g2_font_inr24_t_cyrillic}, {"30", u8g2_font_inr30_t_cyrillic}}, 2},
+#ifdef READER_GENERATED_FAMILIES
+    READER_GENERATED_FAMILIES
+#endif
 };
 constexpr int kFamilyCount = sizeof kFamilies / sizeof kFamilies[0];
 
@@ -71,6 +82,7 @@ constexpr int kOrientationCount = 4;
 
 struct Look {
     int family = 0, size = 1, orientation = 0;
+    int spacing = kDefaultSpacingTenths;  // line spacing, tenths of the font height (10..20)
     bool swapRocker = false;
 
     void load() {
@@ -79,6 +91,7 @@ struct Look {
         family = constrain(p.getInt("family", 0), 0, kFamilyCount - 1);
         size = constrain(p.getInt("size", 1), 0, kFamilies[family].count - 1);
         orientation = constrain(p.getInt("orient", 0), 0, kOrientationCount - 1);
+        spacing = clampSpacing(p.getInt("spacing", kDefaultSpacingTenths));
         swapRocker = p.getBool("swap", false);
         p.end();
     }
@@ -88,6 +101,7 @@ struct Look {
         p.putInt("family", family);
         p.putInt("size", size);
         p.putInt("orient", orientation);
+        p.putInt("spacing", spacing);
         p.putBool("swap", swapRocker);
         p.end();
     }
@@ -573,7 +587,7 @@ PageBox pageBox() {
     PageBox box;
     box.width = canvas().width() - 8;
     box.height = canvas().height() - kHeaderFontHeight - 4;
-    box.lineHeight = t.getFontAscent() - t.getFontDescent() + 2;
+    box.lineHeight = lineHeightFor(t.getFontAscent() - t.getFontDescent(), look.spacing);  // the font height times the setting (default 1.2)
     box.indent = measure("  ", 2);
     return box;
 }
@@ -617,9 +631,15 @@ void showPage() {
     drawPage(page);
 }
 
+/// "set debug 1": where the time of a page turn goes (layout, the screen, the reading place), to see what makes the panel slow.
+void logTurn(const char* what, uint32_t layoutMs, uint32_t drawMs, uint32_t saveMs) {
+    if (debugButtons()) Serial.printf("[reader] %s: layout %lu ms, screen %lu ms, place %lu ms\n", what, static_cast<unsigned long>(layoutMs), static_cast<unsigned long>(drawMs), static_cast<unsigned long>(saveMs));
+}
+
 void forward(int pages) {
     Page page;
     bool moved = false;
+    const uint32_t t0 = millis();
     for (int i = 0; i < pages && pageNext < textSize && pageNext > pageStart; i++) {
         history.push(pageStart);
         pageStart = pageNext;
@@ -629,13 +649,17 @@ void forward(int pages) {
         moved = true;
     }
     if (!moved) return;  // the last page: nothing to turn
+    const uint32_t t1 = millis();
     drawPage(page);
+    const uint32_t t2 = millis();
     savePosition();
+    logTurn("forward", t1 - t0, t2 - t1, millis() - t2);
 }
 
 void back(int pages) {
     Page page;
     bool moved = false;
+    const uint32_t t0 = millis();
     for (int i = 0; i < pages && pageStart > 0; i++) {
         uint32_t start = 0;
         if (history.pop(start) && start < pageStart) {
@@ -652,8 +676,11 @@ void back(int pages) {
         moved = true;
     }
     if (!moved) return;
+    const uint32_t t1 = millis();
     drawPage(page);
+    const uint32_t t2 = millis();
     savePosition();
+    logTurn("back", t1 - t0, t2 - t1, millis() - t2);
 }
 
 /// Opens a book at its saved place, making its text first when needed.
@@ -731,7 +758,10 @@ bool bookReady() {
 
 // ------------------------------------------------------------------ the settings
 
-enum MenuRow { RowFont, RowSize, RowOrientation, RowRocker, RowBack, RowCount };
+enum MenuRow { RowFont, RowSize, RowSpacing, RowOrientation, RowRocker, RowBack, RowCount };
+
+/// 13 -> "1,3": the line spacing as the settings show it.
+std::string spacingText(int tenths) { return std::to_string(tenths / 10) + "," + std::to_string(tenths % 10); }
 
 void showMenu() {
     beginDrawing();
@@ -742,6 +772,7 @@ void showMenu() {
     const std::string rows[RowCount] = {
         std::string("Шрифт: ") + kFamilies[look.family].name,
         std::string("Размер: ") + kFamilies[look.family].sizes[look.size].label,
+        std::string("Интервал: ") + spacingText(look.spacing),
         std::string("Экран: ") + kOrientations[look.orientation].name,
         std::string("Качелька: ") + (look.swapRocker ? "наоборот" : "обычная"),
         "Назад к книге",
@@ -753,7 +784,7 @@ void showMenu() {
     }
     y += 8;
     drawText(6, y + 12, "Вверх/вниз: выбор,");
-    drawText(6, y + 28, "нажатие или MENU: изменить,");
+    drawText(6, y + 28, "MENU: изменить значение,");
     drawText(6, y + 44, "EXIT: назад к книге.");
     c.drawFastHLine(0, y + 54, c.width(), 1);
     t.setFont(look.font());  // a sample of the font chosen
@@ -770,6 +801,9 @@ void changeMenuRow() {
             break;
         case RowSize:
             look.size = (look.size + 1) % kFamilies[look.family].count;
+            break;
+        case RowSpacing:
+            look.spacing = nextSpacing(look.spacing);  // the page is laid out anew from the same first character when the settings close
             break;
         case RowOrientation:
             look.orientation = (look.orientation + 1) % kOrientationCount;
@@ -795,7 +829,7 @@ void leaveMenu() {
 
 // ------------------------------------------------------------------ buttons
 
-enum class Event { None, Up, Down, Press, Menu, MenuLong, Exit, ExitLong };
+using Event = hornet::buttons::Key;  // None, Up, Down, Press, Menu, MenuLong, Exit, ExitLong (Buttons.h says what each does in the settings)
 
 /// Into the monitor: the reading place is kept already; the card goes off.
 [[noreturn]] void leave() {
@@ -847,7 +881,7 @@ void onEvent(Event e, int count = 1) {
                 closeBook();
                 return;
             }
-            if (e == Event::Press) {
+            if (hornet::buttons::opensSettings(e)) {  // the rocker's press, or MENU held 2 s
                 menuRow = 0;
                 showMenu();
                 return;
@@ -860,14 +894,21 @@ void onEvent(Event e, int count = 1) {
             return;
         }
         case View::Menu:
-            if (e == Event::Up || e == Event::Down) {
-                menuRow = stepRow(menuRow, e == Event::Down ? count : -count, RowCount);
-                showMenu();
-            } else if (e == Event::Press || e == Event::Menu) {
-                if (menuRow == RowBack) leaveMenu();
-                else changeMenuRow();
-            } else if (e == Event::Exit) {
-                leaveMenu();
+            switch (hornet::buttons::settingsAction(e)) {  // the rocker's press does nothing here (it fired twice from one tap)
+                case hornet::buttons::SettingsAction::MoveUp:
+                case hornet::buttons::SettingsAction::MoveDown:
+                    menuRow = stepRow(menuRow, e == Event::Down ? count : -count, RowCount);
+                    showMenu();
+                    break;
+                case hornet::buttons::SettingsAction::Change:
+                    if (menuRow == RowBack) leaveMenu();
+                    else changeMenuRow();
+                    break;
+                case hornet::buttons::SettingsAction::Back:
+                    leaveMenu();
+                    break;
+                default:
+                    break;
             }
             return;
     }
@@ -881,11 +922,13 @@ struct Hold {
     hornet::buttons::Button button;
 
     Event poll() {
-        switch (button.poll(pressed(pin), millis())) {
-            case hornet::buttons::Out::Short: return shortPress;
-            case hornet::buttons::Out::Long: return longPress;
-            default: return Event::None;
-        }
+        const hornet::buttons::Out out = button.poll(pressed(pin), millis());
+        if (out == hornet::buttons::Out::None) return Event::None;
+        if (debugButtons())
+            Serial.printf("[buttons] %s %s: accepted, %lu ms after the previous, %lu raw edges since it\n", pin == kPinMenu ? "menu" : "exit",
+                          out == hornet::buttons::Out::Long ? "long" : "short", static_cast<unsigned long>(button.lastGapMs()),
+                          static_cast<unsigned long>(button.lastEdges()));
+        return out == hornet::buttons::Out::Long ? longPress : shortPress;
     }
     bool busy() const { return button.busy(); }
 };
@@ -959,6 +1002,11 @@ bool readerOn() {
         else if (bookPath[0]) openBook(bookPath);
         else showBrowser();
         awake();
+    }
+    // Edges the interrupt counted since the panel woke (the bounce of the very press that woke it) are not new presses.
+    if (buttons) {
+        takeSteps();
+        takePress();
     }
     const Event e = wokenBy(buttons);
     Serial.printf("[reader] woken by 0x%llx\n", static_cast<unsigned long long>(buttons));
