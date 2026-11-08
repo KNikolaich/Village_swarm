@@ -34,6 +34,44 @@ public sealed class HiveSensorsTests : IDisposable
     }
 
     [Fact]
+    public void Reads_the_load_and_the_memory_from_proc()
+    {
+        var proc = Path.Combine(_sys, "proc");
+        Directory.CreateDirectory(proc);
+        File.WriteAllText(Path.Combine(proc, "loadavg"), "1.50 0.80 0.40 2/310 12345\n");
+        File.WriteAllText(Path.Combine(proc, "meminfo"), "MemTotal:        1931264 kB\nMemFree:          300000 kB\nMemAvailable:    1174528 kB\nBuffers:           10000 kB\n");
+        var reader = new HiveSensorReader(_sys, proc);
+
+        Assert.Equal(37.5, reader.CpuLoadPct(4));   // 1.5 on four cores
+        var memory = reader.Memory()!.Value;
+        Assert.Equal((1886.0, 739.0), (memory.TotalMb, memory.UsedMb));   // 1931264 kB total, 756736 kB used
+
+        var nothing = new HiveSensorReader(_sys, Path.Combine(_sys, "no-proc"));
+        Assert.Null(nothing.CpuLoadPct(4));
+        Assert.Null(nothing.Memory());
+    }
+
+    [Fact]
+    public void The_latest_readings_are_kept_for_the_other_node()
+    {
+        var queue = new IngestQueue();
+        var stats = new HiveStats();
+        var proc = Path.Combine(_sys, "proc2");
+        Directory.CreateDirectory(proc);
+        File.WriteAllText(Path.Combine(proc, "loadavg"), "0.50 0.50 0.50 1/100 1\n");
+        File.WriteAllText(Path.Combine(proc, "meminfo"), "MemTotal: 2097152 kB\nMemAvailable: 1048576 kB\n");
+        var sensors = new HiveSensors(queue, stats, Options.Create(new HiveSensorOptions { SysRoot = _sys, ProcRoot = proc, DiskPath = _sys }),
+            Options.Create(new HiveOptions { Node = "city" }), TimeProvider.System, NullLogger<HiveSensors>.Instance);
+
+        sensors.Sample(new HiveSensorReader(_sys, proc));
+
+        var (at, values) = stats.Latest();
+        Assert.NotNull(at);
+        Assert.Equal((2048.0, 1024.0, 50.0), (values["mem_total_mb"], values["mem_used_mb"], values["mem_used_pct"]));
+        Assert.True(values.ContainsKey("disk_total_gb") && values.ContainsKey("disk_free_gb") && values.ContainsKey("cpu_load_pct"));
+    }
+
+    [Fact]
     public void Missing_or_power_on_reading_is_no_value()
     {
         var reader = new HiveSensorReader(_sys);
@@ -61,7 +99,7 @@ public sealed class HiveSensorsTests : IDisposable
     {
         Write("bus/w1/devices/28-0000057a1b2c/temperature", "47500");
         var queue = new IngestQueue();
-        var sensors = new HiveSensors(queue,
+        var sensors = new HiveSensors(queue, new HiveStats(),
             Options.Create(new HiveSensorOptions { SysRoot = _sys, DiskPath = _sys, AirWarnC = 45 }),
             Options.Create(new HiveOptions { Node = "home" }), TimeProvider.System, NullLogger<HiveSensors>.Instance);
         var reader = new HiveSensorReader(_sys);

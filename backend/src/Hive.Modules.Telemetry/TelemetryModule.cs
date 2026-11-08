@@ -28,6 +28,7 @@ public static class TelemetryModule
         services.AddHostedService(sp => sp.GetRequiredService<IngestPipeline>());
         services.AddScoped<TelemetryQueries>();
         services.AddOptions<HiveSensorOptions>().BindConfiguration(HiveSensorOptions.Section);
+        services.AddSingleton<HiveStats>();
         services.AddHostedService<HiveSensors>();
         services.AddOptions<OfflineWatchOptions>().BindConfiguration(OfflineWatchOptions.Section);
         services.AddHostedService<OfflineWatch>();

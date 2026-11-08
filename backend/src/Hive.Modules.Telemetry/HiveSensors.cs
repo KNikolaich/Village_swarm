@@ -22,6 +22,9 @@ public sealed class HiveSensorOptions
     /// <summary>sysfs root; tests point it at a fake tree.</summary>
     public string SysRoot { get; set; } = "/sys";
 
+    /// <summary>procfs root (load average, memory); tests point it at a fake tree.</summary>
+    public string ProcRoot { get; set; } = "/proc";
+
     /// <summary>Disk whose usage is watched (the media root lives on it).</summary>
     public string DiskPath { get; set; } = "/srv/hive/media";
 
@@ -37,8 +40,57 @@ public sealed class HiveSensorOptions
 }
 
 /// <summary>Reads the hive's own sensors from sysfs: DS18B20 via the w1-gpio overlay and the SoC thermal zone.</summary>
-public sealed class HiveSensorReader(string sysRoot)
+public sealed class HiveSensorReader(string sysRoot, string procRoot = "/proc")
 {
+    /// <summary>The 1-minute load average divided by the number of cores, in percent: how busy the processor is.</summary>
+    public double? CpuLoadPct(int cores)
+    {
+        try
+        {
+            var file = Path.Combine(procRoot, "loadavg");
+            if (!File.Exists(file))
+                return null;
+            var first = File.ReadAllText(file).Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            return double.TryParse(first, NumberStyles.Float, CultureInfo.InvariantCulture, out var load) && cores > 0
+                ? Math.Round(100.0 * load / cores, 1)
+                : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Total and used memory in megabytes (used = total minus what the system calls available), from /proc/meminfo.</summary>
+    public (double TotalMb, double UsedMb)? Memory()
+    {
+        try
+        {
+            var file = Path.Combine(procRoot, "meminfo");
+            if (!File.Exists(file))
+                return null;
+            long? total = null, available = null;
+            foreach (var line in File.ReadLines(file))
+            {
+                if (line.StartsWith("MemTotal:", StringComparison.Ordinal))
+                    total = Kilobytes(line);
+                else if (line.StartsWith("MemAvailable:", StringComparison.Ordinal))
+                    available = Kilobytes(line);
+            }
+            return total is { } t && available is { } a ? (Math.Round(t / 1024.0, 0), Math.Round((t - a) / 1024.0, 0)) : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    private static long? Kilobytes(string line)
+    {
+        var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 && long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var kb) ? kb : null;
+    }
+
     /// <summary>First DS18B20 (family 28) in °C, or null when there is none or it reports an error.</summary>
     public double? AirC()
     {
@@ -139,6 +191,7 @@ public sealed class LimitWatch(double limit, double hysteresis)
 /// </summary>
 public sealed class HiveSensors(
     IngestQueue queue,
+    HiveStats stats,
     IOptions<HiveSensorOptions> options,
     IOptions<HiveOptions> hive,
     TimeProvider time,
@@ -161,7 +214,7 @@ public sealed class HiveSensors(
         if (!o.Enabled)
             return;
 
-        var reader = new HiveSensorReader(o.SysRoot);
+        var reader = new HiveSensorReader(o.SysRoot, o.ProcRoot);
         Announce(reader);
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(5, o.IntervalS)), time);
         do
@@ -202,16 +255,29 @@ public sealed class HiveSensors(
             values.Add(("temperature", air));
         if (reader.CpuC() is { } cpu)
             values.Add(("cpu_temperature", cpu));
-        if (HiveSensorReader.DiskUsedPct(options.Value.DiskPath) is { } disk)
-            values.Add(("disk_used_pct", disk));
+        if (HiveSensorReader.Disk(options.Value.DiskPath) is { } disk)
+        {
+            values.Add(("disk_used_pct", disk.UsedPct));
+            values.Add(("disk_total_gb", Math.Round(disk.Total / 1073741824.0, 1)));
+            values.Add(("disk_free_gb", Math.Round(disk.Free / 1073741824.0, 1)));
+        }
+        if (reader.CpuLoadPct(Environment.ProcessorCount) is { } load)
+            values.Add(("cpu_load_pct", load));
+        if (reader.Memory() is { } memory)
+        {
+            values.Add(("mem_total_mb", memory.TotalMb));
+            values.Add(("mem_used_mb", memory.UsedMb));
+            values.Add(("mem_used_pct", Math.Round(100.0 * memory.UsedMb / Math.Max(1, memory.TotalMb), 1)));
+        }
         if (values.Count == 0)
             return;
+        stats.Update(now, values);
 
         queue.Enqueue(new TelemetryReceived(DeviceId, Ulid.New(now), now, now, values));
         foreach (var (metric, value) in values)
         {
-            var watch = _watches[metric];
-            if (watch.Update(value) is not { } over)
+            // Only some readings have a limit (air, CPU temperature, disk use); the rest are just shown.
+            if (!_watches.TryGetValue(metric, out var watch) || watch.Update(value) is not { } over)
                 continue;
             var type = metric == "disk_used_pct" ? "disk_full" : "overheat";
             var limit = metric switch
