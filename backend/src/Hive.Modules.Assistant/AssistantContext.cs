@@ -25,7 +25,7 @@ public sealed class AssistantContext(
     BotCommands bot,
     TelemetryQueries telemetry,
     WeatherService weather,
-    NoteService notes,
+    INoteStore notes,
     IOptions<HiveOptions> hive,
     TimeProvider time)
 {
@@ -63,7 +63,17 @@ public sealed class AssistantContext(
 
         sb.AppendLine();
         sb.AppendLine("Ветки заметок:");
-        var outline = await notes.OutlineAsync(200, ct);
+        IReadOnlyList<string> outline;
+        try
+        {
+            outline = await notes.OutlineAsync(200, ct);
+        }
+        catch (NoteMasterUnavailableException)
+        {
+            // The notes live in the city and it does not answer: the assistant must not offer to save into a place it cannot see.
+            sb.AppendLine("(заметки хранятся в городе, связи с ним сейчас нет: сохранить заметку нельзя)");
+            return sb.ToString();
+        }
         if (outline.Count == 0)
             sb.AppendLine("(заметок пока нет)");
         foreach (var line in outline)

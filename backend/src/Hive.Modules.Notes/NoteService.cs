@@ -38,7 +38,7 @@ public sealed record NotePathMatch(IReadOnlyList<NoteCrumbDto> Existing, IReadOn
 }
 
 /// <summary>The owner's tree of notes: Markdown text, an emoji and a bookmark color in the header, any depth, drag and drop between branches.</summary>
-public sealed class NoteService(HiveDbContext db, TimeProvider time)
+public sealed class NoteService(HiveDbContext db, TimeProvider time) : INoteStore
 {
     public const int MaxTitle = 200;
     public const int MaxBody = 1_000_000;

@@ -4591,6 +4591,96 @@
         }
       }
     },
+    "/api/notes/assistant/outline": {
+      "get": {
+        "tags": [
+          "notes"
+        ],
+        "parameters": [
+          {
+            "name": "max",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/assistant/match": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotePathRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotePathMatch"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notes/assistant/ensure": {
+      "post": {
+        "tags": [
+          "notes"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotePathRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteEnsureDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/notes/search": {
       "get": {
         "tags": [
@@ -5908,6 +5998,10 @@
               "null",
               "string"
             ]
+          },
+          "notesIn": {
+            "type": "string",
+            "default": "local"
           }
         }
       },
@@ -7952,6 +8046,21 @@
           }
         }
       },
+      "NoteEnsureDto": {
+        "required": [
+          "parentId"
+        ],
+        "type": "object",
+        "properties": {
+          "parentId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "NoteNodeDto": {
         "required": [
           "id",
@@ -7997,6 +8106,48 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "NotePathMatch": {
+        "required": [
+          "existing",
+          "missing"
+        ],
+        "type": "object",
+        "properties": {
+          "existing": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoteCrumbDto"
+            }
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "parentId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "NotePathRequest": {
+        "required": [
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

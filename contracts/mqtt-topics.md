@@ -21,7 +21,7 @@ Prefix: `vs/v1/`. `{id}` is a hornet device_id, e.g. `guard-gate1`.
 | `vs/v1/dev/{id}/cmd/{name}/ack` | dev → hive | no | 1 | `ack` |
 | `vs/v1/dev/{id}/config` | hive → dev | yes | 1 | `config` |
 | `vs/v1/hive/{node}/heartbeat` | hive → all | no | 1 | `heartbeat` |
-| `vs/v1/hive/{node}/stats` | hive → other hive | yes | 1 | JSON `{v:1, ts, node, values:{cpu_temperature, cpu_load_pct, mem_total_mb, mem_used_mb, mem_used_pct, disk_total_gb, disk_free_gb, disk_used_pct, temperature}, alias}`, every `Cluster__StatsEveryS` (60 s); the other hive shows it as telemetry of `hive-{node}` |
+| `vs/v1/hive/{node}/stats` | hive → other hive | yes | 1 | JSON `{v:1, ts, node, values:{cpu_temperature, cpu_load_pct, mem_total_mb, mem_used_mb, mem_used_pct, disk_total_gb, disk_free_gb, disk_used_pct, temperature}, alias, caps:["notes-master"]}` (`caps`: what the hive can do for the other one; the city says `notes-master` once it keeps the notes), every `Cluster__StatsEveryS` (60 s); the other hive shows it as telemetry of `hive-{node}` |
 | `vs/v1/hive/active` | hive → dev | yes | 1 | `active` |
 | `vs/v1/hive/display/{id}` | hive → dev | yes | 1 | `display` |
 | `vs/v1/hive/drive/{id}` | hive → dev | no | 0 | `drive` |

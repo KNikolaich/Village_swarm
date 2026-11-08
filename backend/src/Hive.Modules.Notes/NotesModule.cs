@@ -22,6 +22,9 @@ public static class NotesModule
     public static IServiceCollection AddNotesModule(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddScoped<NoteService>();
+        // Where a note goes: this database, or the master of the notes when the cluster module says the other hive keeps them.
+        services.AddScoped<INoteStore, NoteStoreRouter>();
+        services.AddScoped<NotesImportService>();
         services.AddScoped<NoteAttachmentService>();
         services.AddHostedService<NotesTrashPurge>();
         return services;
@@ -39,6 +42,13 @@ public static class NotesModule
         var notes = app.MapGroup("/api/notes").WithTags("notes");
 
         notes.MapGet("", (NoteService n, CancellationToken ct) => n.TreeAsync(ct));
+        // What the Telegram assistant asks about the tree (words in, places out). Also how the dacha's assistant reaches the notes of the city.
+        notes.MapGet("/assistant/outline", async (int? max, NoteService n, CancellationToken ct) => await n.OutlineAsync(Math.Clamp(max ?? 200, 1, 1000), ct));
+        notes.MapPost("/assistant/match", async (NotePathRequest request, NoteService n, CancellationToken ct) => await n.MatchPathAsync(request.Path ?? [], ct))
+            .RequireAuthorization(HiveRoles.CanControl);
+        notes.MapPost("/assistant/ensure", async (NotePathRequest request, ClaimsPrincipal user, NoteService n, CancellationToken ct) =>
+                new NoteEnsureDto(await n.EnsurePathAsync(request.Path ?? [], Actor(user), ct)))
+            .RequireAuthorization(HiveRoles.CanControl);
         notes.MapGet("/search", (string? q, NoteService n, CancellationToken ct) => n.SearchAsync(q, ct));
         notes.MapGet("/trash", (NoteService n, CancellationToken ct) => n.TrashAsync(ct));
 

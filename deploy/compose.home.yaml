@@ -13,6 +13,8 @@ services:
       Hive__Role: active
       # Heartbeats to the city and taking the role back after it (off until a city node exists).
       Cluster__Enabled: ${CLUSTER_ENABLED:-false}
+      # false: the dacha keeps its own notes even when the city offers to keep them (see docs/city-node.md, "Заметки в городе").
+      Cluster__NotesInCity: ${CLUSTER_NOTES_IN_CITY:-true}
       # The login of a hornet on the city broker is made from this secret and its id; the city has the same one (hornets fall back to it, docs/city-node.md).
       Cluster__BridgePassword: ${CITY_MQTT_PASSWORD:-}
       # The hive watches itself: air at the board (DS18B20 on 1-Wire), CPU, disk (spec 3.1, 7.4).

@@ -2,7 +2,7 @@ import { Plus, Search, Trash2, X } from 'lucide-react'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
-import { useCreateNote, useDeleteNote, useMe, useMoveNote, useNote, useNoteSearch, useNotesTree, useRestoreNote } from '@/api/queries'
+import { useCluster, useCreateNote, useDeleteNote, useMe, useMoveNote, useNote, useNoteSearch, useNotesTree, useRestoreNote } from '@/api/queries'
 import { MoveDialog, TrashDialog } from '@/components/notes/NoteDialogs'
 import { NoteEditor } from '@/components/notes/NoteEditor'
 import { NoteTree } from '@/components/notes/NoteTree'
@@ -61,6 +61,9 @@ export function NotesPage() {
   }
 
   const searching = q.trim().length > 0
+  const cluster = useCluster()
+  // The city keeps the notes of both hives: the dacha says it asks the city, the city says it keeps the master copy.
+  const where = cluster.data?.notesIn === 'city' ? t('notes.inCity') : cluster.data?.enabled && cluster.data.node === 'city' ? t('notes.masterHere') : null
 
   return (
     <div className="grid gap-4 md:grid-cols-[minmax(240px,300px)_1fr]">
@@ -74,6 +77,7 @@ export function NotesPage() {
             </Button>
           )}
         </div>
+        {where && <p className="text-xs text-neutral-500">{where}</p>}
 
         <label className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-500" />

@@ -36,6 +36,9 @@ public sealed class ClusterOptions
     /// <summary>How often the node tells the other one how its board is doing (CPU, load, memory, disk).</summary>
     public int StatsEveryS { get; set; } = 60;
 
+    /// <summary>The city is the master of the notes: it says so, and the dacha moves its notes there and asks the city for them. false: every hive keeps its own, as before.</summary>
+    public bool NotesInCity { get; set; } = true;
+
     /// <summary>No heartbeat from home this long: a warning, and the city may take over if hornets reach it directly.</summary>
     public int HomeSilenceS { get; set; } = 180;
 
@@ -109,7 +112,7 @@ public sealed record HomeStatusDto(string Phase, DateTimeOffset? LastHeartbeatAt
 
 public sealed record ClusterDto(
     bool Enabled, string Node, string Role, HomeStatusDto? Home, string? ActiveNode, DateTimeOffset? CatalogAt, CatalogCounts? Catalog,
-    bool TelegramConfigured = true, int TelegramChats = 0, string? Alias = null, string? OtherAlias = null);
+    bool TelegramConfigured = true, int TelegramChats = 0, string? Alias = null, string? OtherAlias = null, string NotesIn = "local");
 
 /// <summary>
 /// The city's watch on home (spec 11.4): heartbeats in, events out ("home_offline" warn, "home_offline_long" alarm, "home_online"),
@@ -431,6 +434,8 @@ public sealed class ReadOnlyMiddleware(RequestDelegate next, NodeState node)
         path.StartsWithSegments("/api/auth") || path.StartsWithSegments("/api/me")
         || path.StartsWithSegments("/api/settings/weather") || path.StartsWithSegments("/api/settings/language")
         || path.StartsWithSegments("/api/settings/alias")
+        // On the city the notes are the master copy: changed there, and by the dacha on behalf of its people.
+        || path.StartsWithSegments("/api/notes") || path.StartsWithSegments("/api/replica/notes")
         // Home's node sends the city the photos it took: authenticated by the key of the two nodes, it changes nothing of the house's data.
         || path.StartsWithSegments("/api/ingest/replica")
         // The city's own hornets: they are added here (the wizard, the board trading its code for a login), their photos arrive here, and the
@@ -465,6 +470,13 @@ public static class ClusterModule
 
         // Each node's board readings, for the other one to show.
         services.AddScoped<HiveAliasService>();
+
+        // The city is the master of the notes: the dacha moves its notes over, then asks the city for them (and the assistant too).
+        services.AddSingleton<NotesMasterState>();
+        services.AddSingleton<NotesMasterClient>();
+        services.AddSingleton<RemoteNoteMaster>();
+        services.AddSingleton<Hive.Modules.Notes.INoteMaster>(sp => sp.GetRequiredService<RemoteNoteMaster>());
+        services.AddHostedService<NotesMigrator>();
         services.AddHostedService<NodeStatsPublisher>();
         services.AddSingleton<NodeStatsReceiver>();
         services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<NodeStatsReceiver>());
@@ -501,11 +513,14 @@ public static class ClusterModule
 
     public static IApplicationBuilder UseClusterReadOnly(this IApplicationBuilder app) => app.UseMiddleware<ReadOnlyMiddleware>();
 
+    /// <summary>After authentication, before authorization: the city lets in the dacha's people by the key; the dacha, with its notes in the city, passes their requests on.</summary>
+    public static IApplicationBuilder UseNotesMaster(this IApplicationBuilder app) => app.UseMiddleware<NotesMasterMiddleware>();
+
     public static IEndpointRouteBuilder MapClusterEndpoints(this IEndpointRouteBuilder app)
     {
         // Whether this node can tell people anything: a bot token, and at least one chat. The city has to be told this: alarms of the other node
         // come from here, and without a chat they go nowhere (the city does not poll the bot, so chats arrive with the catalog from home).
-        app.MapGet("/api/cluster", async (HomeWatch watch, HiveDbContext db, HiveAliasService alias, NodeStatsReceiver stats,
+        app.MapGet("/api/cluster", async (HomeWatch watch, HiveDbContext db, HiveAliasService alias, NodeStatsReceiver stats, NotesMasterState notes,
                 Microsoft.Extensions.Configuration.IConfiguration configuration, CancellationToken ct) =>
                 TypedResults.Ok(watch.Describe() with
                 {
@@ -513,9 +528,11 @@ public static class ClusterModule
                     TelegramChats = await db.TgLinks.CountAsync(ct),
                     Alias = await alias.GetAsync(ct),
                     OtherAlias = stats.OtherAlias,
+                    NotesIn = notes.Active ? "city" : "local",
                 }))
             .WithTags("cluster");
         app.MapAliasEndpoints();
+        app.MapNotesMasterEndpoints();
         app.MapPhotoReplicaEndpoints();
         return app;
     }

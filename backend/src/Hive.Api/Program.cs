@@ -121,6 +121,7 @@ if (behindProxy)
 
 app.UseRateLimiter();
 app.UseAuthentication();
+app.UseNotesMaster();
 app.UseAuthorization();
 app.UseClusterReadOnly();
 

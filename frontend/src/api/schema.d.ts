@@ -5540,6 +5540,121 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/notes/assistant/outline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    max?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": string[];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notes/assistant/match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["NotePathRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NotePathMatch"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notes/assistant/ensure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["NotePathRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NoteEnsureDto"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/notes/search": {
         parameters: {
             query?: never;
@@ -6718,6 +6833,8 @@ export interface components {
             telegramChats: number;
             alias?: null | string;
             otherAlias?: null | string;
+            /** @default local */
+            notesIn: string;
         };
         CommandDto: {
             cid: string;
@@ -7253,6 +7370,10 @@ export interface components {
             path: components["schemas"]["NoteCrumbDto"][];
             attachments: components["schemas"]["NoteAttachmentDto"][];
         };
+        NoteEnsureDto: {
+            /** Format: int32 */
+            parentId: null | number;
+        };
         NoteNodeDto: {
             /** Format: int32 */
             id: number;
@@ -7265,6 +7386,15 @@ export interface components {
             color: null | string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        NotePathMatch: {
+            existing: components["schemas"]["NoteCrumbDto"][];
+            missing: string[];
+            /** Format: int32 */
+            parentId?: null | number;
+        };
+        NotePathRequest: {
+            path: string[];
         };
         NoteSearchHitDto: {
             /** Format: int32 */

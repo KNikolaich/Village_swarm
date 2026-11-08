@@ -133,6 +133,8 @@ public sealed partial class NoteAttachmentService(HiveDbContext db, MediaStore s
         return mime.Length is > 0 and <= 128 && MimeShape().IsMatch(mime) && !InlineImages.Contains(mime) ? mime : "application/octet-stream";
     }
 
+    internal static string ExtensionFor(string name, string mime) => Extension(name, mime);
+
     private static string Extension(string name, string mime)
     {
         var known = mime switch

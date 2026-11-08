@@ -38,7 +38,7 @@ public sealed class TelegramAssistant(
     ArmService arm,
     EventQueries events,
     TelemetryQueries telemetry,
-    NoteService notes,
+    INoteStore notes,
     AssistantContext context,
     CommandService commands,
     IOptions<AssistantOptions> options,
@@ -414,7 +414,16 @@ public sealed class TelegramAssistant(
         if (string.IsNullOrEmpty(title))
             title = TitleFrom(body);
 
-        var match = await notes.MatchPathAsync(path, ct);
+        NotePathMatch match;
+        try
+        {
+            match = await notes.MatchPathAsync(path, ct);
+        }
+        catch (NoteMasterUnavailableException)
+        {
+            await SendAsync(chat, "📝 Заметки хранятся в городе, а связи с ним сейчас нет. Повторите позже.", ct, replyTo: replyTo);
+            return "[город недоступен, заметка не записана]";
+        }
         var where = path.Count == 0 ? "в корень" : string.Join(" → ", match.Existing.Select(e => e.Title).Concat(match.Missing));
         var sb = new StringBuilder($"📝 Добавить заметку <b>{H(where)}</b>?\n«{H(title)}»");
         if (body != title)
@@ -494,8 +503,16 @@ public sealed class TelegramAssistant(
                     return "✅ Камерам отправлена команда, фото придут ответом.";
                 case AssistantTools.AddNote:
                     var path = action.Args["path"]!.AsArray().Select(x => x!.GetValue<string>()).ToList();
-                    var parent = await notes.EnsurePathAsync(path, actor, ct);
-                    var (result, note) = await notes.CreateAsync(new CreateNoteRequest(Str(action.Args, "title")!, parent, Body: Str(action.Args, "text")), actor, ct);
+                    NoteChange result;
+                    try
+                    {
+                        var parent = await notes.EnsurePathAsync(path, actor, ct);
+                        (result, _) = await notes.CreateAsync(new CreateNoteRequest(Str(action.Args, "title")!, parent, Body: Str(action.Args, "text")), actor, ct);
+                    }
+                    catch (NoteMasterUnavailableException)
+                    {
+                        return "⚠️ Заметки хранятся в городе, а связи с ним сейчас нет: заметка не сохранена.";
+                    }
                     return result == NoteChange.Ok
                         ? $"✅ Заметка сохранена{(path.Count > 0 ? $" в «{H(string.Join(" → ", path))}»" : "")}."
                         : "⚠️ Не удалось сохранить заметку.";

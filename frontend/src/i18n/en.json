@@ -1312,6 +1312,8 @@
   },
   "notes": {
     "title": "Notes",
+    "inCity": "Notes are kept in the city: without a link to it they cannot be opened or saved",
+    "masterHere": "The master notes are here: the dacha reads and writes them through the city",
     "new": "New note",
     "newRoot": "New root note",
     "newChild": "Nested note",

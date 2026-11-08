@@ -15,7 +15,7 @@ using Microsoft.Extensions.Options;
 namespace Hive.Modules.Cluster;
 
 /// <summary>What one node says about its own board: the readings of its hive device.</summary>
-public sealed record NodeStatsMessage(int V, long Ts, string Node, IReadOnlyDictionary<string, double> Values, string? Alias = null);
+public sealed record NodeStatsMessage(int V, long Ts, string Node, IReadOnlyDictionary<string, double> Values, string? Alias = null, IReadOnlyList<string>? Caps = null);
 
 /// <summary>
 /// Both nodes: tells the other one how the board is doing (retained over the bridge), so that both hives show in the swarm
@@ -66,7 +66,9 @@ public sealed class NodeStatsPublisher(
             return;
         using var scope = scopes.CreateScope();
         var alias = await scope.ServiceProvider.GetRequiredService<HiveAliasService>().GetAsync(ct);
-        var message = new NodeStatsMessage(1, at.Value.ToUnixTimeMilliseconds(), hive.Value.Node, values, alias);
+        // The city says it keeps the notes (once updated and unless switched off): the dacha moves its notes only after hearing this.
+        IReadOnlyList<string> caps = hive.Value.Node == "city" && options.Value.NotesInCity ? [NotesMasterPolicy.Cap] : [];
+        var message = new NodeStatsMessage(1, at.Value.ToUnixTimeMilliseconds(), hive.Value.Node, values, alias, caps);
         await Mqtt.PublishAsync(Topics.HiveStats(hive.Value.Node), JsonSerializer.Serialize(message, Json), retain: true, ct);
     }
 }
@@ -98,6 +100,9 @@ public sealed class NodeStatsReceiver(
     /// <summary>How the other hive calls itself (from its last message), for the menu and the swarm.</summary>
     public string? OtherAlias { get; private set; }
 
+    /// <summary>The other hive said it is the master of the notes (what it said last, even when it has gone quiet since).</summary>
+    public bool NotesMasterDeclared { get; private set; }
+
     public IReadOnlyList<string> TopicFilters => options.Value.Enabled ? [Topics.HiveStats(Other)] : [];
 
     public ValueTask HandleAsync(string topic, ReadOnlyMemory<byte> payload, bool retained, DateTimeOffset receivedAt)
@@ -123,6 +128,7 @@ public sealed class NodeStatsReceiver(
     {
         var sentAt = DateTimeOffset.FromUnixTimeMilliseconds(message.Ts);
         OtherAlias = string.IsNullOrWhiteSpace(message.Alias) ? null : message.Alias;
+        NotesMasterDeclared = message.Caps?.Contains(NotesMasterPolicy.Cap) == true;
         // A retained message older than a few intervals says what the board did while the link was down, not how it is now.
         var fresh = receivedAt - sentAt < Stale;
         bool announce, wake;

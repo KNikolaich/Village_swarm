@@ -90,6 +90,19 @@ public class NodeStatsTests
     }
 
     [Fact]
+    public void The_city_saying_it_keeps_the_notes_is_remembered_and_not_saying_it_means_no()
+    {
+        var (receiver, _) = Make("home");
+        Assert.False(receiver.NotesMasterDeclared);
+
+        receiver.Accept(Stats("city", T0) with { Caps = [NotesMasterPolicy.Cap] }, T0);
+        Assert.True(receiver.NotesMasterDeclared);
+
+        receiver.Accept(Stats("city", T0.AddMinutes(1)), T0.AddMinutes(1));   // a city that was not updated
+        Assert.False(receiver.NotesMasterDeclared);
+    }
+
+    [Fact]
     public void An_old_retained_message_does_not_bring_the_other_node_online()
     {
         var (receiver, queue) = Make("home");
