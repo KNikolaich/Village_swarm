@@ -449,7 +449,7 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
 
         ReplicaChunk answer;
         lock (chunks)
-            answer = Assert.Single(chunks, c => c.RequestId == request.Id);
+            answer = chunks.First(c => c.RequestId == request.Id);   // QoS 1 may deliver the request twice under load: the answer is the same
         Assert.Equal((0, 1, false), (answer.Part, answer.Parts, answer.More));
         Assert.Equal([ids[0], ids[1]], answer.Events.Select(e => e.Id).ToArray());
 
