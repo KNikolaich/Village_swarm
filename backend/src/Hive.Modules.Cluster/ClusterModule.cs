@@ -104,7 +104,9 @@ public sealed class HomeWatchLogic(DateTimeOffset startedAt, TimeSpan silence, T
 
 public sealed record HomeStatusDto(string Phase, DateTimeOffset? LastHeartbeatAt, int SilentSeconds);
 
-public sealed record ClusterDto(bool Enabled, string Node, string Role, HomeStatusDto? Home, string? ActiveNode, DateTimeOffset? CatalogAt, CatalogCounts? Catalog);
+public sealed record ClusterDto(
+    bool Enabled, string Node, string Role, HomeStatusDto? Home, string? ActiveNode, DateTimeOffset? CatalogAt, CatalogCounts? Catalog,
+    bool TelegramConfigured = true, int TelegramChats = 0);
 
 /// <summary>
 /// The city's watch on home (spec 11.4): heartbeats in, events out ("home_offline" warn, "home_offline_long" alarm, "home_online"),
@@ -490,7 +492,15 @@ public static class ClusterModule
 
     public static IEndpointRouteBuilder MapClusterEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/cluster", (HomeWatch watch) => TypedResults.Ok(watch.Describe())).WithTags("cluster");
+        // Whether this node can tell people anything: a bot token, and at least one chat. The city has to be told this: alarms of the other node
+        // come from here, and without a chat they go nowhere (the city does not poll the bot, so chats arrive with the catalog from home).
+        app.MapGet("/api/cluster", async (HomeWatch watch, HiveDbContext db, Microsoft.Extensions.Configuration.IConfiguration configuration, CancellationToken ct) =>
+                TypedResults.Ok(watch.Describe() with
+                {
+                    TelegramConfigured = !string.IsNullOrWhiteSpace(configuration["Telegram:Token"]),
+                    TelegramChats = await db.TgLinks.CountAsync(ct),
+                }))
+            .WithTags("cluster");
         app.MapPhotoReplicaEndpoints();
         return app;
     }

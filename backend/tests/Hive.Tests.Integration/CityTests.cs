@@ -301,6 +301,11 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
         var papaId = (await city.QueryAsync(db => db.Users.AsNoTracking().SingleAsync(u => u.UserName == "chat-user"))).Id;
         Assert.Equal(papaId, link.UserId);
 
+        // the cluster state says whether this node can tell people anything: a token, and the chats that came with the catalog
+        var tell = await StateAsync(admin);
+        Assert.True(tell.TelegramConfigured);
+        Assert.True(tell.TelegramChats >= 1);
+
         // the cluster state says when the catalog came and how big it was
         var state = await StateAsync(admin);
         Assert.NotNull(state.CatalogAt);

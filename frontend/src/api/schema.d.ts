@@ -6641,6 +6641,13 @@ export interface components {
             /** Format: date-time */
             catalogAt: null | string;
             catalog: null | components["schemas"]["CatalogCounts"];
+            /** @default true */
+            telegramConfigured: boolean;
+            /**
+             * Format: int32
+             * @default 0
+             */
+            telegramChats: number;
         };
         CommandDto: {
             cid: string;

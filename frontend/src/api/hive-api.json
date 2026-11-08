@@ -5824,6 +5824,15 @@
                 "$ref": "#/components/schemas/CatalogCounts"
               }
             ]
+          },
+          "telegramConfigured": {
+            "type": "boolean",
+            "default": true
+          },
+          "telegramChats": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
           }
         }
       },

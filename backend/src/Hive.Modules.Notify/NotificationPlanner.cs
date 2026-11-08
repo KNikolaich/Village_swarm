@@ -5,6 +5,7 @@ using Hive.Modules.Notify.Telegram;
 using Hive.Modules.Telemetry.Ingest;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Hive.Modules.Notify;
@@ -13,20 +14,42 @@ namespace Hive.Modules.Notify;
 /// Turns ingested events into outbox rows per linked chat (spec 6.7): info only in the feed, warn silent,
 /// alarm/critical with sound and photos; the same alarm again within the window is grouped ("×N").
 /// </summary>
-public sealed class NotificationPlanner(IServiceScopeFactory scopes, IOptions<TelegramOptions> options, IOptions<HiveOptions> hive, NodeState node, TimeProvider time)
+public sealed class NotificationPlanner(
+    IServiceScopeFactory scopes, IOptions<TelegramOptions> options, IOptions<HiveOptions> hive, NodeState node, TimeProvider time,
+    Microsoft.Extensions.Logging.ILogger<NotificationPlanner> logger)
     : IIngestListener
 {
+    private DateTimeOffset _warnedAt = DateTimeOffset.MinValue;
+
+    /// <summary>An alarm that goes nowhere is said in the log (at most once in ten minutes): it is the quietest way for a node to fail at its job.</summary>
+    private void Dropped(int count, string why)
+    {
+        var now = time.GetUtcNow();
+        if (now - _warnedAt < TimeSpan.FromMinutes(10))
+            return;
+        _warnedAt = now;
+        logger.LogWarning("{Count} event(s) at warn level or above were not sent to Telegram: {Why}", count, why);
+    }
+
     public async Task OnIngestedAsync(IReadOnlyList<IngestItem> items, CancellationToken ct)
     {
         var events = items.OfType<DeviceEventReceived>().Where(e => e.Severity >= EventSeverity.Warn && node.Notifies(e.DeviceId)).ToList();
-        if (events.Count == 0 || !options.Value.Enabled)
+        if (events.Count == 0)
             return;
+        if (!options.Value.Enabled)
+        {
+            Dropped(events.Count, "no bot token on this node (TELEGRAM__TOKEN in .env)");
+            return;
+        }
 
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<HiveDbContext>();
         var links = await db.TgLinks.AsNoTracking().ToListAsync(ct);
         if (links.Count == 0)
+        {
+            Dropped(events.Count, "no Telegram chat is linked on this node (on the city they come with the catalog from home)");
             return;
+        }
 
         var now = time.GetUtcNow();
         foreach (var received in events)
