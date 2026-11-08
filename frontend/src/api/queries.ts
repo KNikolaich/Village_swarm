@@ -5,6 +5,11 @@ import { t } from '@/i18n'
 import { moveInTree } from '@/lib/notes'
 import { api, call, type EventDto, type NoteNodeDto } from './client'
 
+/** This node and the other one (cluster), with the aliases both hives go by; refreshed once a minute. */
+export function useCluster() {
+  return useQuery({ queryKey: ['cluster'], queryFn: () => call(api.GET('/api/cluster')), refetchInterval: 60_000, retry: false })
+}
+
 export const keys = {
   me: ['me'] as const,
   devices: ['devices'] as const,

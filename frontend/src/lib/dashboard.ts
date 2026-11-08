@@ -22,7 +22,7 @@ export interface DashboardItem {
 }
 
 /** The hive's own diagnostics: they stay on the hornet's page, never on a zone. */
-const diagnostics = new Set(['cpu_temperature', 'disk_used_pct'])
+const diagnostics = new Set(['cpu_temperature', 'disk_used_pct', 'cpu_load_pct', 'mem_used_pct'])
 
 const isCamera = (d: DeviceDto) => announcedCommands(d).includes('snapshot')
 

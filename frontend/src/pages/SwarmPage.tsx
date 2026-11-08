@@ -10,6 +10,7 @@ import { keys, useDevices, useLatestTelemetry, useMe, useOtaRollout, useRanges, 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
+import { hiveName } from '@/lib/hiveStats'
 import { formatAgo, formatValue } from '@/lib/format'
 import { ntcMetrics, thermometerSensorsFor, usesPin } from '@/lib/features'
 import { calibratedOffset, ntcDefaults, ntcNumberFields, ntcSides, parseNtcNumber, type NtcSettings } from '@/lib/ntc'
@@ -639,7 +640,7 @@ export function SwarmPage() {
               <div className="flex min-w-0 flex-1 basis-48 items-start gap-2.5">
                 <div className="pt-0.5"><StatusIcon device={d} /></div>
                 <div className="min-w-0 flex-1">
-                  <Link to={`/swarm/${encodeURIComponent(d.deviceId)}`} className="block truncate font-medium hover:text-amber-400">{d.name}</Link>
+                  <Link to={`/swarm/${encodeURIComponent(d.deviceId)}`} className="block truncate font-medium hover:text-amber-400">{hiveName(d, cluster.data)}</Link>
                   <p className="truncate text-xs text-neutral-500">
                     {d.deviceId} · {d.type === 'nvr' ? t('deviceTypes.nvr') : d.type}{d.driver === 'tasmota' ? ' · Tasmota' : d.driver === 'zigbee' ? ' · Zigbee' : ''}{d.type === 'nvr' && d.ip ? ` · ${d.ip}` : ''} · {formatAgo(d.lastSeenAt)}{d.local && cluster.data?.enabled && cluster.data.node === 'city' ? ` · ${t('swarm.localHere')}` : ''}
                   </p>

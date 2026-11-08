@@ -1,5 +1,6 @@
 import type { DeviceDto, LatestValueDto, ZoneDto } from '@/api/client'
 import { hasRelay, showsMetric } from '@/lib/features'
+import { hiveDetailMetrics } from '@/lib/hiveStats'
 
 /** How the swarm list is grouped: by zone, by kind of hornet, or one list. */
 export const groupings = ['zone', 'type', 'all'] as const
@@ -86,7 +87,7 @@ export function splitChildren(devices: readonly DeviceDto[]): { top: DeviceDto[]
 }
 
 /** Readings shown in a swarm row, in this order; anything else the hornet reports follows by name. */
-const readingOrder = ['temperature', 'temperature_2', 'temperature_ntc', 'humidity', 'pressure', 'battery_voltage', 'cpu_temperature', 'disk_used_pct']
+const readingOrder = ['temperature', 'temperature_2', 'temperature_ntc', 'humidity', 'pressure', 'battery_voltage', 'cpu_temperature', 'cpu_load_pct', 'mem_used_pct', 'disk_used_pct']
 
 /** The hornet's main readings (what it is used for, no diagnostics: signal and memory stay on its own page). */
 export function mainReadings(d: DeviceDto, latest: readonly LatestValueDto[]): LatestValueDto[] {
@@ -95,7 +96,7 @@ export function mainReadings(d: DeviceDto, latest: readonly LatestValueDto[]): L
     return i < 0 ? readingOrder.length : i
   }
   return latest
-    .filter((v) => v.deviceId === d.deviceId && showsMetric(d.features, v.metric, d.thermometer))
+    .filter((v) => v.deviceId === d.deviceId && !hiveDetailMetrics.has(v.metric) && showsMetric(d.features, v.metric, d.thermometer))
     .sort((a, b) => rank(a.metric) - rank(b.metric) || a.metric.localeCompare(b.metric))
 }
 

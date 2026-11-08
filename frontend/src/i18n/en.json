@@ -499,6 +499,14 @@
     "humidity": "Humidity",
     "cpu_temperature": "CPU",
     "disk_used_pct": "Disk used",
+    "cpu_load_pct": "CPU load",
+    "mem_used_pct": "RAM used",
+    "mem": "RAM (used / total)",
+    "disk": "Disk (free / total)",
+    "mem_total_mb": "RAM total",
+    "mem_used_mb": "RAM used",
+    "disk_total_gb": "Disk total",
+    "disk_free_gb": "Disk free",
     "battery_voltage": "Battery voltage",
     "pressure": "Pressure",
     "temperature_2": "Temperature 2",
@@ -531,6 +539,9 @@
     "wrongCode": "Wrong code",
     "language": "Interface language",
     "languageHint": "One setting for the whole hive. Applies to everyone after the page reloads.",
+    "alias": "Hive alias",
+    "aliasHint": "A name for this hive instead of the word \"Hive\" in the menu and in the swarm, e.g. \"Dacha\", \"City\" or \"Sbrbn | Home\". Empty: Dacha / City when two hives work together, otherwise the word \"Hive\".",
+    "aliasSaved": "Alias saved",
     "wifi": "Wi-Fi for hornets",
     "wifiHint": "The network and password for boards that join the hive. The password is stored encrypted and never shown.",
     "wifiPasswordKept": "Password is set (leave empty to keep it)",
@@ -1106,7 +1117,9 @@
   },
   "units": {
     "volt": "V",
-    "hpa": "hPa"
+    "hpa": "hPa",
+    "mb": "MB",
+    "gb": "GB"
   },
   "backups": {
     "title": "Backups",

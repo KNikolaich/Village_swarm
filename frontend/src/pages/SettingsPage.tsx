@@ -5,7 +5,7 @@ import { Link } from 'react-router'
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
-import { keys, useMe, useTelegram } from '@/api/queries'
+import { keys, useCluster, useMe, useTelegram } from '@/api/queries'
 import { BackupCard } from '@/components/BackupCard'
 import { CertificateCard } from '@/components/CertificateCard'
 import { PasswordInput } from '@/components/PasswordInput'
@@ -34,6 +34,7 @@ export function SettingsPage() {
       <WeatherSettingsCard />
       <FailoverCard />
       <LanguageCard />
+      <AliasCard />
       <BackupCard />
       <RetentionCard />
       <CertificateCard />
@@ -134,6 +135,40 @@ function LanguageCard() {
           <option value="ru">Русский</option>
           <option value="en">English</option>
         </Select>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** What this hive is called ("Дача", "Город", "Sbrbn | Home"): shown in the menu header and in the swarm instead of the word "Улей". */
+function AliasCard() {
+  const qc = useQueryClient()
+  const me = useMe()
+  const cluster = useCluster()
+  const isAdmin = me.data?.roles.includes('admin') ?? false
+  const [text, setText] = useState<string | null>(null)
+  const shown = text ?? cluster.data?.alias ?? ''
+
+  async function save() {
+    try {
+      await call(api.PUT('/api/settings/alias', { body: { alias: shown.trim() } }))
+      setText(null)
+      await qc.invalidateQueries({ queryKey: ['cluster'] })
+      toast.success(t('settings.aliasSaved'))
+    } catch {
+      toast.error(t('errors.generic'))
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>{t('settings.alias')}</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-xs text-neutral-500">{t('settings.aliasHint')}</p>
+        <form onSubmit={(e) => { e.preventDefault(); void save() }} className="flex max-w-sm gap-2">
+          <Input value={shown} maxLength={40} disabled={!isAdmin} onChange={(e) => setText(e.target.value)} aria-label={t('settings.alias')} />
+          <Button type="submit" disabled={!isAdmin || text == null}>{t('settings.save')}</Button>
+        </form>
       </CardContent>
     </Card>
   )

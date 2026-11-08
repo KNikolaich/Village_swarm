@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto, type LatestValueDto, type ZoneDto } from '@/api/client'
-import { useDashboardLayout, useDevices, useEvents, useLatestTelemetry, useMe, useZones } from '@/api/queries'
+import { useCluster, useDashboardLayout, useDevices, useEvents, useLatestTelemetry, useMe, useZones } from '@/api/queries'
 import { DashboardGrid, type WidgetView } from '@/components/DashboardGrid'
 import { CameraBanner, RelayBanner } from '@/components/DeviceBanners'
 import { EventCard, type PhotoRef } from '@/components/EventCard'
@@ -16,7 +16,8 @@ import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
 import { bannerKind, shownKeys, zoneTiles } from '@/lib/dashboard'
-import { formatAgo, formatValue } from '@/lib/format'
+import { formatAgo } from '@/lib/format'
+import { hiveName, hiveTiles } from '@/lib/hiveStats'
 import { VideoWidget } from '@/components/VideoWidget'
 import { arrange, useWideScreen, type Available, type Screen, type Widget } from '@/lib/layout'
 import { cn } from '@/lib/utils'
@@ -46,7 +47,8 @@ export function OverviewPage() {
   const online = list.filter((d) => d.status === 'online').length
   const recent = events.data?.pages[0]?.items ?? []
   const openAlarms = recent.filter((e) => (e.severity === 'alarm' || e.severity === 'critical') && !e.acknowledgedAt).length
-  const hive = list.find((d) => d.type === 'hive')
+  const hives = list.filter((d) => d.type === 'hive')
+  const cluster = useCluster()
 
   const views: (WidgetView & { w: number })[] = [
     { id: 'guard', w: 4, title: t('layout.widgets.guard'), node: <GuardCard className="h-full" /> },
@@ -99,7 +101,13 @@ export function OverviewPage() {
         ),
       }]
     }),
-    ...(hive ? [{ id: 'hive', w: 6, title: t('overview.hive'), node: <HiveState device={hive} latest={values} loading={latest.isLoading} /> }] : []),
+    ...(hives.length > 0 ? [{
+      id: 'hive', w: 6, title: t('overview.hive'), node: (
+        <div className="space-y-3">
+          {hives.map((h) => <HiveState key={h.deviceId} device={h} title={hiveName(h, cluster.data)} latest={values} loading={latest.isLoading} />)}
+        </div>
+      ),
+    }] : []),
     {
       id: 'events', w: 6, title: t('overview.latestEvents'), node: (
         <Card>
@@ -229,14 +237,14 @@ function zoneViews(devices: DeviceDto[], zones: ZoneDto[], latest: LatestValueDt
     }))
 }
 
-/** The hive's own readings (CPU temperature, disk use), reported by the hive as device hive-<node>. */
-function HiveState({ device, latest, loading }: { device?: DeviceDto; latest: LatestValueDto[]; loading: boolean }) {
+/** A hive's own readings (CPU temperature and load, memory, disk), reported as device hive-<node>: each hive of the pair has its card. */
+function HiveState({ device, title, latest, loading }: { device?: DeviceDto; title: string; latest: LatestValueDto[]; loading: boolean }) {
   if (!device) return null
-  const own = latest.filter((v) => v.deviceId === device.deviceId && (v.metric === 'cpu_temperature' || v.metric === 'disk_used_pct'))
+  const own = hiveTiles(device.deviceId, latest)
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t('overview.hive')}</CardTitle>
+        <CardTitle>{title === device.name ? t('overview.hive') : title}</CardTitle>
         <Badge tone={device.status === 'online' ? 'ok' : 'alarm'}>{statusLabel(device.status)}</Badge>
       </CardHeader>
       <CardContent>
@@ -244,9 +252,9 @@ function HiveState({ device, latest, loading }: { device?: DeviceDto; latest: La
         {!loading && own.length === 0 && <p className="text-sm text-neutral-500">{t('overview.hiveNone')}</p>}
         <div className="grid grid-cols-2 gap-3">
           {own.map((v) => (
-            <div key={v.metric} className="rounded-lg bg-neutral-800/50 p-3">
-              <p className="truncate text-xs text-neutral-400">{metricLabel(v.metric)}</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums">{formatValue(v.metric, v.value)}</p>
+            <div key={v.key} className="rounded-lg bg-neutral-800/50 p-3">
+              <p className="truncate text-xs text-neutral-400">{metricLabel(v.key)}</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">{v.value}</p>
               <p className="text-xs text-neutral-500">{formatAgo(v.ts)}</p>
             </div>
           ))}

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Bell, ChevronLeft, ChevronRight, Images, LayoutDashboard, LogOut, Network, NotebookPen, Settings, Thermometer, Workflow } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router'
 import { api, call } from '@/api/client'
-import { keys } from '@/api/queries'
+import { keys, useCluster } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { t } from '@/i18n'
 import type { LiveState } from '@/lib/live'
@@ -41,6 +41,12 @@ function LiveDot({ state }: { state: LiveState }) {
   )
 }
 
+/** What the hive is called in the menu: its alias ("Дача"), or the word "Улей". */
+function useHiveTitle(): string {
+  const cluster = useCluster()
+  return cluster.data?.alias || t('app.title')
+}
+
 /** The hive's version beside its name, small and gold: the same as Settings shows (one cached request). */
 function HiveVersion({ className }: { className?: string }) {
   const version = useQuery({ queryKey: ['settings', 'version'], queryFn: () => call(api.GET('/api/settings/version')), staleTime: 60_000 })
@@ -63,6 +69,7 @@ function HiveVersion({ className }: { className?: string }) {
 export function AppShell({ live }: { live: LiveState }) {
   const qc = useQueryClient()
   const { pathname } = useLocation()
+  const title = useHiveTitle()
   const wide = useWideScreen()
   const [saved, setSaved] = useState(() => loadSidebarCollapsed())
   const [openedOnTablet, setOpenedOnTablet] = useState(false)
@@ -108,7 +115,7 @@ export function AppShell({ live }: { live: LiveState }) {
         ) : (
           <div className="mb-6 flex items-center gap-2 pl-2">
             <HoneycombLogo className="size-7 shrink-0" />
-            <span className="truncate font-semibold">{t('app.title')}</span>
+            <span className="truncate font-semibold">{title}</span>
             <HiveVersion />
             <button
               type="button"
@@ -148,7 +155,7 @@ export function AppShell({ live }: { live: LiveState }) {
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-neutral-800 bg-neutral-950/90 px-4 backdrop-blur">
           <div className="flex items-center gap-2 md:hidden">
             <HoneycombLogo className="size-6" />
-            <span className="font-semibold">{t('app.title')}</span>
+            <span className="font-semibold">{title}</span>
             <HiveVersion className="hidden sm:inline" />
           </div>
           <div className="hidden md:block" />

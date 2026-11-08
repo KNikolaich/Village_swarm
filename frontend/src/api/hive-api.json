@@ -5373,6 +5373,55 @@
           }
         }
       }
+    },
+    "/api/settings/alias": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AliasDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AliasDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5460,6 +5509,20 @@
               "integer"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "AliasDto": {
+        "required": [
+          "alias"
+        ],
+        "type": "object",
+        "properties": {
+          "alias": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -5833,6 +5896,18 @@
             "type": "integer",
             "format": "int32",
             "default": 0
+          },
+          "alias": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "otherAlias": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
