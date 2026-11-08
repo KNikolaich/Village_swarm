@@ -9,11 +9,14 @@ import { t } from '@/i18n'
  * Which hive a hornet prefers to reach: the one it was enrolled with (this one, the default) or the other (the city or the dacha, as
  * named in Settings → fallback broker). It tries the preferred first and looks at it again from the other.
  */
-export function PreferHivePanel({ deviceId, preferHive, editable }: { deviceId: string; preferHive?: string | null; editable: boolean }) {
+export function PreferHivePanel({ deviceId, preferHive, editable, local, visitor }: { deviceId: string; preferHive?: string | null; editable: boolean; local?: boolean; visitor?: boolean }) {
   const qc = useQueryClient()
   const cluster = useQuery({ queryKey: ['cluster'], queryFn: () => call(api.GET('/api/cluster')), retry: false })
   if (!cluster.data?.enabled) return null
-  const here = cluster.data.node === 'city' ? 'city' : 'dacha'
+  // "This" is the hive the hornet was added to, not the one on screen: a copy of the dacha's hornet looked at in the city still prefers the dacha.
+  const onCity = cluster.data.node === 'city'
+  const madeHere = onCity ? !!local : !visitor
+  const here = madeHere === onCity ? 'city' : 'dacha'
   const there = here === 'city' ? 'dacha' : 'city'
 
   async function choose(prefer: 'this' | 'other') {

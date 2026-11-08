@@ -433,7 +433,7 @@ export function DevicePage() {
       {device.driver === 'hornet' && device.type !== 'monitor' && !device.visitor && canControl && (
         <Card>
           <CardHeader><CardTitle>{t('prefer.title')}</CardTitle></CardHeader>
-          <CardContent><PreferHivePanel deviceId={deviceId} preferHive={device.preferHive} editable={canControl} /></CardContent>
+          <CardContent><PreferHivePanel deviceId={deviceId} preferHive={device.preferHive} editable={canControl} local={device.local} visitor={device.visitor} /></CardContent>
         </Card>
       )}
 
