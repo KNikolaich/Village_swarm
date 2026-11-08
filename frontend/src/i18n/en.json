@@ -615,7 +615,9 @@
   "errors": {
     "generic": "Something went wrong",
     "network": "Could not reach the hive",
-    "forbidden": "Not allowed"
+    "forbidden": "Not allowed",
+    "pageFailed": "The page did not open (the hive may have been updated). Reload the page.",
+    "reload": "Reload"
   },
   "device": {
     "back": "Back to swarm",

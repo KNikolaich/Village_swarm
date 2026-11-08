@@ -3,7 +3,7 @@ import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient, ty
 import { toast } from 'sonner'
 import { t } from '@/i18n'
 import { moveInTree } from '@/lib/notes'
-import { api, call, type EventDto, type NoteNodeDto } from './client'
+import { api, call, type EventDto, type NoteDto, type NoteNodeDto } from './client'
 
 /** This node and the other one (cluster), with the aliases both hives go by; refreshed once a minute. */
 export function useCluster() {
@@ -296,6 +296,9 @@ export const useNote = (id: number | undefined) =>
     queryKey: noteKeys.note(id ?? 0),
     queryFn: () => call(api.GET('/api/notes/{id}', { params: { path: { id: id! } } })),
     enabled: id != null,
+    // A note is read again every time it is opened: another device, the Telegram assistant or the city may have changed it.
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
 
 export const useNoteSearch = (q: string) =>
@@ -323,7 +326,20 @@ export function useUpdateNote() {
   return useMutation({
     mutationFn: ({ id, ...body }: { id: number; title?: string; icon?: string; color?: string; body?: string }) =>
       call(api.PATCH('/api/notes/{id}', { params: { path: { id } }, body })),
-    onSuccess: (_, { id, title, icon, color }) => {
+    onSuccess: (_, { id, title, icon, color, body }) => {
+      // The open note too: going to another note and back must show what was just saved, not the copy fetched before.
+      qc.setQueryData<NoteDto>(noteKeys.note(id), (note) =>
+        note
+          ? {
+              ...note,
+              title: title ?? note.title,
+              icon: icon === undefined ? note.icon : icon || null,
+              color: color === undefined ? note.color : color || null,
+              body: body ?? note.body,
+              updatedAt: new Date().toISOString(),
+            }
+          : note,
+      )
       qc.setQueryData<NoteNodeDto[]>(noteKeys.tree, (tree) =>
         tree?.map((n) =>
           n.id === id

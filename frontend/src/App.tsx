@@ -20,15 +20,50 @@ import { AddHornetPage } from '@/pages/AddHornetPage'
 import { MonitorPage } from '@/pages/MonitorPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { SwarmPage } from '@/pages/SwarmPage'
+import { t } from '@/i18n'
 import { Skeleton } from '@/components/ui/primitives'
 
 // The Markdown editor is heavy: notes load on their own, the rest of the app stays light on 4G.
-const NotesPage = lazy(() => import('@/pages/NotesPage').then((m) => ({ default: m.NotesPage })))
+const NotesPage = lazy(() =>
+  import('@/pages/NotesPage').then(
+    (m) => ({ default: m.NotesPage }),
+    // After an update the page in the browser still names files of the old build: one reload brings the new ones.
+    (error: unknown) => {
+      if (reloadOnce()) return new Promise<never>(() => undefined)
+      throw error
+    },
+  ),
+)
 const notes = (
   <Suspense fallback={<Skeleton className="h-96" />}>
     <NotesPage />
   </Suspense>
 )
+
+/** true: the page is being reloaded (once per minute at most, so a real outage does not loop). */
+function reloadOnce(): boolean {
+  try {
+    const last = Number(sessionStorage.getItem('chunk.reload') ?? 0)
+    if (Date.now() - last < 60_000) return false
+    sessionStorage.setItem('chunk.reload', String(Date.now()))
+  } catch {
+    return false
+  }
+  window.location.reload()
+  return true
+}
+
+/** A failed page inside the layout: the menu stays, the message says what to do. */
+function RouteError() {
+  return (
+    <div className="space-y-3 py-6">
+      <p className="text-sm text-neutral-300">{t('errors.pageFailed')}</p>
+      <button type="button" className="rounded-md border border-neutral-700 px-3 py-1.5 text-sm hover:bg-neutral-900" onClick={() => window.location.reload()}>
+        {t('errors.reload')}
+      </button>
+    </div>
+  )
+}
 
 function Authenticated() {
   const live = useLive(true)
@@ -39,7 +74,7 @@ const router = createBrowserRouter([
   {
     path: '/',
     element: <Authenticated />,
-    children: [
+    children: [{ errorElement: <RouteError />, children: [
       { index: true, element: <OverviewPage /> },
       { path: 'climate', element: <ClimatePage /> },
       { path: 'rules', element: <RulesPage /> },
@@ -56,7 +91,7 @@ const router = createBrowserRouter([
       { path: 'notes', element: notes },
       { path: 'notes/:id', element: notes },
       { path: '*', element: <Navigate to="/" replace /> },
-    ],
+    ] }],
   },
 ])
 
