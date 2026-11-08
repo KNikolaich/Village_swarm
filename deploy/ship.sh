@@ -24,34 +24,35 @@ echo "$version" >"$stage/hive-bundle/images/VERSION"
 
 echo "==> copying $version to $target"
 # A weak link (the dacha is on 4G) drops a 500 MB copy now and then: rsync keeps what arrived and carries on, up to 8 tries.
+# /var/tmp is on the disk: /tmp on the small hives is tmpfs, that is RAM (a 500 MB image in 2 GB of memory is what drops the link).
 # Without rsync on both ends, scp tries the whole thing again.
-ssh "$target" 'mkdir -p /tmp/hive-bundle'
+ssh "$target" 'mkdir -p /var/tmp/hive-bundle'
 if command -v rsync >/dev/null 2>&1 && ssh "$target" 'command -v rsync >/dev/null 2>&1'; then
   copied=0
   for try in 1 2 3 4 5 6 7 8; do
-    if rsync -rt --delete --partial --append-verify --timeout=60 -e "ssh -o ServerAliveInterval=15" "$stage/hive-bundle/" "$target:/tmp/hive-bundle/"; then copied=1; break; fi
+    if rsync -rt --delete --partial --append-verify --timeout=60 -e "ssh -o ServerAliveInterval=15" "$stage/hive-bundle/" "$target:/var/tmp/hive-bundle/"; then copied=1; break; fi
     echo "==> copy interrupted (try $try of 8), continuing"; sleep 5
   done
   [ "$copied" = 1 ] || { echo "copy failed" >&2; exit 1; }
 else
   for try in 1 2 3 4; do
-    ssh "$target" 'rm -rf /tmp/hive-bundle'
-    if scp -rq -o ServerAliveInterval=15 "$stage/hive-bundle" "$target:/tmp/"; then break; fi
+    ssh "$target" 'rm -rf /var/tmp/hive-bundle'
+    if scp -rq -o ServerAliveInterval=15 "$stage/hive-bundle" "$target:/var/tmp/"; then break; fi
     [ "$try" = 4 ] && { echo "copy failed" >&2; exit 1; }
     echo "==> copy interrupted (try $try of 4), again"; sleep 5
   done
 fi
 
-image="/tmp/hive-bundle/images/$(basename "$tarball")"
+image="/var/tmp/hive-bundle/images/$(basename "$tarball")"
 ssh -t "$target" "
 	set -e
 	# Update only when the hive is running: a half-finished install has a .env but no database yet.
 	if sudo test -f /opt/hive/.env && sudo docker compose -f /opt/hive/compose.yaml -f /opt/hive/compose.home.yaml --project-directory /opt/hive ps -q postgres | grep -q .; then
-		sudo cp -r /tmp/hive-bundle/compose.yaml /tmp/hive-bundle/compose.home.yaml /tmp/hive-bundle/compose.zigbee.yaml /tmp/hive-bundle/compose.city.yaml /tmp/hive-bundle/.env.example \
-			/tmp/hive-bundle/mosquitto /tmp/hive-bundle/install.sh /tmp/hive-bundle/update.sh /tmp/hive-bundle/restore.sh /opt/hive/
+		sudo cp -r /var/tmp/hive-bundle/compose.yaml /var/tmp/hive-bundle/compose.home.yaml /var/tmp/hive-bundle/compose.zigbee.yaml /var/tmp/hive-bundle/compose.city.yaml /var/tmp/hive-bundle/.env.example \
+			/var/tmp/hive-bundle/mosquitto /var/tmp/hive-bundle/install.sh /var/tmp/hive-bundle/update.sh /var/tmp/hive-bundle/restore.sh /opt/hive/
 		sudo bash /opt/hive/update.sh '$version' '$image'
 	else
-		sudo bash /tmp/hive-bundle/install.sh $*
+		sudo bash /var/tmp/hive-bundle/install.sh $*
 	fi
-	rm -rf /tmp/hive-bundle
+	rm -rf /var/tmp/hive-bundle
 "
