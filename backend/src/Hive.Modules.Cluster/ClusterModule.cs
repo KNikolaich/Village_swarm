@@ -33,6 +33,9 @@ public sealed class ClusterOptions
 
     public int HeartbeatSeconds { get; set; } = 30;
 
+    /// <summary>How often the node tells the other one how its board is doing (CPU, load, memory, disk).</summary>
+    public int StatsEveryS { get; set; } = 60;
+
     /// <summary>No heartbeat from home this long: a warning, and the city may take over if hornets reach it directly.</summary>
     public int HomeSilenceS { get; set; } = 180;
 
@@ -106,7 +109,7 @@ public sealed record HomeStatusDto(string Phase, DateTimeOffset? LastHeartbeatAt
 
 public sealed record ClusterDto(
     bool Enabled, string Node, string Role, HomeStatusDto? Home, string? ActiveNode, DateTimeOffset? CatalogAt, CatalogCounts? Catalog,
-    bool TelegramConfigured = true, int TelegramChats = 0);
+    bool TelegramConfigured = true, int TelegramChats = 0, string? Alias = null, string? OtherAlias = null);
 
 /// <summary>
 /// The city's watch on home (spec 11.4): heartbeats in, events out ("home_offline" warn, "home_offline_long" alarm, "home_online"),
@@ -427,6 +430,7 @@ public sealed class ReadOnlyMiddleware(RequestDelegate next, NodeState node)
     private static bool NodeLocal(PathString path) =>
         path.StartsWithSegments("/api/auth") || path.StartsWithSegments("/api/me")
         || path.StartsWithSegments("/api/settings/weather") || path.StartsWithSegments("/api/settings/language")
+        || path.StartsWithSegments("/api/settings/alias")
         // Home's node sends the city the photos it took: authenticated by the key of the two nodes, it changes nothing of the house's data.
         || path.StartsWithSegments("/api/ingest/replica")
         // The city's own hornets: they are added here (the wizard, the board trading its code for a login), their photos arrive here, and the
@@ -458,6 +462,13 @@ public static class ClusterModule
         services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<HeartbeatPublisher>());
         services.AddHostedService(sp => sp.GetRequiredService<HeartbeatPublisher>());
         services.AddHostedService<BridgeLogin>();
+
+        // Each node's board readings, for the other one to show.
+        services.AddScoped<HiveAliasService>();
+        services.AddHostedService<NodeStatsPublisher>();
+        services.AddSingleton<NodeStatsReceiver>();
+        services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<NodeStatsReceiver>());
+        services.AddHostedService(sp => sp.GetRequiredService<NodeStatsReceiver>());
 
         // Events the city saw while home was down, back to home (spec 11.3).
         services.AddSingleton<ReplicaServer>();
@@ -494,13 +505,17 @@ public static class ClusterModule
     {
         // Whether this node can tell people anything: a bot token, and at least one chat. The city has to be told this: alarms of the other node
         // come from here, and without a chat they go nowhere (the city does not poll the bot, so chats arrive with the catalog from home).
-        app.MapGet("/api/cluster", async (HomeWatch watch, HiveDbContext db, Microsoft.Extensions.Configuration.IConfiguration configuration, CancellationToken ct) =>
+        app.MapGet("/api/cluster", async (HomeWatch watch, HiveDbContext db, HiveAliasService alias, NodeStatsReceiver stats,
+                Microsoft.Extensions.Configuration.IConfiguration configuration, CancellationToken ct) =>
                 TypedResults.Ok(watch.Describe() with
                 {
                     TelegramConfigured = !string.IsNullOrWhiteSpace(configuration["Telegram:Token"]),
                     TelegramChats = await db.TgLinks.CountAsync(ct),
+                    Alias = await alias.GetAsync(ct),
+                    OtherAlias = stats.OtherAlias,
                 }))
             .WithTags("cluster");
+        app.MapAliasEndpoints();
         app.MapPhotoReplicaEndpoints();
         return app;
     }

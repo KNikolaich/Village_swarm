@@ -49,6 +49,9 @@ public static partial class Topics
     public static string CmdAck(string id, string name) => $"{Cmd(id, name)}/ack";
 
     public static string HiveHeartbeat(string node) => $"{Prefix}/hive/{CheckSegment(node)}/heartbeat";
+
+    /// <summary>The hive's own readings (CPU, load, memory, disk), retained, for the other node to show (contracts/mqtt-topics.md).</summary>
+    public static string HiveStats(string node) => $"{Prefix}/hive/{CheckSegment(node)}/stats";
     public static string Broadcast(string name) => $"{Prefix}/hive/broadcast/cmd/{CheckSegment(name)}";
 
     /// <summary>Extracts the device_id from a <c>vs/v1/dev/{id}/...</c> topic, or null if it is not a device topic.</summary>

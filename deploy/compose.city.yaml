@@ -9,8 +9,8 @@ services:
       Cluster__Enabled: "true"
       # The login the home bridge uses on this broker: the api creates it, home's .env has the same CITY_MQTT_PASSWORD.
       Cluster__BridgePassword: ${CITY_MQTT_PASSWORD:?set CITY_MQTT_PASSWORD in .env}
-      # No sensors on a VM; the hive-city device would only be noise.
-      Hive__Sensors__Enabled: "false"
+      # The city is a hive too: CPU load, memory and disk of the VM (a VM has no thermal zone or DS18B20, those are just left out).
+      Hive__Sensors__Enabled: "true"
     mem_limit: 384m
   # Sized for a 2 GB VM or container (the default of the RPi stack, a little more for the copy of the home data).
   postgres:
