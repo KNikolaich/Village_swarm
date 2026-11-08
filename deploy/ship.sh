@@ -23,8 +23,24 @@ cp "$tarball" "$stage/hive-bundle/images/"
 echo "$version" >"$stage/hive-bundle/images/VERSION"
 
 echo "==> copying $version to $target"
-ssh "$target" 'rm -rf /tmp/hive-bundle'
-scp -rq "$stage/hive-bundle" "$target:/tmp/"
+# A weak link (the dacha is on 4G) drops a 500 MB copy now and then: rsync keeps what arrived and carries on, up to 8 tries.
+# Without rsync on both ends, scp tries the whole thing again.
+ssh "$target" 'mkdir -p /tmp/hive-bundle'
+if command -v rsync >/dev/null 2>&1 && ssh "$target" 'command -v rsync >/dev/null 2>&1'; then
+  copied=0
+  for try in 1 2 3 4 5 6 7 8; do
+    if rsync -rt --delete --partial --append-verify --timeout=60 -e "ssh -o ServerAliveInterval=15" "$stage/hive-bundle/" "$target:/tmp/hive-bundle/"; then copied=1; break; fi
+    echo "==> copy interrupted (try $try of 8), continuing"; sleep 5
+  done
+  [ "$copied" = 1 ] || { echo "copy failed" >&2; exit 1; }
+else
+  for try in 1 2 3 4; do
+    ssh "$target" 'rm -rf /tmp/hive-bundle'
+    if scp -rq -o ServerAliveInterval=15 "$stage/hive-bundle" "$target:/tmp/"; then break; fi
+    [ "$try" = 4 ] && { echo "copy failed" >&2; exit 1; }
+    echo "==> copy interrupted (try $try of 4), again"; sleep 5
+  done
+fi
 
 image="/tmp/hive-bundle/images/$(basename "$tarball")"
 ssh -t "$target" "
