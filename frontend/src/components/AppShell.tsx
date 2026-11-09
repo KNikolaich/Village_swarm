@@ -70,6 +70,10 @@ export function AppShell({ live }: { live: LiveState }) {
   const qc = useQueryClient()
   const { pathname } = useLocation()
   const title = useHiveTitle()
+  // The tab is named after the hive ("Дача", "Город"), so tabs of two hives are told apart without opening them.
+  useEffect(() => {
+    document.title = title
+  }, [title])
   const wide = useWideScreen()
   const [saved, setSaved] = useState(() => loadSidebarCollapsed())
   const [openedOnTablet, setOpenedOnTablet] = useState(false)
