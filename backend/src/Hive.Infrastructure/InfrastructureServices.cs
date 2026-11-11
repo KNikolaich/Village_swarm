@@ -20,6 +20,7 @@ public static class InfrastructureServices
             .UseSnakeCaseNamingConvention());
 
         services.AddSingleton(TimeProvider.System);
+        services.AddScoped<SecretStore>();
         services.Configure<HiveOptions>(configuration.GetSection(HiveOptions.Section));
         services.Configure<MqttOptions>(configuration.GetSection(MqttOptions.Section));
         services.AddSingleton<MqttGateway>();

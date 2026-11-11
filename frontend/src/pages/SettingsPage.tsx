@@ -9,6 +9,7 @@ import { keys, useCluster, useMe, useTelegram } from '@/api/queries'
 import { BackupCard } from '@/components/BackupCard'
 import { CertificateCard } from '@/components/CertificateCard'
 import { PasswordInput } from '@/components/PasswordInput'
+import { SecretsCard } from '@/components/SecretsCard'
 import { RetentionCard } from '@/components/RetentionCard'
 import { FailoverCard } from '@/components/FailoverCard'
 import { WeatherSettingsCard } from '@/components/WeatherSettingsCard'
@@ -35,6 +36,7 @@ export function SettingsPage() {
       <FailoverCard />
       <LanguageCard />
       <AliasCard />
+      <SecretsCard />
       <RestartCard />
       <BackupCard />
       <RetentionCard />
