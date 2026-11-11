@@ -437,6 +437,18 @@
         }
       }
     },
+    "/api/settings/restart": {
+      "post": {
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "202": {
+            "description": "Accepted"
+          }
+        }
+      }
+    },
     "/api/settings/wifi": {
       "get": {
         "tags": [

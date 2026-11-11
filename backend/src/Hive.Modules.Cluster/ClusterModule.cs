@@ -433,7 +433,7 @@ public sealed class ReadOnlyMiddleware(RequestDelegate next, NodeState node)
     private static bool NodeLocal(PathString path) =>
         path.StartsWithSegments("/api/auth") || path.StartsWithSegments("/api/me")
         || path.StartsWithSegments("/api/settings/weather") || path.StartsWithSegments("/api/settings/language")
-        || path.StartsWithSegments("/api/settings/alias")
+        || path.StartsWithSegments("/api/settings/alias") || path.StartsWithSegments("/api/settings/restart")
         // On the city the notes are the master copy: changed there, and by the dacha on behalf of its people.
         || path.StartsWithSegments("/api/notes") || path.StartsWithSegments("/api/replica/notes")
         // Home's node sends the city the photos it took: authenticated by the key of the two nodes, it changes nothing of the house's data.

@@ -35,6 +35,7 @@ export function SettingsPage() {
       <FailoverCard />
       <LanguageCard />
       <AliasCard />
+      <RestartCard />
       <BackupCard />
       <RetentionCard />
       <CertificateCard />
@@ -135,6 +136,52 @@ function LanguageCard() {
           <option value="ru">Русский</option>
           <option value="en">English</option>
         </Select>
+      </CardContent>
+    </Card>
+  )
+}
+
+/** Restarts the service (settings that are read at start): the page waits until the hive answers again, then reloads. */
+function RestartCard() {
+  const me = useMe()
+  const [state, setState] = useState<'idle' | 'restarting'>('idle')
+  if (!(me.data?.roles.includes('admin') ?? false)) return null
+
+  async function restart() {
+    if (!window.confirm(t('settings.restartConfirm'))) return
+    try {
+      await call(api.POST('/api/settings/restart'))
+    } catch {
+      toast.error(t('errors.generic'))
+      return
+    }
+    setState('restarting')
+    // The hive goes down within a second; wait until it answers again.
+    await new Promise((r) => setTimeout(r, 3000))
+    for (let i = 0; i < 90; i++) {
+      try {
+        const response = await fetch('/api/settings/version', { cache: 'no-store' })
+        if (response.ok) {
+          window.location.reload()
+          return
+        }
+      } catch {
+        // still down
+      }
+      await new Promise((r) => setTimeout(r, 2000))
+    }
+    setState('idle')
+    toast.error(t('settings.restartLate'))
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>{t('settings.restart')}</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-xs text-neutral-500">{t('settings.restartHint')}</p>
+        <Button variant="outline" disabled={state === 'restarting'} onClick={() => void restart()}>
+          {state === 'restarting' ? t('settings.restarting') : t('settings.restartButton')}
+        </Button>
       </CardContent>
     </Card>
   )

@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Hive.Modules.Users;
 
@@ -60,6 +62,19 @@ public static class HiveSettingsEndpoints
             })
             .RequireAuthorization(HiveRoles.AdminOnly);
         settings.MapGet("/version", () => TypedResults.Ok(new VersionDto(HiveVersion())));
+        // The service stops cleanly a moment after answering; the container's restart policy (unless-stopped) starts it again. For settings
+        // that are read at start. Admins only; the page waits for /version to answer again.
+        settings.MapPost("/restart", (IHostApplicationLifetime lifetime, ILoggerFactory logs, System.Security.Claims.ClaimsPrincipal user) =>
+            {
+                logs.CreateLogger("Restart").LogWarning("Restart requested by {User}", user.Identity?.Name);
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                    lifetime.StopApplication();
+                });
+                return TypedResults.Accepted((string?)null);
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly);
         return app;
     }
 
