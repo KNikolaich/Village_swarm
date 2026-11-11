@@ -121,17 +121,13 @@ public sealed class NotesMasterClient
     {
     }
 
-    /// <summary>The handler is replaced in tests; the city's own certificate is self-signed and the way there is the router's tunnel, so the request carries a key only the two nodes can make.</summary>
+    /// <summary>The handler is replaced in tests.</summary>
     internal NotesMasterClient(IOptions<CityBrokerOptions> secret, IServiceScopeFactory scopes, TimeProvider time, HttpMessageHandler? handler)
     {
         this.secret = secret;
         this.scopes = scopes;
         this.time = time;
-        Http = new HttpClient(handler ?? new SocketsHttpHandler
-        {
-            SslOptions = new System.Net.Security.SslClientAuthenticationOptions { RemoteCertificateValidationCallback = (_, _, _, _) => true },
-            ConnectTimeout = TimeSpan.FromSeconds(5),
-        }) { Timeout = TimeSpan.FromSeconds(60) };
+        Http = new HttpClient(handler ?? CityHttp.Handler(TimeSpan.FromSeconds(5))) { Timeout = TimeSpan.FromSeconds(60) };
     }
 
     /// <summary>Tests set the address of the city here instead of reading it from the settings.</summary>

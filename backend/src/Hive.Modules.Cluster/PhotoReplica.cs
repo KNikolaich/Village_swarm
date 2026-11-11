@@ -87,12 +87,7 @@ public sealed class PhotoReplicator(
     public const string UrlKey = "failover.city";
     private const int Batch = 10;
 
-    // The city's own certificate is self-signed and the way there is the router's tunnel: the request carries a key only the two nodes can make.
-    private static readonly HttpClient Http = new(new SocketsHttpHandler
-    {
-        SslOptions = new System.Net.Security.SslClientAuthenticationOptions { RemoteCertificateValidationCallback = (_, _, _, _) => true },
-        ConnectTimeout = TimeSpan.FromSeconds(10),
-    }) { Timeout = TimeSpan.FromSeconds(60) };
+    private static readonly HttpClient Http = new(CityHttp.Handler(TimeSpan.FromSeconds(10))) { Timeout = TimeSpan.FromSeconds(60) };
 
     private bool Sending => options.Value.Enabled && hive.Value.Node == "home" && !string.IsNullOrEmpty(secret.Value.BridgePassword);
 
