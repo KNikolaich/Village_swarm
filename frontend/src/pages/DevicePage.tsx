@@ -28,7 +28,7 @@ import { formatAgo, formatFixed, formatValue, formatWhen, isBlank, metricUnit, o
 import { ranges, rangeLabel } from '@/lib/ranges'
 import { ZoneSelect } from '@/pages/ClimatePage'
 import { DeviceName } from '@/components/DeviceName'
-import { PinsPanel } from '@/pages/SwarmPage'
+import { PinsPanel } from '@/components/PinsPanel'
 import { CarSetupCard } from '@/components/CarSetupCard'
 import { RotationCard } from '@/components/RotationCard'
 import { SortInput } from '@/components/SortInput'
