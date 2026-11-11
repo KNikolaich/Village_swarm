@@ -23,6 +23,19 @@ public sealed record SecretsDto(List<SecretDto> Secrets, string KeysPath);
 /// <summary>Write-only: an empty value clears the stored secret (the .env value, if any, is used again).</summary>
 public sealed record SecretValueDto(string? Value);
 
+/// <summary>
+/// One parameter of the "Parameters" page. Kind: text|int|number|bool|choice|timezone|time|url. Value is what works now; Stored is what Settings holds
+/// (null: not set here); Source: db|env|default. RestartPending: saved, but the running Hive still has the old value. Apply: restart|auto.
+/// </summary>
+public sealed record ConfigDto(string Key, string Section, string Kind, string Apply, string Value, string? Stored, string Source, string Default,
+    bool RestartPending, string[]? Choices, DateTimeOffset? UpdatedAt, string? UpdatedBy);
+
+/// <summary>The parameters page: Sections gives the order of the groups.</summary>
+public sealed record ConfigListDto(string[] Sections, List<ConfigDto> Items);
+
+/// <summary>An empty value clears the parameter (the .env value, or the default, is used again).</summary>
+public sealed record ConfigValueDto(string? Value);
+
 /// <summary>What is running: the hive build (deploy/build-images.sh passes git describe, e.g. 8835483).</summary>
 public sealed record VersionDto(string Version);
 
@@ -72,6 +85,7 @@ public static class HiveSettingsEndpoints
             .NodeLocal()
             .RequireAuthorization(HiveRoles.AdminOnly);
         MapSecrets(settings);
+        MapConfig(settings);
         settings.MapGet("/version", () => TypedResults.Ok(new VersionDto(HiveVersion())));
         // The service stops cleanly a moment after answering; the container's restart policy (unless-stopped) starts it again. For settings
         // that are read at start. Admins only; the page waits for /version to answer again.
@@ -88,6 +102,27 @@ public static class HiveSettingsEndpoints
             .NodeLocal()
             .RequireAuthorization(HiveRoles.AdminOnly);
         return app;
+    }
+
+    private static void MapConfig(RouteGroupBuilder settings)
+    {
+        // Admins only. Plain parameters that used to live in .env; most are read at start, so the page offers a restart.
+        var config = settings.MapGroup("/config").RequireAuthorization(HiveRoles.AdminOnly);
+        config.MapGet("", async (ConfigStore store, CancellationToken ct) =>
+            TypedResults.Ok(new ConfigListDto(ConfigSettings.Sections, (await store.ListAsync(ct)).Select(x => new ConfigDto(
+                x.Def.Key, x.Def.Section, x.Def.Kind.ToString().ToLowerInvariant(), x.Def.Apply.ToString().ToLowerInvariant(), x.Value, x.Stored,
+                x.Source.ToString().ToLowerInvariant(), x.Def.Default, x.RestartPending, x.Def.Choices, x.UpdatedAt, x.UpdatedBy)).ToList())));
+        config.MapPut("/{key}", async Task<Results<NoContent, NotFound, ValidationProblem>> (string key, ConfigValueDto body, System.Security.Claims.ClaimsPrincipal user,
+            ConfigStore store, CancellationToken ct) =>
+        {
+            if (ConfigSettings.Find(key) is not { } def)
+                return TypedResults.NotFound();
+            var value = body.Value?.Trim() ?? "";
+            if (ConfigSettings.Validate(def, value) is { } problem)
+                return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["value"] = [problem] });
+            await store.SetAsync(def, value, $"user:{user.Identity?.Name}", ct);
+            return TypedResults.NoContent();
+        });
     }
 
     private static void MapSecrets(RouteGroupBuilder settings)

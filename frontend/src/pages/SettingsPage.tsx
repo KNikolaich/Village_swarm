@@ -2,12 +2,13 @@ import { Copy, Download, Send, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router'
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { keys, useCluster, useMe, useTelegram } from '@/api/queries'
 import { BackupCard } from '@/components/BackupCard'
 import { CertificateCard } from '@/components/CertificateCard'
+import { ConfigCard } from '@/components/ConfigCard'
 import { PasswordInput } from '@/components/PasswordInput'
 import { SecretsCard } from '@/components/SecretsCard'
 import { RetentionCard } from '@/components/RetentionCard'
@@ -20,30 +21,61 @@ import { getLanguage, t, type Language } from '@/i18n'
 import { formatAgo } from '@/lib/format'
 import { install, isInstalled, isIos, useInstallOffer } from '@/lib/install'
 
-/** Own account: Telegram link (spec 9.4), TOTP (spec 12), password, recovery email, trusted devices; the app install. */
+/** Settings in four groups with a jump bar: my account, the hive itself, links and access, data and maintenance. */
 export function SettingsPage() {
+  const groups = ['account', 'hive', 'links', 'maintenance'] as const
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-semibold">{t('settings.title')}</h1>
-      <TelegramCard />
-      <TotpCard />
-      <PasswordCard />
-      <EmailCard />
-      <DevicesCard />
-      <InstallCard />
-      <WifiCard />
-      <WeatherSettingsCard />
-      <FailoverCard />
-      <LanguageCard />
-      <AliasCard />
-      <SecretsCard />
-      <RestartCard />
-      <BackupCard />
-      <RetentionCard />
-      <CertificateCard />
-      <MonitorCard />
+      <nav className="sticky top-0 z-10 -mx-1 flex flex-wrap gap-2 bg-neutral-950/90 px-1 py-2 backdrop-blur">
+        {groups.map((g) => (
+          <a key={g} href={`#settings-${g}`} className="rounded-full border border-neutral-700 px-3 py-1 text-xs text-neutral-300 hover:border-amber-400 hover:text-amber-400">
+            {t(`settings.groups.${g}`)}
+          </a>
+        ))}
+      </nav>
+
+      <Group id="account">
+        <TelegramCard />
+        <TotpCard />
+        <PasswordCard />
+        <EmailCard />
+        <DevicesCard />
+        <InstallCard />
+      </Group>
+
+      <Group id="hive">
+        <LanguageCard />
+        <AliasCard />
+        <ConfigCard />
+        <WeatherSettingsCard />
+        <WifiCard />
+      </Group>
+
+      <Group id="links">
+        <FailoverCard />
+        <CertificateCard />
+        <MonitorCard />
+      </Group>
+
+      <Group id="maintenance">
+        <BackupCard />
+        <RetentionCard />
+        <SecretsCard />
+        <RestartCard />
+      </Group>
       <HiveVersion />
     </div>
+  )
+}
+
+/** A titled block of cards; the jump bar links to it. */
+function Group({ id, children }: { id: string; children: ReactNode }) {
+  return (
+    <section id={`settings-${id}`} className="scroll-mt-14 space-y-4">
+      <h2 className="border-b border-neutral-800 pb-1 text-base font-semibold">{t(`settings.groups.${id}`)}</h2>
+      {children}
+    </section>
   )
 }
 
@@ -177,7 +209,7 @@ function RestartCard() {
   }
 
   return (
-    <Card>
+    <Card id="restart" className="scroll-mt-14">
       <CardHeader><CardTitle>{t('settings.restart')}</CardTitle></CardHeader>
       <CardContent className="space-y-2">
         <p className="text-xs text-neutral-500">{t('settings.restartHint')}</p>

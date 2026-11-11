@@ -789,6 +789,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ConfigListDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/config/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    key: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ConfigValueDto"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/wifi": {
         parameters: {
             query?: never;
@@ -7008,6 +7098,28 @@ export interface components {
             /** Format: date-time */
             ackAt: null | string;
             ack: null | components["schemas"]["JsonElement"];
+        };
+        ConfigDto: {
+            key: string;
+            section: string;
+            kind: string;
+            apply: string;
+            value: string;
+            stored: null | string;
+            source: string;
+            default: string;
+            restartPending: boolean;
+            choices: null | string[];
+            /** Format: date-time */
+            updatedAt: null | string;
+            updatedBy: null | string;
+        };
+        ConfigListDto: {
+            sections: string[];
+            items: components["schemas"]["ConfigDto"][];
+        };
+        ConfigValueDto: {
+            value: null | string;
         };
         CreateBatchRequest: {
             type: string;

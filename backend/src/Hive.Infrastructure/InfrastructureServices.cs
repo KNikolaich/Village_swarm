@@ -21,6 +21,8 @@ public static class InfrastructureServices
 
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<SecretStore>();
+        services.AddScoped<ConfigStore>();
+        services.AddSingleton<AppliedConfig>();
         services.Configure<HiveOptions>(configuration.GetSection(HiveOptions.Section));
         services.Configure<MqttOptions>(configuration.GetSection(MqttOptions.Section));
         services.AddSingleton<MqttGateway>();
