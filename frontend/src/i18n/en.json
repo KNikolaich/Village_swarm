@@ -613,7 +613,13 @@
     "installIos": "In Safari tap Share and choose Add to Home Screen.",
     "installManual": "Open the browser menu and choose Install app (Chrome, Edge, Yandex Browser) or Add to Home screen.",
     "installHttps": "Installing needs trusted HTTPS: from outside through the KeenDNS address, at home after installing the hive certificate (/ca.crt).",
-    "pageStale": "This page is older than the hive: the browser shows a kept copy. Click to reload."
+    "pageStale": "This page is older than the hive: the browser shows a kept copy. Click to reload.",
+    "groups": {
+      "account": "My account",
+      "hive": "Hive",
+      "links": "Links and access",
+      "maintenance": "Data and maintenance"
+    }
   },
   "secrets": {
     "title": "Secrets (tokens, keys, passwords)",
@@ -1832,5 +1838,129 @@
     "dacha": "Dacha",
     "saved": "Saved, the hornet applies it at its next contact",
     "needOther": "Set the address of the other hive first: Settings → fallback broker"
+  },
+  "config": {
+    "title": "Hive parameters",
+    "hint": "These used to live in .env: time zone, thresholds, login mode, assistant, mail, backup schedule. A value set here wins over .env; \"Reset\" returns to the .env value (or the default), so old installs need no changes. Only what the hive needs before it reaches the database stays in .env: database and broker passwords, images, ports, addresses.",
+    "restartTitle": "Saved, waiting for a restart",
+    "restartBody": "The hive reads these only at start: {names}. Press \"Restart the hive\" below.",
+    "restartGo": "Go to the restart button",
+    "restartBadge": "restart needed",
+    "autoBadge": "applies by itself",
+    "save": "Save",
+    "reset": "Reset",
+    "saved": "Saved",
+    "savedRestart": "Saved. Restart the hive to apply.",
+    "reseted": "Reset to the .env value or the default",
+    "invalid": "Invalid value",
+    "default": "default: {value}",
+    "empty": "not set",
+    "yes": "yes",
+    "no": "no",
+    "source": {
+      "db": "set here",
+      "env": "from .env",
+      "default": "default"
+    },
+    "autoHint": "Picked up by itself within a minute, no restart needed.",
+    "restartHint": "Applies after the hive restarts.",
+    "sections": {
+      "general": {
+        "title": "General",
+        "hint": "The house time zone."
+      },
+      "security": {
+        "title": "Sign-in and security",
+        "hint": "When the hive asks for the Telegram code."
+      },
+      "monitoring": {
+        "title": "Board monitoring",
+        "hint": "Thresholds above which Telegram gets a warning."
+      },
+      "cluster": {
+        "title": "Dacha and city",
+        "hint": "How the two hives share the work."
+      },
+      "assistant": {
+        "title": "Assistant (LLM)",
+        "hint": "The Telegram assistant. The key is entered under Secrets."
+      },
+      "mail": {
+        "title": "Mail",
+        "hint": "\"Forgot password\" letters. The mail password is entered under Secrets."
+      },
+      "backup": {
+        "title": "Backups",
+        "hint": "The nightly backup schedule. Where the off-site copy goes is set in .env (RESTIC_*)."
+      }
+    },
+    "params": {
+      "timezone": {
+        "name": "Time zone",
+        "hint": "Journal, daily reports, time rules, backup. For example Europe/Moscow."
+      },
+      "auth_newdevicecode": {
+        "name": "Code on a login from a new device",
+        "hint": "Always, or only on a login from the internet (through the router)."
+      },
+      "sensors_air_warn_c": {
+        "name": "Air at the board, °C",
+        "hint": "A warning about overheating comes above this value."
+      },
+      "sensors_cpu_warn_c": {
+        "name": "Processor, °C",
+        "hint": "Processor temperature threshold."
+      },
+      "sensors_disk_warn_pct": {
+        "name": "Disk used, %",
+        "hint": "Fill threshold of the disk with photos and the database."
+      },
+      "cluster_notes_in_city": {
+        "name": "Notes live in the city",
+        "hint": "Off: the dacha keeps its own notes even when the city offers to keep them. Matters on the dacha."
+      },
+      "assistant_model": {
+        "name": "Model",
+        "hint": "The provider's model name, e.g. deepseek-flash."
+      },
+      "assistant_baseurl": {
+        "name": "API address",
+        "hint": "Any OpenAI-compatible API, DeepSeek by default."
+      },
+      "assistant_maxrequestsperday": {
+        "name": "Requests per day",
+        "hint": "A guard against a runaway loop: all chats together."
+      },
+      "smtp_host": {
+        "name": "SMTP server",
+        "hint": "For example smtp.yandex.ru. Port 587 (STARTTLS); 465 is not supported."
+      },
+      "smtp_port": {
+        "name": "Port",
+        "hint": "Usually 587."
+      },
+      "smtp_user": {
+        "name": "Login",
+        "hint": "Usually the mailbox address."
+      },
+      "smtp_from": {
+        "name": "Sender address",
+        "hint": "Usually the same mailbox as the login."
+      },
+      "backup_at": {
+        "name": "Backup time",
+        "hint": "Every night at this time in the hive time zone."
+      },
+      "backup_verify_day": {
+        "name": "Restore check day",
+        "hint": "1 = Monday ... 7 = Sunday, 0 = never."
+      }
+    },
+    "choices": {
+      "auth_newdevicecode": {
+        "Always": "Always",
+        "External": "Only from the internet"
+      }
+    }
   }
 }

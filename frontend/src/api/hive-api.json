@@ -513,6 +513,70 @@
         }
       }
     },
+    "/api/settings/config": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigListDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings/config/{key}": {
+      "put": {
+        "tags": [
+          "settings"
+        ],
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigValueDto"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/settings/wifi": {
       "get": {
         "tags": [
@@ -6165,6 +6229,112 @@
               {
                 "$ref": "#/components/schemas/JsonElement"
               }
+            ]
+          }
+        }
+      },
+      "ConfigDto": {
+        "required": [
+          "key",
+          "section",
+          "kind",
+          "apply",
+          "value",
+          "stored",
+          "source",
+          "default",
+          "restartPending",
+          "choices",
+          "updatedAt",
+          "updatedBy"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "apply": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "stored": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "default": {
+            "type": "string"
+          },
+          "restartPending": {
+            "type": "boolean"
+          },
+          "choices": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "updatedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ConfigListDto": {
+        "required": [
+          "sections",
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigDto"
+            }
+          }
+        }
+      },
+      "ConfigValueDto": {
+        "required": [
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": [
+              "null",
+              "string"
             ]
           }
         }
