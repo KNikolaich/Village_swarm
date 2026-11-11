@@ -1239,6 +1239,18 @@
         }
       }
     },
+    "/api/replica/pin": {
+      "delete": {
+        "tags": [
+          "replica"
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
     "/api/monitor": {
       "get": {
         "tags": [
@@ -5936,6 +5948,31 @@
           }
         }
       },
+      "CityPinDto": {
+        "required": [
+          "pinned",
+          "source",
+          "seen"
+        ],
+        "type": "object",
+        "properties": {
+          "pinned": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "seen": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "ClusterDto": {
         "required": [
           "enabled",
@@ -7165,6 +7202,12 @@
               "null",
               "string"
             ]
+          },
+          "certSha256": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -7191,6 +7234,12 @@
             "type": "boolean"
           },
           "replicaUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "certSha256": {
             "type": [
               "null",
               "string"
@@ -8799,6 +8848,16 @@
             "type": [
               "null",
               "string"
+            ]
+          },
+          "pin": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CityPinDto"
+              }
             ]
           }
         }

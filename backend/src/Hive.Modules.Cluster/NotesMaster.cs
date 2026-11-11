@@ -111,23 +111,25 @@ public sealed class NotesMasterClient
     private readonly IOptions<CityBrokerOptions> secret;
     private readonly IServiceScopeFactory scopes;
     private readonly TimeProvider time;
+    private readonly CityPin? pin;
     private readonly HttpClient Http;
 
     private string? _url;
     private DateTimeOffset _urlAt = DateTimeOffset.MinValue;
 
-    public NotesMasterClient(IOptions<CityBrokerOptions> secret, IServiceScopeFactory scopes, TimeProvider time)
-        : this(secret, scopes, time, null)
+    public NotesMasterClient(IOptions<CityBrokerOptions> secret, IServiceScopeFactory scopes, TimeProvider time, CityPin pin)
+        : this(secret, scopes, time, null, pin)
     {
     }
 
     /// <summary>The handler is replaced in tests.</summary>
-    internal NotesMasterClient(IOptions<CityBrokerOptions> secret, IServiceScopeFactory scopes, TimeProvider time, HttpMessageHandler? handler)
+    internal NotesMasterClient(IOptions<CityBrokerOptions> secret, IServiceScopeFactory scopes, TimeProvider time, HttpMessageHandler? handler, CityPin? pin = null)
     {
         this.secret = secret;
         this.scopes = scopes;
         this.time = time;
-        Http = new HttpClient(handler ?? CityHttp.Handler(TimeSpan.FromSeconds(5))) { Timeout = TimeSpan.FromSeconds(60) };
+        this.pin = pin;
+        Http = new HttpClient(handler ?? CityHttp.Handler(TimeSpan.FromSeconds(5), pin ?? throw new ArgumentNullException(nameof(pin)))) { Timeout = TimeSpan.FromSeconds(60) };
     }
 
     /// <summary>Tests set the address of the city here instead of reading it from the settings.</summary>
@@ -166,11 +168,15 @@ public sealed class NotesMasterClient
     {
         try
         {
+            if (pin is not null)
+                await pin.EnsureFreshAsync(ct);
             return await Http.SendAsync(request, streaming ? HttpCompletionOption.ResponseHeadersRead : HttpCompletionOption.ResponseContentRead, ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
-            throw new NoteMasterUnavailableException("The city does not answer: " + ex.Message, ex);
+            throw new NoteMasterUnavailableException(pin?.Describe().Seen is { } seen && ex.InnerException is System.Security.Authentication.AuthenticationException
+                ? $"The certificate of the city is not the pinned one (it shows {seen})"
+                : "The city does not answer: " + ex.Message, ex);
         }
     }
 }

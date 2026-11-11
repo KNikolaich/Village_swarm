@@ -65,6 +65,7 @@ public static class ClusterModule
 
         // Photos home to city (spec 7.3): the queue and sender at home, the receiver in the city.
         services.Configure<CityBrokerOptions>(configuration.GetSection(ClusterOptions.Section));
+        services.AddSingleton<CityPin>();
         services.AddSingleton<PhotoReplicaState>();
         services.AddHostedService<PhotoReplicator>();
         services.AddScoped<PhotoReplicaReceiver>();

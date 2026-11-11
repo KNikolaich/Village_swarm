@@ -181,7 +181,7 @@ public sealed class PhotoReplicaSenderTests(HiveFixture hive)
         var scopes = hive.App.Services.GetRequiredService<IServiceScopeFactory>();
         var hiveOptions = Options.Create(new HiveOptions { Node = "home", Role = "active" });
         return new PhotoReplicator(Options.Create(new ClusterOptions { Enabled = true }), hiveOptions, Options.Create(new CityBrokerOptions { BridgePassword = Secret }),
-            new NodeState(hiveOptions), scopes, hive.App.Services.GetRequiredService<MediaStore>(), state, TimeProvider.System, NullLogger<PhotoReplicator>.Instance);
+            new NodeState(hiveOptions), scopes, hive.App.Services.GetRequiredService<MediaStore>(), state, new CityPin(scopes, TimeProvider.System), TimeProvider.System, NullLogger<PhotoReplicator>.Instance);
     }
 
     [Fact]

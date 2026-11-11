@@ -21,10 +21,10 @@ using Microsoft.Extensions.Options;
 namespace Hive.Modules.Devices;
 
 /// <summary>Where hornets find the city broker when home does not answer (the address as the HORNETS reach it, e.g. through the WireGuard tunnel of the router). No host: no second broker.</summary>
-public sealed record FailoverDto(string? Host, int Port, string? ReplicaUrl = null);
+public sealed record FailoverDto(string? Host, int Port, string? ReplicaUrl = null, string? CertSha256 = null);
 
 /// <summary>What the Settings card shows: the address, and whether this node has the shared secret the hornets' logins on the city broker are made from.</summary>
-public sealed record FailoverStateDto(string? Host, int Port, bool CanLogin, string? ReplicaUrl);
+public sealed record FailoverStateDto(string? Host, int Port, bool CanLogin, string? ReplicaUrl, string? CertSha256 = null);
 
 /// <summary>
 /// The second broker of the hornets (spec 4.5): the city address is kept in the modes table and written, with the hornet's own login there,
@@ -42,7 +42,17 @@ public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions
         !string.IsNullOrWhiteSpace(r.Host) && !HostName.IsMatch(r.Host.Trim()) ? "host: адрес городского брокера (имя или IP)"
         : r.Port is < 1 or > 65535 ? "port: от 1 до 65535"
         : !string.IsNullOrWhiteSpace(r.ReplicaUrl) && !(Uri.TryCreate(r.ReplicaUrl.Trim(), UriKind.Absolute, out var u) && u.Scheme is "http" or "https") ? "replicaUrl: адрес вида https://192.168.1.3"
+        : !string.IsNullOrWhiteSpace(r.CertSha256) && Fingerprint(r.CertSha256) is null ? "certSha256: отпечаток SHA-256 сертификата города (64 шестнадцатеричные цифры, можно через двоеточия)"
         : null;
+
+    /// <summary>The 64 hex digits of a SHA-256 fingerprint, lower case, however it was typed ("AA:BB:..", spaces); null when it is not one.</summary>
+    public static string? Fingerprint(string? typed)
+    {
+        if (string.IsNullOrWhiteSpace(typed))
+            return null;
+        var hex = new string(typed.Where(c => c is not (':' or ' ' or '-')).ToArray()).ToLowerInvariant();
+        return hex.Length == 64 && hex.All(Uri.IsHexDigit) ? hex : null;
+    }
 
     /// <summary>The shared secret is what the logins on the city broker come from: without it there is nothing to give a hornet.</summary>
     public bool CanLogin => !string.IsNullOrEmpty(options.Value.BridgePassword);
@@ -56,22 +66,23 @@ public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions
     public async Task<FailoverStateDto> StateAsync(CancellationToken ct)
     {
         var city = await GetAsync(ct);
-        return new FailoverStateDto(city.Host, city.Port, CanLogin, city.ReplicaUrl);
+        return new FailoverStateDto(city.Host, city.Port, CanLogin, city.ReplicaUrl, city.CertSha256);
     }
 
     public async Task SetAsync(FailoverDto dto, string by, CancellationToken ct)
     {
         var host = dto.Host?.Trim();
+        var pin = Fingerprint(dto.CertSha256);
         var replicaUrl = string.IsNullOrWhiteSpace(dto.ReplicaUrl) ? null : dto.ReplicaUrl.Trim().TrimEnd('/');
         var mode = await db.Modes.FirstOrDefaultAsync(m => m.Key == Key, ct);
-        if (string.IsNullOrEmpty(host) && replicaUrl is null)
+        if (string.IsNullOrEmpty(host) && replicaUrl is null && pin is null)
         {
             if (mode is not null)
                 db.Modes.Remove(mode);
         }
         else
         {
-            var value = JsonSerializer.Serialize(new FailoverDto(host, dto.Port, replicaUrl), Web);
+            var value = JsonSerializer.Serialize(new FailoverDto(host, dto.Port, replicaUrl, pin), Web);
             if (mode is null)
                 db.Modes.Add(new Mode { Key = Key, Value = value, UpdatedAt = time.GetUtcNow(), UpdatedBy = by });
             else

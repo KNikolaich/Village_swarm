@@ -1726,6 +1726,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/replica/pin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/monitor": {
         parameters: {
             query?: never;
@@ -6848,6 +6881,11 @@ export interface components {
             currentPassword: string;
             newPassword: string;
         };
+        CityPinDto: {
+            pinned: null | string;
+            source: string;
+            seen: null | string;
+        };
         ClusterDto: {
             enabled: boolean;
             node: string;
@@ -7159,6 +7197,7 @@ export interface components {
             /** Format: int32 */
             port: number;
             replicaUrl?: null | string;
+            certSha256?: null | string;
         };
         FailoverStateDto: {
             host: null | string;
@@ -7166,6 +7205,7 @@ export interface components {
             port: number;
             canLogin: boolean;
             replicaUrl: null | string;
+            certSha256?: null | string;
         };
         FeaturesRequest: {
             features: string[];
@@ -7582,6 +7622,7 @@ export interface components {
             /** Format: date-time */
             lastSentAt: null | string;
             lastError: null | string;
+            pin?: null | components["schemas"]["CityPinDto"];
         };
         PinRow: {
             function: string;
