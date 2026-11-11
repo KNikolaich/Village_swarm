@@ -614,6 +614,28 @@
     "installHttps": "Installing needs trusted HTTPS: from outside through the KeenDNS address, at home after installing the hive certificate (/ca.crt).",
     "pageStale": "This page is older than the hive: the browser shows a kept copy. Click to reload."
   },
+  "secrets": {
+    "title": "Secrets (tokens, keys, passwords)",
+    "hint": "The Telegram bot token, the assistant key and the mail and proxy passwords are kept in the database, encrypted. A value you enter is never shown again: you only see set or not set. A value from this page wins over .env; clear it and .env is used again. New values apply after the hive restarts (the card below).",
+    "keysWarning": "Secrets are decrypted with the keys in {path} (on the hive's disk that is HIVE_DATA/keys, usually /srv/hive/keys). Back it up together with the database: without these keys the stored secrets cannot be read and have to be entered again. The nightly backup to a folder on the same disk does not include it: set up an off-site copy (docs/restore.md).",
+    "newValue": "New value",
+    "save": "Save",
+    "clear": "Clear",
+    "saved": "Saved. Restart the hive to apply.",
+    "cleared": "Cleared. Restart the hive to apply.",
+    "source": {
+      "db": "set here",
+      "env": "from .env",
+      "none": "not set",
+      "unreadable": "unreadable: other keys, enter it again"
+    },
+    "names": {
+      "telegram.token": "Telegram bot token",
+      "telegram.proxypassword": "Telegram proxy password (first endpoint)",
+      "assistant.apikey": "LLM key for the assistant",
+      "smtp.password": "Mail password (password recovery)"
+    }
+  },
   "password": {
     "show": "Show password",
     "hide": "Hide password"

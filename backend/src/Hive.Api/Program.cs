@@ -99,6 +99,17 @@ if (migrateOnly || app.Configuration.GetValue("Database:MigrateOnStartup", app.E
         return;
 }
 
+// Secrets entered in Settings (encrypted in the database) go over the .env values; read before any options are bound.
+// A hive without a database yet (a --migrate that failed, a first start) just runs on .env.
+if (!args.Contains("--add-user"))
+{
+    try { await Secrets.ApplyAsync(app.Services, builder.Configuration); }
+    catch (Exception ex) when (ex is Npgsql.NpgsqlException or InvalidOperationException)
+    {
+        app.Logger.LogWarning(ex, "Secrets from the database are not loaded; using .env only");
+    }
+}
+
 if (args.Contains("--add-user"))
 {
     Environment.ExitCode = await UserCli.RunAsync(app.Services, args);
