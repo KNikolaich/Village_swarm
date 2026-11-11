@@ -1,3 +1,4 @@
+using Hive.Infrastructure;
 using System.Security.Claims;
 using Hive.Infrastructure.Identity;
 using Microsoft.AspNetCore.Builder;
@@ -39,7 +40,7 @@ public static class NotesModule
 
     public static IEndpointRouteBuilder MapNotesEndpoints(this IEndpointRouteBuilder app)
     {
-        var notes = app.MapGroup("/api/notes").WithTags("notes");
+        var notes = app.MapGroup("/api/notes").NodeLocal().WithTags("notes");
 
         notes.MapGet("", (NoteService n, CancellationToken ct) => n.TreeAsync(ct));
         // What the Telegram assistant asks about the tree (words in, places out). Also how the dacha's assistant reaches the notes of the city.

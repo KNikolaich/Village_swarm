@@ -332,6 +332,7 @@ public static class PhotoReplicaEndpoints
         // Home's node authenticates with the key made from the shared secret, not with a user session.
         app.MapPut("/api/ingest/replica/media/{id}", (string id, HttpRequest request, PhotoReplicaReceiver receiver, CancellationToken ct) => receiver.ReceiveAsync(id, request, ct))
             .AllowAnonymous()
+            .NodeLocal()
             .DisableAntiforgery()
             .ExcludeFromDescription()
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(12 * 1024 * 1024))

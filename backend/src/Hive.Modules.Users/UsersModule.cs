@@ -1,3 +1,4 @@
+using Hive.Infrastructure;
 using System.Security.Claims;
 using Hive.Infrastructure.Data;
 using Hive.Infrastructure.Identity;
@@ -115,7 +116,7 @@ public static class UsersModule
 
     public static IEndpointRouteBuilder MapUsersEndpoints(this IEndpointRouteBuilder app)
     {
-        var auth = app.MapGroup("/api/auth").AllowAnonymous().RequireRateLimiting(AuthRateLimit).WithTags("auth");
+        var auth = app.MapGroup("/api/auth").NodeLocal().AllowAnonymous().RequireRateLimiting(AuthRateLimit).WithTags("auth");
         auth.MapGet("/options", (AuthService s) => TypedResults.Ok(s.Describe()));
         auth.MapPost("/login", async Task<Results<Ok<LoginResult>, UnauthorizedHttpResult, ProblemHttpResult>> (LoginRequest request, AuthService s, CancellationToken ct) =>
             await s.LoginAsync(request, ct) switch
@@ -147,7 +148,7 @@ public static class UsersModule
                 _ => TypedResults.Unauthorized(),
             });
 
-        var me = app.MapGroup("/api/me").WithTags("me");
+        var me = app.MapGroup("/api/me").NodeLocal().WithTags("me");
         me.MapGet("", async Task<Results<Ok<MeDto>, UnauthorizedHttpResult>> (ClaimsPrincipal user, AuthService s) =>
             await s.GetMeAsync(user) is { } dto ? TypedResults.Ok(dto) : TypedResults.Unauthorized());
         me.MapPost("/password", async Task<Results<NoContent, ValidationProblem>> (ChangePasswordRequest request, ClaimsPrincipal user, AuthService s) =>

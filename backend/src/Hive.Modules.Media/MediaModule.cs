@@ -1,3 +1,4 @@
+using Hive.Infrastructure;
 using Hive.Infrastructure.Identity;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -32,6 +33,7 @@ public static class MediaModule
         // Hornets authenticate with their upload token, not a user session.
         app.MapPost("/api/ingest/photo", IngestPhoto)
             .AllowAnonymous()
+            .NodeLocal()
             .DisableAntiforgery()
             .WithMetadata(new RequestSizeLimitAttribute(3 * 1024 * 1024))
             .WithTags("ingest");

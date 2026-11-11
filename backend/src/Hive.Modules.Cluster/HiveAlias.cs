@@ -53,7 +53,7 @@ public static class HiveAliasEndpoints
 {
     public static IEndpointRouteBuilder MapAliasEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/settings/alias").WithTags("settings");
+        var group = app.MapGroup("/api/settings/alias").NodeLocal().WithTags("settings");
         group.MapGet("", async (HiveAliasService s, CancellationToken ct) => TypedResults.Ok(new AliasDto(await s.GetAsync(ct))));
         group.MapPut("", async Task<Results<NoContent, ValidationProblem>> (AliasDto request, System.Security.Claims.ClaimsPrincipal user, HiveAliasService s, CancellationToken ct) =>
             {

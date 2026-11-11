@@ -227,7 +227,7 @@ public static class FailoverEndpoints
             .WithTags("devices")
             .RequireAuthorization(HiveRoles.CanControl);
 
-        var group = app.MapGroup("/api/failover").WithTags("failover");
+        var group = app.MapGroup("/api/failover").NodeLocal().WithTags("failover");
         group.MapGet("", async (FailoverService failover, CancellationToken ct) => TypedResults.Ok(await failover.StateAsync(ct)))
             .RequireAuthorization(HiveRoles.AdminOnly);
         group.MapPut("", async Task<Results<Ok<FailoverStateDto>, ValidationProblem>> (FailoverDto request, System.Security.Claims.ClaimsPrincipal user, FailoverService failover, CancellationToken ct) =>

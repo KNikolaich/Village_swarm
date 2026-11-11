@@ -1,3 +1,4 @@
+using Hive.Infrastructure;
 using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json.Nodes;
@@ -21,7 +22,7 @@ public static class ProvisioningEndpoints
 
     public static IEndpointRouteBuilder MapProvisioningEndpoints(this IEndpointRouteBuilder app)
     {
-        var provision = app.MapGroup("/api/provision").WithTags("provision");
+        var provision = app.MapGroup("/api/provision").NodeLocal().WithTags("provision");
 
         provision.MapPost("/codes", async Task<Results<Ok<EnrollmentCodeDto>, ValidationProblem>> (
                 CreateCodeRequest request, ClaimsPrincipal user, ProvisioningService service, CancellationToken ct) =>

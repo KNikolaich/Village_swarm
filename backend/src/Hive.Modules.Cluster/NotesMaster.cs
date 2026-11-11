@@ -433,7 +433,7 @@ public static class NotesMasterEndpoints
     /// <summary>City: the dacha's move of its notes. Checked by the key; nothing else here changes the house.</summary>
     public static IEndpointRouteBuilder MapNotesMasterEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/replica/notes").WithTags("cluster").ExcludeFromDescription().AllowAnonymous();
+        var group = app.MapGroup("/api/replica/notes").NodeLocal().WithTags("cluster").ExcludeFromDescription().AllowAnonymous();
 
         group.MapPost("/import", async (NotesImportRequest request, HttpRequest http, NotesImportService import,
             IOptions<ClusterOptions> options, IOptions<HiveOptions> hive, IOptions<CityBrokerOptions> secret, CancellationToken ct) =>

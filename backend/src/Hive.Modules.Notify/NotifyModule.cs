@@ -1,3 +1,4 @@
+using Hive.Infrastructure;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using Hive.Domain;
@@ -46,7 +47,7 @@ public static class NotifyModule
 
     public static IEndpointRouteBuilder MapNotifyEndpoints(this IEndpointRouteBuilder app)
     {
-        var tg = app.MapGroup("/api/me/telegram").WithTags("telegram");
+        var tg = app.MapGroup("/api/me/telegram").NodeLocal().WithTags("telegram");
 
         tg.MapGet("", async (ClaimsPrincipal user, UserManager<HiveUser> users, HiveDbContext db, TelegramGateway gateway, TelegramBotHost host, CancellationToken ct) =>
         {

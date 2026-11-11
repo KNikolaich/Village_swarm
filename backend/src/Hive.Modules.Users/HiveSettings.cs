@@ -60,6 +60,7 @@ public static class HiveSettingsEndpoints
                 await s.SetLanguageAsync(request.Language, $"user:{user.Identity?.Name}", ct);
                 return TypedResults.NoContent();
             })
+            .NodeLocal()
             .RequireAuthorization(HiveRoles.AdminOnly);
         settings.MapGet("/version", () => TypedResults.Ok(new VersionDto(HiveVersion())));
         // The service stops cleanly a moment after answering; the container's restart policy (unless-stopped) starts it again. For settings
@@ -74,6 +75,7 @@ public static class HiveSettingsEndpoints
                 });
                 return TypedResults.Accepted((string?)null);
             })
+            .NodeLocal()
             .RequireAuthorization(HiveRoles.AdminOnly);
         return app;
     }

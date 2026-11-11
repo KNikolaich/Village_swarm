@@ -1,3 +1,4 @@
+using Hive.Infrastructure;
 using System.Security.Claims;
 using Hive.Infrastructure.Identity;
 using Microsoft.AspNetCore.Builder;
@@ -39,7 +40,7 @@ public static class WeatherModule
             })
             .RequireAuthorization(HiveRoles.AdminOnly);
 
-        app.MapGroup("/api/settings/weather").WithTags("settings")
+        app.MapGroup("/api/settings/weather").NodeLocal().WithTags("settings")
             .MapWeatherSettings();
         return app;
     }

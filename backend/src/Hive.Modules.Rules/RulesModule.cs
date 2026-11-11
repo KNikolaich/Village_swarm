@@ -183,7 +183,7 @@ public static class RulesModule
 
     public static IEndpointRouteBuilder MapRulesEndpoints(this IEndpointRouteBuilder app)
     {
-        var rules = app.MapGroup("/api/rules").WithTags("rules");
+        var rules = app.MapGroup("/api/rules").NodeLocal().WithTags("rules");
         rules.MapGet("", (RuleService s, CancellationToken ct) => s.ListAsync(ct));
         rules.MapGet("/{id:int}", async Task<Results<Ok<RuleDto>, NotFound>> (int id, RuleService s, CancellationToken ct) =>
             await s.GetAsync(id, ct) is { } r ? TypedResults.Ok(r) : TypedResults.NotFound());
