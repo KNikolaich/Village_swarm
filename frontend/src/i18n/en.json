@@ -1788,7 +1788,16 @@
     "photosOff": "Off: it needs the city address, the shared CITY_MQTT_PASSWORD and the city link on (CLUSTER_ENABLED).",
     "photosNone": "Everything worth sending is already in the city.",
     "photosWaiting": "Waiting to be sent: {n}, of them alarms: {alarms}.",
-    "photosLast": "The last photo went {when}."
+    "photosLast": "The last photo went {when}.",
+    "certSha256": "SHA-256 fingerprint of the city's certificate (empty: remember it on the first connection)",
+    "pin": {
+      "settings": "The city's certificate is pinned by the fingerprint from the settings:",
+      "learned": "The city's certificate was remembered on the first connection:",
+      "none": "The city's certificate is not pinned yet: it will be remembered on the first connection."
+    },
+    "pinMismatch": "The city showed a different certificate, the connection was refused:",
+    "pinForget": "Forget the certificate (the city got a new one)",
+    "pinForgotten": "Forgotten: the next connection pins whatever certificate the city shows"
   },
   "prefer": {
     "title": "Preferred hive",

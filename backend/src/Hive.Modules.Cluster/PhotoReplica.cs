@@ -51,7 +51,7 @@ public static class PhotoReplicaPolicy
 }
 
 /// <summary>What the Settings card shows of the photo copy to the city.</summary>
-public sealed record PhotoReplicaStatusDto(bool Enabled, string? Url, int Waiting, int WaitingAlarms, DateTimeOffset? LastSentAt, string? LastError);
+public sealed record PhotoReplicaStatusDto(bool Enabled, string? Url, int Waiting, int WaitingAlarms, DateTimeOffset? LastSentAt, string? LastError, CityPinDto? Pin = null);
 
 /// <summary>Remembers the last send and the last problem, for the Settings card.</summary>
 public sealed class PhotoReplicaState
@@ -81,13 +81,14 @@ public sealed class PhotoReplicator(
     IServiceScopeFactory scopes,
     MediaStore store,
     PhotoReplicaState state,
+    CityPin pin,
     TimeProvider time,
     ILogger<PhotoReplicator> logger) : BackgroundService
 {
     public const string UrlKey = "failover.city";
     private const int Batch = 10;
 
-    private static readonly HttpClient Http = new(CityHttp.Handler(TimeSpan.FromSeconds(10))) { Timeout = TimeSpan.FromSeconds(60) };
+    private readonly HttpClient Http = new(CityHttp.Handler(TimeSpan.FromSeconds(10), pin)) { Timeout = TimeSpan.FromSeconds(60) };
 
     private bool Sending => options.Value.Enabled && hive.Value.Node == "home" && !string.IsNullOrEmpty(secret.Value.BridgePassword);
 
@@ -137,6 +138,7 @@ public sealed class PhotoReplicator(
         var url = CityUrl(await db.Modes.AsNoTracking().Where(m => m.Key == UrlKey).Select(m => m.Value).FirstOrDefaultAsync(ct));
         if (url is null)
             return 0;
+        await pin.EnsureFreshAsync(ct);
         var now = time.GetUtcNow();
         var sent = 0;
         foreach (var priority in new[] { PhotoReplicaPolicy.Alarm, PhotoReplicaPolicy.Event, PhotoReplicaPolicy.Periodic })
@@ -215,7 +217,9 @@ public sealed class PhotoReplicator(
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
         {
-            state.Failed($"the city does not answer: {ex.Message}");
+            state.Failed(pin.Describe().Seen is { } seen && ex.InnerException is System.Security.Authentication.AuthenticationException
+                ? $"the certificate of the city is not the pinned one (it shows {seen})"
+                : $"the city does not answer: {ex.Message}");
             return Outcome.CityUnreachable;
         }
         using (response)
@@ -238,12 +242,12 @@ public sealed class PhotoReplicator(
     }
 
     /// <summary>For the Settings card: what waits (and how many of it are alarms), when the last photo went and the last problem.</summary>
-    public static async Task<PhotoReplicaStatusDto> StatusAsync(HiveDbContext db, PhotoReplicaState state, bool enabled, string? url, DateTimeOffset now, CancellationToken ct)
+    public static async Task<PhotoReplicaStatusDto> StatusAsync(HiveDbContext db, PhotoReplicaState state, bool enabled, string? url, DateTimeOffset now, CancellationToken ct, CityPinDto? pin = null)
     {
         var alarms = await Waiting(db, PhotoReplicaPolicy.Alarm, now.AddYears(1)).CountAsync(ct);
         var events = await Waiting(db, PhotoReplicaPolicy.Event, now.AddYears(1)).CountAsync(ct);
         var periodic = await Waiting(db, PhotoReplicaPolicy.Periodic, now.AddYears(1)).CountAsync(ct);
-        return new PhotoReplicaStatusDto(enabled, url, alarms + events + periodic, alarms, state.LastSentAt, state.LastError);
+        return new PhotoReplicaStatusDto(enabled, url, alarms + events + periodic, alarms, state.LastSentAt, state.LastError, pin);
     }
 }
 
@@ -337,11 +341,20 @@ public static class PhotoReplicaEndpoints
             .ExcludeFromDescription()
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(12 * 1024 * 1024))
             .WithTags("replica");
-        app.MapGet("/api/replica/media", async (HiveDbContext db, PhotoReplicaState state, IOptions<ClusterOptions> cluster, IOptions<HiveOptions> hive, IOptions<CityBrokerOptions> secret, TimeProvider time, CancellationToken ct) =>
+        app.MapGet("/api/replica/media", async (HiveDbContext db, PhotoReplicaState state, CityPin pin, IOptions<ClusterOptions> cluster, IOptions<HiveOptions> hive, IOptions<CityBrokerOptions> secret, TimeProvider time, CancellationToken ct) =>
             {
                 var url = PhotoReplicator.CityUrl(await db.Modes.AsNoTracking().Where(m => m.Key == PhotoReplicator.UrlKey).Select(m => m.Value).FirstOrDefaultAsync(ct));
                 var enabled = cluster.Value.Enabled && hive.Value.Node == "home" && !string.IsNullOrEmpty(secret.Value.BridgePassword) && url is not null;
-                return TypedResults.Ok(await PhotoReplicator.StatusAsync(db, state, enabled, url, time.GetUtcNow(), ct));
+                await pin.EnsureFreshAsync(ct);
+                return TypedResults.Ok(await PhotoReplicator.StatusAsync(db, state, enabled, url, time.GetUtcNow(), ct, pin.Describe()));
+            })
+            .RequireAuthorization(HiveRoles.AdminOnly)
+            .WithTags("replica");
+        // The city got a new certificate: forget the pinned one, the next connection pins what the city shows then.
+        app.MapDelete("/api/replica/pin", async (HiveDbContext db, CityPin pin, CancellationToken ct) =>
+            {
+                await pin.ForgetAsync(db, ct);
+                return TypedResults.NoContent();
             })
             .RequireAuthorization(HiveRoles.AdminOnly)
             .WithTags("replica");
