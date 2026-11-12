@@ -402,6 +402,7 @@
     "loadMore": "Show more",
     "ack": "Viewed",
     "ackAll": "Mark all as viewed",
+    "ackFailed": "Could not mark as viewed: {why}",
     "acked": "Viewed",
     "allTypes": "All types",
     "allDevices": "All hornets",

@@ -90,9 +90,12 @@ export function EventCard({ event, onOpenPhoto, compact = false }: {
               <Check className="size-3.5" /> {t('events.acked')}
             </span>
           ) : (
-            <Button size="sm" variant="secondary" disabled={ack.isPending} onClick={() => ack.mutate(event.id)}>
-              {t('events.ack')}
-            </Button>
+            <div className="flex shrink-0 flex-col items-end">
+              <Button size="sm" variant="secondary" disabled={ack.isPending} onClick={() => ack.mutate(event.id)}>
+                {t('events.ack')}
+              </Button>
+              {ack.isError && <p role="alert" className="mt-1 max-w-48 text-xs text-red-400">{t('events.ackFailed').replace('{why}', ack.error.message)}</p>}
+            </div>
           )
         )}
       </div>
