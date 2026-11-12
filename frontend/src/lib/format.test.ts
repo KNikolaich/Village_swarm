@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { isBlank, orDash, takenBefore } from './format'
+import { setLanguage } from '@/i18n'
+import { formatDuration, isBlank, orDash, takenBefore } from './format'
 
 describe('takenBefore', () => {
   const asked = '2026-10-19T00:00:03Z'
@@ -25,5 +26,28 @@ describe('orDash', () => {
     expect(isBlank(0)).toBe(false)
     expect(isBlank('')).toBe(true)
     expect(isBlank(null)).toBe(true)
+  })
+})
+
+describe('formatDuration', () => {
+  it('declines Russian units by the number', () => {
+    setLanguage('ru')
+    expect(formatDuration(1)).toBe('1 минуту')
+    expect(formatDuration(5)).toBe('5 минут')
+    expect(formatDuration(22)).toBe('22 минуты')
+    expect(formatDuration(224)).toBe('3 часа 44 минуты')
+    expect(formatDuration(60)).toBe('1 час')
+    expect(formatDuration(1500)).toBe('1 сутки 1 час')
+    expect(formatDuration(5 * 1440)).toBe('5 суток')
+    expect(formatDuration(14 * 1440 + 2 * 1440)).toBe('2 недели 2 суток')
+    expect(formatDuration(60 * 1440)).toBe('2 месяца')
+    expect(formatDuration(11 * 60 + 5)).toBe('11 часов 5 минут')
+  })
+  it('reads English with singular and plural', () => {
+    setLanguage('en')
+    expect(formatDuration(1)).toBe('1 minute')
+    expect(formatDuration(224)).toBe('3 hours 44 minutes')
+    expect(formatDuration(1440)).toBe('1 day')
+    setLanguage('ru')
   })
 })

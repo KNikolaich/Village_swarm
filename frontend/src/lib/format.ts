@@ -39,6 +39,25 @@ export function formatAgo(iso: string | null | undefined, now = new Date()): str
   return formatWhen(iso, now)
 }
 
+/**
+ * A span of minutes in the largest fitting units with the right plural form ("3 часа 44 минуты", "2 суток 5 часов", "1 неделя 2 дня"):
+ * minutes, hours, days, weeks, months of 30 days; at most two units, the second dropped when it is zero.
+ */
+export function formatDuration(totalMinutes: number): string {
+  const total = Math.max(0, Math.floor(totalMinutes))
+  const rules = new Intl.PluralRules(locale())
+  const part = (unit: string, n: number) => {
+    const key = `duration.${unit}.${rules.select(n)}`
+    return t(key, t(`duration.${unit}.other`)).replace('{n}', String(n))
+  }
+  const units: [string, number][] = [['month', 43_200], ['week', 10_080], ['day', 1_440], ['hour', 60], ['minute', 1]]
+  const i = units.findIndex(([, size]) => total >= size)
+  const [unit, size] = units[i < 0 ? units.length - 1 : i]
+  const first = Math.floor(total / size)
+  const rest = i >= 0 && i < units.length - 1 ? Math.floor((total % size) / units[i + 1][1]) : 0
+  return rest > 0 ? `${part(unit, first)} ${part(units[i + 1][0], rest)}` : part(unit, first)
+}
+
 export const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
 
 /** Local calendar date as YYYY-MM-DD (what the API's `date` parameter expects). */
