@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, CloudDownload, Cpu, Moon, Plus, Terminal } from 'lucide-react'
+import { ArrowRightLeft, CloudDownload, Cpu, Moon, Plus, Settings, Terminal } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { OtaRolloutPanel } from '@/components/OtaRolloutPanel'
@@ -12,7 +12,8 @@ import { t } from '@/i18n'
 import { hiveName } from '@/lib/hiveStats'
 import { formatAgo } from '@/lib/format'
 import { candidates, newerBuild as newerBuildFor } from '@/lib/otaRollout'
-import { groupDevices, groupings, type Grouping, splitChildren } from '@/lib/swarm'
+import { groupDevices, groupings, type Grouping, isForeign, splitChildren } from '@/lib/swarm'
+import { Dialog } from '@/components/notes/Dialog'
 import { cn } from '@/lib/utils'
 import { FirmwarePanel } from '@/components/FirmwarePanel'
 import { Readings, StatusIcon, SleepHelp, QuickControls } from '@/components/DeviceReadings'
@@ -62,11 +63,24 @@ export function SwarmPage() {
     setGrouping(g)
     try { localStorage.setItem('swarm.grouping', g) } catch { /* private window: just not remembered */ }
   }
+  // Hornets that prefer the other hive are hidden unless asked for; remembered too.
+  const [showForeign, setShowForeign] = useState(() => {
+    try { return localStorage.getItem('swarm.showForeign') === '1' } catch { return false }
+  })
+  function toggleForeign(on: boolean) {
+    setShowForeign(on)
+    try { localStorage.setItem('swarm.showForeign', on ? '1' : '0') } catch { /* private window: just not remembered */ }
+  }
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const zones = useZones()
   const latest = useLatestTelemetry()
   const deceasedCount = (devices.data ?? []).filter((d) => d.status === 'disabled').length
+  const foreignCount = (devices.data ?? []).filter((d) => isForeign(d, cluster.data)).length
   const outdated = useMemo(() => candidates(devices.data ?? [], firmware.data ?? []).length, [devices.data, firmware.data])
-  const list = useMemo(() => (devices.data ?? []).filter((d) => showDeceased || d.status !== 'disabled'), [devices.data, showDeceased])
+  const list = useMemo(
+    () => (devices.data ?? []).filter((d) => (showDeceased || d.status !== 'disabled') && (showForeign || !isForeign(d, cluster.data))),
+    [devices.data, showDeceased, showForeign, cluster.data],
+  )
   // An NVR's cameras are listed under it, not in the groups.
   const { top, children } = useMemo(() => splitChildren(list), [list])
   const [folded, setFolded] = useState<ReadonlySet<string>>(() => new Set())
@@ -114,44 +128,64 @@ export function SwarmPage() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold">{t('swarm.title')}</h1>
-        {isAdmin && (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {(outdated > 0 || rolloutActive) && (
-              <Button variant="outline" className={rolloutActive ? 'text-amber-400' : undefined} onClick={() => setRolloutOpen(!rolloutOpen)}>
-                <CloudDownload />{rolloutActive ? t('swarm.rollout.openRunning') : t('swarm.rollout.open').replace('{n}', String(outdated))}
-              </Button>
-            )}
-            <Link to="/console">
-              <Button variant="outline" tabIndex={-1}><Terminal />{t('swarm.console')}</Button>
-            </Link>
-            <Link to="/swarm/add">
-              <Button tabIndex={-1}><Plus />{t('swarm.add')}</Button>
-            </Link>
-          </div>
-        )}
+        <div className="flex items-center gap-1">
+          <h1 className="text-lg font-semibold">{t('swarm.title')}</h1>
+          <Button variant="ghost" size="icon" title={t('swarm.settings.title')} aria-label={t('swarm.settings.title')}
+            className={rolloutActive ? 'text-amber-400' : undefined} onClick={() => setSettingsOpen(true)}><Settings /></Button>
+        </div>
       </div>
+
+      {settingsOpen && (
+        <Dialog title={t('swarm.settings.title')} onClose={() => setSettingsOpen(false)}>
+          <div className="space-y-4 p-2">
+            {isAdmin && (
+              <div className="flex flex-col items-stretch gap-2">
+                {(outdated > 0 || rolloutActive) && (
+                  <Button variant="outline" className={rolloutActive ? 'text-amber-400' : undefined}
+                    onClick={() => { setRolloutOpen(!rolloutOpen); setSettingsOpen(false) }}>
+                    <CloudDownload />{rolloutActive ? t('swarm.rollout.openRunning') : t('swarm.rollout.open').replace('{n}', String(outdated))}
+                  </Button>
+                )}
+                <Link to="/console">
+                  <Button variant="outline" tabIndex={-1} className="w-full"><Terminal />{t('swarm.console')}</Button>
+                </Link>
+                <Link to="/swarm/add">
+                  <Button tabIndex={-1} className="w-full"><Plus />{t('swarm.add')}</Button>
+                </Link>
+              </div>
+            )}
+            <div className="space-y-1">
+              <p className="text-xs text-neutral-500">{t('swarm.groupBy')}</p>
+              <div className="flex items-center gap-1 rounded-lg bg-neutral-950 p-1 text-xs" role="radiogroup" aria-label={t('swarm.groupBy')}>
+                {groupings.map((g) => (
+                  <button key={g} type="button" role="radio" aria-checked={grouping === g} onClick={() => changeGrouping(g)}
+                    className={cn('flex-1 rounded-md px-3 py-1.5', grouping === g ? 'bg-neutral-700 text-neutral-100' : 'text-neutral-400 hover:text-neutral-200')}>
+                    {t(`swarm.group.${g}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-2">
+              {deceasedCount > 0 && (
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-neutral-300" title={t('swarm.deceasedHint')}>
+                  <input type="checkbox" className="size-4 accent-amber-400" checked={showDeceased} onChange={(e) => toggleDeceased(e.target.checked)} />
+                  {t('swarm.showDeceased').replace('{n}', String(deceasedCount))}
+                </label>
+              )}
+              {cluster.data?.enabled && (
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-neutral-300" title={t('swarm.foreignHint')}>
+                  <input type="checkbox" className="size-4 accent-amber-400" checked={showForeign} onChange={(e) => toggleForeign(e.target.checked)} />
+                  {t('swarm.showForeign').replace('{n}', String(foreignCount))}
+                </label>
+              )}
+            </div>
+          </div>
+        </Dialog>
+      )}
 
       {isAdmin && (rolloutOpen || rolloutActive) && (
         <OtaRolloutPanel devices={devices.data ?? []} builds={firmware.data ?? []} rollout={rollout.data?.rollout ?? null} onClose={() => setRolloutOpen(false)} />
       )}
-
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <div className="flex items-center gap-1 rounded-lg bg-neutral-900 p-1 text-xs" role="radiogroup" aria-label={t('swarm.groupBy')}>
-          {groupings.map((g) => (
-            <button key={g} type="button" role="radio" aria-checked={grouping === g} onClick={() => changeGrouping(g)}
-              className={cn('rounded-md px-3 py-1.5', grouping === g ? 'bg-neutral-700 text-neutral-100' : 'text-neutral-400 hover:text-neutral-200')}>
-              {t(`swarm.group.${g}`)}
-            </button>
-          ))}
-        </div>
-        {deceasedCount > 0 && (
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-neutral-400" title={t('swarm.deceasedHint')}>
-            <input type="checkbox" className="size-4 accent-amber-400" checked={showDeceased} onChange={(e) => toggleDeceased(e.target.checked)} />
-            {t('swarm.showDeceased').replace('{n}', String(deceasedCount))}
-          </label>
-        )}
-      </div>
 
       {devices.isLoading && <Skeleton className="h-40" />}
       {!devices.isLoading && list.length === 0 && <Empty>{t('overview.noDevices')}</Empty>}
