@@ -15,21 +15,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['apple-touch-icon.png', 'favicon.ico', 'favicon.svg'],
-      manifest: {
-        name: 'Улей — Village Swarm',
-        short_name: 'Улей',
-        description: 'Охрана, климат и фото загородного дома',
-        lang: 'ru',
-        theme_color: '#0a0a0a',
-        background_color: '#0a0a0a',
-        display: 'standalone',
-        start_url: '/',
-        icons: [
-          { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-        ],
-      },
+      // public/manifest.webmanifest is linked from index.html by hand and is only Caddy's fallback: the api builds the real one (it carries the
+      // hive alias, backend HiveManifest). The plugin would precache it and the service worker would keep serving an old name.
+      manifest: false,
       workbox: {
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/hubs\//, /^\/swagger/, /^\/openapi/],

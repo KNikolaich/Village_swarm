@@ -100,6 +100,11 @@
 		header Content-Type application/x-x509-ca-cert
 		file_server
 	}
+	# The app's name is the hive's alias: the api builds the manifest. If it does not answer, the static one from the build is served (handle_errors).
+	handle /manifest.webmanifest {
+		rewrite * /api/manifest.webmanifest
+		import api
+	}
 	handle {
 		root * /srv/web
 		@assets path /assets/*
@@ -109,6 +114,19 @@
 		header @shell Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
+	}
+
+	handle_errors 502 503 504 {
+		@manifest path /manifest.webmanifest /api/manifest.webmanifest
+		handle @manifest {
+			root * /srv/web
+			rewrite * /manifest.webmanifest
+			header Cache-Control "no-cache"
+			# handle_errors keeps the error status; a manifest that is not 200 is dropped by the browser.
+			file_server {
+				status 200
+			}
+		}
 	}
 }
 
@@ -154,6 +172,15 @@ http://:8088 {
 			header_up X-Forwarded-For {client_ip}
 		}
 	}
+	# The app's name is the hive's alias: the api builds the manifest. If it does not answer, the static one from the build is served (handle_errors).
+	handle /manifest.webmanifest {
+		rewrite * /api/manifest.webmanifest
+		reverse_proxy api:8080 {
+			header_up X-Hive-External 1
+			header_up X-Forwarded-Proto https
+			header_up X-Forwarded-For {client_ip}
+		}
+	}
 	handle {
 		root * /srv/web
 		@assets path /assets/*
@@ -163,5 +190,18 @@ http://:8088 {
 		header @shell Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
+	}
+
+	handle_errors 502 503 504 {
+		@manifest path /manifest.webmanifest /api/manifest.webmanifest
+		handle @manifest {
+			root * /srv/web
+			rewrite * /manifest.webmanifest
+			header Cache-Control "no-cache"
+			# handle_errors keeps the error status; a manifest that is not 200 is dropped by the browser.
+			file_server {
+				status 200
+			}
+		}
 	}
 }
