@@ -74,6 +74,7 @@ export function EventsPage() {
           {t('events.ackAll')} {unseen > 0 && `(${unseen})`}
         </Button>
       </div>
+      {ackAll.isError && <p role="alert" className="text-sm text-red-400">{t('events.ackFailed').replace('{why}', ackAll.error.message)}</p>}
 
       {events.isLoading && Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-28" />)}
       {!events.isLoading && items.length === 0 && <Empty>{t('events.empty')}</Empty>}

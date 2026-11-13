@@ -180,6 +180,12 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
         Assert.Equal(HttpStatusCode.Forbidden, modeRefused.StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/zones")).StatusCode);
 
+        // "Просмотрено" is a mark in the node's own feed: it works on the observer, for one event and for all of them
+        using var viewedAll = await admin.PostAsJsonAsync("/api/events/ack", new { });
+        Assert.Equal(HttpStatusCode.OK, viewedAll.StatusCode);
+        using var viewedOne = await admin.PostAsync("/api/events/01NOSUCHEVENT0000000000000/ack", null);
+        Assert.Equal(HttpStatusCode.NotFound, viewedOne.StatusCode);   // not 403: the route itself is open
+
         // a person's own settings stay open on an observer: the password (a wrong current one is answered as a validation error, not "403"),
         // and linking a Telegram chat to the city's bot
         using var ownPassword = await admin.PostAsJsonAsync("/api/me/password", new { currentPassword = "not-my-password", newPassword = "Another-pass-12345" });

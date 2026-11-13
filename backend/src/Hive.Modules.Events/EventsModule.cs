@@ -173,11 +173,13 @@ public static class EventsModule
             await q.GetAsync(id, ct) is { } e ? TypedResults.Ok(e) : TypedResults.NotFound());
         events.MapPost("/{id}/ack", async Task<Results<Ok<EventDto>, NotFound>> (string id, ClaimsPrincipal user, EventQueries q, CancellationToken ct) =>
                 await q.AcknowledgeAsync(id, $"user:{user.Identity?.Name}", ct) is { } e ? TypedResults.Ok(e) : TypedResults.NotFound())
-            .RequireAuthorization(HiveRoles.CanControl);
+            .RequireAuthorization(HiveRoles.CanControl)
+            .NodeLocal();   // "viewed" is a mark in this node's own feed: the city (observer) must be able to set it too
         // "Отметить все просмотренными": the filter of the feed (device, from, to). Body may be empty.
         events.MapPost("/ack", async Task<Ok<AckAllResult>> (AckAllRequest? request, ClaimsPrincipal user, EventQueries q, CancellationToken ct) =>
                 TypedResults.Ok(new AckAllResult(await q.AcknowledgeManyAsync(request ?? new AckAllRequest(), $"user:{user.Identity?.Name}", ct))))
-            .RequireAuthorization(HiveRoles.CanControl);
+            .RequireAuthorization(HiveRoles.CanControl)
+            .NodeLocal();
         return app;
     }
 }
