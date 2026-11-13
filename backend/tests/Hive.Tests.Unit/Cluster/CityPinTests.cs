@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Hive.Tests.Unit.Cluster;
 
-/// <summary>The certificate of the city is pinned: the typed fingerprint, or the one seen first, and nothing else gets through.</summary>
+/// <summary>The certificate of the city is checked only against a fingerprint typed in Settings; the city's own certificates rotate, so none is learned.</summary>
 public class CityPinTests
 {
     private const string City = """{"host":null,"port":1883,"replicaUrl":"https://city.test"}""";
@@ -102,50 +102,44 @@ public class CityPinTests
         using var server = new TlsServer(real);
         var pin = Pin();
 
-        pin.Load(Setting(Sha(real)), null, DateTimeOffset.UtcNow);
+        pin.Load(Setting(Sha(real)), DateTimeOffset.UtcNow);
         Assert.Equal("ok", await GetAsync(pin, server.Url));
         Assert.Equal(("settings", Sha(real)), (pin.Describe().Source, pin.Describe().Pinned));
 
-        pin.Load(Setting(Sha(other)), null, DateTimeOffset.UtcNow);
+        pin.Load(Setting(Sha(other)), DateTimeOffset.UtcNow);
         await Assert.ThrowsAsync<HttpRequestException>(() => GetAsync(pin, server.Url));
         Assert.Equal(Sha(real), pin.Describe().Seen);   // for the card: what the city really showed
     }
 
     [Fact]
-    public async Task Without_a_typed_fingerprint_the_first_certificate_is_remembered_and_only_it_is_trusted()
+    public async Task Without_a_typed_fingerprint_every_certificate_of_the_city_is_let_in_so_a_renewed_one_does_not_cut_the_link()
     {
         using var first = SelfSigned();
-        using var second = SelfSigned();
+        using var renewed = SelfSigned();   // the city issues a new certificate every few hours
         var pin = Pin();
-        pin.Load(Setting(null), null, DateTimeOffset.UtcNow);
+        pin.Load(Setting(null), DateTimeOffset.UtcNow);
 
         using (var server = new TlsServer(first))
             Assert.Equal("ok", await GetAsync(pin, server.Url));
-        Assert.Equal(("learned", Sha(first)), (pin.Describe().Source, pin.Describe().Pinned));
+        using (var server = new TlsServer(renewed))
+            Assert.Equal("ok", await GetAsync(pin, server.Url));
 
-        using (var server = new TlsServer(first))
-            Assert.Equal("ok", await GetAsync(pin, server.Url));   // the same city is let in again
-        using (var server = new TlsServer(second))
-            await Assert.ThrowsAsync<HttpRequestException>(() => GetAsync(pin, server.Url));   // somebody else is not
+        var described = pin.Describe();
+        Assert.Equal(("none", null, null), (described.Source, described.Pinned, described.Seen));
     }
 
     [Fact]
-    public async Task A_pin_learned_for_another_address_is_not_used_and_the_typed_one_wins_over_the_learned_one()
+    public async Task Typing_a_fingerprint_later_turns_the_check_on_and_clearing_it_turns_it_off()
     {
         using var real = SelfSigned();
-        using var old = SelfSigned();
+        using var other = SelfSigned();
         using var server = new TlsServer(real);
         var pin = Pin();
 
-        // learned for a different city address: it says nothing about this one, so this city is learned afresh
-        pin.Load(Setting(null), $$"""{"url":"https://elsewhere.test","sha256":"{{Sha(old)}}"}""", DateTimeOffset.UtcNow);
-        Assert.Equal("ok", await GetAsync(pin, server.Url));
-        Assert.Equal(Sha(real), pin.Describe().Pinned);
-
-        // learned for this address and different from the certificate: refused, unless the typed fingerprint says otherwise
-        pin.Load(Setting(null), $$"""{"url":"https://city.test","sha256":"{{Sha(old)}}"}""", DateTimeOffset.UtcNow);
+        pin.Load(Setting(Sha(other)), DateTimeOffset.UtcNow);
         await Assert.ThrowsAsync<HttpRequestException>(() => GetAsync(pin, server.Url));
-        pin.Load(Setting(Sha(real)), $$"""{"url":"https://city.test","sha256":"{{Sha(old)}}"}""", DateTimeOffset.UtcNow);
+
+        pin.Load(Setting(null), DateTimeOffset.UtcNow);
         Assert.Equal("ok", await GetAsync(pin, server.Url));
     }
 }

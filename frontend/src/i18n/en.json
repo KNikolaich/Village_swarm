@@ -1825,11 +1825,11 @@
     "photosNone": "Everything worth sending is already in the city.",
     "photosWaiting": "Waiting to be sent: {n}, of them alarms: {alarms}.",
     "photosLast": "The last photo went {when}.",
-    "certSha256": "SHA-256 fingerprint of the city's certificate (empty: remember it on the first connection)",
+    "certSha256": "SHA-256 fingerprint of the city's certificate (usually empty: the city's certificate is renewed every few hours, pin only a permanent one)",
     "pin": {
       "settings": "The city's certificate is pinned by the fingerprint from the settings:",
       "learned": "The city's certificate was remembered on the first connection:",
-      "none": "The city's certificate is not pinned yet: it will be remembered on the first connection."
+      "none": "The city's certificate is not pinned: it changes every few hours. The city is recognised by the shared key and the tunnel."
     },
     "pinMismatch": "The city showed a different certificate, the connection was refused:",
     "pinForget": "Forget the certificate (the city got a new one)",

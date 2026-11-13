@@ -11,13 +11,14 @@ namespace Hive.Modules.Cluster;
 public sealed record CityPinDto(string? Pinned, string Source, string? Seen);
 
 /// <summary>
-/// Which certificate of the city this node trusts. The city's certificate is self-signed, so it is not checked against any authority;
-/// instead its SHA-256 fingerprint is pinned: either typed in Settings (<c>certSha256</c> in <c>failover.city</c>) or, when that is empty,
-/// learned on the first connection (trust on first use) and kept in <see cref="LearnedKey"/> together with the address it was learned for.
-/// A different certificate is refused (the key made from the shared secret still proves who asks, but only the pin proves who answers).
+/// Which certificate of the city this node insists on. The city's certificate is self-signed (Caddy "tls internal") and is replaced every
+/// few hours, so a fingerprint learned from it would refuse the city after the first renewal; therefore nothing is learned. Only a
+/// fingerprint typed in Settings (<c>certSha256</c> in <c>failover.city</c>, for a certificate that does not rotate) is enforced.
+/// Without it the way there is the WireGuard tunnel and the key made from the shared secret proves who asks.
 /// </summary>
 public sealed class CityPin(IServiceScopeFactory scopes, TimeProvider time)
 {
+    /// <summary>Where an earlier version kept a learned fingerprint: not read any more, only removed by <see cref="ForgetAsync"/>.</summary>
     public const string LearnedKey = "failover.city.pin";
 
     private static readonly TimeSpan Fresh = TimeSpan.FromSeconds(30);
@@ -25,8 +26,6 @@ public sealed class CityPin(IServiceScopeFactory scopes, TimeProvider time)
 
     private string? _url;
     private string? _explicit;
-    private string? _learned;
-    private string? _learnedUrl;
     private string? _seen;
     private DateTimeOffset _loadedAt = DateTimeOffset.MinValue;
 
@@ -41,7 +40,7 @@ public sealed class CityPin(IServiceScopeFactory scopes, TimeProvider time)
 
     public static string Fingerprint(X509Certificate certificate) => Convert.ToHexStringLower(new X509Certificate2(certificate).GetCertHash(System.Security.Cryptography.HashAlgorithmName.SHA256));
 
-    /// <summary>Reads the setting and the learned pin (at most every 30 seconds): call before talking to the city.</summary>
+    /// <summary>Reads the city setting (at most every 30 seconds): call before talking to the city.</summary>
     public async Task EnsureFreshAsync(CancellationToken ct)
     {
         var now = time.GetUtcNow();
@@ -52,95 +51,45 @@ public sealed class CityPin(IServiceScopeFactory scopes, TimeProvider time)
         }
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<HiveDbContext>();
-        var rows = await db.Modes.AsNoTracking().Where(m => m.Key == PhotoReplicator.UrlKey || m.Key == LearnedKey).ToDictionaryAsync(m => m.Key, m => m.Value, ct);
-        Load(rows.GetValueOrDefault(PhotoReplicator.UrlKey), rows.GetValueOrDefault(LearnedKey), now);
+        var setting = await db.Modes.AsNoTracking().Where(m => m.Key == PhotoReplicator.UrlKey).Select(m => m.Value).FirstOrDefaultAsync(ct);
+        Load(setting, now);
     }
 
     /// <summary>Takes the stored values in (tests call this instead of reading the database).</summary>
-    internal void Load(string? citySetting, string? learnedJson, DateTimeOffset now)
+    internal void Load(string? citySetting, DateTimeOffset now)
     {
         string? explicitPin = null;
-        string? learned = null, learnedUrl = null;
         if (citySetting is not null)
         {
             using var doc = JsonDocument.Parse(citySetting);
             if (doc.RootElement.TryGetProperty("certSha256", out var p) && p.ValueKind == JsonValueKind.String)
                 explicitPin = Normalize(p.GetString());
         }
-        if (learnedJson is not null)
-        {
-            using var doc = JsonDocument.Parse(learnedJson);
-            learned = doc.RootElement.TryGetProperty("sha256", out var s) ? Normalize(s.GetString()) : null;
-            learnedUrl = doc.RootElement.TryGetProperty("url", out var u) ? u.GetString() : null;
-        }
         lock (gate)
         {
             _url = PhotoReplicator.CityUrl(citySetting);
             _explicit = explicitPin;
-            // A pin learned for another address says nothing about this one.
-            _learned = learned;
-            _learnedUrl = learnedUrl;
             _loadedAt = now;
         }
     }
 
-    private string? Effective => _explicit ?? (_learned is not null && _learnedUrl == _url ? _learned : null);
-
-    /// <summary>Called while the TLS connection is set up: true to go on. With no pin the first certificate seen is remembered.</summary>
+    /// <summary>Called while the TLS connection is set up: true to go on. With no typed fingerprint every certificate of the city is let in.</summary>
     public bool Accept(string fingerprint)
     {
-        bool learnNow = false;
-        string? url;
-        bool ok;
         lock (gate)
         {
             _seen = fingerprint;
-            var pinned = Effective;
-            ok = pinned is null || string.Equals(pinned, fingerprint, StringComparison.OrdinalIgnoreCase);
-            url = _url;
-            if (pinned is null && url is not null)
-            {
-                _learned = fingerprint;
-                _learnedUrl = url;
-                learnNow = true;
-            }
-        }
-        if (learnNow)
-            _ = Task.Run(() => PersistAsync(url!, fingerprint));
-        return ok;
-    }
-
-    private async Task PersistAsync(string url, string fingerprint)
-    {
-        try
-        {
-            using var scope = scopes.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<HiveDbContext>();
-            var value = JsonSerializer.Serialize(new { url, sha256 = fingerprint });
-            var row = await db.Modes.FirstOrDefaultAsync(m => m.Key == LearnedKey);
-            if (row is null)
-                db.Modes.Add(new Mode { Key = LearnedKey, Value = value, UpdatedAt = time.GetUtcNow(), UpdatedBy = "city-pin" });
-            else
-            {
-                row.Value = value;
-                row.UpdatedAt = time.GetUtcNow();
-            }
-            await db.SaveChangesAsync();
-        }
-        catch (Exception)
-        {
-            // Not stored: the next start learns again (and refuses a different one only if this one was stored).
+            var pinned = _explicit;
+            return pinned is null || string.Equals(pinned, fingerprint, StringComparison.OrdinalIgnoreCase);
         }
     }
 
-    /// <summary>Forgets what was learned: the next connection pins whatever certificate the city shows then (the city got a new one).</summary>
+    /// <summary>Removes a fingerprint an earlier version had learned (it is not used any more).</summary>
     public async Task ForgetAsync(HiveDbContext db, CancellationToken ct)
     {
         await db.Modes.Where(m => m.Key == LearnedKey).ExecuteDeleteAsync(ct);
         lock (gate)
         {
-            _learned = null;
-            _learnedUrl = null;
             _seen = null;
         }
     }
@@ -149,8 +98,9 @@ public sealed class CityPin(IServiceScopeFactory scopes, TimeProvider time)
     {
         lock (gate)
         {
-            var pinned = Effective;
-            return new CityPinDto(pinned, _explicit is not null ? "settings" : pinned is not null ? "learned" : "none", _seen is not null && _seen != pinned ? _seen : null);
+            var pinned = _explicit;
+            // "Seen" is for a refusal: what the city showed instead of the typed fingerprint.
+            return new CityPinDto(pinned, pinned is not null ? "settings" : "none", pinned is not null && _seen is not null && _seen != pinned ? _seen : null);
         }
     }
 }
