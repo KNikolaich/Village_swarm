@@ -86,6 +86,20 @@ export function splitChildren(devices: readonly DeviceDto[]): { top: DeviceDto[]
   return { top, children }
 }
 
+/**
+ * A hornet whose preferred hive is not the one on screen (a dacha hornet seen in the city that prefers the dacha, and the other
+ * way round). Without a second hive (cluster off) nobody is foreign. Mirrors PreferHivePanel: the enrolled hive is the default
+ * preference, "other" flips it.
+ */
+export function isForeign(d: DeviceDto, cluster: { enabled?: boolean; node?: string } | undefined): boolean {
+  if (!cluster?.enabled) return false
+  const onCity = cluster.node === 'city'
+  const madeHere = onCity ? !!d.local : !d.visitor
+  const enrolledOnScreen = madeHere
+  const prefersScreen = d.preferHive === 'other' ? !enrolledOnScreen : enrolledOnScreen
+  return !prefersScreen
+}
+
 /** Readings shown in a swarm row, in this order; anything else the hornet reports follows by name. */
 const readingOrder = ['temperature', 'temperature_2', 'temperature_ntc', 'humidity', 'pressure', 'battery_voltage', 'cpu_temperature', 'cpu_load_pct', 'mem_used_pct', 'disk_used_pct']
 

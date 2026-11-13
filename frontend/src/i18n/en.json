@@ -901,6 +901,9 @@
       "failedHint": "Check the hornet and its update event in Events. Update the rest again once it is sorted out."
     },
     "console": "USB console",
+    "settings": { "title": "Swarm settings" },
+    "showForeign": "Show foreign ({n})",
+    "foreignHint": "Foreign: hornets that prefer the other hive (e.g. the dacha's, seen in the city). Hidden by default.",
     "showDeceased": "Show the deceased ({n})",
     "deceasedHint": "Removed hornets are hidden, but their records and history are kept. Turn it on to bring one back to life on a new board.",
     "revive": "Revive",

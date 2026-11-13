@@ -1,12 +1,33 @@
 import { describe, expect, it } from 'vitest'
 import type { DeviceDto, LatestValueDto, ZoneDto } from '@/api/client'
-import { groupDevices, mainReadings, quickControls, relayChannels, splitChildren } from './swarm'
+import { groupDevices, isForeign, mainReadings, quickControls, relayChannels, splitChildren } from './swarm'
 
 const device = (deviceId: string, type: string, extra: Partial<DeviceDto> = {}) =>
   ({ deviceId, type, name: deviceId, status: 'online', rssi: -50, zoneId: null, sort: 0, ...extra }) as DeviceDto
 const zone = (id: number, name: string, sort = 0) => ({ id, name, kind: 'house', deviceCount: 0, sort }) as ZoneDto
 const labels = { hives: 'Ульи', noZone: 'Без группы', type: (t: string) => t }
 const ids = (groups: ReturnType<typeof groupDevices>) => groups.map((g) => [g.title, g.devices.map((d) => d.deviceId)])
+
+describe('isForeign', () => {
+  const city = { enabled: true, node: 'city' }
+  const dacha = { enabled: true, node: 'dacha' }
+  it('is never true without a second hive', () => {
+    expect(isForeign(device('a', 'meteo', { local: false }), { enabled: false, node: 'city' })).toBe(false)
+    expect(isForeign(device('a', 'meteo'), undefined)).toBe(false)
+  })
+  it('counts a copy of the other hive\'s hornet that prefers its own hive as foreign', () => {
+    expect(isForeign(device('a', 'meteo', { local: false }), city)).toBe(true)
+    expect(isForeign(device('a', 'meteo', { visitor: true }), dacha)).toBe(true)
+  })
+  it('keeps the hornets made here, and visitors that prefer this hive', () => {
+    expect(isForeign(device('a', 'meteo', { local: true }), city)).toBe(false)
+    expect(isForeign(device('a', 'meteo', { visitor: false }), dacha)).toBe(false)
+    expect(isForeign(device('a', 'meteo', { local: false, preferHive: 'other' }), city)).toBe(false)
+  })
+  it('makes a hornet made here foreign when it prefers the other hive', () => {
+    expect(isForeign(device('a', 'meteo', { local: true, preferHive: 'other' }), city)).toBe(true)
+  })
+})
 
 describe('groupDevices', () => {
   const devices = [
