@@ -18,11 +18,17 @@ export function getLanguage(): Language {
 
 /** `t('nav.events')`. A missing English string falls back to Russian, a missing key to the fallback or the key. */
 export function t(key: string, fallback?: string): string {
-  const lookup = (dict: Dict) => {
-    let node: string | Dict | undefined = dict
-    for (const part of key.split('.')) node = typeof node === 'object' ? node[part] : undefined
-    return typeof node === 'string' ? node : undefined
+  // A leaf key may itself contain dots ("secrets.names.telegram.token"): try the longest joined segment at every level.
+  const find = (node: string | Dict | undefined, parts: string[]): string | undefined => {
+    if (typeof node === 'string') return parts.length === 0 ? node : undefined
+    if (node === undefined || parts.length === 0) return undefined
+    for (let n = 1; n <= parts.length; n++) {
+      const hit = find(node[parts.slice(0, n).join('.')], parts.slice(n))
+      if (hit !== undefined) return hit
+    }
+    return undefined
   }
+  const lookup = (dict: Dict) => find(dict, key.split('.'))
   return lookup(dictionaries[current]) ?? lookup(ru as Dict) ?? fallback ?? key
 }
 

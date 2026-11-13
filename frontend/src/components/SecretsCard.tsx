@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { ApiError, api, call } from '@/api/client'
 import { useMe } from '@/api/queries'
 import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
@@ -48,8 +48,8 @@ function SecretRow({ secretKey, source }: { secretKey: string; source: string })
       setValue('')
       await qc.invalidateQueries({ queryKey })
       toast.success(t(next ? 'secrets.saved' : 'secrets.cleared'))
-    } catch {
-      toast.error(t('errors.generic'))
+    } catch (e) {
+      toast.error(e instanceof ApiError && e.status === 403 ? e.message : t('errors.generic'))
     } finally {
       setBusy(false)
     }

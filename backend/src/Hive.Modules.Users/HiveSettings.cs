@@ -107,7 +107,7 @@ public static class HiveSettingsEndpoints
     private static void MapConfig(RouteGroupBuilder settings)
     {
         // Admins only. Plain parameters that used to live in .env; most are read at start, so the page offers a restart.
-        var config = settings.MapGroup("/config").RequireAuthorization(HiveRoles.AdminOnly);
+        var config = settings.MapGroup("/config").NodeLocal().RequireAuthorization(HiveRoles.AdminOnly);
         config.MapGet("", async (ConfigStore store, CancellationToken ct) =>
             TypedResults.Ok(new ConfigListDto(ConfigSettings.Sections, (await store.ListAsync(ct)).Select(x => new ConfigDto(
                 x.Def.Key, x.Def.Section, x.Def.Kind.ToString().ToLowerInvariant(), x.Def.Apply.ToString().ToLowerInvariant(), x.Value, x.Stored,
@@ -127,8 +127,8 @@ public static class HiveSettingsEndpoints
 
     private static void MapSecrets(RouteGroupBuilder settings)
     {
-        // Admins only. Values go in and never come out; they are read at start, so the page offers a restart.
-        var secrets = settings.MapGroup("/secrets").RequireAuthorization(HiveRoles.AdminOnly);
+        // Admins only. Node-local: each node keeps its own tokens and keys, so the observer (city) accepts them too. Values go in and never come out; they are read at start, so the page offers a restart.
+        var secrets = settings.MapGroup("/secrets").NodeLocal().RequireAuthorization(HiveRoles.AdminOnly);
         secrets.MapGet("", async (SecretStore store, Microsoft.Extensions.Configuration.IConfiguration configuration, CancellationToken ct) =>
             TypedResults.Ok(new SecretsDto(
                 (await store.StatusAsync(ct)).Select(x => new SecretDto(x.Key, x.Group, x.Source.ToString().ToLowerInvariant(), x.UpdatedAt, x.UpdatedBy)).ToList(),

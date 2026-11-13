@@ -58,7 +58,8 @@ export class ApiError extends Error {
 export async function call<T>(promise: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
   const { data, error, response } = await promise
   if (!response.ok) {
-    const detail = (error as { detail?: string } | undefined)?.detail
+    const body = error as { detail?: string; title?: string } | undefined
+    const detail = body?.detail ?? body?.title
     throw new ApiError(response.status, detail)
   }
   return data as T

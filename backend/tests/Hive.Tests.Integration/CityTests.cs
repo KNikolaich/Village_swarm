@@ -198,6 +198,11 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
         Assert.NotEqual(HttpStatusCode.Forbidden, weather.StatusCode);
         using var language = await admin.PutAsJsonAsync("/api/settings/language", new { language = "ru" });
         Assert.NotEqual(HttpStatusCode.Forbidden, language.StatusCode);
+        // and the node's own secrets (bot token, LLM key) and config: the city keeps its own, they are never copied from home
+        using var secret = await admin.PutAsJsonAsync("/api/settings/secrets/assistant.apikey", new { value = "sk-city-test" });
+        Assert.Equal(HttpStatusCode.NoContent, secret.StatusCode);
+        using var configPut = await admin.PutAsJsonAsync("/api/settings/config/no.such.key", new { value = "x" });
+        Assert.Equal(HttpStatusCode.NotFound, configPut.StatusCode);
         using var wifi = await admin.PutAsJsonAsync("/api/settings/wifi", new { });
         Assert.Equal(HttpStatusCode.Forbidden, wifi.StatusCode);
 
