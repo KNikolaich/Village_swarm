@@ -12,6 +12,7 @@ using Hive.Infrastructure.Mqtt;
 using Hive.Modules.Media;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,6 +53,9 @@ public static class PhotoReplicaPolicy
 
 /// <summary>What the Settings card shows of the photo copy to the city.</summary>
 public sealed record PhotoReplicaStatusDto(bool Enabled, string? Url, int Waiting, int WaitingAlarms, DateTimeOffset? LastSentAt, string? LastError, CityPinDto? Pin = null);
+
+/// <summary>What a day range of the photo archive looks like to the city copy: how many photos, how many are there, how many are queued by hand.</summary>
+public sealed record PhotoRangeReplicaDto(bool Enabled, int Total, int AtCity, int Waiting);
 
 /// <summary>Remembers the last send and the last problem, for the Settings card.</summary>
 public sealed class PhotoReplicaState
@@ -167,7 +171,7 @@ public sealed class PhotoReplicator(
         var oldest = now - PhotoReplicaPolicy.Ttl(priority);
         var query =
             from m in db.Media
-            where m.ReplicatedAt == null && m.ReceivedAt >= oldest && (m.ReplicaNextAt == null || m.ReplicaNextAt <= now)
+            where m.ReplicatedAt == null && (m.ReplicaForced || m.ReceivedAt >= oldest) && (m.ReplicaNextAt == null || m.ReplicaNextAt <= now)
             join e in db.Events on m.EventId equals e.Id into events
             from e in events.DefaultIfEmpty()
             select new { m, Severity = (EventSeverity?)e.Severity };
@@ -251,6 +255,44 @@ public sealed class PhotoReplicator(
     }
 }
 
+/// <summary>The "send to the city" action of the photo archive: a range of days, for one camera or all, optionally only the kept ones.</summary>
+public static class PhotoRangeReplica
+{
+    /// <summary>The longest range one request may touch.</summary>
+    public const int MaxDays = 366;
+
+    public static IQueryable<MediaItem> Range(HiveDbContext db, HiveOptions hive, DateOnly from, DateOnly to, string? device, bool pinnedOnly)
+    {
+        var (start, _) = hive.DayRange(from);
+        var (_, end) = hive.DayRange(to);
+        var query = db.Media.Where(m => m.Ts >= start && m.Ts < end);
+        if (!string.IsNullOrEmpty(device))
+            query = query.Where(m => m.DeviceId == device);
+        if (pinnedOnly)
+            query = query.Where(m => m.Pinned);
+        return query;
+    }
+
+    public static bool Valid(DateOnly from, DateOnly to) => from <= to && to.DayNumber - from.DayNumber < MaxDays;
+
+    /// <summary>Puts every photo of the range that is not at the city on the queue: no pause, no failed tries, past its time or not.</summary>
+    public static async Task<int> QueueAsync(HiveDbContext db, HiveOptions hive, DateOnly from, DateOnly to, string? device, bool pinnedOnly, CancellationToken ct) =>
+        await Range(db, hive, from, to, device, pinnedOnly).Where(m => m.ReplicatedAt == null)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(m => m.ReplicaForced, true)
+                .SetProperty(m => m.ReplicaTries, 0)
+                .SetProperty(m => m.ReplicaNextAt, (DateTimeOffset?)null), ct);
+
+    public static async Task<PhotoRangeReplicaDto> ProgressAsync(HiveDbContext db, HiveOptions hive, bool enabled, DateOnly from, DateOnly to, string? device, bool pinnedOnly, CancellationToken ct)
+    {
+        var query = Range(db, hive, from, to, device, pinnedOnly).AsNoTracking();
+        var total = await query.CountAsync(ct);
+        var atCity = await query.CountAsync(m => m.ReplicatedAt != null, ct);
+        var waiting = await query.CountAsync(m => m.ReplicatedAt == null && m.ReplicaForced, ct);
+        return new PhotoRangeReplicaDto(enabled, total, atCity, waiting);
+    }
+}
+
 /// <summary>City: keeps the photos home sends. Checks the key made from the shared secret, and that the bytes are the photo home named.</summary>
 public sealed partial class PhotoReplicaReceiver(
     HiveDbContext db,
@@ -329,8 +371,14 @@ public sealed partial class PhotoReplicaReceiver(
     }
 }
 
+public sealed record PhotoRangeRequest(DateOnly From, DateOnly To, string? Device, bool PinnedOnly);
+
 public static class PhotoReplicaEndpoints
 {
+    private static async Task<bool> ReplicaEnabledAsync(HiveDbContext db, ClusterOptions cluster, HiveOptions hive, CityBrokerOptions secret, CancellationToken ct) =>
+        cluster.Enabled && hive.Node == "home" && !string.IsNullOrEmpty(secret.BridgePassword)
+        && PhotoReplicator.CityUrl(await db.Modes.AsNoTracking().Where(m => m.Key == PhotoReplicator.UrlKey).Select(m => m.Value).FirstOrDefaultAsync(ct)) is not null;
+
     public static IEndpointRouteBuilder MapPhotoReplicaEndpoints(this IEndpointRouteBuilder app)
     {
         // Home's node authenticates with the key made from the shared secret, not with a user session.
@@ -349,6 +397,27 @@ public static class PhotoReplicaEndpoints
                 return TypedResults.Ok(await PhotoReplicator.StatusAsync(db, state, enabled, url, time.GetUtcNow(), ct, pin.Describe()));
             })
             .RequireAuthorization(HiveRoles.AdminOnly)
+            .WithTags("replica");
+        // The photo archive's "send to the city" for a range of days (viewers only look).
+        app.MapGet("/api/replica/media/range", async Task<Results<Ok<PhotoRangeReplicaDto>, BadRequest<string>>> (DateOnly from, DateOnly to, string? device, bool? pinned, HiveDbContext db, IOptions<ClusterOptions> cluster, IOptions<HiveOptions> hive, IOptions<CityBrokerOptions> secret, CancellationToken ct) =>
+            {
+                if (!PhotoRangeReplica.Valid(from, to))
+                    return TypedResults.BadRequest("bad range");
+                var enabled = await ReplicaEnabledAsync(db, cluster.Value, hive.Value, secret.Value, ct);
+                return TypedResults.Ok(await PhotoRangeReplica.ProgressAsync(db, hive.Value, enabled, from, to, device, pinned ?? false, ct));
+            })
+            .RequireAuthorization(HiveRoles.CanControl)
+            .WithTags("replica");
+        app.MapPost("/api/replica/media/range", async Task<Results<Ok<PhotoRangeReplicaDto>, BadRequest<string>, Conflict<string>>> (PhotoRangeRequest body, HiveDbContext db, IOptions<ClusterOptions> cluster, IOptions<HiveOptions> hive, IOptions<CityBrokerOptions> secret, CancellationToken ct) =>
+            {
+                if (!PhotoRangeReplica.Valid(body.From, body.To))
+                    return TypedResults.BadRequest("bad range");
+                if (!await ReplicaEnabledAsync(db, cluster.Value, hive.Value, secret.Value, ct))
+                    return TypedResults.Conflict("the copy to the city is not set up on this hive");
+                await PhotoRangeReplica.QueueAsync(db, hive.Value, body.From, body.To, body.Device, body.PinnedOnly, ct);
+                return TypedResults.Ok(await PhotoRangeReplica.ProgressAsync(db, hive.Value, true, body.From, body.To, body.Device, body.PinnedOnly, ct));
+            })
+            .RequireAuthorization(HiveRoles.CanControl)
             .WithTags("replica");
         // The city got a new certificate: forget the pinned one, the next connection pins what the city shows then.
         app.MapDelete("/api/replica/pin", async (HiveDbContext db, CityPin pin, CancellationToken ct) =>

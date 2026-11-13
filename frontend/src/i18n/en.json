@@ -439,6 +439,12 @@
     "noFrameHint": "The camera got no frame from its sensor or rebooted on a power dip. Usually a weak supply or a long thin cable: use 5 V 2 A, a 470–1000 µF capacitor at the camera, and check the sensor ribbon."
   },
   "photos": {
+    "noPhotosRange": "No photos on these days",
+    "rangeHint": "To pick several days, press the first one and release on the last.",
+    "loadMore": "Show more",
+    "sendToCity": "Send to the city",
+    "cityProgress": "At the city {done} of {total}, waiting to be sent: {waiting}",
+    "cityAll": "All {n} photos are already at the city",
     "device": "Camera",
     "allDevices": "All cameras",
     "pinnedOnly": "Saved only",

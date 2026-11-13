@@ -123,6 +123,40 @@ public sealed class MediaTests(HiveFixture hive) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_archive_lists_a_range_of_days_in_pages_and_only_the_kept_photos_when_asked()
+    {
+        var noon = new DateTimeOffset(2026, 3, 10, 12, 0, 0, TimeSpan.FromHours(3));
+        var ids = new List<string>();
+        for (var i = 0; i < 5; i++)
+        {
+            var ts = noon.AddDays(i).ToUniversalTime();   // 10th..14th
+            var id = $"{Ulid.New(ts)}-0";
+            ids.Add(id);
+            using var created = await _http.SendAsync(Upload(TestJpeg, id, "guard-rng2"));
+            Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+            await hive.QueryAsync(async db =>
+            {
+                await db.Media.Where(m => m.Id == id).ExecuteUpdateAsync(s => s.SetProperty(m => m.Ts, ts).SetProperty(m => m.Pinned, i % 2 == 0));
+                return 0;
+            });
+        }
+
+        // days 11..13, in pages of two, newest first: the cursor walks the whole range
+        var seen = new List<string>();
+        string? cursor = null;
+        do
+        {
+            var page = await _http.GetFromJsonAsync<Page<MediaDto>>($"/api/media?device=guard-rng2&from=2026-03-11&to=2026-03-13&limit=2{(cursor is null ? "" : $"&cursor={cursor}")}");
+            seen.AddRange(page!.Items.Select(m => m.Id));
+            cursor = page.NextCursor;
+        } while (cursor is not null);
+        Assert.Equal([ids[3], ids[2], ids[1]], seen);
+
+        var kept = await _http.GetFromJsonAsync<Page<MediaDto>>("/api/media?device=guard-rng2&from=2026-03-10&to=2026-03-14&pinned=true");
+        Assert.Equal([ids[4], ids[2], ids[0]], kept!.Items.Select(m => m.Id));
+    }
+
+    [Fact]
     public async Task Range_requests_are_supported()
     {
         var photoId = $"{Ulid.New()}-0";

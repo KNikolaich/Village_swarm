@@ -18,7 +18,8 @@ export const keys = {
   timelapse: ['timelapse'] as const,
   events: (filters: EventFilters) => ['events', filters] as const,
   eventsAll: ['events'] as const,
-  mediaDay: (date: string, device?: string) => ['media', 'day', date, device ?? ''] as const,
+  mediaRange: (from: string, to: string, device?: string, pinnedOnly = false) => ['media', 'range', from, to, device ?? '', pinnedOnly] as const,
+  replicaRange: (from: string, to: string, device?: string, pinnedOnly = false) => ['replica', 'range', from, to, device ?? '', pinnedOnly] as const,
   mediaDays: (from: string, to: string, device?: string) => ['media', 'days', from, to, device ?? ''] as const,
   otaRollout: ['firmware', 'rollout'] as const,
 }
@@ -61,21 +62,38 @@ export const useEvents = (filters: EventFilters) =>
     getNextPageParam: (last) => last.nextCursor ?? undefined,
   })
 
-export const useMediaDay = (date: string, device?: string) =>
-  useQuery({
-    queryKey: keys.mediaDay(date, device),
-    queryFn: async () => {
-      // A day of photos fits in a few pages; the archive shows the whole day at once.
-      const items = []
-      let cursor: string | undefined
-      do {
-        const page = await call(api.GET('/api/media', { params: { query: { date, device, cursor, limit: 200 } } }))
-        items.push(...page.items)
-        cursor = page.nextCursor ?? undefined
-      } while (cursor)
-      return items
-    },
+/** Photos of a range of days (one day: from === to), newest first, a page at a time: the archive loads more on scroll. */
+export const useMediaRange = (from: string, to: string, device?: string, pinnedOnly = false) =>
+  useInfiniteQuery({
+    queryKey: keys.mediaRange(from, to, device, pinnedOnly),
+    queryFn: ({ pageParam }) =>
+      call(api.GET('/api/media', { params: { query: { from, to, device, pinned: pinnedOnly || undefined, cursor: pageParam, limit: 60 } } })),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
   })
+
+/** How many photos of the range are at the city; asked more often while some are on their way. */
+export const useReplicaRange = (from: string, to: string, device: string | undefined, pinnedOnly: boolean, enabled: boolean) =>
+  useQuery({
+    queryKey: keys.replicaRange(from, to, device, pinnedOnly),
+    queryFn: () => call(api.GET('/api/replica/media/range', { params: { query: { from, to, device, pinned: pinnedOnly || undefined } } })),
+    enabled,
+    refetchInterval: (q) => ((q.state.data?.waiting ?? 0) > 0 ? 3000 : 30_000),
+  })
+
+/** "Догрузить в город": puts the range's photos on the queue to the city, whatever their age. */
+export function useSendRangeToCity() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (range: { from: string; to: string; device?: string; pinnedOnly: boolean }) =>
+      call(api.POST('/api/replica/media/range', { body: { from: range.from, to: range.to, device: range.device ?? null, pinnedOnly: range.pinnedOnly } })),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['replica'] })
+      void qc.invalidateQueries({ queryKey: ['media'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+}
 
 /** A camera's newest photo (its banner on a zone). */
 export const useLatestPhoto = (device: string) =>

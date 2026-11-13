@@ -39,6 +39,9 @@ public class MediaItem
 
     public DateTimeOffset? ReplicaNextAt { get; set; }
 
+    /// <summary>A person asked for this photo to go to the city: it is sent even when it is past its queue time.</summary>
+    public bool ReplicaForced { get; set; }
+
     /// <summary>How much earlier than the request a frame may be taken and still pass as fresh.</summary>
     public static readonly TimeSpan FreshSlack = TimeSpan.FromMinutes(1);
 

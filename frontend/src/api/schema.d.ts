@@ -1906,6 +1906,96 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/replica/media/range": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query: {
+                    from: string;
+                    to: string;
+                    device?: string;
+                    pinned?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PhotoRangeReplicaDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": string;
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PhotoRangeRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PhotoRangeReplicaDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": string;
+                    };
+                };
+                /** @description Conflict */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": string;
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/replica/pin": {
         parameters: {
             query?: never;
@@ -5063,6 +5153,9 @@ export interface paths {
                     eventId?: string;
                     cursor?: string;
                     limit?: number;
+                    from?: string;
+                    to?: string;
+                    pinned?: boolean;
                 };
                 header?: never;
                 path?: never;
@@ -7813,6 +7906,23 @@ export interface components {
         PermitJoinRequest: {
             /** Format: int32 */
             seconds: number;
+        };
+        PhotoRangeReplicaDto: {
+            enabled: boolean;
+            /** Format: int32 */
+            total: number;
+            /** Format: int32 */
+            atCity: number;
+            /** Format: int32 */
+            waiting: number;
+        };
+        PhotoRangeRequest: {
+            /** Format: date */
+            from: string;
+            /** Format: date */
+            to: string;
+            device: null | string;
+            pinnedOnly: boolean;
         };
         PhotoReplicaStatusDto: {
             enabled: boolean;

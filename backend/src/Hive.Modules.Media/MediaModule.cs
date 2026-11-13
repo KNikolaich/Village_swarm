@@ -39,8 +39,8 @@ public static class MediaModule
             .WithTags("ingest");
 
         var media = app.MapGroup("/api/media").WithTags("media");
-        media.MapGet("", (string? device, DateOnly? date, string? eventId, string? cursor, int? limit, MediaQueries q, CancellationToken ct) =>
-            q.ListAsync(device, date, eventId, cursor, limit, ct));
+        media.MapGet("", (string? device, DateOnly? date, string? eventId, string? cursor, int? limit, DateOnly? from, DateOnly? to, bool? pinned, MediaQueries q, CancellationToken ct) =>
+            q.ListAsync(device, date, eventId, cursor, limit, ct, from, to, pinned));
         media.MapGet("/days", (DateOnly from, DateOnly to, string? device, MediaQueries q, CancellationToken ct) =>
             q.DaysAsync(from, to, device, ct));
         media.MapGet("/{id}", GetOriginal).Produces(StatusCodes.Status200OK, contentType: "image/jpeg").Produces(StatusCodes.Status404NotFound);

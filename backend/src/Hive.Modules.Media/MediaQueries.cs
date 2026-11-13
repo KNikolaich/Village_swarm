@@ -20,8 +20,8 @@ public sealed record MediaDayDto(DateOnly Date, int Count);
 
 public sealed class MediaQueries(HiveDbContext db, IOptions<HiveOptions> hive)
 {
-    /// <summary>GET /api/media?device=&amp;date=&amp;cursor= (spec 6.5), newest first.</summary>
-    public async Task<Page<MediaDto>> ListAsync(string? device, DateOnly? date, string? eventId, string? cursor, int? limit, CancellationToken ct)
+    /// <summary>GET /api/media?device=&amp;date=&amp;cursor= (spec 6.5), newest first. <c>from</c>/<c>to</c> is a range of days (both ends included); <c>pinned</c> keeps only the kept-forever ones.</summary>
+    public async Task<Page<MediaDto>> ListAsync(string? device, DateOnly? date, string? eventId, string? cursor, int? limit, CancellationToken ct, DateOnly? from = null, DateOnly? to = null, bool? pinned = null)
     {
         var take = TsCursor.ClampLimit(limit);
         var query = db.Media.AsNoTracking();
@@ -31,9 +31,17 @@ public sealed class MediaQueries(HiveDbContext db, IOptions<HiveOptions> hive)
             query = query.Where(m => m.EventId == eventId);
         if (date is { } day)
         {
-            var (from, to) = hive.Value.DayRange(day);
-            query = query.Where(m => m.Ts >= from && m.Ts < to);
+            var (dayStart, dayEnd) = hive.Value.DayRange(day);
+            query = query.Where(m => m.Ts >= dayStart && m.Ts < dayEnd);
         }
+        if (from is not null || to is not null)
+        {
+            var (start, _) = hive.Value.DayRange(from ?? to!.Value);
+            var (_, end) = hive.Value.DayRange(to ?? from!.Value);
+            query = query.Where(m => m.Ts >= start && m.Ts < end);
+        }
+        if (pinned == true)
+            query = query.Where(m => m.Pinned);
         if (TsCursor.Decode(cursor) is { } c)
             query = query.Where(m => m.Ts < c.Ts || (m.Ts == c.Ts && string.Compare(m.Id, c.Id) < 0));
 

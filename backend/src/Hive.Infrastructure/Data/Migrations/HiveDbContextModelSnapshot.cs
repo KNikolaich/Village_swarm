@@ -899,6 +899,10 @@ namespace Hive.Infrastructure.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("received_at");
 
+                    b.Property<bool>("ReplicaForced")
+                        .HasColumnType("boolean")
+                        .HasColumnName("replica_forced");
+
                     b.Property<DateTimeOffset?>("ReplicaNextAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("replica_next_at");

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using Hive.Contracts;
 using Hive.Domain;
@@ -262,5 +263,66 @@ public sealed class PhotoReplicaSenderTests(HiveFixture hive)
 
         await SetCityAsync(null);
         Assert.Equal(0, await replicator.TickAsync(CancellationToken.None));   // no city address: nothing is sent
+    }
+
+    [Fact]
+    public async Task A_range_queued_by_hand_is_sent_past_its_time_and_progress_counts_it()
+    {
+        await ClearQueueAsync();
+        await using var city = await FakeCityReplica.StartAsync();
+        await SetCityAsync(city.BaseUrl);
+        var oldSnap = await AddPhotoAsync("rg-oldsnap", MediaKind.Snapshot, null, TimeSpan.FromDays(3000), "guard-rangeA");
+        var oldAlarm = await AddPhotoAsync("rg-oldalarmx", MediaKind.Photo, EventSeverity.Alarm, TimeSpan.FromDays(3000), "guard-rangeA");
+        var otherCam = await AddPhotoAsync("rg-othercam-x", MediaKind.Snapshot, null, TimeSpan.FromDays(3000), "guard-rangeB");
+        var outside = await AddPhotoAsync("rg-outside-xxx", MediaKind.Snapshot, null, TimeSpan.FromDays(3100), "guard-rangeA");
+        var state = new PhotoReplicaState();
+        var replicator = Replicator(state);
+        var zone = new HiveOptions { Node = "home", Role = "active" };
+        var day = DateOnly.FromDateTime(zone.ToLocal(DateTimeOffset.UtcNow - TimeSpan.FromDays(3000)).DateTime);
+        await hive.QueryAsync(async db =>
+        {
+            await db.Media.Where(m => m.Id == oldAlarm).ExecuteUpdateAsync(s => s.SetProperty(m => m.Pinned, true).SetProperty(m => m.ReplicaTries, 5).SetProperty(m => m.ReplicaNextAt, DateTimeOffset.UtcNow.AddYears(1)));
+            return 0;
+        });
+
+        // nothing is sent by itself: both are past their time
+        Assert.Equal(0, await replicator.TickAsync(CancellationToken.None));
+
+        // only the kept photos of one camera, one day (two days around it, so the time zone does not matter)
+        var queued = await hive.QueryAsync(async db => await PhotoRangeReplica.QueueAsync(db, zone, day.AddDays(-1), day.AddDays(1), "guard-rangeA", true, CancellationToken.None));
+        Assert.Equal(1, queued);
+        var progress = await hive.QueryAsync(db => PhotoRangeReplica.ProgressAsync(db, zone, true, day.AddDays(-1), day.AddDays(1), "guard-rangeA", false, CancellationToken.None));
+        Assert.Equal((2, 0, 1), (progress.Total, progress.AtCity, progress.Waiting));
+
+        Assert.Equal(1, await replicator.TickAsync(CancellationToken.None));
+        Assert.Equal([oldAlarm], city.Received.Select(r => r.Id).ToArray());
+
+        // the whole range, all cameras: the rest goes too, the one already there is left alone, the one outside is not touched
+        Assert.Equal(2, await hive.QueryAsync(async db => await PhotoRangeReplica.QueueAsync(db, zone, day.AddDays(-1), day.AddDays(1), null, false, CancellationToken.None)));
+        Assert.Equal(2, await replicator.TickAsync(CancellationToken.None));
+        var progressAll = await hive.QueryAsync(db => PhotoRangeReplica.ProgressAsync(db, zone, true, day.AddDays(-1), day.AddDays(1), null, false, CancellationToken.None));
+        Assert.Equal((3, 3, 0), (progressAll.Total, progressAll.AtCity, progressAll.Waiting));
+        var rows = await hive.QueryAsync(db => db.Media.AsNoTracking().Where(m => m.Id == outside || m.Id == oldSnap || m.Id == otherCam).ToListAsync());
+        Assert.Null(rows.Single(m => m.Id == outside).ReplicatedAt);
+        Assert.NotNull(rows.Single(m => m.Id == oldSnap).ReplicatedAt);
+        Assert.False(PhotoRangeReplica.Valid(day, day.AddDays(-1)));
+        Assert.False(PhotoRangeReplica.Valid(day, day.AddDays(400)));
+    }
+
+    [Fact]
+    public async Task The_range_endpoint_needs_a_user_who_can_control_and_a_city_to_send_to()
+    {
+        var anonymous = hive.App.CreateClient();
+        using var none = await anonymous.PostAsJsonAsync("/api/replica/media/range", new { from = "2026-01-01", to = "2026-01-02", pinnedOnly = false });
+        Assert.Equal(HttpStatusCode.Unauthorized, none.StatusCode);
+
+        var admin = await hive.LoginAsync();
+        using var progress = await admin.GetAsync("/api/replica/media/range?from=2026-01-01&to=2026-01-02");
+        Assert.Equal(HttpStatusCode.OK, progress.StatusCode);
+        Assert.False((await progress.Content.ReadFromJsonAsync<PhotoRangeReplicaDto>())!.Enabled);   // this test hive has no city link
+        using var backwards = await admin.GetAsync("/api/replica/media/range?from=2026-02-01&to=2026-01-02");
+        Assert.Equal(HttpStatusCode.BadRequest, backwards.StatusCode);
+        using var notSetUp = await admin.PostAsJsonAsync("/api/replica/media/range", new { from = "2026-01-01", to = "2026-01-02", pinnedOnly = false });
+        Assert.Equal(HttpStatusCode.Conflict, notSetUp.StatusCode);
     }
 }
