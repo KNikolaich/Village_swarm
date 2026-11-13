@@ -1,6 +1,6 @@
 import type { DeviceDto, RuleAction, RuleCondition, RuleDefinition, RuleTrigger } from '@/api/client'
 import { eventTypeLabel, metricLabel, t } from '@/i18n'
-import { formatValue } from '@/lib/format'
+import { formatDuration, formatValue } from '@/lib/format'
 
 export const triggerKinds = ['telemetry', 'event', 'schedule', 'sun', 'offline'] as const
 export const conditionKinds = ['value', 'time', 'dark', 'rain_past', 'rain_forecast', 'mode', 'device_state'] as const
@@ -138,7 +138,7 @@ export function describeTrigger(tr: RuleTrigger, name: (id?: string | null) => s
       if (!tr.offsetMin) return what
       return t(tr.offsetMin < 0 ? 'rules.describe.sunBefore' : 'rules.describe.sunAfter').replace('{n}', String(Math.abs(tr.offsetMin))).replace('{sun}', what)
     }
-    case 'offline': return t('rules.describe.offline').replace('{device}', name(tr.device)).replace('{n}', String(tr.offlineMin ?? 0))
+    case 'offline': return t('rules.describe.offline').replace('{device}', name(tr.device)).replace('{n}', formatDuration(tr.offlineMin ?? 0))
     default: return tr.kind
   }
 }

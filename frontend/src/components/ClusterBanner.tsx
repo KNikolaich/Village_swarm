@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { api, call } from '@/api/client'
 import { t } from '@/i18n'
+import { formatDuration } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 /**
@@ -20,14 +21,14 @@ export function ClusterBanner() {
     : null
 
   const homeDown = c.home && c.home.phase !== 'Up'
-  const minutes = c.home ? Math.floor(c.home.silentSeconds / 60) : 0
+  const minutes = c.home ? formatDuration(Math.floor(c.home.silentSeconds / 60)) : ''
   if (c.role === 'Active' && !homeDown) return muteBar
 
   const standby = c.role === 'Standby'
   const text = standby
-    ? t('cluster.standby').replace('{m}', String(minutes))
+    ? t('cluster.standby').replace('{m}', minutes)
     : homeDown
-      ? t('cluster.homeDown').replace('{m}', String(minutes))
+      ? t('cluster.homeDown').replace('{m}', minutes)
       : t('cluster.observer')
   const synced = c.catalogAt
     ? ` ${t('cluster.catalog').replace('{time}', new Date(c.catalogAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }))}`
