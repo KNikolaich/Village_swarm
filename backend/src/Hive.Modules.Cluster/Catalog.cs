@@ -152,6 +152,19 @@ public sealed class CatalogApplier(HiveDbContext db, UserManager<HiveUser> users
                 device.Info = JsonDocument.Parse(info.GetRawText());
         }
 
+        // A device home no longer has (deleted for good there) goes here too, so it does not stay as a dead one in the swarm. Only what is
+        // surely a leftover: not made in the city, and either archived or never heard from. A live one that home does not list stays.
+        var listed = s.Devices.Select(d => d.DeviceId).ToHashSet();
+        var gone = existing.Values.Where(d => !listed.Contains(d.DeviceId) && !d.Local && !d.Visitor
+            && (d.Status == DeviceStatus.Disabled || d.LastSeenAt is null)).ToList();
+        if (gone.Count > 0)
+        {
+            var goneIds = gone.Select(d => d.DeviceId).ToList();
+            db.EnrollmentCodes.RemoveRange(db.EnrollmentCodes.Where(c => goneIds.Contains(c.DeviceId)));
+            db.DisplayImages.RemoveRange(db.DisplayImages.Where(i => goneIds.Contains(i.DeviceId)));
+            db.Devices.RemoveRange(gone);
+        }
+
         var ruleRows = await db.Rules.ToListAsync(ct);
         foreach (var r in s.Rules)
         {

@@ -337,6 +337,19 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
         using var newPassword = await city.App.CreateClient().PostAsJsonAsync("/api/auth/login", new { login = "synced-user", password = "second-pass-67890" });
         Assert.Equal(HttpStatusCode.OK, newPassword.StatusCode);
 
+        // a device home deleted for good (archived here, no longer in the catalog) is removed here as well; a live one stays
+        await city.QueryAsync(async db =>
+        {
+            db.Devices.Add(new Device { DeviceId = "meteo-sync-alive", TypeCode = "meteo", Name = "Живой", Status = DeviceStatus.Online, LastSeenAt = DateTimeOffset.UtcNow, CreatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+            return 0;
+        });
+        var third = second with { Ts = second.Ts + 1, Devices = [second.Devices[0]] };
+        await PublishCatalogAsync(third);
+        await city.WaitForAsync(async db => !await db.Devices.AnyAsync(d => d.DeviceId == "heat-sync-gone"), "purged device removed");
+        Assert.True(await city.QueryAsync(db => db.Devices.AnyAsync(d => d.DeviceId == "meteo-sync-alive")));
+        Assert.True(await city.QueryAsync(db => db.Devices.AnyAsync(d => d.DeviceId == "meteo-sync1")));
+
         // a snapshot that is older than the one applied is ignored
         await PublishCatalogAsync(first with { Ts = first.Ts - 5, Devices = [first.Devices[0] with { Name = "Старое имя" }] });
         await Task.Delay(1500);
