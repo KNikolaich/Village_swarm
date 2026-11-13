@@ -49,10 +49,49 @@ public sealed class HiveAliasService(HiveDbContext db, IOptions<ClusterOptions> 
     }
 }
 
+/// <summary>
+/// The web app manifest of this node: the installed app and the browser name themselves after the hive ("Улей — Дача"), so two hives
+/// on one phone are told apart. Same icons and colors as the static one the front builds (frontend/vite.config.ts); this one wins in
+/// Caddy and the static file stays as the fallback when the api is down.
+/// </summary>
+public static class HiveManifest
+{
+    public static object Build(string? alias)
+    {
+        var name = string.IsNullOrWhiteSpace(alias) ? "Улей" : alias.Trim();
+        return new
+        {
+            name = name == "Улей" ? name : $"Улей — {name}",
+            short_name = name,
+            description = "Охрана, климат и фото загородного дома",
+            lang = "ru",
+            theme_color = "#0a0a0a",
+            background_color = "#0a0a0a",
+            display = "standalone",
+            start_url = "/",
+            scope = "/",
+            icons = new object[]
+            {
+                new { src = "pwa-192.png", sizes = "192x192", type = "image/png" },
+                new { src = "pwa-512.png", sizes = "512x512", type = "image/png" },
+                new { src = "pwa-maskable-512.png", sizes = "512x512", type = "image/png", purpose = "maskable" },
+            },
+        };
+    }
+}
+
 public static class HiveAliasEndpoints
 {
     public static IEndpointRouteBuilder MapAliasEndpoints(this IEndpointRouteBuilder app)
     {
+        // The browser asks for it without signing in, and it must not outlive a rename (the alias is the app's name).
+        app.MapGet("/api/manifest.webmanifest", async (HiveAliasService s, HttpResponse response, CancellationToken ct) =>
+            {
+                response.Headers.CacheControl = "no-store";
+                return Results.Json(HiveManifest.Build(await s.GetAsync(ct)), contentType: "application/manifest+json");
+            })
+            .AllowAnonymous()
+            .ExcludeFromDescription();
         var group = app.MapGroup("/api/settings/alias").NodeLocal().WithTags("settings");
         group.MapGet("", async (HiveAliasService s, CancellationToken ct) => TypedResults.Ok(new AliasDto(await s.GetAsync(ct))));
         group.MapPut("", async Task<Results<NoContent, ValidationProblem>> (AliasDto request, System.Security.Claims.ClaimsPrincipal user, HiveAliasService s, CancellationToken ct) =>

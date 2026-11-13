@@ -5,6 +5,7 @@ import { ApiError } from '@/api/client'
 import { type Language, setLanguage } from '@/i18n'
 import App from './App.tsx'
 import '@/lib/install'
+import { loadHiveTitle } from '@/lib/hiveTitle'
 import './index.css'
 
 const queryClient = new QueryClient({
@@ -28,6 +29,11 @@ async function loadLanguage(): Promise<Language> {
     return 'ru'
   }
 }
+
+// The sign-in page has no alias from /api/cluster (it needs a session), so the tab is named from the open manifest meanwhile.
+void loadHiveTitle().then((title) => {
+  if (title) document.title = title
+})
 
 void loadLanguage().then((language) => {
   setLanguage(language)
