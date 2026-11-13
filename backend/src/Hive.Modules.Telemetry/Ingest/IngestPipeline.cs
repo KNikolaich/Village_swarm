@@ -22,6 +22,9 @@ public sealed class IngestPipeline(
     public static readonly TimeSpan MaxWait = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(5);
 
+    /// <summary>A batch that fails this many times while the database answers holds a poison item: it is written item by item and the bad one is dropped.</summary>
+    private const int PoisonAfter = 3;
+
     private readonly RecentIds _seen = new(20_000);
 
     /// <summary>Items written since start; used by tests and the system page.</summary>
@@ -81,7 +84,7 @@ public sealed class IngestPipeline(
             return;
         unique = await ArrivingAsync(unique, ct);
 
-        while (true)
+        for (var attempt = 1; ; attempt++)
         {
             try
             {
@@ -91,8 +94,15 @@ public sealed class IngestPipeline(
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
-                logger.LogError(ex, "Ingest batch of {Count} failed, retrying in {Delay}s ({Queued} queued)",
-                    unique.Count, RetryDelay.TotalSeconds, queue.Count);
+                logger.LogError(ex, "Ingest batch of {Count} failed (try {Attempt}), retrying in {Delay}s ({Queued} queued)",
+                    unique.Count, attempt, RetryDelay.TotalSeconds, queue.Count);
+                // While the database is down the batch waits as long as it takes: nothing is lost. When the database answers and the batch
+                // still fails, one item in it is bad: the rest must not wait behind it for ever.
+                if (attempt >= PoisonAfter && await DatabaseAnswersAsync(ct))
+                {
+                    unique = await WriteEachAsync(unique, ct);
+                    break;
+                }
                 await Task.Delay(RetryDelay, time, ct);
             }
         }
@@ -113,6 +123,39 @@ public sealed class IngestPipeline(
                 logger.LogError(ex, "Ingest listener {Listener} failed", listener.GetType().Name);
             }
         }
+    }
+
+    private async Task<bool> DatabaseAnswersAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var scope = scopes.CreateScope();
+            return await scope.ServiceProvider.GetRequiredService<HiveDbContext>().Database.CanConnectAsync(ct);
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Writes the items of a failed batch one at a time; the ones that still fail are dropped with an error in the log. Returns what was written.</summary>
+    private async Task<List<IngestItem>> WriteEachAsync(List<IngestItem> items, CancellationToken ct)
+    {
+        var written = new List<IngestItem>(items.Count);
+        foreach (var item in items)
+        {
+            try
+            {
+                using var scope = scopes.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<IngestWriter>().WriteAsync([item], ct);
+                written.Add(item);
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                logger.LogError(ex, "Ingest item dropped: {Kind} of {Device} cannot be stored", item.GetType().Name, item.DeviceId);
+            }
+        }
+        return written;
     }
 
     /// <summary>

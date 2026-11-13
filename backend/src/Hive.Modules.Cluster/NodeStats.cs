@@ -143,7 +143,8 @@ public sealed class NodeStatsReceiver(
         }
         if (announce && Other == "city")
         {
-            using var empty = JsonDocument.Parse("{}");
+            // Not disposed here: the queue writes it later, and a disposed document makes the write fail.
+            var empty = JsonDocument.Parse("{}");
             ingest.Enqueue(new DeviceInfoReceived(OtherDevice, Ulid.New(receivedAt), receivedAt, receivedAt, "hive", "", "", "", null, 0, empty));
         }
         ingest.Enqueue(new TelemetryReceived(OtherDevice, Ulid.New(receivedAt), sentAt, receivedAt,
