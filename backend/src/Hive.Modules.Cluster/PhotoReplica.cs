@@ -22,7 +22,7 @@ using Microsoft.Extensions.Options;
 namespace Hive.Modules.Cluster;
 
 /// <summary>
-/// Which photos go to the city first and how long a photo waits (spec 7.3): alarms first and for a week, other events for a day,
+/// Which photos go to the city first and how long a photo waits (spec 7.3): alarms first, alarms and other events for a week,
 /// periodic snapshots and time-lapse frames for six hours. After a long blackout only the alarms are worth catching up on.
 /// </summary>
 public static class PhotoReplicaPolicy
@@ -39,7 +39,7 @@ public static class PhotoReplicaPolicy
     public static TimeSpan Ttl(int priority) => priority switch
     {
         Alarm => TimeSpan.FromDays(7),
-        Event => TimeSpan.FromHours(24),
+        Event => TimeSpan.FromDays(7),
         _ => TimeSpan.FromHours(6),
     };
 

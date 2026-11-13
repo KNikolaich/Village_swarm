@@ -22,7 +22,7 @@ public class PhotoReplicaPolicyTests
     public void An_alarm_waits_a_week_an_event_a_day_and_a_periodic_frame_six_hours()
     {
         Assert.Equal(TimeSpan.FromDays(7), PhotoReplicaPolicy.Ttl(PhotoReplicaPolicy.Alarm));
-        Assert.Equal(TimeSpan.FromHours(24), PhotoReplicaPolicy.Ttl(PhotoReplicaPolicy.Event));
+        Assert.Equal(TimeSpan.FromDays(7), PhotoReplicaPolicy.Ttl(PhotoReplicaPolicy.Event));
         Assert.Equal(TimeSpan.FromHours(6), PhotoReplicaPolicy.Ttl(PhotoReplicaPolicy.Periodic));
     }
 
