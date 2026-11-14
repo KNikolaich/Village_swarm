@@ -65,11 +65,11 @@ public sealed class NotificationOutbox(
             _nextCriticalCheck = now.AddMinutes(1);
         }
 
-        foreach (var n in await db.Notifications.Where(n => n.EditPending && n.Status == NotificationStatus.Sent).Take(20).ToListAsync(ct))
+        foreach (var n in await db.Notifications.Where(n => n.Channel == "tg" && n.EditPending && n.Status == NotificationStatus.Sent).Take(20).ToListAsync(ct))
             await EditGroupedAsync(n, ct);
 
         var due = await db.Notifications
-            .Where(n => n.Status == NotificationStatus.Pending && n.NextAttemptAt <= now)
+            .Where(n => n.Channel == "tg" && n.Status == NotificationStatus.Pending && n.NextAttemptAt <= now)
             .OrderBy(n => n.Id)
             .Take(20)
             .ToListAsync(ct);
@@ -304,7 +304,7 @@ public sealed class NotificationOutbox(
         foreach (var e in critical)
         {
             var sent = await db.Notifications.AsNoTracking()
-                .Where(n => n.EventId == e.Id && n.Kind == NotificationKind.Event)
+                .Where(n => n.Channel == "tg" && n.EventId == e.Id && n.Kind == NotificationKind.Event)
                 .Select(n => new { n.Id, n.Target, n.CreatedAt, n.Text })
                 .ToListAsync(ct);
             var lastByChat = sent.GroupBy(n => n.Target).Select(g => new

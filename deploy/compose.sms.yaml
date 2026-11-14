@@ -1,0 +1,12 @@
+# SMS about critical events (docs/sms.md): gives the api container the AT port of a USB LTE modem (Quectel EC25).
+# Off by default. To use it, add this file to COMPOSE_FILE in /opt/hive/.env:
+#   COMPOSE_FILE=compose.yaml:compose.home.yaml:compose.sms.yaml
+# and set SMS_DEVICE there. Then Settings → SMS: port /dev/sms-modem and the phone numbers.
+services:
+  api:
+    # The modem shows up as several ports (EC25: /dev/ttyUSB0..3); the AT one is the third, ttyUSB2 (-if02-port0 by id).
+    devices:
+      - ${SMS_DEVICE:?set SMS_DEVICE in .env (the modem's AT port, e.g. /dev/serial/by-id/usb-Quectel_EC25-...-if02-port0)}:/dev/sms-modem
+    # The api runs as a normal user; serial ports belong to the group dialout (20 on Debian and Ubuntu).
+    group_add:
+      - "${SMS_DEVICE_GID:-20}"

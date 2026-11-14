@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Hive.Domain;
 using Hive.Infrastructure.Data;
 using Hive.Infrastructure.Identity;
+using Hive.Modules.Notify.Sms;
 using Hive.Modules.Notify.Telegram;
 using Hive.Modules.Telemetry.Ingest;
 using Microsoft.AspNetCore.Builder;
@@ -14,6 +15,8 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Hive.Modules.Notify;
 
@@ -42,6 +45,16 @@ public static class NotifyModule
         services.AddHostedService(sp => sp.GetRequiredService<TelegramBotHost>());
         services.AddScoped<BotCommands>();
         services.AddScoped<IAuthNotifier, TelegramAuthNotifier>();
+
+        // SMS about critical events through the USB modem on this node (docs/sms-keenetic.md).
+        services.Configure<SmsOptions>(configuration.GetSection(SmsOptions.Section));
+        services.AddSingleton<ISmsModem>(sp =>
+        {
+            var port = sp.GetRequiredService<IOptions<SmsOptions>>().Value.Port ?? "";
+            return new AtSmsModem(() => new SerialAtPort(port), sp.GetRequiredService<ILogger<AtSmsModem>>());
+        });
+        services.AddSingleton<IIngestListener, SmsPlanner>();
+        services.AddHostedService<SmsOutbox>();
         return services;
     }
 
