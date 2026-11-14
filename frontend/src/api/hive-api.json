@@ -6612,7 +6612,8 @@
       "DashboardLayoutsDto": {
         "required": [
           "desktop",
-          "phone"
+          "phone",
+          "climate"
         ],
         "type": "object",
         "properties": {
@@ -6626,6 +6627,15 @@
             }
           },
           "phone": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/DashboardWidgetDto"
+            }
+          },
+          "climate": {
             "type": [
               "null",
               "array"

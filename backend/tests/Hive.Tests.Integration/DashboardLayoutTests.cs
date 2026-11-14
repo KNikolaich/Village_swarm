@@ -49,4 +49,23 @@ public sealed class DashboardLayoutTests(HiveFixture hive)
         using var write = await member.PutAsJsonAsync("/api/dashboard/layout/desktop", new { items = Array.Empty<object>() });
         Assert.Equal(HttpStatusCode.Forbidden, write.StatusCode);
     }
+
+    [Fact]
+    public async Task The_climate_page_has_one_arrangement_for_every_screen()
+    {
+        var admin = await hive.LoginAsync();
+        using var save = await admin.PutAsJsonAsync("/api/dashboard/layout/climate", new
+        {
+            items = new object[] { new { id = "zone:2", w = 6 }, new { id = "weather", w = 12, hidden = true } },
+        });
+        Assert.Equal(HttpStatusCode.NoContent, save.StatusCode);
+        var layouts = await admin.GetFromJsonAsync<JsonElement>("/api/dashboard/layout");
+        var items = layouts.GetProperty("climate").EnumerateArray().ToList();
+        Assert.Equal(["zone:2", "weather"], items.Select(w => w.GetProperty("id").GetString()));
+        Assert.True(items[1].GetProperty("hidden").GetBoolean());
+
+        using var reset = await admin.PutAsJsonAsync("/api/dashboard/layout/climate", new { items = (object[]?)null });
+        Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
+        Assert.Equal(JsonValueKind.Null, (await admin.GetFromJsonAsync<JsonElement>("/api/dashboard/layout")).GetProperty("climate").ValueKind);
+    }
 }

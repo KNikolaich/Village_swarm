@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { useMe } from '@/api/queries'
@@ -47,7 +48,7 @@ export function ConfigCard() {
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200">
               <p className="font-medium">{t('config.restartTitle')}</p>
               <p>{t('config.restartBody').replace('{names}', pending.map((i) => t(`config.params.${i18nKey(i.key)}.name`)).join(', '))}</p>
-              <a href="#restart" className="mt-1 inline-block text-amber-400 underline">{t('config.restartGo')}</a>
+              <Link to="/settings?tab=maintenance#restart" className="mt-1 inline-block text-amber-400 underline">{t('config.restartGo')}</Link>
             </div>
           )}
         </CardContent>

@@ -1,7 +1,7 @@
-import { Copy, Download, Send, Trash2 } from 'lucide-react'
+import { Copy, Download, LogOut, Send, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router'
+import { Link, useLocation, useSearchParams } from 'react-router'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
@@ -21,61 +21,106 @@ import { getLanguage, t, type Language } from '@/i18n'
 import { formatAgo } from '@/lib/format'
 import { install, isInstalled, isIos, useInstallOffer } from '@/lib/install'
 
-/** Settings in four groups with a jump bar: my account, the hive itself, links and access, data and maintenance. */
+const groups = ['account', 'hive', 'links', 'maintenance'] as const
+type SettingsGroup = (typeof groups)[number]
+
+/** Settings in four groups, one tab each (kept in the address, ?tab=hive): my account, the hive itself, links and access, data and maintenance. */
 export function SettingsPage() {
-  const groups = ['account', 'hive', 'links', 'maintenance'] as const
+  const [params, setParams] = useSearchParams()
+  const { hash } = useLocation()
+  const asked = params.get('tab')
+  const tab: SettingsGroup = groups.find((g) => g === asked) ?? 'account'
+
+  // A link to a card on another tab ("#restart") opens that tab, and the card scrolls into view once it is on the page.
+  useEffect(() => {
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' })
+  }, [hash, tab])
+
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-semibold">{t('settings.title')}</h1>
-      <nav className="sticky top-0 z-10 -mx-1 flex flex-wrap gap-2 bg-neutral-950/90 px-1 py-2 backdrop-blur">
+      <div role="tablist" className="sticky top-14 z-10 -mx-1 flex flex-wrap gap-2 bg-neutral-950/90 px-1 py-2 backdrop-blur">
         {groups.map((g) => (
-          <a key={g} href={`#settings-${g}`} className="rounded-full border border-neutral-700 px-3 py-1 text-xs text-neutral-300 hover:border-amber-400 hover:text-amber-400">
+          <button
+            key={g}
+            type="button"
+            role="tab"
+            aria-selected={tab === g}
+            onClick={() => setParams(g === 'account' ? {} : { tab: g }, { replace: true })}
+            className={
+              tab === g
+                ? 'rounded-full border border-amber-400 bg-amber-400/10 px-3 py-1 text-xs text-amber-400'
+                : 'rounded-full border border-neutral-700 px-3 py-1 text-xs text-neutral-300 hover:border-amber-400 hover:text-amber-400'
+            }
+          >
             {t(`settings.groups.${g}`)}
-          </a>
+          </button>
         ))}
-      </nav>
+      </div>
 
-      <Group id="account">
-        <TelegramCard />
-        <TotpCard />
-        <PasswordCard />
-        <EmailCard />
-        <DevicesCard />
-        <InstallCard />
-      </Group>
+      {tab === 'account' && (
+        <Group id="account">
+          <TelegramCard />
+          <TotpCard />
+          <PasswordCard />
+          <EmailCard />
+          <DevicesCard />
+          <InstallCard />
+          <LogoutButton />
+        </Group>
+      )}
 
-      <Group id="hive">
-        <LanguageCard />
-        <AliasCard />
-        <ConfigCard />
-        <WeatherSettingsCard />
-        <WifiCard />
-      </Group>
+      {tab === 'hive' && (
+        <Group id="hive">
+          <LanguageCard />
+          <AliasCard />
+          <ConfigCard />
+          <WeatherSettingsCard />
+          <WifiCard />
+        </Group>
+      )}
 
-      <Group id="links">
-        <FailoverCard />
-        <CertificateCard />
-        <MonitorCard />
-      </Group>
+      {tab === 'links' && (
+        <Group id="links">
+          <FailoverCard />
+          <CertificateCard />
+          <MonitorCard />
+        </Group>
+      )}
 
-      <Group id="maintenance">
-        <BackupCard />
-        <RetentionCard />
-        <SecretsCard />
-        <RestartCard />
-      </Group>
+      {tab === 'maintenance' && (
+        <Group id="maintenance">
+          <BackupCard />
+          <RetentionCard />
+          <SecretsCard />
+          <RestartCard />
+        </Group>
+      )}
       <HiveVersion />
     </div>
   )
 }
 
-/** A titled block of cards; the jump bar links to it. */
+/** One tab's cards. */
 function Group({ id, children }: { id: string; children: ReactNode }) {
+  return <section id={`settings-${id}`} className="space-y-4">{children}</section>
+}
+
+/** Ends the session; at the bottom of the account tab, so it does not sit on every screen. */
+function LogoutButton() {
+  const qc = useQueryClient()
+
+  async function logout() {
+    await api.POST('/api/auth/logout')
+    // Drop everything the previous user saw, but keep the "me" query: App shows the login page when it is null.
+    qc.removeQueries({ predicate: (q) => q.queryKey[0] !== keys.me[0] })
+    qc.setQueryData(keys.me, null)
+  }
+
   return (
-    <section id={`settings-${id}`} className="scroll-mt-14 space-y-4">
-      <h2 className="border-b border-neutral-800 pb-1 text-base font-semibold">{t(`settings.groups.${id}`)}</h2>
-      {children}
-    </section>
+    <Button variant="outline" className="w-full sm:w-auto" onClick={() => void logout()}>
+      <LogOut />{t('nav.logout')}
+    </Button>
   )
 }
 

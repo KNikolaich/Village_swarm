@@ -1,19 +1,22 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Pencil, Plus } from 'lucide-react'
+import { LayoutGrid, Pencil, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
 import { api, call, type DeviceDto, type LatestValueDto, type ZoneDto } from '@/api/client'
-import { historyWindow, keys, useDevices, useLatestTelemetry, useMe, useMetricSeries, useWeather, useZones } from '@/api/queries'
+import { historyWindow, keys, useDashboardLayout, useDevices, useLatestTelemetry, useMe, useMetricSeries, useWeather, useZones } from '@/api/queries'
+import { DashboardGrid, type WidgetView } from '@/components/DashboardGrid'
 import { MultiChart, TimeAxis, type ChartPoint, type ChartSeries } from '@/components/Chart'
 import { ZoneBanners } from '@/components/DeviceBanners'
 import { ZoneEditor } from '@/components/ZoneEditor'
+import { WeatherCard } from '@/components/WeatherCard'
 import { ZoneTiles } from '@/components/ZoneTiles'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Empty, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { t } from '@/i18n'
 import { bannerKind, readingTitle, shownReadings, zoneKinds, zoneTiles } from '@/lib/dashboard'
 import { formatFixed, formatValue, metricUnit } from '@/lib/format'
+import { arrange, useWideScreen, type Available, type Widget } from '@/lib/layout'
 import { ranges, rangeLabel } from '@/lib/ranges'
 import { colorsByDevice } from '@/lib/seriesColors'
 
@@ -21,6 +24,7 @@ const forecastColor = { stroke: 'stroke-neutral-400', fill: 'fill-neutral-400', 
 
 /** Screen 6 (spec 8.2): the climate of every zone, with the forecast alongside outdoors, and the heaters in it. */
 export function ClimatePage() {
+  const qc = useQueryClient()
   const [hours, setHours] = useState(24)
   // The zone editor is in the address (?edit=3), so the way back from a hornet's card opens it again.
   const [params, setParams] = useSearchParams()
@@ -28,6 +32,10 @@ export function ClimatePage() {
   const devices = useDevices()
   const latest = useLatestTelemetry()
   const me = useMe()
+  const saved = useDashboardLayout()
+  const wide = useWideScreen()
+  // While arranging: the order and visibility of the groups (and the weather), not saved yet.
+  const [arranging, setArranging] = useState<Widget[] | null>(null)
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const canControl = isAdmin || (me.data?.roles.includes('member') ?? false)
   const list = (devices.data ?? []).filter((d) => d.type !== 'hive')
@@ -38,31 +46,82 @@ export function ClimatePage() {
   const hasTemperature = (d: DeviceDto) => (latest.data ?? []).some((v) => v.deviceId === d.deviceId && v.metric === 'temperature')
   const orphans = list.filter((d) => d.zoneId == null && (hasTemperature(d) || d.type === 'heat'))
 
+  // The weather and a card per group; one arrangement (order, visibility, width) for every screen.
+  const views: (WidgetView & { w: number })[] = [
+    { id: 'weather', w: 12, title: t('layout.widgets.weather'), node: <WeatherCard /> },
+    ...(zones.data ?? []).map((zone) => ({
+      id: `zone:${zone.id}`,
+      w: 6,
+      title: zone.name,
+      node: (
+        <ZoneCard
+          zone={zone}
+          devices={list.filter((d) => d.zoneId === zone.id)}
+          latest={latest.data ?? []}
+          hours={hours}
+          isAdmin={isAdmin && arranging == null}
+          canControl={canControl}
+          onEdit={() => edit(zone.id)}
+        />
+      ),
+    })),
+  ]
+  const available: Available[] = views.map((v) => ({ id: v.id, w: v.w }))
+  const layout = arranging ?? arrange(saved.data?.climate, available)
+
+  async function saveLayout() {
+    if (!arranging) return
+    try {
+      await call(api.PUT('/api/dashboard/layout/{screen}', { params: { path: { screen: 'climate' } }, body: { items: arranging } }))
+      await qc.invalidateQueries({ queryKey: ['dashboard', 'layout'] })
+      toast.success(t('layout.saved'))
+      setArranging(null)
+    } catch {
+      toast.error(t('layout.failed'))
+    }
+  }
+
+  async function resetLayout() {
+    if (!arranging || !window.confirm(t('layout.resetConfirm'))) return
+    await call(api.PUT('/api/dashboard/layout/{screen}', { params: { path: { screen: 'climate' } }, body: { items: null } }))
+    await qc.invalidateQueries({ queryKey: ['dashboard', 'layout'] })
+    setArranging(null)
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-lg font-semibold">{t('climate.title')}</h1>
-        <Select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-8 w-auto text-xs" aria-label={t('device.range')}>
-          {ranges.map((h) => <option key={h} value={h}>{rangeLabel(h)}</option>)}
-        </Select>
+        <div className="flex items-center gap-2">
+          {isAdmin && arranging == null && (
+            <Button size="sm" variant="ghost" className="text-neutral-400" onClick={() => setArranging(layout)}>
+              <LayoutGrid />{t('layout.arrange')}
+            </Button>
+          )}
+          <Select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-8 w-auto text-xs" aria-label={t('device.range')}>
+            {ranges.map((h) => <option key={h} value={h}>{rangeLabel(h)}</option>)}
+          </Select>
+        </div>
       </div>
+
+      {isAdmin && arranging && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-400/40 bg-amber-400/5 p-2">
+          <p className="min-w-0 flex-1 text-xs text-neutral-400">{t('layout.hint')}</p>
+          <Button size="sm" variant="ghost" onClick={() => void resetLayout()}>{t('layout.reset')}</Button>
+          <Button size="sm" variant="outline" onClick={() => setArranging(null)}>{t('layout.cancel')}</Button>
+          <Button size="sm" onClick={() => void saveLayout()}>{t('layout.save')}</Button>
+        </div>
+      )}
 
       {zones.isLoading && <Skeleton className="h-40" />}
       {!zones.isLoading && (zones.data ?? []).length === 0 && <Empty>{t('climate.noZones')}</Empty>}
-      <div className="grid grid-cols-1 items-start gap-4 2xl:grid-cols-2">
-        {(zones.data ?? []).map((zone) => (
-          <ZoneCard
-            key={zone.id}
-            zone={zone}
-            devices={list.filter((d) => d.zoneId === zone.id)}
-            latest={latest.data ?? []}
-            hours={hours}
-            isAdmin={isAdmin}
-            canControl={canControl}
-            onEdit={() => edit(zone.id)}
-          />
-        ))}
-      </div>
+      <DashboardGrid
+        views={views}
+        layout={layout}
+        phone={!wide}
+        editing={arranging != null}
+        onChange={(next) => arranging && setArranging(next)}
+      />
 
       {isAdmin && orphans.length > 0 && (
         <Card>

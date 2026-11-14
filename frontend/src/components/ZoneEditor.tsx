@@ -15,7 +15,7 @@ import { zoneKinds } from '@/lib/dashboard'
 type Kind = (typeof zoneKinds)[number]
 
 /**
- * One climate zone, edited in one place (admin): its name, kind and place in the list, its hornets with what each
+ * One climate zone, edited in one place (admin): its name and kind, its hornets with what each
  * shows on the zone (and a pencil to the hornet's card, which leads back here), adding a hornet, removing the zone.
  */
 export function ZoneEditor({ zone, devices, latest, onClose }: {
@@ -28,18 +28,15 @@ export function ZoneEditor({ zone, devices, latest, onClose }: {
   const qc = useQueryClient()
   const [name, setName] = useState(zone.name)
   const [kind, setKind] = useState<Kind>(zone.kind as Kind)
-  const [sort, setSort] = useState(String(zone.sort))
   const members = devices.filter((d) => d.zoneId === zone.id)
   const loose = devices.filter((d) => d.zoneId == null && d.type !== 'hive')
-  const sortValue = Number(sort)
-  const sortOk = sort.trim() !== '' && Number.isInteger(sortValue) && sortValue >= 0 && sortValue <= 9999
-  const changed = name.trim() !== zone.name || kind !== zone.kind || sortValue !== zone.sort
+  const changed = name.trim() !== zone.name || kind !== zone.kind
 
   const refresh = () => Promise.all([qc.invalidateQueries({ queryKey: ['zones'] }), qc.invalidateQueries({ queryKey: keys.devices })])
 
   async function save(e: FormEvent) {
     e.preventDefault()
-    const response = await api.PUT('/api/zones/{id}', { params: { path: { id: zone.id } }, body: { name: name.trim(), kind, sort: sortValue } })
+    const response = await api.PUT('/api/zones/{id}', { params: { path: { id: zone.id } }, body: { name: name.trim(), kind, sort: zone.sort } })
     if (response.response.status === 409) toast.error(t('climate.exists'))
     else if (!response.response.ok) toast.error(t('climate.failed'))
     else toast.success(t('climate.saved'))
@@ -66,17 +63,11 @@ export function ZoneEditor({ zone, devices, latest, onClose }: {
     <Dialog title={t('climate.editZone').replace('{name}', zone.name)} onClose={onClose} wide>
       <div className="space-y-5 p-2">
         {/* Saved by the button at the bottom, across from "Распустить группу". */}
-        <form id="group-form" onSubmit={save} className="flex flex-col gap-2 lg:flex-row lg:items-center">
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('climate.zoneName')} aria-label={t('climate.zoneName')} className="h-10 text-sm lg:flex-1" />
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={kind} onChange={(e) => setKind(e.target.value as Kind)} aria-label={t('climate.kind')} className="h-10">
-              {zoneKinds.map((k) => <option key={k} value={k}>{t(`climate.kinds.${k}`)}</option>)}
-            </Select>
-            <label className="flex items-center gap-2 text-sm text-neutral-400">
-              {t('climate.sort')}
-              <Input type="number" min={0} max={9999} value={sort} onChange={(e) => setSort(e.target.value)} className="h-10 w-20 text-sm" />
-            </label>
-          </div>
+        <form id="group-form" onSubmit={save} className="flex items-center gap-2">
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('climate.zoneName')} aria-label={t('climate.zoneName')} className="h-10 min-w-0 flex-1 text-sm" />
+          <Select value={kind} onChange={(e) => setKind(e.target.value as Kind)} aria-label={t('climate.kind')} className="h-10 w-auto shrink-0">
+            {zoneKinds.map((k) => <option key={k} value={k}>{t(`climate.kinds.${k}`)}</option>)}
+          </Select>
         </form>
 
         <div className="space-y-2">
@@ -106,7 +97,7 @@ export function ZoneEditor({ zone, devices, latest, onClose }: {
         </div>
 
         <div className="flex justify-between gap-2 border-t border-neutral-800 pt-3">
-          <Button type="submit" form="group-form" size="sm" disabled={!name.trim() || !sortOk || !changed}><Save />{t('climate.save')}</Button>
+          <Button type="submit" form="group-form" size="sm" disabled={!name.trim() || !changed}><Save />{t('climate.save')}</Button>
           <Button variant="outline" size="sm" className="border-red-900 text-red-400 hover:bg-red-950" onClick={() => void remove()}>
             <Ungroup />{t('climate.delete')}
           </Button>

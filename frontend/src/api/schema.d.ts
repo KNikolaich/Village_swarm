@@ -7254,6 +7254,7 @@ export interface components {
         DashboardLayoutsDto: {
             desktop: null | components["schemas"]["DashboardWidgetDto"][];
             phone: null | components["schemas"]["DashboardWidgetDto"][];
+            climate: null | components["schemas"]["DashboardWidgetDto"][];
         };
         DashboardWidgetDto: {
             id: string;

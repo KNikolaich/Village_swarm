@@ -1,16 +1,16 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { Bell, ChevronLeft, ChevronRight, Images, LayoutDashboard, LogOut, Network, NotebookPen, Settings, Thermometer, Workflow } from 'lucide-react'
+import { Bell, ChevronLeft, ChevronRight, Images, LayoutDashboard, Network, NotebookPen, Thermometer, Workflow } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router'
-import { api, call } from '@/api/client'
-import { keys, useCluster } from '@/api/queries'
-import { Button } from '@/components/ui/button'
+import { call, api } from '@/api/client'
+import { useCluster } from '@/api/queries'
 import { t } from '@/i18n'
 import type { LiveState } from '@/lib/live'
 import { cn } from '@/lib/utils'
 import { useWideScreen } from '@/lib/layout'
 import { loadSidebarCollapsed, saveSidebarCollapsed, sidebarCollapsed } from '@/lib/sidebar'
 import { brandLabel } from '@/lib/version'
+import { GlobalSettingsIcon } from '@/components/GlobalSettingsIcon'
 import { HoneycombLogo } from '@/components/HoneycombLogo'
 import { ClusterBanner } from '@/components/ClusterBanner'
 import { LanguageSwitch } from '@/components/LanguageSwitch'
@@ -25,8 +25,13 @@ const nav = () => [
   { to: '/photos', label: t('nav.photos'), icon: Images, end: false },
   { to: '/notes', label: t('nav.notes'), icon: NotebookPen, end: false },
   { to: '/swarm', label: t('nav.swarm'), icon: Network, end: false },
-  { to: '/settings', label: t('nav.settings'), icon: Settings, end: false },
+  { to: '/settings', label: t('nav.settings'), icon: GlobalSettingsIcon, end: false },
 ]
+
+/** Reachable from the header on a phone instead of the bottom bar, so the bar keeps room for the main screens. */
+const headerOnPhone = ['/events', '/photos', '/settings']
+const sidebarItems = () => nav()
+const bottomItems = () => nav().filter((n) => !headerOnPhone.includes(n.to))
 
 /** Forms keep a readable width on a wide screen; the dashboards, lists and charts take all of it. */
 const narrow = (path: string) => path.startsWith('/settings') || path.startsWith('/rules') || path === '/swarm/add'
@@ -65,9 +70,24 @@ function HiveVersion({ className }: { className?: string }) {
   )
 }
 
+/** An icon-only link in the header: amber while its screen is open. */
+function HeaderLink({ to, label, icon: Icon, className }: { to: string; label: string; icon: React.ComponentType<{ className?: string }>; className?: string }) {
+  return (
+    <NavLink
+      to={to}
+      aria-label={label}
+      title={label}
+      className={({ isActive }) =>
+        cn('flex size-9 items-center justify-center rounded-md hover:bg-neutral-900', isActive ? 'text-amber-400' : 'text-neutral-400 hover:text-neutral-100', className)
+      }
+    >
+      <Icon className="size-5" />
+    </NavLink>
+  )
+}
+
 /** Header + sidebar on desktop, bottom tab bar on the phone. */
 export function AppShell({ live }: { live: LiveState }) {
-  const qc = useQueryClient()
   const { pathname } = useLocation()
   const title = useHiveTitle()
   // The tab is named after the hive ("Дача", "Город"), so tabs of two hives are told apart without opening them.
@@ -86,13 +106,6 @@ export function AppShell({ live }: { live: LiveState }) {
       saveSidebarCollapsed(!saved)
       setSaved(!saved)
     } else setOpenedOnTablet(!openedOnTablet)
-  }
-
-  async function logout() {
-    await api.POST('/api/auth/logout')
-    // Drop everything the previous user saw, but keep the "me" query: App shows the login page when it is null.
-    qc.removeQueries({ predicate: (q) => q.queryKey[0] !== keys.me[0] })
-    qc.setQueryData(keys.me, null)
   }
 
   return (
@@ -133,7 +146,7 @@ export function AppShell({ live }: { live: LiveState }) {
           </div>
         )}
         <nav className="space-y-1">
-          {nav().map(({ to, label, icon: Icon, end }) => (
+          {sidebarItems().map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -157,18 +170,19 @@ export function AppShell({ live }: { live: LiveState }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-neutral-800 bg-neutral-950/90 px-4 backdrop-blur">
-          <div className="flex items-center gap-2 md:hidden">
-            <HoneycombLogo className="size-6" />
-            <span className="font-semibold">{title}</span>
+          <div className="flex min-w-0 items-center gap-1 md:hidden">
+            <HoneycombLogo className="size-6 shrink-0" />
+            <span className="ml-1 mr-1 truncate font-semibold">{title}</span>
             <HiveVersion className="hidden sm:inline" />
+            {/* Events and photos: icons only, the bottom bar is for the main screens. */}
+            <HeaderLink to="/events" label={t('nav.events')} icon={Bell} />
+            <HeaderLink to="/photos" label={t('nav.photos')} icon={Images} />
           </div>
           <div className="hidden md:block" />
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <LanguageSwitch />
             <LiveDot state={live} />
-            <Button variant="ghost" size="icon" onClick={logout} aria-label={t('nav.logout')} title={t('nav.logout')}>
-              <LogOut />
-            </Button>
+            <HeaderLink to="/settings" label={t('nav.settings')} icon={GlobalSettingsIcon} className="md:hidden" />
           </div>
         </header>
 
@@ -178,8 +192,8 @@ export function AppShell({ live }: { live: LiveState }) {
         </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-8 border-t border-neutral-800 bg-neutral-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-        {nav().map(({ to, label, icon: Icon, end }) => (
+      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-neutral-800 bg-neutral-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+        {bottomItems().map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}

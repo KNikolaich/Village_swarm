@@ -15,8 +15,8 @@ namespace Hive.Modules.Devices;
 /// <summary>One widget of the overview: its id (guard, zone:3, cam:guard-hall...), width in twelfths, hidden or not.</summary>
 public sealed record DashboardWidgetDto(string Id, int W = 12, bool Hidden = false);
 
-/// <summary>The overview on a wide screen and on a phone; null: not arranged yet, the UI's default order.</summary>
-public sealed record DashboardLayoutsDto(IReadOnlyList<DashboardWidgetDto>? Desktop, IReadOnlyList<DashboardWidgetDto>? Phone);
+/// <summary>The overview on a wide screen and on a phone, and the climate page (one arrangement for both); null: not arranged yet, the UI's default order.</summary>
+public sealed record DashboardLayoutsDto(IReadOnlyList<DashboardWidgetDto>? Desktop, IReadOnlyList<DashboardWidgetDto>? Phone, IReadOnlyList<DashboardWidgetDto>? Climate);
 
 /// <summary>Items null: back to the default order.</summary>
 public sealed record SaveDashboardLayoutRequest(IReadOnlyList<DashboardWidgetDto>? Items);
@@ -24,7 +24,7 @@ public sealed record SaveDashboardLayoutRequest(IReadOnlyList<DashboardWidgetDto
 /// <summary>How the overview is arranged (spec 8.2 screen 1): only the screen uses it.</summary>
 public sealed class DashboardLayoutService(HiveDbContext db, TimeProvider time)
 {
-    public static readonly string[] Screens = ["desktop", "phone"];
+    public static readonly string[] Screens = ["desktop", "phone", "climate"];
     public static readonly int[] Widths = [3, 4, 6, 8, 12];
     public const int MaxWidgets = 200;
 
@@ -51,7 +51,7 @@ public sealed class DashboardLayoutService(HiveDbContext db, TimeProvider time)
         var rows = await db.DashboardLayouts.AsNoTracking().ToListAsync(ct);
         IReadOnlyList<DashboardWidgetDto>? Of(string screen) =>
             rows.FirstOrDefault(r => r.Screen == screen)?.Items.Deserialize<List<DashboardWidgetDto>>(Json);
-        return new DashboardLayoutsDto(Of("desktop"), Of("phone"));
+        return new DashboardLayoutsDto(Of("desktop"), Of("phone"), Of("climate"));
     }
 
     public async Task SaveAsync(string screen, IReadOnlyList<DashboardWidgetDto>? items, string by, CancellationToken ct)
