@@ -1874,6 +1874,12 @@
     "reset": "Reset",
     "saved": "Saved",
     "savedRestart": "Saved. Restart the hive to apply.",
+    "check": {
+      "button": "Check",
+      "busy": "Checking…",
+      "noAnswer": "The backup container did not answer in 90 seconds: it is stopped or an older version.",
+      "badAddress": "This does not look like a backup address."
+    },
     "reseted": "Reset to the .env value or the default",
     "invalid": "Invalid value",
     "default": "default: {value}",
@@ -1980,7 +1986,7 @@
       },
       "backup_repository": {
         "name": "Where to keep the off-site copy",
-        "hint": "Not the hive's own drive. A folder: /repo (on the server that is BACKUP_REPO_DIR, a network share can be mounted there) or an address like sftp:user@host:/path, rest:https://..., s3:... Empty: copies stay on the hive's drive only. The copy's password is set in .env (RESTIC_PASSWORD)."
+        "hint": "Not the hive's own drive. A folder: /repo (on the server that is BACKUP_REPO_DIR, a network share can be mounted there) or an address like rest:https://..., s3:... (sftp: the backup container has no ssh client and keys yet) Empty: copies stay on the hive's drive only. The copy's password is set in .env (RESTIC_PASSWORD)."
       }
     },
     "choices": {

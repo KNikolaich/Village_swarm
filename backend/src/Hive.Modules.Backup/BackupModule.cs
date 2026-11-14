@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json;
 using Hive.Contracts;
 using Hive.Domain;
@@ -7,6 +8,7 @@ using Hive.Infrastructure.Identity;
 using Hive.Modules.Telemetry.Ingest;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +28,11 @@ public sealed record BackupRunDto(long Id, string Kind, DateTimeOffset StartedAt
 public sealed record BackupStatusDto(
     bool Ok, IReadOnlyList<string> Problems, DateTimeOffset? LastGoodDumpAt,
     BackupRunDto? Dump, BackupRunDto? Offsite, BackupRunDto? Verify, IReadOnlyList<BackupRunDto> Recent);
+
+/// <summary>Result of "can the backup container reach this off-site address" (Done: it answered; false while it still works on it).</summary>
+public sealed record BackupCheckDto(string? RequestId, bool Done, bool Ok, string? Detail);
+
+public sealed record BackupCheckRequest(string Repository);
 
 public sealed class BackupOptions
 {
@@ -62,6 +69,41 @@ public static class BackupHealth
 
 public sealed class BackupService(HiveDbContext db, IOptions<BackupOptions> options, TimeProvider time)
 {
+    // The API cannot reach the off-site address itself (only the backup container has the repository mounted and the password),
+    // so a check is a note in the modes table: the container reads the request, tries the address and writes the result back.
+    internal const string CheckRequestKey = "backup.check.request";
+    internal const string CheckResultKey = "backup.check.result";
+
+    /// <summary>Asks the backup container to try the address (empty: no off-site copy). Returns the request id, or null when the text is not an address.</summary>
+    public async Task<string?> RequestCheckAsync(string repository, string by, CancellationToken ct)
+    {
+        repository = repository.Trim();
+        if (repository.Length > 200 || ConfigSettings.Validate(ConfigSettings.Find("backup.repository")!, repository) is not null)
+            return null;
+        var id = Guid.NewGuid().ToString("N")[..12];
+        var now = time.GetUtcNow();
+        var row = await db.Modes.FirstOrDefaultAsync(m => m.Key == CheckRequestKey, ct);
+        if (row is null)
+            db.Modes.Add(new Mode { Key = CheckRequestKey, Value = $"{id}|{repository}", UpdatedAt = now, UpdatedBy = by });
+        else
+        {
+            row.Value = $"{id}|{repository}";
+            row.UpdatedAt = now;
+            row.UpdatedBy = by;
+        }
+        await db.SaveChangesAsync(ct);
+        return id;
+    }
+
+    public async Task<BackupCheckDto> GetCheckAsync(CancellationToken ct)
+    {
+        var request = await db.Modes.AsNoTracking().Where(m => m.Key == CheckRequestKey).Select(m => m.Value).FirstOrDefaultAsync(ct);
+        if (request is null)
+            return new(null, false, false, null);
+        var id = request.Split('|', 2)[0];
+        var result = (await db.Modes.AsNoTracking().Where(m => m.Key == CheckResultKey).Select(m => m.Value).FirstOrDefaultAsync(ct))?.Split('|', 3);
+        return result is { Length: 3 } && result[0] == id ? new(id, true, result[1] == "true", result[2]) : new(id, false, false, null);
+    }
     private static BackupRunDto ToDto(BackupRun r) => new(r.Id, r.Kind, r.StartedAt, r.FinishedAt, r.Ok, r.Bytes, r.Detail);
 
     public async Task<BackupStatusDto> GetAsync(TimeSpan uptime, CancellationToken ct)
@@ -167,6 +209,13 @@ public static class BackupModule
     {
         app.MapGet("/api/backups", (BackupService s, CancellationToken ct) =>
                 s.GetAsync(DateTimeOffset.UtcNow - System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime(), ct))
+            .WithTags("backups")
+            .RequireAuthorization(HiveRoles.AdminOnly);
+        app.MapPost("/api/backups/check", async Task<Results<Ok<BackupCheckDto>, BadRequest>> (BackupCheckRequest request, BackupService s, ClaimsPrincipal user, CancellationToken ct) =>
+            await s.RequestCheckAsync(request.Repository, user.Identity?.Name ?? "admin", ct) is { } id ? TypedResults.Ok(new BackupCheckDto(id, false, false, null)) : TypedResults.BadRequest())
+            .WithTags("backups")
+            .RequireAuthorization(HiveRoles.AdminOnly);
+        app.MapGet("/api/backups/check", (BackupService s, CancellationToken ct) => s.GetCheckAsync(ct))
             .WithTags("backups")
             .RequireAuthorization(HiveRoles.AdminOnly);
         return app;

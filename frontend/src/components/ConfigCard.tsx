@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 import { toast } from 'sonner'
 import { api, call } from '@/api/client'
 import { useMe } from '@/api/queries'
+import { RepositoryCheck } from '@/components/RepositoryCheck'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { HelpTip } from '@/components/HelpTip'
@@ -117,6 +118,7 @@ function ConfigRow({ item }: { item: Item }) {
           <Button variant="outline" disabled={busy} onClick={() => void save('')}>{t('config.reset')}</Button>
         )}
       </div>
+      {item.key === 'backup.repository' && <RepositoryCheck address={draft} />}
       {item.default !== '' && <p className="text-xs text-neutral-600">{t('config.default').replace('{value}', defaultLabel(item))}</p>}
     </div>
   )

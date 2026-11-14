@@ -1801,6 +1801,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/backups/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BackupCheckDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["BackupCheckRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["BackupCheckDto"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/retention": {
         parameters: {
             query?: never;
@@ -7068,6 +7133,15 @@ export interface components {
         };
         AuthOptionsDto: {
             recoveryByEmail: boolean;
+        };
+        BackupCheckDto: {
+            requestId: null | string;
+            done: boolean;
+            ok: boolean;
+            detail: null | string;
+        };
+        BackupCheckRequest: {
+            repository: string;
         };
         BackupRunDto: {
             /** Format: int64 */

@@ -24,6 +24,30 @@ public sealed class BackupTests(HiveFixture hive)
         });
     }
 
+    /// <summary>"Check" in Settings: the API leaves a request, the backup container answers in the database; a bad address is refused.</summary>
+    [Fact]
+    public async Task The_off_site_address_check_is_a_request_and_an_answer()
+    {
+        var admin = await hive.LoginAsync();
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.PostAsJsonAsync("/api/backups/check", new { repository = "nas/backups" })).StatusCode);
+
+        var asked = await (await admin.PostAsJsonAsync("/api/backups/check", new { repository = "sftp:user@nas:/hive" })).Content.ReadFromJsonAsync<JsonElement>();
+        var id = asked.GetProperty("requestId").GetString()!;
+        Assert.False((await admin.GetFromJsonAsync<JsonElement>("/api/backups/check")).GetProperty("done").GetBoolean());
+
+        // What the backup container writes (deploy/backup/lib.sh): "<id>|<true|false>|<one line>".
+        await hive.QueryAsync(async db =>
+        {
+            db.Modes.Add(new Mode { Key = "backup.check.result", Value = $"{id}|false|no answer | really", UpdatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+            return 0;
+        });
+        var answer = await admin.GetFromJsonAsync<JsonElement>("/api/backups/check");
+        Assert.True(answer.GetProperty("done").GetBoolean());
+        Assert.False(answer.GetProperty("ok").GetBoolean());
+        Assert.Equal("no answer | really", answer.GetProperty("detail").GetString());
+    }
+
     /// <summary>One story in order (the journal is shared state): stale, well, failed and warned once, well again.</summary>
     [Fact]
     public async Task The_journal_drives_the_status_and_the_warnings()
