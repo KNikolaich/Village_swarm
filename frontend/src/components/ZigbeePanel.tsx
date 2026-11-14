@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { api, call, failureText } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui/primitives'
 import { t } from '@/i18n'
@@ -39,8 +39,8 @@ export function ZigbeePanel() {
   const [error, setError] = useState<string | null>(null)
 
   async function permit(seconds: number) {
-    const { response } = await api.POST('/api/zigbee/permit-join', { body: { seconds } })
-    if (!response.ok) toast.error(t('zigbee.permitFailed'))
+    const { response, error } = await api.POST('/api/zigbee/permit-join', { body: { seconds } })
+    if (!response.ok) toast.error(failureText({ error }, t('zigbee.permitFailed')))
     await qc.invalidateQueries({ queryKey: key })
   }
 

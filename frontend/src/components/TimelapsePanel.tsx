@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Square, Timer } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { api, type DeviceDto, type TimelapseDto } from '@/api/client'
+import { api, failureText, type DeviceDto, type TimelapseDto } from '@/api/client'
 import { keys, useTimelapse } from '@/api/queries'
 import { Lightbox } from '@/components/Lightbox'
 import { Button } from '@/components/ui/button'
@@ -43,9 +43,9 @@ export function TimelapsePanel({ device, canControl, hasLight }: { device: Devic
           <Button
             variant="outline"
             onClick={async () => {
-              const { response } = await api.DELETE('/api/timelapse/{deviceId}', { params: { path: { deviceId: device.deviceId } } })
+              const { response, error } = await api.DELETE('/api/timelapse/{deviceId}', { params: { path: { deviceId: device.deviceId } } })
               if (!response.ok && response.status !== 404) {
-                toast.error(t('errors.generic'))
+                toast.error(failureText({ error }, t('errors.generic')))
                 return
               }
               toast.success(t('timelapse.stopped'))

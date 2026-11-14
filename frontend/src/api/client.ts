@@ -62,14 +62,22 @@ export function errorText(e: unknown, fallback: string): string {
   return e instanceof ApiError && e.fromServer ? e.message : fallback
 }
 
+/** The server's own words out of an error body (a problem document), if it said any. */
+function problemText(error: unknown): string | undefined {
+  const body = error as { detail?: string; title?: string; errors?: Record<string, string[]> } | undefined
+  const validation = body?.errors ? Object.values(body.errors).flat().join(' ') : undefined
+  // Validation problems carry a generic title ("One or more validation errors occurred"): the field messages say more.
+  return validation || body?.detail || body?.title || undefined
+}
+
+/** For a raw openapi-fetch result that was not ok: the server's reason, else the fallback text. */
+export function failureText(result: { error?: unknown }, fallback: string): string {
+  return problemText(result.error) ?? fallback
+}
+
 /** Unwraps an openapi-fetch result for TanStack Query: data or a thrown ApiError. */
 export async function call<T>(promise: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
   const { data, error, response } = await promise
-  if (!response.ok) {
-    const body = error as { detail?: string; title?: string; errors?: Record<string, string[]> } | undefined
-    const validation = body?.errors ? Object.values(body.errors).flat().join(' ') : undefined
-    // Validation problems carry a generic title ("One or more validation errors occurred"): the field messages say more.
-    throw new ApiError(response.status, validation || body?.detail || body?.title, true)
-  }
+  if (!response.ok) throw new ApiError(response.status, problemText(error), true)
   return data as T
 }

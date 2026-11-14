@@ -42,8 +42,8 @@ export function WeatherSettingsCard() {
       await call(api.PUT('/api/settings/weather', { body: { baseUrl: baseUrl.trim(), latitude: number(latitude), longitude: number(longitude), timezone: timezone.trim() } }))
       toast.success(t('weather.settings.saved'))
       await Promise.all([qc.invalidateQueries({ queryKey: ['weather'] }), qc.invalidateQueries({ queryKey: ['settings', 'weather'] })])
-    } catch {
-      toast.error(t('weather.settings.rejected'))
+    } catch (e) {
+      toast.error(errorText(e, t('weather.settings.rejected')))
     } finally {
       setBusy(false)
     }

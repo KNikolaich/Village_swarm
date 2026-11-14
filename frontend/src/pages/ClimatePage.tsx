@@ -3,7 +3,7 @@ import { LayoutGrid, Pencil, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
-import { api, call, errorText, type DeviceDto, type LatestValueDto, type ZoneDto } from '@/api/client'
+import { api, call, errorText, failureText, type DeviceDto, type LatestValueDto, type ZoneDto } from '@/api/client'
 import { historyWindow, keys, useDashboardLayout, useDevices, useLatestTelemetry, useMe, useMetricSeries, useWeather, useZones } from '@/api/queries'
 import { DashboardGrid, type WidgetView } from '@/components/DashboardGrid'
 import { MultiChart, TimeAxis, type ChartPoint, type ChartSeries } from '@/components/Chart'
@@ -151,8 +151,8 @@ export function ZoneSelect({ device, zones }: { device: DeviceDto; zones: ZoneDt
     try {
       await call(api.PUT('/api/devices/{deviceId}/zone', { params: { path: { deviceId: device.deviceId } }, body: { zoneId: value === '' ? null : Number(value) } }))
       await Promise.all([qc.invalidateQueries({ queryKey: keys.devices }), qc.invalidateQueries({ queryKey: ['zones'] })])
-    } catch {
-      toast.error(t('climate.failed'))
+    } catch (e) {
+      toast.error(errorText(e, t('climate.failed')))
     }
   }
   return (
@@ -254,7 +254,7 @@ function AddZone() {
     e.preventDefault()
     const response = await api.POST('/api/zones', { body: { name: name.trim(), kind } })
     if (response.response.status === 409) toast.error(t('climate.exists'))
-    else if (!response.response.ok) toast.error(t('climate.failed'))
+    else if (!response.response.ok) toast.error(failureText(response, t('climate.failed')))
     else {
       setName('')
       toast.success(t('climate.saved'))

@@ -15,7 +15,7 @@ import { ArrowLeft, Camera, ChartLine, ChevronDown, ChevronRight, ChevronUp, Cpu
 import { useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { api, call, errorText } from '@/api/client'
 import { chartWindow, keys, useEvents, useZones, useCommandHistory, useDeviceLogs, useDevices, useHealthHistory, useLatestTelemetry, useMe, useMonitoring, useRanges, useSendCommand, useSeries, useSnapshot, useTimelapse } from '@/api/queries'
 import { EventCard, type PhotoRef } from '@/components/EventCard'
 import { Lightbox } from '@/components/Lightbox'
@@ -141,8 +141,8 @@ function useClear(path: '/api/devices/{deviceId}/commands' | '/api/devices/{devi
     if (!window.confirm(t(path.endsWith('logs') ? 'device.clearLogsConfirm' : 'device.clearCommandsConfirm').replace('{name}', name))) return
     try {
       await call(api.DELETE(path, { params: { path: { deviceId } } }))
-    } catch {
-      toast.error(t('device.clearFailed'))
+    } catch (e) {
+      toast.error(errorText(e, t('device.clearFailed')))
     }
     await qc.invalidateQueries({ queryKey: query })
   }

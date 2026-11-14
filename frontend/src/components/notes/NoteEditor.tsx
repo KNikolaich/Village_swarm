@@ -29,7 +29,7 @@ import { Ban, Check, ChevronLeft, Loader2, Paperclip, Trash2, X } from 'lucide-r
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { ApiError, type NoteDto } from '@/api/client'
+import { ApiError, errorText, type NoteDto } from '@/api/client'
 import { noteKeys, uploadNoteAttachment, useDeleteNoteAttachment, useUpdateNote } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { getLanguage, t } from '@/i18n'
@@ -107,7 +107,7 @@ export function NoteEditor({ note, canEdit, onDelete }: { note: NoteDto; canEdit
   }, [])
 
   const saveHeader = (changes: { icon?: string; color?: string }) =>
-    update.mutate({ id: note.id, ...changes }, { onError: () => toast.error(t('notes.saveFailed')) })
+    update.mutate({ id: note.id, ...changes }, { onError: (e) => toast.error(errorText(e, t('notes.saveFailed'))) })
 
   const upload = useCallback(
     async (file: File) => {

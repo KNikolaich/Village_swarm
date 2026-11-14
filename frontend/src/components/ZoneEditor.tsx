@@ -3,7 +3,7 @@ import { Pencil, Save, Ungroup } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { api, call, type DeviceDto, type LatestValueDto, type ZoneDto } from '@/api/client'
+import { api, call, errorText, failureText, type DeviceDto, type LatestValueDto, type ZoneDto } from '@/api/client'
 import { keys } from '@/api/queries'
 import { DashboardChecks } from '@/components/DashboardChecks'
 import { Dialog } from '@/components/notes/Dialog'
@@ -38,7 +38,7 @@ export function ZoneEditor({ zone, devices, latest, onClose }: {
     e.preventDefault()
     const response = await api.PUT('/api/zones/{id}', { params: { path: { id: zone.id } }, body: { name: name.trim(), kind, sort: zone.sort } })
     if (response.response.status === 409) toast.error(t('climate.exists'))
-    else if (!response.response.ok) toast.error(t('climate.failed'))
+    else if (!response.response.ok) toast.error(failureText(response, t('climate.failed')))
     else toast.success(t('climate.saved'))
     await refresh()
   }
@@ -47,8 +47,8 @@ export function ZoneEditor({ zone, devices, latest, onClose }: {
     try {
       await call(api.PUT('/api/devices/{deviceId}/zone', { params: { path: { deviceId } }, body: { zoneId } }))
       await refresh()
-    } catch {
-      toast.error(t('climate.failed'))
+    } catch (e) {
+      toast.error(errorText(e, t('climate.failed')))
     }
   }
 

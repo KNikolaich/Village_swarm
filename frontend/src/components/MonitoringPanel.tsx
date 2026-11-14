@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Activity, Square } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { api, type DeviceDto, type MonitoringDto } from '@/api/client'
+import { api, failureText, type DeviceDto, type MonitoringDto } from '@/api/client'
 import { keys, useMonitoring } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge, Input, Select } from '@/components/ui/primitives'
@@ -60,9 +60,9 @@ export function MonitoringPanel({ device, metrics, canControl, onStarted }: {
           <Button
             variant="outline"
             onClick={async () => {
-              const { response } = await api.DELETE('/api/telemetry/monitoring/{deviceId}', { params: { path: { deviceId: device.deviceId } } })
+              const { response, error } = await api.DELETE('/api/telemetry/monitoring/{deviceId}', { params: { path: { deviceId: device.deviceId } } })
               if (!response.ok && response.status !== 404) {
-                toast.error(t('errors.generic'))
+                toast.error(failureText({ error }, t('errors.generic')))
                 return
               }
               toast.success(t('monitoring.stopped'))

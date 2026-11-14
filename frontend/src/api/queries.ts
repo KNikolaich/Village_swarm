@@ -1,4 +1,5 @@
 import { rangesByKey } from '@/lib/valueRange'
+import { errorText, failureText } from '@/api/client'
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { t } from '@/i18n'
@@ -250,9 +251,9 @@ export const useMetricSeries = (lines: { device: string; metric: string }[], hou
 export function useSnapshot(deviceId: string) {
   const qc = useQueryClient()
   return async () => {
-    const { data, response } = await api.POST('/api/devices/{deviceId}/commands', { params: { path: { deviceId } }, body: { name: 'snapshot', payload: { count: 1 } as unknown as Record<string, never> } })
+    const { data, response, error } = await api.POST('/api/devices/{deviceId}/commands', { params: { path: { deviceId } }, body: { name: 'snapshot', payload: { count: 1 } as unknown as Record<string, never> } })
     if (!response.ok || !data) {
-      toast.error(t('device.commandRefused'))
+      toast.error(failureText({ error }, t('device.commandRefused')))
       return
     }
     toast.success(t('device.commandSent'))
@@ -278,8 +279,8 @@ export function useSendCommand(deviceId: string) {
     try {
       await call(api.POST('/api/devices/{deviceId}/commands', { params: { path: { deviceId } }, body: { name, payload: payload as Record<string, never> | undefined } }))
       toast.success(t('device.commandSent'))
-    } catch {
-      toast.error(t('device.commandRefused'))
+    } catch (e) {
+      toast.error(errorText(e, t('device.commandRefused')))
     }
   }
 }

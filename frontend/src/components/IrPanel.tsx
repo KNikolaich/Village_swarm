@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Radio, Send, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { api, call, failureText } from '@/api/client'
 import { keys, useSendCommand } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Input, Select } from '@/components/ui/primitives'
@@ -53,9 +53,9 @@ export function IrPanel({ deviceId, state, online, canEdit, receivers }: {
   const unknownProtocol = last?.protocol.toUpperCase() === 'UNKNOWN'
 
   async function save(next: Record<string, Code>) {
-    const { response } = await api.PUT('/api/devices/{deviceId}/ir-buttons', { params: { path: { deviceId } }, body: { buttons: next } })
+    const { response, error } = await api.PUT('/api/devices/{deviceId}/ir-buttons', { params: { path: { deviceId } }, body: { buttons: next } })
     if (!response.ok) {
-      toast.error(t('errors.generic'))
+      toast.error(failureText({ error }, t('errors.generic')))
       return
     }
     await qc.invalidateQueries({ queryKey: key })

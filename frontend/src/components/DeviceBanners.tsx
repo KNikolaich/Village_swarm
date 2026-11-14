@@ -3,7 +3,7 @@ import { Bell, Bot, Camera, Images, ImageOff, Lightbulb, Power, PowerOff } from 
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { api, call, type DeviceDto, type LatestValueDto } from '@/api/client'
+import { api, call, errorText, type DeviceDto, type LatestValueDto } from '@/api/client'
 import { useLatestPhoto, useRules, useSendCommand, useSnapshot } from '@/api/queries'
 import { Lightbox } from '@/components/Lightbox'
 import { Button } from '@/components/ui/button'
@@ -99,8 +99,8 @@ export function RelayBanner({ device, canControl, isAdmin }: { device: DeviceDto
   async function setAuto(enabled: boolean) {
     try {
       await Promise.all(rules.map((r) => call(api.PUT('/api/rules/{id}/enabled', { params: { path: { id: r.id } }, body: { enabled } }))))
-    } catch {
-      toast.error(t('dashboard.autoFailed'))
+    } catch (e) {
+      toast.error(errorText(e, t('dashboard.autoFailed')))
     }
     await qc.invalidateQueries({ queryKey: ['rules'] })
   }

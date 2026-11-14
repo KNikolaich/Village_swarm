@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Check, Pencil, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { api, call, type DeviceDto } from '@/api/client'
+import { api, call, errorText, type DeviceDto } from '@/api/client'
 import { keys } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/primitives'
@@ -27,8 +27,8 @@ export function DeviceName({ device, editable }: { device: DeviceDto; editable: 
       toast.success(t('swarm.renamed'))
       setDraft(null)
       await qc.invalidateQueries({ queryKey: keys.devices })
-    } catch {
-      toast.error(t('swarm.renameFailed'))
+    } catch (e) {
+      toast.error(errorText(e, t('swarm.renameFailed')))
     } finally {
       setBusy(false)
     }

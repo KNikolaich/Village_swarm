@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleHelp } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { api, call, errorText } from '@/api/client'
 import { useLatestTelemetry } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Input, Select, Skeleton } from '@/components/ui/primitives'
@@ -128,8 +128,8 @@ export function PinsPanel({ deviceId, editable, board, type, features }: { devic
       setDraft({})
       toast.success(t('swarm.pinsSaved'))
       await qc.invalidateQueries({ queryKey: ['devices', deviceId, 'pins'] })
-    } catch {
-      toast.error(t('swarm.pinsRejected'))
+    } catch (e) {
+      toast.error(errorText(e, t('swarm.pinsRejected')))
     }
   }
 
