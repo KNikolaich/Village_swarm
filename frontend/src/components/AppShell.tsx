@@ -30,8 +30,10 @@ const nav = () => [
 
 /** Reachable from the header on a phone instead of the bottom bar, so the bar keeps room for the main screens. */
 const headerOnPhone = ['/events', '/photos', '/settings']
+/** The swarm is the big round button in the middle of the phone's bottom bar. */
+const centerOnPhone = '/swarm'
 const sidebarItems = () => nav()
-const bottomItems = () => nav().filter((n) => !headerOnPhone.includes(n.to))
+const bottomItems = () => nav().filter((n) => !headerOnPhone.includes(n.to) && n.to !== centerOnPhone)
 
 /** Forms keep a readable width on a wide screen; the dashboards, lists and charts take all of it. */
 const narrow = (path: string) => path.startsWith('/settings') || path.startsWith('/rules') || path === '/swarm/add'
@@ -67,6 +69,20 @@ function HiveVersion({ className }: { className?: string }) {
     <span className={cn('truncate font-mono text-[11px] text-amber-600/90', className)} title={t('settings.version').replace('{version}', label.text)}>
       {label.text}
     </span>
+  )
+}
+
+/** One item of the phone's bottom bar. */
+function BottomLink({ to, label, icon: Icon, end }: { to: string; label: string; icon: React.ComponentType<{ className?: string }>; end: boolean }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) => cn('flex min-w-0 flex-col items-center gap-1 py-2 text-[10px] sm:text-xs', isActive ? 'text-amber-400' : 'text-neutral-500')}
+    >
+      <Icon className="size-5" />
+      <span className="max-w-full truncate px-0.5">{label}</span>
+    </NavLink>
   )
 }
 
@@ -193,17 +209,21 @@ export function AppShell({ live }: { live: LiveState }) {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-neutral-800 bg-neutral-950/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-        {bottomItems().map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) => cn('flex min-w-0 flex-col items-center gap-1 py-2 text-[10px] sm:text-xs', isActive ? 'text-amber-400' : 'text-neutral-500')}
-          >
-            <Icon className="size-5" />
-            <span className="max-w-full truncate px-0.5">{label}</span>
-          </NavLink>
-        ))}
+        {bottomItems().slice(0, 2).map((item) => <BottomLink key={item.to} {...item} />)}
+        <NavLink
+          to={centerOnPhone}
+          aria-label={t('nav.swarm')}
+          title={t('nav.swarm')}
+          className={({ isActive }) =>
+            cn(
+              '-mt-6 mb-2 flex size-16 items-center justify-center place-self-center rounded-full border-4 border-neutral-950 shadow-lg shadow-black/50',
+              isActive ? 'bg-amber-400 text-neutral-950' : 'bg-neutral-800 text-amber-400 hover:bg-neutral-700',
+            )
+          }
+        >
+          <Network className="size-7" />
+        </NavLink>
+        {bottomItems().slice(2).map((item) => <BottomLink key={item.to} {...item} />)}
       </nav>
     </div>
   )
