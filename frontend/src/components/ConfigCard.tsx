@@ -58,7 +58,7 @@ export function ConfigCard() {
         if (rows.length === 0) return null
         return (
           <Card key={section} id={`config-${section}`}>
-            <CardHeader><CardTitle className="flex items-center gap-1">{t(`config.sections.${section}.title`)}<HelpTip text={t(`config.sections.${section}.hint`)} /></CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-1">{t(`config.sections.${section}.title`)}<HelpTip text={sectionHelp(section, rows)} /></CardTitle></CardHeader>
             <CardContent className="space-y-4 text-sm">
               {rows.map((item) => <ConfigRow key={item.key} item={item} />)}
             </CardContent>
@@ -67,6 +67,14 @@ export function ConfigCard() {
       })}
     </div>
   )
+}
+
+/** One tooltip per group: the group's own hint, then every parameter's name and hint (with when it applies). */
+function sectionHelp(section: string, rows: Item[]) {
+  const params = rows.map((i) => `${t(`config.params.${i18nKey(i.key)}.name`)}: ${t(`config.params.${i18nKey(i.key)}.hint`)} ${t(i.apply === 'auto' ? 'config.autoHint' : 'config.restartHint')}`)
+  return [t(`config.sections.${section}.hint`), ...params].join('
+
+')
 }
 
 function ConfigRow({ item }: { item: Item }) {
@@ -95,10 +103,7 @@ function ConfigRow({ item }: { item: Item }) {
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="flex items-center gap-1">
-          <label htmlFor={id} className="font-medium">{name}</label>
-          <HelpTip text={`${t(`config.params.${i18nKey(item.key)}.hint`)} ${t(item.apply === 'auto' ? 'config.autoHint' : 'config.restartHint')}`} />
-        </span>
+        <label htmlFor={id} className="font-medium">{name}</label>
         <span className="flex flex-wrap items-center gap-1">
           {item.restartPending && <Badge tone="warn">{t('config.restartBadge')}</Badge>}
           {item.apply === 'auto' && <Badge tone="info">{t('config.autoBadge')}</Badge>}
