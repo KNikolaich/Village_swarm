@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Hive.Domain;
 using Hive.Infrastructure.Data;
 using Hive.Infrastructure.Identity;
+using Hive.Modules.Notify.Sms;
 using Hive.Modules.Notify.Telegram;
 using Hive.Modules.Telemetry.Ingest;
 using Microsoft.AspNetCore.Builder;
@@ -42,6 +43,11 @@ public static class NotifyModule
         services.AddHostedService(sp => sp.GetRequiredService<TelegramBotHost>());
         services.AddScoped<BotCommands>();
         services.AddScoped<IAuthNotifier, TelegramAuthNotifier>();
+        services.Configure<SmsOptions>(configuration.GetSection(SmsOptions.Section));
+        services.AddSingleton<ISmsModem, AtSmsModem>();
+        services.AddSingleton<SmsAlerts>();
+        services.AddSingleton<IIngestListener>(sp => sp.GetRequiredService<SmsAlerts>());
+        services.AddHostedService(sp => sp.GetRequiredService<SmsAlerts>());
         return services;
     }
 

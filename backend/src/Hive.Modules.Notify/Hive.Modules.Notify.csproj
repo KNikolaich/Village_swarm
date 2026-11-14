@@ -4,6 +4,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Telegram.Bot" />
+    <PackageReference Include="System.IO.Ports" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../Hive.Domain/Hive.Domain.csproj" />
