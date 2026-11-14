@@ -1093,6 +1093,7 @@
   },
   "boards": {
     "esp32cam-aithinker": "ESP32-CAM AI-Thinker",
+    "esp32s3-cam-n16r8": "ESP32-S3 камера N16R8 (16 МБ флеш, 8 МБ PSRAM)",
     "esp32c3-mini": "ESP32-C3 mini (SuperMini)",
     "esp32c3-oled-042": "ESP32-C3 с экраном 0,42\"",
     "wemos-d1-mini": "Wemos D1 mini",
