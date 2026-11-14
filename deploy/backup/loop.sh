@@ -44,7 +44,8 @@ while true; do
 			said_at="$at"
 		fi
 		[ "$wait" -gt 60 ] || break
-		sleep 60
+		# A minute in 5-second steps: a "Check" asked in Settings gets its answer within seconds.
+		for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 5; handle_check_request; done
 	done
 	said_at=""
 	sleep "$wait"

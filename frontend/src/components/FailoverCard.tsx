@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { api, call, failureText } from '@/api/client'
 import { useMe } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui/primitives'
@@ -44,9 +44,9 @@ export function FailoverCard() {
     e.preventDefault()
     setBusy(true)
     try {
-      const { response } = await api.PUT('/api/failover', { body: { host: host.trim() || null, port: portNumber || 1883, replicaUrl: replicaUrl.trim() || null, certSha256: certSha256.trim() || null } })
+      const { response, error } = await api.PUT('/api/failover', { body: { host: host.trim() || null, port: portNumber || 1883, replicaUrl: replicaUrl.trim() || null, certSha256: certSha256.trim() || null } })
       if (!response.ok) {
-        toast.error(t('failover.bad'))
+        toast.error(failureText({ error }, t('failover.bad')))
         return
       }
       toast.success(t('failover.saved'))
@@ -58,9 +58,9 @@ export function FailoverCard() {
   }
 
   async function forget() {
-    const { response } = await api.DELETE('/api/replica/pin')
+    const { response, error } = await api.DELETE('/api/replica/pin')
     if (!response.ok) {
-      toast.error(t('failover.bad'))
+      toast.error(failureText({ error }, t('failover.bad')))
       return
     }
     toast.success(t('failover.pinForgotten'))

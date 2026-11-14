@@ -1310,6 +1310,55 @@
         }
       }
     },
+    "/api/backups/check": {
+      "post": {
+        "tags": [
+          "backups"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupCheckRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupCheckDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "backups"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackupCheckDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/retention": {
       "get": {
         "tags": [
@@ -5941,6 +5990,46 @@
         "properties": {
           "recoveryByEmail": {
             "type": "boolean"
+          }
+        }
+      },
+      "BackupCheckDto": {
+        "required": [
+          "requestId",
+          "done",
+          "ok",
+          "detail"
+        ],
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "BackupCheckRequest": {
+        "required": [
+          "repository"
+        ],
+        "type": "object",
+        "properties": {
+          "repository": {
+            "type": "string"
           }
         }
       },

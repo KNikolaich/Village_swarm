@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { api, call, type DeviceDto, type LatestValueDto } from '@/api/client'
+import { api, call, errorText, type DeviceDto, type LatestValueDto } from '@/api/client'
 import { keys } from '@/api/queries'
 import { metricLabel, t } from '@/i18n'
 import { dashboardItems, probeName, shownKeys, toggled } from '@/lib/dashboard'
@@ -31,8 +31,8 @@ export function DashboardChecks({ device, latest, editable, compact }: {
     try {
       await call(api.PUT('/api/devices/{deviceId}/dashboard', { params: { path: { deviceId: device.deviceId } }, body: { shown: value } }))
       await qc.invalidateQueries({ queryKey: keys.devices })
-    } catch {
-      toast.error(t('dashboard.failed'))
+    } catch (e) {
+      toast.error(errorText(e, t('dashboard.failed')))
     }
   }
 

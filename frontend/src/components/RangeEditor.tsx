@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { api } from '@/api/client'
+import { api, failureText } from '@/api/client'
 import { useRanges } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/primitives'
@@ -29,9 +29,9 @@ function RangeRow({ deviceId, metric, editable }: { deviceId: string; metric: st
 
   async function save() {
     const path = { params: { path: { deviceId, metric } } }
-    const { response } = empty ? await api.DELETE('/api/ranges/{deviceId}/{metric}', path) : await api.PUT('/api/ranges/{deviceId}/{metric}', { ...path, body: { min: lo, max: hi } })
+    const { response, error } = empty ? await api.DELETE('/api/ranges/{deviceId}/{metric}', path) : await api.PUT('/api/ranges/{deviceId}/{metric}', { ...path, body: { min: lo, max: hi } })
     if (!response.ok) {
-      toast.error(t('errors.generic'))
+      toast.error(failureText({ error }, t('errors.generic')))
       return
     }
     toast.success(t('range.saved'))

@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, ChevronUp, ImagePlus, Plus, Trash2, Type, Upload, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { api, call, failureText } from '@/api/client'
 import { useDevices, useLatestTelemetry } from '@/api/queries'
 import { HelpTip } from '@/components/HelpTip'
 import { type SourceGroup, SourcePicker } from '@/components/SourcePicker'
@@ -148,7 +148,7 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
         ...(styled ? { font: r.font || null, px, bold: r.bold, italic: r.italic } : {}),
       }
     })
-    const { response } = await api.PUT('/api/devices/{deviceId}/display', {
+    const { response, error } = await api.PUT('/api/devices/{deviceId}/display', {
       params: { path: { deviceId } },
       body: {
         items, ...(rendered ? { rotation, invert } : {}),
@@ -157,7 +157,7 @@ export function DisplayPanel({ deviceId, editable }: { deviceId: string; editabl
       },
     })
     if (!response.ok) {
-      toast.error(t('errors.generic'))
+      toast.error(failureText({ error }, t('errors.generic')))
       return
     }
     toast.success(t('display.saved'))

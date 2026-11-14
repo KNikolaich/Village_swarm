@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { errorText } from '@/api/client'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/primitives'
 import { t } from '@/i18n'
@@ -19,8 +20,8 @@ export function SortInput({ value, onSave, label, className }: { value: number; 
     }
     try {
       await onSave(Number(text))
-    } catch {
-      toast.error(t('swarm.sortFailed'))
+    } catch (e) {
+      toast.error(errorText(e, t('swarm.sortFailed')))
     }
   }
 

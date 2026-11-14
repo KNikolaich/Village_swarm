@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Activity, Square } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { api, call, failureText } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Badge, Select } from '@/components/ui/primitives'
 import { t } from '@/i18n'
@@ -27,9 +27,9 @@ export function PanelMonitoring({ deviceId, canControl }: { deviceId: string; ca
   async function start() {
     setBusy(true)
     try {
-      const { response } = await api.PUT('/api/devices/{deviceId}/display/monitoring', { params: { path: { deviceId } }, body: { hours, everyMin } })
+      const { response, error } = await api.PUT('/api/devices/{deviceId}/display/monitoring', { params: { path: { deviceId } }, body: { hours, everyMin } })
       if (!response.ok) {
-        toast.error(t('errors.generic'))
+        toast.error(failureText({ error }, t('errors.generic')))
         return
       }
       toast.success(monitor ? t('monitoring.changed') : t('monitoring.started'))
@@ -40,9 +40,9 @@ export function PanelMonitoring({ deviceId, canControl }: { deviceId: string; ca
   }
 
   async function stop() {
-    const { response } = await api.DELETE('/api/devices/{deviceId}/display/monitoring', { params: { path: { deviceId } } })
+    const { response, error } = await api.DELETE('/api/devices/{deviceId}/display/monitoring', { params: { path: { deviceId } } })
     if (!response.ok && response.status !== 404) {
-      toast.error(t('errors.generic'))
+      toast.error(failureText({ error }, t('errors.generic')))
       return
     }
     toast.success(t('panelMonitoring.stopped'))

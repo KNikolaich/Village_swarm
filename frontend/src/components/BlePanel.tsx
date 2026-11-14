@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { api, call, failureText } from '@/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/primitives'
 import { t } from '@/i18n'
@@ -28,9 +28,9 @@ export function BlePanel({ deviceId, editable }: { deviceId: string; editable: b
   const valid = mac === '' || macPattern.test(mac)
 
   async function save() {
-    const { response } = await api.PUT('/api/devices/{deviceId}/ble', { params: { path: { deviceId } }, body: { mac: mac || null, dump } })
+    const { response, error } = await api.PUT('/api/devices/{deviceId}/ble', { params: { path: { deviceId } }, body: { mac: mac || null, dump } })
     if (!response.ok) {
-      toast.error(t('errors.generic'))
+      toast.error(failureText({ error }, t('errors.generic')))
       return
     }
     toast.success(t('ble.saved'))

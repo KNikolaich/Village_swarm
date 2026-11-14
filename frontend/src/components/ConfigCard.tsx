@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { api, call, errorText } from '@/api/client'
 import { useMe } from '@/api/queries'
+import { RepositoryCheck } from '@/components/RepositoryCheck'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { HelpTip } from '@/components/HelpTip'
@@ -91,8 +92,8 @@ function ConfigRow({ item }: { item: Item }) {
       await call(api.PUT('/api/settings/config/{key}', { params: { path: { key: item.key } }, body: { value: next } }))
       await qc.invalidateQueries({ queryKey })
       toast.success(t(next === '' ? 'config.reseted' : item.apply === 'auto' ? 'config.saved' : 'config.savedRestart'))
-    } catch {
-      toast.error(t('config.invalid'))
+    } catch (e) {
+      toast.error(errorText(e, t('config.invalid')))
     } finally {
       setBusy(false)
     }
@@ -117,6 +118,7 @@ function ConfigRow({ item }: { item: Item }) {
           <Button variant="outline" disabled={busy} onClick={() => void save('')}>{t('config.reset')}</Button>
         )}
       </div>
+      {item.key === 'backup.repository' && <RepositoryCheck address={draft} />}
       {item.default !== '' && <p className="text-xs text-neutral-600">{t('config.default').replace('{value}', defaultLabel(item))}</p>}
     </div>
   )

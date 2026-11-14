@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Copy, KeyRound, ShieldOff } from 'lucide-react'
 import { useState } from 'react'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { api, call, failureText } from '@/api/client'
 import { HelpTip } from '@/components/HelpTip'
 import { PhoneSetup } from '@/components/PhoneSetup'
 import { Button } from '@/components/ui/button'
@@ -27,9 +27,9 @@ export function ScreenAccessPanel({ deviceId }: { deviceId: string }) {
 
   async function issue() {
     if (a?.enabled && !window.confirm(t('screenAccess.replaceConfirm'))) return
-    const { data, response } = await api.POST('/api/devices/{deviceId}/screen-access', { params: { path: { deviceId } } })
+    const { data, response, error } = await api.POST('/api/devices/{deviceId}/screen-access', { params: { path: { deviceId } } })
     if (!response.ok || !data) {
-      toast.error(t('errors.generic'))
+      toast.error(failureText({ error }, t('errors.generic')))
       return
     }
     setToken(data.token)
@@ -38,9 +38,9 @@ export function ScreenAccessPanel({ deviceId }: { deviceId: string }) {
 
   async function revoke() {
     if (!window.confirm(t('screenAccess.revokeConfirm'))) return
-    const { response } = await api.DELETE('/api/devices/{deviceId}/screen-access', { params: { path: { deviceId } } })
+    const { response, error } = await api.DELETE('/api/devices/{deviceId}/screen-access', { params: { path: { deviceId } } })
     if (!response.ok) {
-      toast.error(t('errors.generic'))
+      toast.error(failureText({ error }, t('errors.generic')))
       return
     }
     setToken(null)
