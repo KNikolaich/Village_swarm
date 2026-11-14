@@ -535,20 +535,19 @@ function DevicesCard() {
 
 function InstallCard() {
   const offer = useInstallOffer()
-  const installed = isInstalled()
+  // Already running as an app: nothing to offer.
+  if (isInstalled()) return null
 
   return (
     <Card>
       <CardHeader><CardTitle>{t('settings.install')}</CardTitle></CardHeader>
       <CardContent className="space-y-2">
-        {installed ? (
-          <p className="text-sm text-neutral-400">{t('settings.installDone')}</p>
-        ) : offer ? (
+        {offer ? (
           <Button onClick={() => void install()}><Download />{t('settings.installButton')}</Button>
         ) : (
           <p className="text-sm text-neutral-400">{isIos() ? t('settings.installIos') : t('settings.installManual')}</p>
         )}
-        {!installed && !window.isSecureContext && <p className="text-sm text-amber-300">{t('settings.installHttps')}</p>}
+        {!window.isSecureContext && <p className="text-sm text-amber-300">{t('settings.installHttps')}</p>}
       </CardContent>
     </Card>
   )
