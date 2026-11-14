@@ -17,8 +17,8 @@ import { WeatherSettingsCard } from '@/components/WeatherSettingsCard'
 import { WifiRolloutPanel } from '@/components/WifiRolloutPanel'
 import { HelpTip } from '@/components/HelpTip'
 import { Button } from '@/components/ui/button'
-import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Skeleton } from '@/components/ui/primitives'
-import { getLanguage, t, type Language } from '@/i18n'
+import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Skeleton } from '@/components/ui/primitives'
+import { t } from '@/i18n'
 import { formatAgo } from '@/lib/format'
 import { install, isInstalled, isIos, useInstallOffer } from '@/lib/install'
 
@@ -73,7 +73,6 @@ export function SettingsPage() {
 
       {tab === 'hive' && (
         <Group id="hive">
-          <LanguageCard />
           <AliasCard />
           <ConfigCard except={['backup']} />
           <WeatherSettingsCard />
@@ -184,36 +183,6 @@ function WifiCard() {
           <Button type="submit" disabled={!ssid.trim() || !hiveUrl.trim()}>{t('settings.save')}</Button>
         </form>
         {wifi.data?.ssid && wifi.data.passwordSet && <WifiRolloutPanel ssid={wifi.data.ssid} />}
-      </CardContent>
-    </Card>
-  )
-}
-
-/** One language for the whole hive (admins only); the page reloads so every string switches at once. */
-function LanguageCard() {
-  const me = useMe()
-  const isAdmin = me.data?.roles.includes('admin') ?? false
-  const [saving, setSaving] = useState(false)
-
-  async function change(language: Language) {
-    setSaving(true)
-    try {
-      await call(api.PUT('/api/settings/language', { body: { language } }))
-      window.location.reload()
-    } catch (e) {
-      toast.error(errorText(e, t('errors.generic')))
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader><CardTitle className="flex items-center gap-1">{t('settings.language')}<HelpTip text={t('settings.languageHint')} /></CardTitle></CardHeader>
-      <CardContent className="space-y-2">
-        <Select value={getLanguage()} disabled={!isAdmin || saving} onChange={(e) => void change(e.target.value as Language)} className="h-11 w-full max-w-xs">
-          <option value="ru">Русский</option>
-          <option value="en">English</option>
-        </Select>
       </CardContent>
     </Card>
   )

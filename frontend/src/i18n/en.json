@@ -545,7 +545,6 @@
     "saved": "Saved",
     "wrongCode": "Wrong code",
     "language": "Interface language",
-    "languageHint": "One setting for the whole hive. Applies to everyone after the page reloads.",
     "alias": "Hive alias",
     "aliasHint": "A name for this hive instead of the word \"Hive\" in the menu and in the swarm, e.g. \"Dacha\", \"City\" or \"Sbrbn | Home\". Empty: Dacha / City when two hives work together, otherwise the word \"Hive\".",
     "aliasSaved": "Alias saved",
