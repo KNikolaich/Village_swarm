@@ -72,9 +72,7 @@ export function ConfigCard() {
 /** One tooltip per group: the group's own hint, then every parameter's name and hint (with when it applies). */
 function sectionHelp(section: string, rows: Item[]) {
   const params = rows.map((i) => `${t(`config.params.${i18nKey(i.key)}.name`)}: ${t(`config.params.${i18nKey(i.key)}.hint`)} ${t(i.apply === 'auto' ? 'config.autoHint' : 'config.restartHint')}`)
-  return [t(`config.sections.${section}.hint`), ...params].join(
-
-')
+  return [t(`config.sections.${section}.hint`), ...params].join('\n\n')
 }
 
 function ConfigRow({ item }: { item: Item }) {
