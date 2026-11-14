@@ -1,6 +1,8 @@
-// @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
-import { ApiError, call, errorText } from './client'
+import { describe, expect, it, vi } from 'vitest'
+
+// client.ts reads window.location at import: the test runs in node, so give it a minimal one.
+vi.stubGlobal('window', { location: { origin: 'http://localhost' }, dispatchEvent: () => true })
+const { ApiError, call, errorText } = await import('./client')
 
 describe('errorText', () => {
   it('shows the reason the server gave', () => {
