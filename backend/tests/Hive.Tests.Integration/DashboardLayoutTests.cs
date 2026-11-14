@@ -1,6 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Hive.Infrastructure;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Hive.Tests.Integration;
 
@@ -8,6 +12,15 @@ namespace Hive.Tests.Integration;
 [Collection(HiveCollection.Name)]
 public sealed class DashboardLayoutTests(HiveFixture hive)
 {
+    /// <summary>The city (an observer node) refuses changes to copied data, but arranging its own screens is its own business.</summary>
+    [Fact]
+    public void Saving_the_arrangement_is_allowed_on_a_read_only_node()
+    {
+        var save = hive.App.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
+            .Single(e => e.RoutePattern.RawText == "/api/dashboard/layout/{screen}" && e.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods.Contains("PUT"));
+        Assert.True(save.IsNodeLocal());
+    }
+
     [Fact]
     public async Task The_desktop_and_the_phone_keep_their_own_order_until_reset()
     {

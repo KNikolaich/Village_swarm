@@ -3,7 +3,7 @@ import { LayoutGrid, Pencil, Plus } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { toast } from 'sonner'
-import { api, call, type DeviceDto, type LatestValueDto, type ZoneDto } from '@/api/client'
+import { api, call, errorText, type DeviceDto, type LatestValueDto, type ZoneDto } from '@/api/client'
 import { historyWindow, keys, useDashboardLayout, useDevices, useLatestTelemetry, useMe, useMetricSeries, useWeather, useZones } from '@/api/queries'
 import { DashboardGrid, type WidgetView } from '@/components/DashboardGrid'
 import { MultiChart, TimeAxis, type ChartPoint, type ChartSeries } from '@/components/Chart'
@@ -76,8 +76,8 @@ export function ClimatePage() {
       await qc.invalidateQueries({ queryKey: ['dashboard', 'layout'] })
       toast.success(t('layout.saved'))
       setArranging(null)
-    } catch {
-      toast.error(t('layout.failed'))
+    } catch (e) {
+      toast.error(errorText(e, t('layout.failed')))
     }
   }
 

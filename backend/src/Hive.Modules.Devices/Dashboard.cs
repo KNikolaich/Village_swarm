@@ -96,6 +96,7 @@ public static class DashboardEndpoints
                 await s.SaveAsync(screen, request.Items, $"user:{user.Identity?.Name}", ct);
                 return TypedResults.NoContent();
             })
+            .NodeLocal()   // how this node's screens are arranged is its own: the city (observer) arranges its own overview
             .RequireAuthorization(HiveRoles.AdminOnly);
         return app;
     }
