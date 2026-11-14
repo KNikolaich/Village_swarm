@@ -29,9 +29,9 @@
 | Заметки хранятся в городе | `CLUSTER_NOTES_IN_CITY` |
 | Ассистент: модель, адрес API, запросов в сутки | `ASSISTANT__MODEL`, `ASSISTANT__BASEURL`, `ASSISTANT__MAXREQUESTSPERDAY` |
 | Почта: сервер, порт, логин, адрес отправителя | `SMTP__HOST`, `SMTP__PORT`, `SMTP__USER`, `SMTP__FROM` |
-| Резервные копии: время, день проверки восстановления | `BACKUP_AT`, `BACKUP_VERIFY_DAY` |
+| Резервные копии: время, день проверки восстановления, куда класть копию вне Улья | `BACKUP_AT`, `BACKUP_VERIFY_DAY`, `RESTIC_REPOSITORY` (пароль `RESTIC_PASSWORD` остаётся в `.env`) |
 
-- **Что остаётся в `.env`.** То, без чего Улей не поднимется до базы или что описывает саму установку: `PG_PASSWORD`, `MQTT_ADMIN_USER/PASSWORD`, `CITY_MQTT_PASSWORD`, `COMPOSE_FILE`, `HIVE_VERSION`, `HIVE_IMAGES`, `HIVE_DATA`, порты, `HIVE_HOSTS`, `HIVE_DEFAULT_SNI`, `CLUSTER_ENABLED`, `CITY_MQTT_HOST/PORT`, `RESTIC_*` и `AWS_*`, `ZIGBEE_*`, `AUTH__BOOTSTRAPADMINPASSWORD`, адреса роутеров. Адрес прокси Telegram (в нём бывает секретный путь) тоже пока в `.env`.
+- **Что остаётся в `.env`.** То, без чего Улей не поднимется до базы или что описывает саму установку: `PG_PASSWORD`, `MQTT_ADMIN_USER/PASSWORD`, `CITY_MQTT_PASSWORD`, `COMPOSE_FILE`, `HIVE_VERSION`, `HIVE_IMAGES`, `HIVE_DATA`, порты, `HIVE_HOSTS`, `HIVE_DEFAULT_SNI`, `CLUSTER_ENABLED`, `CITY_MQTT_HOST/PORT`, `RESTIC_PASSWORD`, `BACKUP_REPO_DIR` и `AWS_*`, `ZIGBEE_*`, `AUTH__BOOTSTRAPADMINPASSWORD`, адреса роутеров. Адрес прокси Telegram (в нём бывает секретный путь) тоже пока в `.env`.
 
 ## Общее для обоих Ульев
 

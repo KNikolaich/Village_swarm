@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Hive.Infrastructure;
 
-public enum ConfigKind { Text, Int, Number, Bool, Choice, TimeZone, Time, Url }
+public enum ConfigKind { Text, Int, Number, Bool, Choice, TimeZone, Time, Url, Repository }
 
 /// <summary>When a saved value starts to work: after the Hive restart (read once at start), or by itself (the backup container reads the database).</summary>
 public enum ConfigApply { Restart, Auto }
@@ -57,9 +57,18 @@ public static class ConfigSettings
         // The backup container reads these straight from the database (deploy/backup/loop.sh); .env BACKUP_* is the fallback.
         new("backup.at", "BACKUP_AT", "backup", ConfigKind.Time, "03:00", ConfigApply.Auto),
         new("backup.verify_day", "BACKUP_VERIFY_DAY", "backup", ConfigKind.Int, "7", ConfigApply.Auto, Min: 0, Max: 7),
+        // Where the off-site copy goes: a folder (/repo = BACKUP_REPO_DIR on the host, e.g. a mounted network share), sftp:, rest:, s3:.
+        // The repository password stays in .env (RESTIC_PASSWORD): the backup container never reads secrets from the database.
+        new("backup.repository", "RESTIC_REPOSITORY", "backup", ConfigKind.Repository, "", ConfigApply.Auto),
     ];
 
     private static readonly Regex TimeOfDay = new(@"^([01]\d|2[0-3]):[0-5]\d$", RegexOptions.Compiled);
+
+    private static readonly string[] RepositoryPrefixes = ["sftp:", "rest:", "s3:", "b2:", "gs:", "azure:", "rclone:", "swift:", "local:"];
+
+    /// <summary>A restic repository: an absolute folder inside the backup container (/repo...) or a remote address. No whitespace or control characters.</summary>
+    private static bool RepositoryOk(string value) =>
+        !value.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)) && (value.StartsWith('/') || RepositoryPrefixes.Any(p => value.StartsWith(p, StringComparison.Ordinal)));
 
     public static ConfigDef? Find(string key) => All.FirstOrDefault(d => d.Key == key);
 
@@ -86,6 +95,8 @@ public static class ConfigSettings
                 return TimeOfDay.IsMatch(value) ? null : "HH:mm";
             case ConfigKind.Url:
                 return Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? null : "http(s) address";
+            case ConfigKind.Repository:
+                return RepositoryOk(value) ? null : "folder (/repo/...) or sftp:, rest:, s3:, b2:, gs:, azure:, rclone: address, no spaces";
             case ConfigKind.TimeZone:
                 try { TimeZoneInfo.FindSystemTimeZoneById(value); return null; }
                 catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException) { return "unknown time zone (IANA id, e.g. Europe/Moscow)"; }

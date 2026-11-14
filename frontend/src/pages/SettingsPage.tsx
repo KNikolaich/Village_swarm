@@ -75,7 +75,7 @@ export function SettingsPage() {
         <Group id="hive">
           <LanguageCard />
           <AliasCard />
-          <ConfigCard />
+          <ConfigCard except={['backup']} />
           <WeatherSettingsCard />
           <WifiCard />
         </Group>
@@ -92,6 +92,7 @@ export function SettingsPage() {
       {tab === 'maintenance' && (
         <Group id="maintenance">
           <BackupCard />
+          <ConfigCard only={['backup']} />
           <RetentionCard />
           <SecretsCard />
           <RestartCard />

@@ -26,6 +26,11 @@ public class ConfigSettingsTests
     [InlineData("backup.at", "3:30", false)]
     [InlineData("backup.verify_day", "0", true)]
     [InlineData("backup.verify_day", "8", false)]
+    [InlineData("backup.repository", "/repo/nas", true)]
+    [InlineData("backup.repository", "sftp:user@nas:/backups/hive", true)]
+    [InlineData("backup.repository", "rest:https://nas.local:8000/hive", true)]
+    [InlineData("backup.repository", "nas/backups", false)]
+    [InlineData("backup.repository", "/repo/my backups", false)]
     [InlineData("smtp.host", "", true)] // empty clears the setting
     public void Validation_matches_the_kind(string key, string value, bool ok) =>
         Assert.Equal(ok, ConfigSettings.Validate(Def(key), value) is null);

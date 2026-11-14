@@ -1188,7 +1188,7 @@
     "noDump": "Not made yet: the first dump is tonight",
     "noOffsite": "Not set up",
     "noVerify": "Not run yet: weekly, after the nightly backup",
-    "offsiteHint": "For now the backup sits on the same drive as the hive: if the drive dies, it goes too. Set up a copy to another drive or the cloud (RESTIC_REPOSITORY in .env, see docs/restore.md).",
+    "offsiteHint": "For now the backup sits on the same drive as the hive: if the drive dies, it goes too. Set up a copy to another drive or the cloud (Settings > Data and maintenance > Backups, see docs/restore.md).",
     "history": "Recent runs",
     "manual": "Run now, on the hive:",
     "problems": {
@@ -1916,7 +1916,7 @@
       },
       "backup": {
         "title": "Backups",
-        "hint": "The nightly backup schedule. Where the off-site copy goes is set in .env (RESTIC_*)."
+        "hint": "The nightly backup schedule. Also where the off-site copy goes (its password stays in .env: RESTIC_PASSWORD)."
       }
     },
     "params": {
@@ -1979,6 +1979,10 @@
       "backup_verify_day": {
         "name": "Restore check day",
         "hint": "1 = Monday ... 7 = Sunday, 0 = never."
+      },
+      "backup_repository": {
+        "name": "Where to keep the off-site copy",
+        "hint": "Not the hive's own drive. A folder: /repo (on the server that is BACKUP_REPO_DIR, a network share can be mounted there) or an address like sftp:user@host:/path, rest:https://..., s3:... Empty: copies stay on the hive's drive only. The copy's password is set in .env (RESTIC_PASSWORD)."
       }
     },
     "choices": {

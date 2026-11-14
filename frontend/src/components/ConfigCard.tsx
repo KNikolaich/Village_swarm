@@ -31,7 +31,7 @@ type Item = {
  * Plain parameters that used to live only in .env, grouped by topic (admins only). A value set here wins over .env;
  * Reset returns to .env or the default. Most are read at start: the banner then points at the restart button below.
  */
-export function ConfigCard() {
+export function ConfigCard({ only, except }: { only?: string[]; except?: string[] } = {}) {
   const me = useMe()
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const config = useQuery({ queryKey, queryFn: () => call(api.GET('/api/settings/config')), enabled: isAdmin })
@@ -40,7 +40,7 @@ export function ConfigCard() {
   const pending = items.filter((i) => i.restartPending)
   return (
     <div className="space-y-4">
-      <Card>
+      {!only && <Card>
         <CardHeader><CardTitle className="flex items-center gap-1">{t('config.title')}<HelpTip text={t('config.hint')} /></CardTitle></CardHeader>
         <CardContent className="space-y-3 text-sm">
           {config.isLoading && <Skeleton className="h-24" />}
@@ -52,8 +52,8 @@ export function ConfigCard() {
             </div>
           )}
         </CardContent>
-      </Card>
-      {(config.data?.sections ?? []).map((section) => {
+      </Card>}
+      {(config.data?.sections ?? []).filter((s) => (!only || only.includes(s)) && !except?.includes(s)).map((section) => {
         const rows = items.filter((i) => i.section === section)
         if (rows.length === 0) return null
         return (
