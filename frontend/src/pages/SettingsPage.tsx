@@ -19,7 +19,7 @@ import { HelpTip } from '@/components/HelpTip'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { getLanguage, t, type Language } from '@/i18n'
-import { formatAgo } from '@/lib/format'
+import { formatAgo, formatDuration, formatWhen } from '@/lib/format'
 import { install, isInstalled, isIos, useInstallOffer } from '@/lib/install'
 
 const groups = ['account', 'hive', 'links', 'maintenance'] as const
@@ -522,7 +522,10 @@ function DevicesCard() {
                 <span className="block truncate">
                   {d.name ?? '—'} {d.current && <Badge tone="ok">{t('settings.deviceCurrent')}</Badge>}
                 </span>
-                <span className="text-neutral-500">{formatAgo(d.lastSeenAt)}{d.lastIp ? ` · ${d.lastIp}` : ''}</span>
+                <span className="block text-neutral-500">{formatAgo(d.lastSeenAt)}{d.lastIp ? ` · ${d.lastIp}` : ''}</span>
+                <span className="block text-xs text-neutral-600">
+                  {t('settings.deviceSince').replace('{when}', formatWhen(d.createdAt))} · {t('settings.deviceExpires').replace('{span}', formatDuration((new Date(d.expiresAt).getTime() - Date.now()) / 60_000))}
+                </span>
               </span>
               <Button variant="ghost" size="sm" onClick={() => void forget(d.id)}><Trash2 />{t('settings.deviceForget')}</Button>
             </li>

@@ -10916,6 +10916,7 @@
           "lastIp",
           "createdAt",
           "lastSeenAt",
+          "expiresAt",
           "current"
         ],
         "type": "object",
@@ -10941,6 +10942,10 @@
             "format": "date-time"
           },
           "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
             "type": "string",
             "format": "date-time"
           },

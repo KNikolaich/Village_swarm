@@ -141,6 +141,7 @@ public sealed class AuthTests(HiveFixture hive)
         var trusted = Assert.Single(devices!);
         Assert.True(trusted.Current);
         Assert.Equal("Chrome · Android", trusted.Name);
+        Assert.True(trusted.ExpiresAt > trusted.LastSeenAt);
 
         // Another browser is new again; a forgotten device asks for the code again.
         Assert.Equal("codeRequired", (await LoginStepAsync(Device("10.8.0.3"), "tg-user", "tg-user-password")).Status);

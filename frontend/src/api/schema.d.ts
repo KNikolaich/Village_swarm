@@ -8369,6 +8369,8 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             lastSeenAt: string;
+            /** Format: date-time */
+            expiresAt: string;
             current: boolean;
         };
         UpdateDeviceConfigRequest: {

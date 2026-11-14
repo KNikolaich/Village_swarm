@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace Hive.Modules.Users;
 
-public sealed record TrustedDeviceDto(int Id, string? Name, string? LastIp, DateTimeOffset CreatedAt, DateTimeOffset LastSeenAt, bool Current);
+public sealed record TrustedDeviceDto(int Id, string? Name, string? LastIp, DateTimeOffset CreatedAt, DateTimeOffset LastSeenAt, DateTimeOffset ExpiresAt, bool Current);
 
 /// <summary>Browsers that passed the second factor (hive_device cookie).</summary>
 public sealed class TrustedDeviceService(HiveDbContext db, TimeProvider time, IOptions<AuthOptions> options)
@@ -74,7 +74,7 @@ public sealed class TrustedDeviceService(HiveDbContext db, TimeProvider time, IO
     {
         var devices = await db.TrustedDevices.AsNoTracking().Where(d => d.UserId == userId).OrderByDescending(d => d.LastSeenAt).ToListAsync(ct);
         var current = CookieHash(http);
-        return devices.Select(d => new TrustedDeviceDto(d.Id, d.Name, d.LastIp, d.CreatedAt, d.LastSeenAt, d.TokenHash == current)).ToList();
+        return devices.Select(d => new TrustedDeviceDto(d.Id, d.Name, d.LastIp, d.CreatedAt, d.LastSeenAt, d.LastSeenAt.AddDays(options.Value.TrustedDeviceDays), d.TokenHash == current)).ToList();
     }
 
     public async Task<bool> ForgetAsync(int userId, int id, CancellationToken ct = default) =>
