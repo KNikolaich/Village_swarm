@@ -48,19 +48,28 @@ api.use(unauthorized)
 
 export class ApiError extends Error {
   readonly status: number
-  constructor(status: number, message?: string) {
+  /** True when the message came from the server (a reason a person can read), not the fallback "HTTP 500". */
+  readonly fromServer: boolean
+  constructor(status: number, message?: string, fromServer = false) {
     super(message ?? `HTTP ${status}`)
     this.status = status
+    this.fromServer = fromServer && !!message
   }
+}
+
+/** What to show in an error toast: the server's own reason when it gave one (e.g. why the observer node refuses), else the generic text. */
+export function errorText(e: unknown, fallback: string): string {
+  return e instanceof ApiError && e.fromServer ? e.message : fallback
 }
 
 /** Unwraps an openapi-fetch result for TanStack Query: data or a thrown ApiError. */
 export async function call<T>(promise: Promise<{ data?: T; error?: unknown; response: Response }>): Promise<T> {
   const { data, error, response } = await promise
   if (!response.ok) {
-    const body = error as { detail?: string; title?: string } | undefined
-    const detail = body?.detail ?? body?.title
-    throw new ApiError(response.status, detail)
+    const body = error as { detail?: string; title?: string; errors?: Record<string, string[]> } | undefined
+    const validation = body?.errors ? Object.values(body.errors).flat().join(' ') : undefined
+    // Validation problems carry a generic title ("One or more validation errors occurred"): the field messages say more.
+    throw new ApiError(response.status, validation || body?.detail || body?.title, true)
   }
   return data as T
 }

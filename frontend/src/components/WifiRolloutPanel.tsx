@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { api, call, type DeviceDto } from '@/api/client'
+import { api, call, type DeviceDto, errorText } from '@/api/client'
 import { useDevices } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/primitives'
@@ -45,8 +45,8 @@ export function WifiRolloutPanel({ ssid }: { ssid: string }) {
       const items = await call(api.POST('/api/settings/wifi/apply', { body: { deviceIds: pickable, mode } }))
       setResults(items.map((i) => ({ ...i, mode })))
       setChosen([])
-    } catch {
-      toast.error(t('errors.generic'))
+    } catch (e) {
+      toast.error(errorText(e, t('errors.generic')))
     } finally {
       setBusy(false)
     }

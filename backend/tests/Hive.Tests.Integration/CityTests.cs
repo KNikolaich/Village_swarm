@@ -193,7 +193,7 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
         using var linkCode = await admin.PostAsync("/api/me/telegram/code", null);
         Assert.NotEqual(HttpStatusCode.Forbidden, linkCode.StatusCode);
 
-        // so do the node's own weather and language settings (never copied from home), while the hornets' Wi-Fi is home's business
+        // so do the node's own weather and language settings (never copied from home), and the Wi-Fi for its own hornets (a node has its own network)
         using var weather = await admin.PutAsJsonAsync("/api/settings/weather", new { });
         Assert.NotEqual(HttpStatusCode.Forbidden, weather.StatusCode);
         using var language = await admin.PutAsJsonAsync("/api/settings/language", new { language = "ru" });
@@ -204,7 +204,7 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
         using var configPut = await admin.PutAsJsonAsync("/api/settings/config/no.such.key", new { value = "x" });
         Assert.Equal(HttpStatusCode.NotFound, configPut.StatusCode);
         using var wifi = await admin.PutAsJsonAsync("/api/settings/wifi", new { });
-        Assert.Equal(HttpStatusCode.Forbidden, wifi.StatusCode);
+        Assert.NotEqual(HttpStatusCode.Forbidden, wifi.StatusCode);
 
         // and it stays silent about what home already tells people: an alarm from a hornet reaches the city bridge as a copy
         var spec = new HornetSpec { Id = "guard-city1", Type = "guard-cam", Motion = new MotionSpec { EverySeconds = 0 } };

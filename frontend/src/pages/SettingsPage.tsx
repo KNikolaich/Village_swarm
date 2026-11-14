@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useLocation, useSearchParams } from 'react-router'
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { api, call, errorText } from '@/api/client'
 import { keys, useCluster, useMe, useTelegram } from '@/api/queries'
 import { BackupCard } from '@/components/BackupCard'
 import { CertificateCard } from '@/components/CertificateCard'
@@ -167,8 +167,8 @@ function WifiCard() {
       setPassword('')
       toast.success(t('settings.saved'))
       await qc.invalidateQueries({ queryKey: ['settings', 'wifi'] })
-    } catch {
-      toast.error(t('errors.generic'))
+    } catch (e) {
+      toast.error(errorText(e, t('errors.generic')))
     }
   }
 
@@ -200,8 +200,8 @@ function LanguageCard() {
     try {
       await call(api.PUT('/api/settings/language', { body: { language } }))
       window.location.reload()
-    } catch {
-      toast.error(t('errors.generic'))
+    } catch (e) {
+      toast.error(errorText(e, t('errors.generic')))
       setSaving(false)
     }
   }
@@ -230,8 +230,8 @@ function RestartCard() {
     if (!window.confirm(t('settings.restartConfirm'))) return
     try {
       await call(api.POST('/api/settings/restart'))
-    } catch {
-      toast.error(t('errors.generic'))
+    } catch (e) {
+      toast.error(errorText(e, t('errors.generic')))
       return
     }
     setState('restarting')
@@ -281,8 +281,8 @@ function AliasCard() {
       setText(null)
       await qc.invalidateQueries({ queryKey: ['cluster'] })
       toast.success(t('settings.aliasSaved'))
-    } catch {
-      toast.error(t('errors.generic'))
+    } catch (e) {
+      toast.error(errorText(e, t('errors.generic')))
     }
   }
 

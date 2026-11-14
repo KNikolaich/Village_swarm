@@ -24,7 +24,7 @@ public sealed record WifiApplyRequest(IReadOnlyList<string> DeviceIds, string Mo
 /// password without climbing to every board). Hornets that sleep, are offline or run old firmware are listed as skipped:
 /// press it again when they are awake. Each hornet tries the new network and falls back to the old one on its own.
 /// </summary>
-public sealed class WifiRollout(HiveWifiService wifi, CommandService commands, HiveDbContext db, TimeProvider time)
+public sealed class WifiRollout(HiveWifiService wifi, CommandService commands, HiveDbContext db, NodeState node, TimeProvider time)
 {
     /// <summary>The command lives only this long: a hornet that wakes later must not switch on an old order.</summary>
     public const int TtlS = 120;
@@ -44,6 +44,9 @@ public sealed class WifiRollout(HiveWifiService wifi, CommandService commands, H
         var now = time.GetUtcNow();
         var hornets = await db.Devices.AsNoTracking().Where(d => d.Status != DeviceStatus.Disabled && d.Status != DeviceStatus.Pending && d.TypeCode != "hive" && deviceIds.Contains(d.DeviceId))
             .OrderBy(d => d.DeviceId).ToListAsync(ct);
+        // The observer node (city) holds copies of home's hornets: it switches only the ones made on it, each node has its own network.
+        if (node.ReadOnly)
+            hornets = hornets.Where(d => node.IsLocal(d.DeviceId)).ToList();
 
         var items = new List<WifiRolloutItem>();
         foreach (var d in hornets)
@@ -86,6 +89,7 @@ public static class WifiRolloutEndpoints
                     : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["wifi"] = ["Save the Wi-Fi network and password first"] });
             })
             .WithTags("settings")
+            .NodeLocal()
             .RequireAuthorization(HiveRoles.AdminOnly);
         return app;
     }

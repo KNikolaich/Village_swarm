@@ -1,4 +1,5 @@
 import { Plus, Search, Trash2, X } from 'lucide-react'
+import { errorText } from '@/api/client'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
@@ -34,12 +35,12 @@ export function NotesPage() {
   function add(parentId: number | null) {
     create.mutate(
       { title: t('notes.new'), parentId },
-      { onSuccess: (created) => navigate(`/notes/${created.id}`), onError: () => toast.error(t('errors.generic')) },
+      { onSuccess: (created) => navigate(`/notes/${created.id}`), onError: (e) => toast.error(errorText(e, t('errors.generic'))) },
     )
   }
 
   function onMove(noteId: number, parentId: number | null, index: number) {
-    move.mutate({ id: noteId, parentId, index }, { onError: () => toast.error(t('errors.generic')) })
+    move.mutate({ id: noteId, parentId, index }, { onError: (e) => toast.error(errorText(e, t('errors.generic'))) })
   }
 
   function onDelete(noteId: number) {
@@ -50,7 +51,7 @@ export function NotesPage() {
         if (id != null && (id === noteId || isUnder(id, noteId))) navigate('/notes')
         toast(t('notes.deleted'), { action: { label: t('notes.undo'), onClick: () => restore.mutate(noteId) } })
       },
-      onError: () => toast.error(t('errors.generic')),
+      onError: (e) => toast.error(errorText(e, t('errors.generic'))),
     })
   }
 

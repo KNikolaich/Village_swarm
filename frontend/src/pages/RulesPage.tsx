@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Plus } from 'lucide-react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
-import { api, call, type RuleDto } from '@/api/client'
+import { api, call, type RuleDto, errorText } from '@/api/client'
 import { useDevices, useMe, useRules } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, Empty, Skeleton } from '@/components/ui/primitives'
@@ -55,8 +55,8 @@ function RuleRow({ rule, name, isAdmin }: { rule: RuleDto; name: (id?: string | 
     try {
       await call(api.PUT('/api/rules/{id}', { params: { path: { id: rule.id } }, body: { name: rule.name, enabled: !rule.enabled, definition: rule.definition } }))
       await qc.invalidateQueries({ queryKey: ['rules'] })
-    } catch {
-      toast.error(t('errors.generic'))
+    } catch (e) {
+      toast.error(errorText(e, t('errors.generic')))
     }
   }
 

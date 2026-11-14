@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { toast } from 'sonner'
-import { api, call, type DeviceDto, type Schemas } from '@/api/client'
+import { api, call, type DeviceDto, type Schemas, errorText } from '@/api/client'
 import { keys } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge, type BadgeTone } from '@/components/ui/primitives'
@@ -28,8 +28,8 @@ function Progress({ rollout, onNew }: { rollout: Rollout; onNew: () => void }) {
     setBusy(true)
     try {
       qc.setQueryData(keys.otaRollout, await call(api.POST('/api/firmware/rollout/stop')))
-    } catch {
-      toast.error(t('errors.generic'))
+    } catch (e) {
+      toast.error(errorText(e, t('errors.generic')))
     } finally {
       setBusy(false)
     }
@@ -106,8 +106,8 @@ export function OtaRolloutPanel({ devices, builds, rollout, onClose }: {
         qc.setQueryData(keys.otaRollout, data)
         setFresh(false)
       } else toast.error(t(response.status === 409 ? 'swarm.rollout.busy' : response.status === 400 ? 'swarm.rollout.nothing' : 'errors.generic'))
-    } catch {
-      toast.error(t('errors.generic'))
+    } catch (e) {
+      toast.error(errorText(e, t('errors.generic')))
     } finally {
       setBusy(false)
     }

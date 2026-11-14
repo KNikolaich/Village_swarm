@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
-import { api, call } from '@/api/client'
+import { api, call, errorText } from '@/api/client'
 import { useMe, useWeather } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui/primitives'
@@ -53,8 +53,8 @@ export function WeatherSettingsCard() {
     try {
       await call(api.POST('/api/weather/refresh'))
       await qc.invalidateQueries({ queryKey: ['weather'] })
-    } catch {
-      toast.error(t('errors.generic'))
+    } catch (e) {
+      toast.error(errorText(e, t('errors.generic')))
     } finally {
       setBusy(false)
     }

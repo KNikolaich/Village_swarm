@@ -18,6 +18,7 @@ public sealed record WifiSettingsRequest(string Ssid, string? Password, string H
 
 /// <summary>
 /// The Wi-Fi network and the hive address for new and re-configured hornets, so nobody types a long password per board.
+/// Each node keeps its own (home hornets join the home network, city ones the city one): the observer node saves it locally too.
 /// The password is encrypted at rest (ASP.NET data protection, keys in /srv/hive/keys) and never returned by the API
 /// except to the setup wizard, which needs it to send it to the board over USB.
 /// </summary>
@@ -79,7 +80,7 @@ public static class HiveWifiEndpoints
 {
     public static IEndpointRouteBuilder MapWifiEndpoints(this IEndpointRouteBuilder app)
     {
-        var wifi = app.MapGroup("/api/settings/wifi").WithTags("settings").RequireAuthorization(HiveRoles.AdminOnly);
+        var wifi = app.MapGroup("/api/settings/wifi").NodeLocal().WithTags("settings").RequireAuthorization(HiveRoles.AdminOnly);
         wifi.MapGet("", async (HiveWifiService s, CancellationToken ct) => TypedResults.Ok(await s.GetAsync(ct)));
         wifi.MapPut("", async Task<Results<NoContent, ValidationProblem>> (WifiSettingsRequest request, System.Security.Claims.ClaimsPrincipal user, HiveWifiService s, CancellationToken ct) =>
             {

@@ -1,4 +1,5 @@
 import { CornerDownRight, Home, RotateCcw } from 'lucide-react'
+import { errorText } from '@/api/client'
 import { useMemo } from 'react'
 import { toast } from 'sonner'
 import type { NoteNodeDto } from '@/api/client'
@@ -85,7 +86,7 @@ export function TrashDialog({ canEdit, onClose }: { canEdit: boolean; onClose: (
                 onClick={() =>
                   restore.mutate(n.id, {
                     onSuccess: () => toast.success(t('notes.restored')),
-                    onError: () => toast.error(t('errors.generic')),
+                    onError: (e) => toast.error(errorText(e, t('errors.generic'))),
                   })
                 }
               >
