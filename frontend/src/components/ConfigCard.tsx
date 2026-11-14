@@ -6,6 +6,7 @@ import { api, call } from '@/api/client'
 import { useMe } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Skeleton } from '@/components/ui/primitives'
+import { HelpTip } from '@/components/HelpTip'
 import { t } from '@/i18n'
 
 const queryKey = ['settings', 'config'] as const
@@ -40,9 +41,8 @@ export function ConfigCard() {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader><CardTitle>{t('config.title')}</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="flex items-center gap-1">{t('config.title')}<HelpTip text={t('config.hint')} /></CardTitle></CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <p className="text-xs text-neutral-500">{t('config.hint')}</p>
           {config.isLoading && <Skeleton className="h-24" />}
           {pending.length > 0 && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200">
@@ -58,9 +58,8 @@ export function ConfigCard() {
         if (rows.length === 0) return null
         return (
           <Card key={section} id={`config-${section}`}>
-            <CardHeader><CardTitle>{t(`config.sections.${section}.title`)}</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-1">{t(`config.sections.${section}.title`)}<HelpTip text={t(`config.sections.${section}.hint`)} /></CardTitle></CardHeader>
             <CardContent className="space-y-4 text-sm">
-              <p className="text-xs text-neutral-500">{t(`config.sections.${section}.hint`)}</p>
               {rows.map((item) => <ConfigRow key={item.key} item={item} />)}
             </CardContent>
           </Card>
@@ -96,16 +95,16 @@ function ConfigRow({ item }: { item: Item }) {
   return (
     <div className="space-y-1">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <label htmlFor={id} className="font-medium">{name}</label>
+        <span className="flex items-center gap-1">
+          <label htmlFor={id} className="font-medium">{name}</label>
+          <HelpTip text={`${t(`config.params.${i18nKey(item.key)}.hint`)} ${t(item.apply === 'auto' ? 'config.autoHint' : 'config.restartHint')}`} />
+        </span>
         <span className="flex flex-wrap items-center gap-1">
           {item.restartPending && <Badge tone="warn">{t('config.restartBadge')}</Badge>}
           {item.apply === 'auto' && <Badge tone="info">{t('config.autoBadge')}</Badge>}
           <Badge>{t(`config.source.${item.source}`)}</Badge>
         </span>
       </div>
-      <p className="text-xs text-neutral-500">
-        {t(`config.params.${i18nKey(item.key)}.hint`)} {t(item.apply === 'auto' ? 'config.autoHint' : 'config.restartHint')}
-      </p>
       <div className="flex flex-wrap gap-2">
         <div className="min-w-40 flex-1">
           <Field id={id} item={item} value={draft} onChange={setDraft} label={name} />

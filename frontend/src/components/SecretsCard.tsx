@@ -6,6 +6,7 @@ import { useMe } from '@/api/queries'
 import { PasswordInput } from '@/components/PasswordInput'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Skeleton } from '@/components/ui/primitives'
+import { HelpTip } from '@/components/HelpTip'
 import { t } from '@/i18n'
 
 const queryKey = ['settings', 'secrets'] as const
@@ -21,9 +22,8 @@ export function SecretsCard() {
   if (!isAdmin) return null
   return (
     <Card>
-      <CardHeader><CardTitle>{t('secrets.title')}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1">{t('secrets.title')}<HelpTip text={t('secrets.hint')} /></CardTitle></CardHeader>
       <CardContent className="space-y-3 text-sm">
-        <p className="text-xs text-neutral-500">{t('secrets.hint')}</p>
         {secrets.isLoading && <Skeleton className="h-24" />}
         {secrets.data?.secrets.map((s) => <SecretRow key={s.key} secretKey={s.key} source={s.source} />)}
         {secrets.data && (

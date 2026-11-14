@@ -15,6 +15,7 @@ import { RetentionCard } from '@/components/RetentionCard'
 import { FailoverCard } from '@/components/FailoverCard'
 import { WeatherSettingsCard } from '@/components/WeatherSettingsCard'
 import { WifiRolloutPanel } from '@/components/WifiRolloutPanel'
+import { HelpTip } from '@/components/HelpTip'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Skeleton } from '@/components/ui/primitives'
 import { getLanguage, t, type Language } from '@/i18n'
@@ -137,9 +138,8 @@ function MonitorCard() {
   if (!(me.data?.roles.includes('admin') ?? false)) return null
   return (
     <Card>
-      <CardHeader><CardTitle>{t('settings.monitor')}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1">{t('settings.monitor')}<HelpTip text={t('settings.monitorHint')} /></CardTitle></CardHeader>
       <CardContent className="space-y-2">
-        <p className="text-xs text-neutral-500">{t('settings.monitorHint')}</p>
         <Link to="/monitor" className="text-amber-400">{t('settings.monitorOpen')}</Link>
       </CardContent>
     </Card>
@@ -174,10 +174,9 @@ function WifiCard() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>{t('settings.wifi')}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1">{t('settings.wifi')}<HelpTip text={t('settings.wifiHint')} /></CardTitle></CardHeader>
       <CardContent>
         <form onSubmit={save} className="space-y-2">
-          <p className="text-xs text-neutral-500">{t('settings.wifiHint')}</p>
           <Input placeholder={t('add.ssid')} value={ssid} onChange={(e) => setSsid(e.target.value)} />
           <PasswordInput placeholder={wifi.data?.passwordSet ? t('settings.wifiPasswordKept') : t('add.pass')} value={password} onChange={(e) => setPassword(e.target.value)} />
           <Input placeholder="http://192.168.10.4" value={hiveUrl} onChange={(e) => setHiveUrl(e.target.value)} />
@@ -208,9 +207,8 @@ function LanguageCard() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>{t('settings.language')}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1">{t('settings.language')}<HelpTip text={t('settings.languageHint')} /></CardTitle></CardHeader>
       <CardContent className="space-y-2">
-        <p className="text-xs text-neutral-500">{t('settings.languageHint')}</p>
         <Select value={getLanguage()} disabled={!isAdmin || saving} onChange={(e) => void change(e.target.value as Language)} className="h-11 w-full max-w-xs">
           <option value="ru">Русский</option>
           <option value="en">English</option>
@@ -255,9 +253,8 @@ function RestartCard() {
 
   return (
     <Card id="restart" className="scroll-mt-14">
-      <CardHeader><CardTitle>{t('settings.restart')}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1">{t('settings.restart')}<HelpTip text={t('settings.restartHint')} /></CardTitle></CardHeader>
       <CardContent className="space-y-2">
-        <p className="text-xs text-neutral-500">{t('settings.restartHint')}</p>
         <Button variant="outline" disabled={state === 'restarting'} onClick={() => void restart()}>
           {state === 'restarting' ? t('settings.restarting') : t('settings.restartButton')}
         </Button>
@@ -288,9 +285,8 @@ function AliasCard() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>{t('settings.alias')}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1">{t('settings.alias')}<HelpTip text={t('settings.aliasHint')} /></CardTitle></CardHeader>
       <CardContent className="space-y-2">
-        <p className="text-xs text-neutral-500">{t('settings.aliasHint')}</p>
         <form onSubmit={(e) => { e.preventDefault(); void save() }} className="flex max-w-sm gap-2">
           <Input value={shown} maxLength={40} disabled={!isAdmin} onChange={(e) => setText(e.target.value)} aria-label={t('settings.alias')} />
           <Button type="submit" disabled={!isAdmin || text == null}>{t('settings.save')}</Button>
@@ -490,9 +486,8 @@ function EmailCard() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>{t('settings.email')}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1">{t('settings.email')}<HelpTip text={t('settings.emailHint')} /></CardTitle></CardHeader>
       <CardContent className="space-y-2">
-        <p className="text-sm text-neutral-400">{t('settings.emailHint')}</p>
         {options.data && !options.data.recoveryByEmail && <p className="text-sm text-amber-300">{t('settings.emailOff')}</p>}
         <form onSubmit={submit} className="space-y-2">
           <Input type="email" autoComplete="email" placeholder="name@example.org" value={value} onChange={(e) => setEmail(e.target.value)} />
@@ -515,9 +510,8 @@ function DevicesCard() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>{t('settings.devices')}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1">{t('settings.devices')}<HelpTip text={t('settings.devicesHint')} /></CardTitle></CardHeader>
       <CardContent className="space-y-2">
-        <p className="text-sm text-neutral-400">{t('settings.devicesHint')}</p>
         {devices.isLoading && <Skeleton className="h-12" />}
         {devices.data?.length === 0 && <p className="text-sm text-neutral-500">{t('settings.devicesNone')}</p>}
         <ul className="divide-y divide-neutral-800">
