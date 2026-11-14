@@ -5,6 +5,7 @@ import { api, call, errorText } from '@/api/client'
 import { useMe, useWeather } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui/primitives'
+import { HelpTip } from '@/components/HelpTip'
 import { t } from '@/i18n'
 import { formatAgo } from '@/lib/format'
 
@@ -62,10 +63,9 @@ export function WeatherSettingsCard() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>{t('weather.settings.title')}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1">{t('weather.settings.title')}<HelpTip text={t('weather.settings.hint')} /></CardTitle></CardHeader>
       <CardContent>
         <form onSubmit={save} className="space-y-2">
-          <p className="text-xs text-neutral-500">{t('weather.settings.hint')}</p>
           <label className="block space-y-1 text-xs text-neutral-400">
             {t('weather.settings.baseUrl')}
             <Input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://api.open-meteo.com" />

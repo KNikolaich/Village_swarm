@@ -2,20 +2,13 @@
 # The container's main process: a backup every night at BACKUP_AT (default 03:00, the container's TZ), a restore check
 # on BACKUP_VERIFY_DAY (1 = Monday ... 7 = Sunday, default 7, 0 = never) right after it. Plain sleeping: no cron needed.
 # The schedule and the time zone may be set in the web UI (Settings -> Parameters -> Backups): they live in the database
-# (modes: cfg.backup.at, cfg.backup.verify_day, cfg.timezone) and win over the .env values, which stay as the fallback.
+# (modes: cfg.backup.at, cfg.backup.verify_day, cfg.backup.repository, cfg.timezone) and win over the .env values, which stay as the fallback.
 # They are re-read every minute while waiting, so a change applies without restarting the container.
 . /usr/local/bin/lib.sh
 
 env_at="${BACKUP_AT:-03:00}"
 env_verify_day="${BACKUP_VERIFY_DAY:-7}"
 env_tz="${TZ:-}"
-
-# cfg_value <key> <fallback>: the stored value, or the fallback when the row is missing, empty or the database does not answer.
-cfg_value() {
-	local v
-	v="$(psql -X -At -d "$PGDATABASE" -v key="cfg.$1" -c "SELECT value FROM modes WHERE key = :'key'" 2>/dev/null)" || v=""
-	printf '%s' "${v:-$2}"
-}
 
 # Reads the settings into at / verify_day and the TZ of this process. Anything malformed falls back to .env.
 load_settings() {
@@ -26,6 +19,7 @@ load_settings() {
 	local tz
 	tz="$(cfg_value timezone "$env_tz")"
 	if [ -n "$tz" ] && [ -e "/usr/share/zoneinfo/$tz" ]; then export TZ="$tz"; elif [ -n "$env_tz" ]; then export TZ="$env_tz"; fi
+	load_repository
 }
 
 load_settings

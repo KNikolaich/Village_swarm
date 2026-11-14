@@ -1,6 +1,7 @@
 import { Download, ShieldCheck } from 'lucide-react'
 import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/primitives'
+import { HelpTip } from '@/components/HelpTip'
 import { t } from '@/i18n'
 import { cn } from '@/lib/utils'
 
@@ -25,9 +26,8 @@ export function CertificateCard() {
   const steps = t(`cert.steps.${system}`).split('|')
   return (
     <Card>
-      <CardHeader><CardTitle>{t('cert.title')}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1">{t('cert.title')}<HelpTip text={t('cert.hint')} /></CardTitle></CardHeader>
       <CardContent className="space-y-3 text-sm">
-        <p className="text-neutral-400">{t('cert.hint')}</p>
         <a href="/ca.crt" download="hive-ca.crt" className="inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2 font-medium text-neutral-950 hover:bg-amber-300">
           <Download className="size-4" />{t('cert.download')}
         </a>

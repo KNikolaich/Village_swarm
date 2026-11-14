@@ -6,6 +6,7 @@ import { api, call } from '@/api/client'
 import { useMe } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Input, Select, Skeleton } from '@/components/ui/primitives'
+import { HelpTip } from '@/components/HelpTip'
 import { t } from '@/i18n'
 
 const queryKey = ['settings', 'config'] as const
@@ -30,7 +31,7 @@ type Item = {
  * Plain parameters that used to live only in .env, grouped by topic (admins only). A value set here wins over .env;
  * Reset returns to .env or the default. Most are read at start: the banner then points at the restart button below.
  */
-export function ConfigCard() {
+export function ConfigCard({ only, except }: { only?: string[]; except?: string[] } = {}) {
   const me = useMe()
   const isAdmin = me.data?.roles.includes('admin') ?? false
   const config = useQuery({ queryKey, queryFn: () => call(api.GET('/api/settings/config')), enabled: isAdmin })
@@ -39,10 +40,9 @@ export function ConfigCard() {
   const pending = items.filter((i) => i.restartPending)
   return (
     <div className="space-y-4">
-      <Card>
-        <CardHeader><CardTitle>{t('config.title')}</CardTitle></CardHeader>
+      {!only && <Card>
+        <CardHeader><CardTitle className="flex items-center gap-1">{t('config.title')}<HelpTip text={t('config.hint')} /></CardTitle></CardHeader>
         <CardContent className="space-y-3 text-sm">
-          <p className="text-xs text-neutral-500">{t('config.hint')}</p>
           {config.isLoading && <Skeleton className="h-24" />}
           {pending.length > 0 && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-200">
@@ -52,15 +52,14 @@ export function ConfigCard() {
             </div>
           )}
         </CardContent>
-      </Card>
-      {(config.data?.sections ?? []).map((section) => {
+      </Card>}
+      {(config.data?.sections ?? []).filter((s) => (!only || only.includes(s)) && !except?.includes(s)).map((section) => {
         const rows = items.filter((i) => i.section === section)
         if (rows.length === 0) return null
         return (
           <Card key={section} id={`config-${section}`}>
-            <CardHeader><CardTitle>{t(`config.sections.${section}.title`)}</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-1">{t(`config.sections.${section}.title`)}<HelpTip text={sectionHelp(section, rows)} /></CardTitle></CardHeader>
             <CardContent className="space-y-4 text-sm">
-              <p className="text-xs text-neutral-500">{t(`config.sections.${section}.hint`)}</p>
               {rows.map((item) => <ConfigRow key={item.key} item={item} />)}
             </CardContent>
           </Card>
@@ -68,6 +67,12 @@ export function ConfigCard() {
       })}
     </div>
   )
+}
+
+/** One tooltip per group: the group's own hint, then every parameter's name and hint (with when it applies). */
+function sectionHelp(section: string, rows: Item[]) {
+  const params = rows.map((i) => `${t(`config.params.${i18nKey(i.key)}.name`)}: ${t(`config.params.${i18nKey(i.key)}.hint`)} ${t(i.apply === 'auto' ? 'config.autoHint' : 'config.restartHint')}`)
+  return [t(`config.sections.${section}.hint`), ...params].join('\n\n')
 }
 
 function ConfigRow({ item }: { item: Item }) {
@@ -103,9 +108,6 @@ function ConfigRow({ item }: { item: Item }) {
           <Badge>{t(`config.source.${item.source}`)}</Badge>
         </span>
       </div>
-      <p className="text-xs text-neutral-500">
-        {t(`config.params.${i18nKey(item.key)}.hint`)} {t(item.apply === 'auto' ? 'config.autoHint' : 'config.restartHint')}
-      </p>
       <div className="flex flex-wrap gap-2">
         <div className="min-w-40 flex-1">
           <Field id={id} item={item} value={draft} onChange={setDraft} label={name} />

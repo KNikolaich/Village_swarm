@@ -545,7 +545,6 @@
     "saved": "Saved",
     "wrongCode": "Wrong code",
     "language": "Interface language",
-    "languageHint": "One setting for the whole hive. Applies to everyone after the page reloads.",
     "alias": "Hive alias",
     "aliasHint": "A name for this hive instead of the word \"Hive\" in the menu and in the swarm, e.g. \"Dacha\", \"City\" or \"Sbrbn | Home\". Empty: Dacha / City when two hives work together, otherwise the word \"Hive\".",
     "aliasSaved": "Alias saved",
@@ -609,13 +608,12 @@
     "emailOff": "Mail is not set up on the hive (SMTP__ in deploy/.env): the address is saved but no letters go out.",
     "emailSaved": "Saved, a test letter is on its way",
     "devices": "Remembered devices",
-    "devicesHint": "These devices sign in with the password alone. Any other one gets asked for a code from Telegram. Lost a phone? Remove it here.",
-    "devicesNone": "None yet: a device is remembered after a sign-in with the Telegram code.",
+    "devicesHint": "These devices sign in with the password alone. Any other one gets asked for a code from Telegram. Lost a phone? Remove it here. A device is remembered by the browser cookie: another profile, a private window or cleared cookies count as a new device. The row shows when the device last signed in, not when it was first remembered. A device that has not signed in for 180 days is forgotten by the hive itself.",
+    "devicesNone": "None yet. A device shows up here only after a sign-in with the Telegram code; a password-only sign-in (from the local network when the code is required only from the internet, or without Telegram linked) does not remember it.",
     "deviceCurrent": "this device",
     "deviceForget": "Forget",
     "install": "App on the phone",
     "installButton": "Install the hive",
-    "installDone": "The hive is already open as an app.",
     "installIos": "In Safari tap Share and choose Add to Home Screen.",
     "installManual": "Open the browser menu and choose Install app (Chrome, Edge, Yandex Browser) or Add to Home screen.",
     "installHttps": "Installing needs trusted HTTPS: from outside through the KeenDNS address, at home after installing the hive certificate (/ca.crt).",
@@ -1188,7 +1186,7 @@
     "noDump": "Not made yet: the first dump is tonight",
     "noOffsite": "Not set up",
     "noVerify": "Not run yet: weekly, after the nightly backup",
-    "offsiteHint": "For now the backup sits on the same drive as the hive: if the drive dies, it goes too. Set up a copy to another drive or the cloud (RESTIC_REPOSITORY in .env, see docs/restore.md).",
+    "offsiteHint": "For now the backup sits on the same drive as the hive: if the drive dies, it goes too. Set up a copy to another drive or the cloud (Settings > Data and maintenance > Backups, see docs/restore.md).",
     "history": "Recent runs",
     "manual": "Run now, on the hive:",
     "problems": {
@@ -1916,7 +1914,7 @@
       },
       "backup": {
         "title": "Backups",
-        "hint": "The nightly backup schedule. Where the off-site copy goes is set in .env (RESTIC_*)."
+        "hint": "The nightly backup schedule. Also where the off-site copy goes (its password stays in .env: RESTIC_PASSWORD)."
       }
     },
     "params": {
@@ -1979,6 +1977,10 @@
       "backup_verify_day": {
         "name": "Restore check day",
         "hint": "1 = Monday ... 7 = Sunday, 0 = never."
+      },
+      "backup_repository": {
+        "name": "Where to keep the off-site copy",
+        "hint": "Not the hive's own drive. A folder: /repo (on the server that is BACKUP_REPO_DIR, a network share can be mounted there) or an address like sftp:user@host:/path, rest:https://..., s3:... Empty: copies stay on the hive's drive only. The copy's password is set in .env (RESTIC_PASSWORD)."
       }
     },
     "choices": {

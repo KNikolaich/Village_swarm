@@ -40,6 +40,20 @@ wait_for_db() {
 	return 1
 }
 
+# cfg_value <key> <fallback>: the value saved in Settings (modes: cfg.<key>), or the fallback when the row is missing,
+# empty or the database does not answer.
+cfg_value() {
+	local v
+	v="$(psql -X -At -d "$PGDATABASE" -v key="cfg.$1" -c "SELECT value FROM modes WHERE key = :'key'" 2>/dev/null)" || v=""
+	printf '%s' "${v:-$2}"
+}
+
+# The off-site repository set in Settings (Settings -> Data and maintenance -> Backups) wins over .env RESTIC_REPOSITORY,
+# which stays the fallback. The password is never kept in the database: it stays in .env.
+env_repository="${RESTIC_REPOSITORY:-}"
+load_repository() { export RESTIC_REPOSITORY="$(cfg_value backup.repository "$env_repository")"; }
+load_repository
+
 restic_configured() { [ -n "${RESTIC_REPOSITORY:-}" ]; }
 
 # Initialises the repository on first use; fails loudly when the password is missing.

@@ -5,6 +5,7 @@ import { api, call } from '@/api/client'
 import { useMe } from '@/api/queries'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Input } from '@/components/ui/primitives'
+import { HelpTip } from '@/components/HelpTip'
 import { t } from '@/i18n'
 import { formatAgo } from '@/lib/format'
 
@@ -69,9 +70,8 @@ export function FailoverCard() {
   const pin = replica.data?.pin
   return (
     <Card>
-      <CardHeader><CardTitle>{t('failover.title')}</CardTitle></CardHeader>
+      <CardHeader><CardTitle className="flex items-center gap-1">{t('failover.title')}<HelpTip text={t('failover.hint')} /></CardTitle></CardHeader>
       <CardContent className="space-y-3 text-sm">
-        <p className="text-xs text-neutral-500">{t('failover.hint')}</p>
         {state.data && !state.data.canLogin && <p className="text-xs text-amber-300">{t('failover.noSecret')}</p>}
         <form className="grid grid-cols-[1fr_6rem] items-end gap-2 sm:max-w-md" onSubmit={(e) => void save(e)}>
           <label className="space-y-1">
