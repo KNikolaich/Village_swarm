@@ -17,6 +17,7 @@ In VS Code the PlatformIO toolbar does the same (✓ build, → upload, plug ico
 | Env | Board | Chip |
 |---|---|---|
 | `guard-cam` | ESP32-CAM AI-Thinker | ESP32 |
+| `guard-cam-s3` | ESP32-S3 camera board N16R8 (OV2640/OV3660/OV5640) | ESP32-S3 |
 | `meteo-c3`, `relay-c3` | ESP32-C3 mini (SuperMini) | ESP32-C3 |
 | `monitor-c3oled` | ESP32-C3 with the 0.42" OLED (72×40): a monitor, see **monitor** below | ESP32-C3 |
 | `monitor-epd154` | Waveshare ESP32-S3-ePaper-1.54 (200×200 e-ink): a remote monitor, not a hornet, see **monitor** below | ESP32-S3 |

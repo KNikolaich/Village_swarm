@@ -10,7 +10,11 @@
 //   on hw.relay_pin (default GPIO4), like the relay role: off at every boot, retained state/{channel}.
 // Uploads run in their own task so the main loop (MQTT, watchdog) never waits on HTTP.
 //
-// Pins: PIR on GPIO13 (spec). The SD card runs in 1-bit mode so GPIO4/12/13 stay free
+// Boards: ESP32-CAM AI-Thinker (default) and, with -DHORNET_CAM_S3, an ESP32-S3 camera board with the pin map of the
+// widespread "ESP32-S3-CAM" / Freenove WROOM / ESP32-S3-EYE layout (N16R8: 16 MB flash, 8 MB octal PSRAM; OV2640,
+// OV3660 or OV5640): camera on GPIO4..18, microSD (1-bit) on GPIO38/39/40, PIR on GPIO14, output on GPIO21.
+//
+// Pins (AI-Thinker): PIR on GPIO13 (spec). The SD card runs in 1-bit mode so GPIO4/12/13 stay free
 // (GPIO4 is also the white flash LED, which 1-bit mode leaves alone). The output pin may be any free one;
 // camera, SD, PSRAM and PIR pins are refused, the output stays on the old pin then.
 
@@ -34,7 +38,11 @@ namespace {
 
 using namespace hornet;
 
+#ifdef HORNET_CAM_S3
+constexpr int kPirPin = 14;
+#else
 constexpr int kPirPin = 13;
+#endif
 constexpr const char* kOutboxDir = "/outbox";
 constexpr const char* kArchiveDir = "/archive";
 constexpr uint32_t kSdRetryMs = 30000;
@@ -47,10 +55,25 @@ constexpr int kNoWifi = -1001;
 constexpr int kBadUploadUrl = -1002;
 // Grabs per photo while the driver keeps handing out a frame started before the request.
 constexpr int kFreshFrameTries = 3;
+#ifdef HORNET_CAM_S3
+constexpr int kCameraPwdnPin = -1;  // not wired on these boards
+#else
 constexpr int kCameraPwdnPin = 32;
+#endif
 
 // Pins the output must never take: camera, SD (1-bit), PSRAM, PIR, and the input-only 34..39.
 bool outputPinAllowed(int pin) {
+#ifdef HORNET_CAM_S3
+    // Camera 4..18, PIR 14, SD 38..40, octal flash/PSRAM 26..37, USB 19/20, strapping 0/3/45/46.
+    if (pin >= 4 && pin <= 18) return false;
+    if (pin >= 26 && pin <= 40) return false;
+    switch (pin) {
+        case 0: case 3: case 19: case 20: case 45: case 46:
+            return false;
+        default:
+            return pin >= 0 && pin <= 48;
+    }
+#else
     switch (pin) {
         case 0: case 2: case 5: case 13: case 14: case 15: case 16: case 17: case 18: case 19:
         case 21: case 22: case 23: case 25: case 26: case 27: case 32:
@@ -58,13 +81,30 @@ bool outputPinAllowed(int pin) {
         default:
             return pin >= 0 && pin < 34;
     }
+#endif
 }
 
-// AI-Thinker camera pins.
+// Camera pins: AI-Thinker, or the ESP32-S3 camera board.
 camera_config_t cameraConfig() {
     camera_config_t c = {};
     c.pin_pwdn = kCameraPwdnPin;
     c.pin_reset = -1;
+#ifdef HORNET_CAM_S3
+    c.pin_xclk = 15;
+    c.pin_sccb_sda = 4;
+    c.pin_sccb_scl = 5;
+    c.pin_d7 = 16;
+    c.pin_d6 = 17;
+    c.pin_d5 = 18;
+    c.pin_d4 = 12;
+    c.pin_d3 = 10;
+    c.pin_d2 = 8;
+    c.pin_d1 = 9;
+    c.pin_d0 = 11;
+    c.pin_vsync = 6;
+    c.pin_href = 7;
+    c.pin_pclk = 13;
+#else
     c.pin_xclk = 0;
     c.pin_sccb_sda = 26;
     c.pin_sccb_scl = 27;
@@ -79,13 +119,20 @@ camera_config_t cameraConfig() {
     c.pin_vsync = 25;
     c.pin_href = 23;
     c.pin_pclk = 22;
+#endif
     // 10 MHz and one buffer: frames are grabbed on demand. With two buffers the driver streams non-stop and logs
     // "cam_hal: DMA overflow" 25 times a second whenever Wi-Fi or PSRAM traffic holds the DMA up.
     c.xclk_freq_hz = 10000000;
     c.ledc_timer = LEDC_TIMER_0;
     c.ledc_channel = LEDC_CHANNEL_0;
     c.pixel_format = PIXFORMAT_JPEG;
+#ifdef HORNET_CAM_S3
+    // The frame buffer is sized by this at init (OV3660: up to QXGA, OV5640: up to QSXGA; the driver clamps it to what the
+    // sensor has); applySensorSettings() then sets the size the config asks for, so any size up to UXGA fits.
+    c.frame_size = FRAMESIZE_UXGA;
+#else
     c.frame_size = FRAMESIZE_SVGA;
+#endif
     c.jpeg_quality = 12;
     c.fb_count = 1;
     c.fb_location = CAMERA_FB_IN_PSRAM;
@@ -134,9 +181,13 @@ public:
 
         cameraErr_ = esp_camera_init(&cameraConfigured());
         cameraOk_ = cameraErr_ == ESP_OK;
+        if (cameraOk_) applySensorSettings();  // the init frame size can differ from the configured one (S3)
         if (!cameraOk_) Serial.printf("[guard-cam] camera init failed: 0x%x\n", static_cast<unsigned>(cameraErr_));
         // 20 MHz, not the library's 40 MHz high speed: on this board a card in high-speed mode draws more and is
         // noisier, and with a card in the camera stopped giving frames ("camera frame failed").
+#ifdef HORNET_CAM_S3
+        SD_MMC.setPins(39, 38, 40);  // CLK, CMD, D0: 1-bit mode
+#endif
         sdOk_ = SD_MMC.begin("/sdcard", true, false, SDMMC_FREQ_DEFAULT) && (SD_MMC.exists(kOutboxDir) || SD_MMC.mkdir(kOutboxDir)) &&
                 (SD_MMC.exists(kArchiveDir) || SD_MMC.mkdir(kArchiveDir));
         if (sdOk_) sdPending_ = tidyOutbox();
@@ -374,8 +425,10 @@ private:
     // Driver off, sensor powered down for a moment, then everything set up again with the current settings.
     esp_err_t restartCamera() {
         esp_camera_deinit();
-        pinMode(kCameraPwdnPin, OUTPUT);
-        digitalWrite(kCameraPwdnPin, HIGH);
+        if (kCameraPwdnPin >= 0) {
+            pinMode(kCameraPwdnPin, OUTPUT);
+            digitalWrite(kCameraPwdnPin, HIGH);
+        }
         delay(20);
         const esp_err_t err = esp_camera_init(&cameraConfigured());
         if (err == ESP_OK) applySensorSettings();
