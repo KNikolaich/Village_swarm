@@ -22,7 +22,7 @@ const TOP = 8
 const BOTTOM = 8
 
 /** Width of an element in pixels, kept up to date while the window or layout changes. */
-function useWidth() {
+export function useWidth() {
   const ref = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(600)
   useEffect(() => {

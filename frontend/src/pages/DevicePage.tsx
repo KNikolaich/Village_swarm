@@ -11,7 +11,7 @@ import { rangeClass, rangeKey, rangeState } from '@/lib/valueRange'
 import { IrPanel, type IrReceiver } from '@/components/IrPanel'
 import { TasmotaConsole } from '@/components/TasmotaConsole'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Camera, ChevronDown, ChevronRight, ChevronUp, Cpu, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
+import { ArrowLeft, Camera, ChartLine, ChevronDown, ChevronRight, ChevronUp, Cpu, Power, PowerOff, RotateCw, Trash2, Wifi, WifiOff } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { toast } from 'sonner'
@@ -20,12 +20,12 @@ import { chartWindow, keys, useEvents, useZones, useCommandHistory, useDeviceLog
 import { EventCard, type PhotoRef } from '@/components/EventCard'
 import { Lightbox } from '@/components/Lightbox'
 import { Chart, TimeAxis, type ChartPoint } from '@/components/Chart'
+import { HornetChartModal } from '@/components/HornetChartModal'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
 import { hasRelay, showsMetric } from '@/lib/features'
 import { formatAgo, formatFixed, formatValue, formatWhen, isBlank, metricUnit, orDash } from '@/lib/format'
-import { ranges, rangeLabel } from '@/lib/ranges'
 import { ZoneSelect } from '@/pages/ClimatePage'
 import { DeviceName } from '@/components/DeviceName'
 import { PinsPanel } from '@/components/PinsPanel'
@@ -254,7 +254,9 @@ export function DevicePage() {
   const { deviceId = '' } = useParams()
   // Opened from a zone's editor (?zone=3): the way back leads to it.
   const fromZone = useSearchParams()[0].get('zone')
+  // The history card shows the last day; the full chart (scroll, zoom, every reading) opens from its button.
   const [hours, setHours] = useState(24)
+  const [chartOpen, setChartOpen] = useState(false)
   const devices = useDevices(true)
   const zones = useZones()
   const latest = useLatestTelemetry()
@@ -538,9 +540,7 @@ export function DevicePage() {
       <Card>
         <CardHeader>
           <CardTitle>{t('device.history')}</CardTitle>
-          <Select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-8 w-auto text-xs" aria-label={t('device.range')}>
-            {ranges.map((h) => <option key={h} value={h}>{rangeLabel(h)}</option>)}
-          </Select>
+          <Button variant="outline" size="sm" onClick={() => setChartOpen(true)}><ChartLine />{t('hornetChart.open')}</Button>
         </CardHeader>
         <CardContent className="space-y-5">
           {readings.map((v) => <MetricChart key={v.metric} device={deviceId} metric={v.metric} hours={hours} />)}
@@ -548,6 +548,8 @@ export function DevicePage() {
           <TimeAxis {...chartWindow(hours)} />
         </CardContent>
       </Card>
+
+      {chartOpen && <HornetChartModal device={device} metrics={readings.map((v) => v.metric)} onClose={() => setChartOpen(false)} />}
 
       <HornetEvents deviceId={deviceId} />
 
