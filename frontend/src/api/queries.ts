@@ -2,6 +2,7 @@ import { rangesByKey } from '@/lib/valueRange'
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { t } from '@/i18n'
+import { chunkIndexes, mergeChunks } from '@/lib/hornetChart'
 import { moveInTree } from '@/lib/notes'
 import { api, call, type EventDto, type NoteDto, type NoteNodeDto } from './client'
 
@@ -441,3 +442,44 @@ export const useRanges = () =>
     refetchInterval: 5 * 60_000,
     select: (list) => rangesByKey(list),
   })
+
+/**
+ * The lines of one hornet over a scrolling window, fetched in chunks (see `chunkIndexes`): moving back in time asks only for
+ * the chunks not seen yet, and a line that is switched off is simply not in `metrics`. Health reports (battery, signal,
+ * memory) come with `health`.
+ */
+type SeriesPoint = { ts: string; avg: number; min: number; max: number }
+
+export function useChunkedSeries(device: string, metrics: string[], health: boolean, hours: number, fromMs: number, toMs: number) {
+  const size = hours * 3_600_000
+  const indexes = chunkIndexes(fromMs, toMs, size)
+  const now = Date.now()
+  // The chunk that still reaches into the future is refreshed; older ones never change.
+  const live = (i: number) => (i + 1) * size > now
+  const window = (i: number) => ({ from: new Date(i * size).toISOString(), to: new Date((i + 1) * size).toISOString() })
+  const series = useQueries({
+    queries: metrics.flatMap((metric) => indexes.map((i) => ({
+      queryKey: ['telemetry', 'series', device, metric, 'chunk', hours, i],
+      queryFn: () => call(api.GET('/api/telemetry/series', { params: { query: { device, metric, ...window(i), points: seriesPoints(hours) } } })),
+      staleTime: live(i) ? 60_000 : Infinity,
+      refetchInterval: live(i) ? 5 * 60_000 : (false as const),
+    }))),
+  })
+  const healthQs = useQueries({
+    queries: (health ? indexes : []).map((i) => ({
+      queryKey: ['telemetry', 'health', device, 'chunk', hours, i],
+      queryFn: () => call(api.GET('/api/telemetry/health', { params: { query: { device, ...window(i), points: seriesPoints(hours) } } })),
+      staleTime: live(i) ? 60_000 : Infinity,
+      refetchInterval: live(i) ? 5 * 60_000 : (false as const),
+    })),
+  })
+  const byMetric: Record<string, SeriesPoint[]> = {}
+  metrics.forEach((metric, m) => {
+    byMetric[metric] = mergeChunks(indexes.map((_, k) => series[m * indexes.length + k]?.data))
+  })
+  return {
+    metrics: byMetric,
+    health: mergeChunks(healthQs.map((r) => r.data)),
+    loading: series.some((r) => r.isFetching && !r.data) || healthQs.some((r) => r.isFetching && !r.data),
+  }
+}

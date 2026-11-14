@@ -1113,6 +1113,15 @@
     "sat": "Sat",
     "sun": "Sun"
   },
+  "hornetChart": {
+    "open": "Open chart",
+    "loading": "Loading…",
+    "back": "Back in time",
+    "forward": "Forward in time",
+    "now": "Now",
+    "hint": "Drag the chart sideways to scroll through time; Ctrl + wheel or the magnifier buttons change the scale. Lines that are switched off are not loaded.",
+    "nothingOn": "All lines are off: tick the ones you need above the chart"
+  },
   "tileChart": {
     "open": "Show chart",
     "offline": "No data for a long time: the hornet is offline",
