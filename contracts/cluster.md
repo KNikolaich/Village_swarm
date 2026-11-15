@@ -67,6 +67,20 @@ The city tells home which hornets it made itself, retained, gzip JSON on `vs/v1/
 broker from the shared secret and the id (`CityBrokerLogin`) and a row in the swarm with `visitor` set (not reported as missing while away). The city writes the dacha's broker into the config of its own hornets (`mqtt_city`,
 `after_s` 20, `probe_s` 900; `PUT /api/failover` on the city names the dacha), so a hornet carried to the dacha leaves the city broker within 20 seconds and settles on the dacha's. Home's data is not copied back.
 
+## The city asks the dacha to move one of the dacha's hornets (`vs/v1/sync/city/prefer/{deviceId}`)
+
+A copy of a dacha hornet looked at in the city is changed only on the city (the observer refuses the rest), but where the hornet connects is the dacha's to write: its config lives there. So when someone chooses
+"preferred hive" for such a copy on the city, the city also tells the dacha, retained (so that a dacha that is down receives it when it is back), JSON on `vs/v1/sync/city/prefer/{deviceId}`, taken in by the bridge
+(`vs/v1/sync/city/#`, no change to the bridge or the router):
+
+`{v: 1, id, ts, node: "city", deviceId, prefer: "this" | "other"}`
+
+`prefer` is in the hornet's own terms (as `PUT /api/devices/{id}/prefer`): `this` is the hive it was added to (the dacha), `other` the neighbour (the city). `id` is a ULID, `ts` the time in milliseconds.
+The dacha applies it the way its own switch does (`prefer_hive` and `mqtt_city.prefer_other` in the hornet's config, a new config revision) when all of this holds: it is the dacha, `v` is 1 and `node` is `city`, the device is a
+hornet that was made on the dacha (not a guest of the city, `visitor`), it knows the city's address (Settings → Запасной брокер), and `ts` is newer than the last request it applied for that hornet (kept in the `modes`
+table as `prefer.city.{deviceId}`), so that a retained request is not applied again after a restart and never overrides a later choice made at the dacha. A request that changes nothing is only remembered.
+Hornets cannot read `vs/v1/sync/#`. The message carries no secret.
+
 ## Photos home to city (`PUT /api/ingest/replica/media/{id}`, spec 7.3)
 
 Home sends every photo to the city over HTTP (through the router's tunnel), alarm photos first. Settings → "Запасной брокер (город)" holds the address (`failover.city`: `host`, optional `replicaUrl`; the photo address is

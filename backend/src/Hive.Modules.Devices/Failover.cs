@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Hive.Contracts;
 using Hive.Contracts.Mqtt;
 using Hive.Domain;
 using Hive.Infrastructure;
@@ -172,6 +173,13 @@ public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions
         await db.SaveChangesAsync(ct);
         if (mqtt.IsConnected)
             await mqtt.PublishAsync(Topics.Config(deviceId), config.ToJsonString(), retain: true, ct);
+        // The city's copy of a dacha hornet: where the hornet connects is written at the dacha, so the dacha is told (retained: it may be down now).
+        if (foreign && node.Node == "city" && mqtt.IsConnected)
+        {
+            var now = time.GetUtcNow();
+            await mqtt.PublishAsync(PreferRequest.Topic(deviceId),
+                PreferRequest.Serialize(new PreferRequestMessage(1, Ulid.New(now), now.ToUnixTimeMilliseconds(), "city", deviceId, prefer)), retain: true, ct);
+        }
         return ConfigUpdateStatus.Updated;
     }
 

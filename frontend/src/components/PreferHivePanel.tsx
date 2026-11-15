@@ -18,6 +18,8 @@ export function PreferHivePanel({ deviceId, preferHive, editable, local, visitor
   const madeHere = onCity ? !!local : !visitor
   const here = madeHere === onCity ? 'city' : 'dacha'
   const there = here === 'city' ? 'dacha' : 'city'
+  // A copy of the dacha's hornet changed on the city: the dacha is told and writes it into the hornet, when it receives the request.
+  const viaDacha = onCity && !local
 
   async function choose(prefer: 'this' | 'other') {
     const { response } = await api.PUT('/api/devices/{deviceId}/prefer', { params: { path: { deviceId } }, body: { prefer } })
@@ -25,13 +27,14 @@ export function PreferHivePanel({ deviceId, preferHive, editable, local, visitor
       toast.error(prefer === 'other' && response.status === 400 ? t('prefer.needOther') : t('errors.generic'))
       return
     }
-    toast.success(t('prefer.saved'))
+    toast.success(t(viaDacha ? 'prefer.savedViaDacha' : 'prefer.saved'))
     await qc.invalidateQueries({ queryKey: keys.devices })
   }
 
   return (
     <div className="space-y-2 text-sm">
       <p className="text-xs text-neutral-500">{t('prefer.hint')}</p>
+      {viaDacha && <p className="text-xs text-amber-400/90">{t('prefer.viaDacha')}</p>}
       <label className="block space-y-1 sm:max-w-sm">
         <span className="text-xs text-neutral-400">{t('prefer.label')}</span>
         <Select value={preferHive === 'other' ? 'other' : 'this'} disabled={!editable} onChange={(e) => void choose(e.target.value as 'this' | 'other')}>

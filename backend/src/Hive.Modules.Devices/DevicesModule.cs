@@ -108,6 +108,9 @@ public static class DevicesModule
         services.AddScoped<ValueRangeStore>();
         services.AddHostedService<DisplayFeed>();
         services.AddScoped<OtaPendingStore>();
+        // The dacha applies the city's choice of the preferred hive for the dacha's hornets (contracts/cluster.md).
+        services.AddSingleton<PreferRequestReceiver>();
+        services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<PreferRequestReceiver>());
         services.AddSingleton<OtaWakeDelivery>();
         services.AddSingleton<IMqttMessageHandler>(sp => sp.GetRequiredService<OtaWakeDelivery>());
         services.AddSingleton<OtaRolloutRunner>();
