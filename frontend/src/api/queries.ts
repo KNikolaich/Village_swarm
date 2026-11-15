@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { t } from '@/i18n'
 import { chunkIndexes, mergeChunks } from '@/lib/hornetChart'
 import { moveInTree } from '@/lib/notes'
-import { api, call, type EventDto, type NoteDto, type NoteNodeDto } from './client'
+import { api, call, type DeviceDto, type EventDto, type NoteDto, type NoteNodeDto } from './client'
 
 /** This node and the other one (cluster), with the aliases both hives go by; refreshed once a minute. */
 export function useCluster() {
@@ -275,10 +275,19 @@ export function useSnapshot(deviceId: string) {
 
 /** Sends a command to a hornet, with a toast for the outcome. */
 export function useSendCommand(deviceId: string) {
+  const qc = useQueryClient()
   return async (name: string, payload?: Record<string, unknown>) => {
     try {
       await call(api.POST('/api/devices/{deviceId}/commands', { params: { path: { deviceId } }, body: { name, payload: payload as Record<string, never> | undefined } }))
       toast.success(t('device.commandSent'))
+      // A relay is shown as it was set at once (the hornet confirms a moment later), then as it reports: without this a
+      // button stayed on its old state until the next refresh and could not be pressed back.
+      const channel = typeof payload?.channel === 'string' ? payload.channel : 'relay'
+      const set = payload?.set
+      if (name === 'relay' && (set === 'on' || set === 'off'))
+        qc.setQueryData<DeviceDto[]>(keys.devices, (all) =>
+          all?.map((d) => d.deviceId === deviceId ? { ...d, state: { ...(d.state as Record<string, unknown> | null), [channel]: set } } : d))
+      for (const ms of [1500, 4000]) setTimeout(() => void qc.invalidateQueries({ queryKey: keys.devices }), ms)
     } catch (e) {
       toast.error(errorText(e, t('device.commandRefused')))
     }

@@ -26,7 +26,7 @@ public sealed class VideoOptions
 
 /// <summary>
 /// A camera that can be watched live: its stream names in go2rtc (sub: light, main: detailed). Kind ipcam (NvrId, Channel
-/// for its snapshots) or car (one MJPEG stream as both, NvrId and Channel 0).
+/// for its snapshots), guard-cam (frames only) or car (one MJPEG stream as both, NvrId and Channel 0).
 /// </summary>
 public sealed record VideoCameraDto(
     string DeviceId, string Name, int? ZoneId, string? Zone, int NvrId, int Channel, string Sub, string Main, string Status, string Kind = Cameras.IpCam,
@@ -230,6 +230,11 @@ public sealed class VideoStreams(
             .Where(d => d.TypeCode == Cars.Type && d.Status != DeviceStatus.Disabled).ToListAsync(ct);
         cameras.AddRange(cars.Where(d => CarSource(d.Ip, d.Config) is not null).Select(d => new VideoCameraDto(
             d.DeviceId, d.Name, d.ZoneId, d.Zone?.Name, 0, 0, Sub(d.DeviceId), Main(d.DeviceId), d.Status.ToString().ToLowerInvariant(), Cars.Type, VideoRotation.Of(d.Config))));
+        // A guard-cam (ESP32-CAM) has no stream: the widget offers it as frames only, taken by its snapshot command.
+        var guards = await db.Devices.AsNoTracking().Include(d => d.Zone)
+            .Where(d => d.TypeCode == Cameras.GuardCam && d.Status != DeviceStatus.Disabled).ToListAsync(ct);
+        cameras.AddRange(guards.Where(d => cameras.All(c => c.DeviceId != d.DeviceId)).Select(d => new VideoCameraDto(
+            d.DeviceId, d.Name, d.ZoneId, d.Zone?.Name, 0, 0, Sub(d.DeviceId), Main(d.DeviceId), d.Status.ToString().ToLowerInvariant(), Cameras.GuardCam, VideoRotation.Of(d.Config))));
         return new VideoStreamsDto(Enabled, cameras.OrderBy(c => c.Zone ?? "￿").ThenBy(c => c.Name).ToList());
     }
 
