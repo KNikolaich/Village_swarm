@@ -76,6 +76,8 @@ export function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; b
       {!suitable.some((b) => b.role === device.type) && <p className="text-neutral-500">{t('swarm.fwNone').replace('{env}', env)}</p>}
       {suitable.map((b) => {
         const current = b.version === device.fw
+        // A build of the hornet's own type is the update; one of another type changes what the hornet is, so its button is quiet (grey), not the first thing the eye finds.
+        const sameType = b.role === device.type
         return (
           <div key={b.build} className="flex items-center justify-between gap-2 border-t border-neutral-800 pt-2">
             <div>
@@ -92,9 +94,9 @@ export function FirmwarePanel({ device, builds, onDone }: { device: DeviceDto; b
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => void cancelWaiting()}>{t('common.cancel')}</Button>
                 </>
               ) : sleeper ? (
-                <Button size="sm" disabled={busy} onClick={() => void queue(b)}>{t('swarm.fwInstallOnWake')}</Button>
+                <Button size="sm" variant={sameType ? 'default' : 'secondary'} disabled={busy} onClick={() => void queue(b)}>{t('swarm.fwInstallOnWake')}</Button>
               ) : (
-                <Button size="sm" disabled={busy || device.status !== 'online'} onClick={() => void update(b)}>{t('swarm.fwInstall')}</Button>
+                <Button size="sm" variant={sameType ? 'default' : 'secondary'} disabled={busy || device.status !== 'online'} onClick={() => void update(b)}>{t('swarm.fwInstall')}</Button>
               )}
               <Button size="sm" variant="outline" onClick={() => setUsbOpen(usbOpen === b.build ? null : b.build)}><Usb />{t('swarm.fwUsb')}</Button>
             </div>
