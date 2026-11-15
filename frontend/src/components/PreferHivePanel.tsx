@@ -22,7 +22,7 @@ export function PreferHivePanel({ deviceId, preferHive, editable, local, visitor
   async function choose(prefer: 'this' | 'other') {
     const { response } = await api.PUT('/api/devices/{deviceId}/prefer', { params: { path: { deviceId } }, body: { prefer } })
     if (!response.ok) {
-      toast.error(prefer === 'other' ? t('prefer.needOther') : t('errors.generic'))
+      toast.error(prefer === 'other' && response.status === 400 ? t('prefer.needOther') : t('errors.generic'))
       return
     }
     toast.success(t('prefer.saved'))

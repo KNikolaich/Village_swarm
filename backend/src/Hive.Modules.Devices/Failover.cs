@@ -132,20 +132,39 @@ public sealed class FailoverService(HiveDbContext db, MqttGateway mqtt, IOptions
         if (device is null)
             return ConfigUpdateStatus.NotFound;
         var city = await GetAsync(ct);
-        if (prefer == "other" && CityConfigFor(deviceId, city) is null)
-            return ConfigUpdateStatus.BadRequest;
         var config = device.Config is { } current
             ? JsonNode.Parse(current.RootElement.GetRawText())!.AsObject()
             : new JsonObject { ["v"] = 1, ["name"] = device.Name, ["health_interval_s"] = 60 };
-        if (prefer == "other")
-            config["prefer_hive"] = "other";
+        // A hornet made on the other hive: its second broker is already in its config, written there (for the dacha's hornet looked at in the city,
+        // the city's address). Moving it to this hive needs no address of the neighbour: only the choice inside that entry changes.
+        var foreign = node.Node == "city" ? !device.Local : device.Visitor;
+        if (foreign && config["mqtt_city"] is JsonObject existing)
+        {
+            if (prefer == "other")
+            {
+                config["prefer_hive"] = "other";
+                existing["prefer_other"] = true;
+            }
+            else
+            {
+                config.Remove("prefer_hive");
+                existing.Remove("prefer_other");
+            }
+        }
         else
-            config.Remove("prefer_hive");
-        var want = CityConfigFor(deviceId, city, prefer == "other");
-        if (want is null)
-            config.Remove("mqtt_city");
-        else
-            config["mqtt_city"] = want;
+        {
+            if (prefer == "other" && CityConfigFor(deviceId, city) is null)
+                return ConfigUpdateStatus.BadRequest;
+            if (prefer == "other")
+                config["prefer_hive"] = "other";
+            else
+                config.Remove("prefer_hive");
+            var want = CityConfigFor(deviceId, city, prefer == "other");
+            if (want is null)
+                config.Remove("mqtt_city");
+            else
+                config["mqtt_city"] = want;
+        }
         device.ConfigRev++;
         config["rev"] = device.ConfigRev;
         device.Config = JsonDocument.Parse(config.ToJsonString());
@@ -232,9 +251,10 @@ public static class FailoverEndpoints
                 {
                     ConfigUpdateStatus.NotFound => TypedResults.NotFound(),
                     ConfigUpdateStatus.BadRequest => TypedResults.ValidationProblem(new Dictionary<string, string[]>
-                        { ["prefer"] = ["this или other; для other сначала укажите адрес другого Улья в Настройках → Запасной брокер"] }),
+                        { ["prefer"] = ["this или other; для other у шершня должен быть второй Улей: укажите его адрес в Настройках → Запасной брокер"] }),
                     _ => TypedResults.NoContent(),
                 })
+            .NodeLocal()   // a hornet made on the other hive may be moved to this one from here, so the observer city allows it for its copies too
             .WithTags("devices")
             .RequireAuthorization(HiveRoles.CanControl);
 

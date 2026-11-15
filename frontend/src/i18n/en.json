@@ -1860,7 +1860,7 @@
     "city": "City",
     "dacha": "Dacha",
     "saved": "Saved, the hornet applies it at its next contact",
-    "needOther": "Set the address of the other hive first: Settings → fallback broker"
+    "needOther": "This hornet has no second hive: on the hive it was added to, set the address of the other hive in Settings → fallback broker"
   },
   "config": {
     "title": "Hive parameters",
