@@ -1,8 +1,8 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Camera, Maximize2, Minimize2, Play, Square, Video, WifiOff } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, call, type EventDto } from '@/api/client'
-import { useSnapshot } from '@/api/queries'
+import { useLatestPhoto, useSnapshot } from '@/api/queries'
 import { CarControls } from '@/components/CarControls'
 import { PtzControls } from '@/components/PtzControls'
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,9 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
   const lastTouch = useRef(Date.now())
 
   const camera = cameras.find((c) => c.deviceId === choice.camera) ?? null
+  // A guard-cam has no stream, only frames: whatever quality was picked, it is shown as «Снимки».
+  const framesOnly = camera?.kind === 'guard-cam'
+  const quality: Quality = framesOnly ? 'snapshots' : choice.quality
   const choose = (next: VideoChoice) => {
     setChoice(next)
     saveChoice(next)
@@ -89,7 +92,7 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
       return
     }
     void box.current?.requestFullscreen?.().catch(() => {})
-    if (choice.quality === 'sd') choose({ ...choice, quality: 'hd' }) // the detailed stream is worth it on the whole screen
+    if (!framesOnly && choice.quality === 'sd') choose({ ...choice, quality: 'hd' }) // the detailed stream is worth it on the whole screen
   }
 
   const lose = useCallback(() => {
@@ -115,8 +118,8 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
           </Select>
           <div className="flex rounded-md bg-neutral-900 p-0.5 text-xs" role="radiogroup" aria-label={t('video.quality')}>
             {qualities.map((q) => (
-              <button key={q} type="button" role="radio" aria-checked={choice.quality === q} onClick={() => choose({ ...choice, quality: q })}
-                className={choice.quality === q ? 'rounded bg-neutral-700 px-2 py-1 text-neutral-100' : 'px-2 py-1 text-neutral-400 hover:text-neutral-200'}>
+              <button key={q} type="button" role="radio" aria-checked={quality === q} disabled={framesOnly && q !== 'snapshots'} onClick={() => choose({ ...choice, quality: q })}
+                className={quality === q ? 'rounded bg-neutral-700 px-2 py-1 text-neutral-100' : 'px-2 py-1 text-neutral-400 hover:text-neutral-200'}>
                 {t(`video.qualities.${q}`)}
               </button>
             ))}
@@ -134,8 +137,8 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
           {!camera && <p className="flex h-full items-center justify-center text-sm text-neutral-500">{t('video.pick')}</p>}
           {camera && playing && (
             <Turned degrees={camera.rotate ?? 0} box={box}>
-            {choice.quality === 'snapshots'
-            ? <Snapshots camera={camera} />
+            {quality === 'snapshots'
+            ? (framesOnly ? <GuardFrames camera={camera} /> : <Snapshots camera={camera} />)
             : camera.kind === 'car'
               ? <MjpegPlayer key={camera.deviceId} stream={camera.sub} onLost={lose} />
               : <LivePlayer key={`${camera.deviceId}-${choice.quality}`} stream={choice.quality === 'hd' ? camera.main : camera.sub} quality={choice.quality} onLost={lose} />}
@@ -213,6 +216,46 @@ function Snapshots({ camera }: { camera: VideoCamera }) {
   return (
     <>
       {url && <img src={url} alt={camera.name} className="h-full w-full object-contain" />}
+      {error && <p className="absolute inset-x-2 bottom-2 rounded bg-black/70 p-1 text-xs text-red-300">{t('video.snapshotFailed')}: {error}</p>}
+    </>
+  )
+}
+
+/**
+ * A guard-cam's frames: it has no stream, so while the widget plays it is asked for a photo (the snapshot command) every
+ * 10 s, and the newest photo of the hive is shown, as it arrives. Nothing is asked while the widget does not play.
+ */
+function GuardFrames({ camera }: { camera: VideoCamera }) {
+  const qc = useQueryClient()
+  const latest = useLatestPhoto(camera.deviceId)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    let stop = false
+    let timer: ReturnType<typeof setTimeout>
+    async function next() {
+      try {
+        await call(api.POST('/api/devices/{deviceId}/commands', {
+          params: { path: { deviceId: camera.deviceId } },
+          body: { name: 'snapshot', payload: { count: 1 } as unknown as Record<string, never> },
+        }))
+        if (!stop) setError(null)
+        // The photo comes over HTTP a few seconds later.
+        for (const ms of [2500, 6000]) setTimeout(() => void qc.invalidateQueries({ queryKey: ['media', 'latest', camera.deviceId] }), ms)
+      } catch (e) {
+        if (!stop) setError(String(e instanceof Error ? e.message : e))
+      }
+      if (!stop) timer = setTimeout(() => void next(), 10_000)
+    }
+    timer = setTimeout(() => void next(), 0)
+    return () => {
+      stop = true
+      clearTimeout(timer)
+    }
+  }, [camera.deviceId, qc])
+  const photo = latest.data
+  return (
+    <>
+      {photo && <img src={photo.url} alt={camera.name} className="h-full w-full object-contain" />}
       {error && <p className="absolute inset-x-2 bottom-2 rounded bg-black/70 p-1 text-xs text-red-300">{t('video.snapshotFailed')}: {error}</p>}
     </>
   )
