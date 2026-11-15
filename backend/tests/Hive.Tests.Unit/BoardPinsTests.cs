@@ -32,6 +32,17 @@ public class BoardPinsTests
     }
 
     [Fact]
+    public void S3_camera_relay_defaults_to_gpio21_and_keeps_off_the_camera_pins()
+    {
+        var rows = BoardPins.Rows("esp32s3-cam-n16r8", "guard-cam", null);
+        Assert.Contains(rows, r => r.Function == "relay" && r.Pin == 21 && r.Source == "default");
+        Assert.Empty(BoardPins.Conflicts("guard-cam", rows, "esp32s3-cam-n16r8"));
+
+        rows = BoardPins.Rows("esp32s3-cam-n16r8", "guard-cam", Hw("""{ "relay_pin": 14 }"""));
+        Assert.Contains(BoardPins.Conflicts("guard-cam", rows, "esp32s3-cam-n16r8"), c => c.StartsWith("GPIO14: relay"));
+    }
+
+    [Fact]
     public void Camera_relay_follows_the_config_pin()
     {
         var rows = BoardPins.Rows("esp32cam-aithinker", "guard-cam", Hw("""{ "relay_pin": 12 }"""));

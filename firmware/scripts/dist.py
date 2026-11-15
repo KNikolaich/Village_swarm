@@ -40,7 +40,7 @@ def copy_images(source, target, env):
             version = str(define[1]).strip('\\"')
     meta = {
         "env": name,
-        "role": role if name != "guard-cam" else "guard-cam",
+        "role": "guard-cam" if name.startswith("guard-cam") else role,
         "board": board,
         "version": version,
         "chipFamily": family,
