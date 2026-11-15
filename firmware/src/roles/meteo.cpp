@@ -110,6 +110,7 @@ public:
         if (!converting_ && (!started_ || now - lastReadMs_ >= core.readingIntervalMs(teleIntervalMs_))) {
             started_ = true;  // first reading right after boot
             lastReadMs_ = now;
+            rescanDs(core);  // a DS18B20 wired (or warmed up) after the start is found at the next reading
             if (dsCount_ > 0) dallas_.requestTemperatures();  // non-blocking, read after kConversionMs
             converting_ = true;
             conversionStartMs_ = now;
@@ -125,6 +126,18 @@ public:
     }
 
 private:
+    // The bus is looked at once at the start; a sensor that did not answer then (loose wire, a pull-up fitted later) used to stay missing until the
+    // next restart. With the thermometer wanted and none found, every reading looks again; a change rebuilds the names and the capabilities.
+    void rescanDs(Core& core) {
+        if (dsCount_ > 0 || !features_.has(kThermometer) || sensor_ != TempSensor::Ds18b20 || onewirePin_ < 0) return;
+        dallas_.begin();
+        if (dallas_.getDeviceCount() == 0) return;
+        initSensors();
+        warned_ = false;
+        core.refreshInfo();
+        core.log(LogLevel::Info, "DS18B20 found on 1-wire pin " + String(onewirePin_));
+    }
+
     void initSensors() {
         if (onewirePin_ < 0) {
             onewirePin_ = HW_ONEWIRE_PIN;
@@ -179,8 +192,10 @@ private:
         if (battery_.enabled()) report(core, "battery_voltage", battery_.read(), "V");
         if (ntc_.enabled()) publishNtc(core);
         if (!bmeOk_ && dsCount_ == 0 && !dhtOk_) {
-            if (!warned_ && !battery_.enabled() && !ntc_.enabled() && features_.bits != 0)
-                core.log(LogLevel::Warn, "no sensor found (DS18B20, DHT or BME280)");
+            // Said even when the battery is measured (an ESP-01 always does): a thermometer that was asked for and is not there must not be silent.
+            const bool wanted = features_.has(kBme280) || (features_.has(kThermometer) && !ntcThermometer_);
+            if (!warned_ && wanted)
+                core.log(LogLevel::Warn, "no sensor found (DS18B20 on 1-wire pin " + String(onewirePin_) + ", DHT or BME280): check the wiring and the 4.7 kOhm pull-up");
             warned_ = true;
             return;
         }
