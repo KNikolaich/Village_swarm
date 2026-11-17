@@ -395,6 +395,13 @@ public sealed class CityTests(CityFixture city) : IClassFixture<CityFixture>
         };
         await listener.SubscribeAsync(CatalogCodec.Topic);
         int Count() { lock (published) return published.Count; }
+        // The broker hands over the retained snapshot of an earlier publish right after the subscription, a moment later on a slow machine (a debugger):
+        // counted after it has arrived, it is not mistaken for the publish of this test.
+        for (int last = -1, quiet = 0; quiet < 5; await Task.Delay(100))
+        {
+            quiet = Count() == last ? quiet + 1 : 0;
+            last = Count();
+        }
         var before = Count();
 
         var publisher = new CatalogPublisher(
