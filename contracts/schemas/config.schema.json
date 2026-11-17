@@ -294,7 +294,7 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 1000,
-          "description": "Milliohm, the shunt of the INA226 module (default 2: the common module marked R002; R010 is 10, R100 is 100)"
+          "description": "Milliohm, the shunt of the INA226 module (default 10: the module marked R010; R002 is 2, R100 is 100, which reads only up to 0.8 A)"
         },
         "ina_invert": {
           "type": "boolean",

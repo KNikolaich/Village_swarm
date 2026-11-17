@@ -19,9 +19,10 @@
 #ifndef HW_INA_ADDR
 #define HW_INA_ADDR 0x40
 #endif
-// The shunt of the common blue INA226 module is marked R002 (2 mOhm); some have R010 (10 mOhm), set hw.ina_shunt_mohm.
+// The shunt of the common blue INA226 module is marked R010 (10 mOhm, up to +-8 A); with R002 (2 mOhm) set
+// hw.ina_shunt_mohm = 2. R100 (0.1 Ohm) is good only up to 0.8 A.
 #ifndef HW_INA_SHUNT_MOHM
-#define HW_INA_SHUNT_MOHM 2.0
+#define HW_INA_SHUNT_MOHM 10.0
 #endif
 
 namespace hornet {
