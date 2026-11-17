@@ -119,6 +119,8 @@ public static class CityHttp
             RemoteCertificateValidationCallback = (_, certificate, _, _) => certificate is not null && pin.Accept(CityPin.Fingerprint(certificate)),
         },
         ConnectTimeout = connectTimeout,
+        // The other node is reached directly (a tunnel, an address of the local network): a system or environment proxy (HTTP_PROXY, a VPN client) must not stand between the nodes.
+        UseProxy = false,
         // A kept connection is not asked again, so a changed pin takes hold only on a new one.
         PooledConnectionLifetime = TimeSpan.FromMinutes(5),
     };

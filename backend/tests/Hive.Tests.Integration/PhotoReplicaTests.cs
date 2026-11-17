@@ -135,6 +135,16 @@ public sealed class PhotoReplicaSenderTests(HiveFixture hive)
 {
     private const string Secret = "shared-secret-of-home-and-city";
 
+    /// <summary>A loopback port nobody listens on (port 1 may be answered by a proxy or a security tool on a developer machine).</summary>
+    private static int ClosedPort()
+    {
+        var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
+    }
+
     private async Task<string> AddPhotoAsync(string name, MediaKind kind, EventSeverity? severity, TimeSpan age, string device = "guard-send1")
     {
         var jpeg = TestPhotos.Jpeg((byte)(name.Length * 17));
@@ -254,7 +264,7 @@ public sealed class PhotoReplicaSenderTests(HiveFixture hive)
 
         // a city nobody answers for: the photo is not counted as failed, and the round ends
         var next = await AddPhotoAsync("rs-nocity-xx", MediaKind.Photo, EventSeverity.Alarm, TimeSpan.FromMinutes(1));
-        await SetCityAsync("http://127.0.0.1:1");
+        await SetCityAsync($"http://127.0.0.1:{ClosedPort()}");   // nothing listens there: the connection is refused
         Assert.Equal(0, await replicator.TickAsync(CancellationToken.None));
         var untouched = await hive.QueryAsync(db => db.Media.AsNoTracking().SingleAsync(m => m.Id == next));
         Assert.Equal(0, untouched.ReplicaTries);
