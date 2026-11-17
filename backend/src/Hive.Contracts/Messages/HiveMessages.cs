@@ -233,6 +233,21 @@ public sealed record HwConfig
 
     /// <summary>C added to the result (calibration); null: 0.</summary>
     public double? NtcOffset { get; init; }
+
+    /// <summary>Role monitor: I2C address of an INA226 that measures a battery (0x40..0x4F); null: 0x40.</summary>
+    public int? InaAddr { get; init; }
+
+    /// <summary>Milliohm, the shunt of the INA226 module; null: 10 (R010).</summary>
+    public double? InaShuntMohm { get; init; }
+
+    /// <summary>Swap the sign of the INA226 current; null: false.</summary>
+    public bool? InaInvert { get; init; }
+
+    /// <summary>V, the voltage at or above which a battery taking a trickle counts as full; null: 14.0.</summary>
+    public double? InaFullV { get; init; }
+
+    /// <summary>A, the trickle below which a battery at InaFullV counts as full; null: 0.5.</summary>
+    public double? InaFullA { get; init; }
 }
 
 /// <summary>Small local screen: up to two metrics shown large.</summary>
