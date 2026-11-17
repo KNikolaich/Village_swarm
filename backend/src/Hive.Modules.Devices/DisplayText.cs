@@ -95,6 +95,9 @@ public static class DisplayText
         {
             "humidity" => v.ToString("0", inv) + "%",
             "battery_voltage" => v.ToString("0.0", inv) + "V",
+            "battery_current" => v.ToString("0.00", inv) + "A",
+            "battery_power" => v.ToString("0", inv) + "W",
+            "battery_ah" => v.ToString("0.0", inv) + "Ah",
             "pressure" => v.ToString("0", inv),
             _ => v.ToString("0.0", inv),
         };

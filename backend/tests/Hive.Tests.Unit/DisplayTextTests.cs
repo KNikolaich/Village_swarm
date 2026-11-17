@@ -10,6 +10,9 @@ public class DisplayTextTests
     [InlineData("temperature_2", 21.55, "21.6°")]
     [InlineData("humidity", 63.4, "63%")]
     [InlineData("battery_voltage", 3.94, "3.9V")]
+    [InlineData("battery_current", -1.846, "-1.85A")]
+    [InlineData("battery_power", 22.6, "23W")]
+    [InlineData("battery_ah", 12.34, "12.3Ah")]
     [InlineData("pressure", 1013.4, "1013")]
     [InlineData("lux", 12.34, "12.3")]
     public void A_reading_is_written_the_way_the_firmware_writes_its_own(string metric, double value, string text) =>

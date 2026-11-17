@@ -26,6 +26,9 @@ export function screenText(metric: string, value: number | null | undefined): st
   if (metric.startsWith('temperature')) return `${value.toFixed(1)}°`
   if (metric === 'humidity') return `${value.toFixed(0)}%`
   if (metric === 'battery_voltage') return `${value.toFixed(1)}V`
+  if (metric === 'battery_current') return `${value.toFixed(2)}A`
+  if (metric === 'battery_power') return `${value.toFixed(0)}W`
+  if (metric === 'battery_ah') return `${value.toFixed(1)}Ah`
   if (metric === 'pressure') return value.toFixed(0)
   return value.toFixed(1)
 }

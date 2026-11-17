@@ -101,7 +101,7 @@ export function isForeign(d: DeviceDto, cluster: { enabled?: boolean; node?: str
 }
 
 /** Readings shown in a swarm row, in this order; anything else the hornet reports follows by name. */
-const readingOrder = ['temperature', 'temperature_2', 'temperature_ntc', 'humidity', 'pressure', 'battery_voltage', 'cpu_temperature', 'cpu_load_pct', 'mem_used_pct', 'disk_used_pct']
+const readingOrder = ['temperature', 'temperature_2', 'temperature_ntc', 'humidity', 'pressure', 'battery_voltage', 'battery_current', 'battery_power', 'battery_ah', 'cpu_temperature', 'cpu_load_pct', 'mem_used_pct', 'disk_used_pct']
 
 /** The hornet's main readings (what it is used for, no diagnostics: signal and memory stay on its own page). */
 export function mainReadings(d: DeviceDto, latest: readonly LatestValueDto[]): LatestValueDto[] {

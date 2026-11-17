@@ -515,6 +515,9 @@
     "disk_total_gb": "Disk total",
     "disk_free_gb": "Disk free",
     "battery_voltage": "Battery voltage",
+    "battery_current": "Battery current",
+    "battery_power": "Battery power",
+    "battery_ah": "Taken from battery",
     "pressure": "Pressure",
     "temperature_2": "Temperature 2",
     "temperature_ntc": "NTC temperature"
@@ -1171,6 +1174,9 @@
   },
   "units": {
     "volt": "V",
+    "amp": "A",
+    "watt": "W",
+    "ah": "Ah",
     "hpa": "hPa",
     "mb": "MB",
     "gb": "GB"

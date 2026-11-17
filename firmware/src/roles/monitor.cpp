@@ -3,7 +3,10 @@
 // vs/v1/hive/display/{id}; this role only draws them. With hw.vbat_pin set, a battery behind a voltage divider is
 // measured as battery_voltage (V). With hw.ntc_pin set, an NTC thermistor behind a divider (GPIO0 = A0 on the 0.42"
 // board) is measured as temperature_ntc (C), smoothed (Ntc.h, docs/ntc-thermistor.md); the hive shows it like any
-// reading, on this screen too when display.items asks for it.
+// reading, on this screen too when display.items asks for it. An INA226 on the same I2C bus (found by itself at boot,
+// Ina226.h, docs/ina226-battery.md) measures a 12 V battery: battery_voltage (V), battery_current (A, plus = the battery
+// gives), battery_power (W) and battery_ah (Ah taken out since it was full). While the hive has told the screen no rows,
+// the screen shows the volts and amps of the INA226 itself, live.
 //
 // Layout: without "size" on any item the role lays out up to four lines itself; with it every item is drawn where x, y
 // say, in the largest font not taller than size/10 of the screen height (DisplayLayout.h), its label in the smallest font
@@ -18,6 +21,7 @@
 #include <Battery.h>
 #include <DisplayLayout.h>
 #include <HornetCore.h>
+#include <Ina226.h>
 #include <Ntc.h>
 #include <U8g2lib.h>
 #include <Wire.h>
@@ -46,7 +50,14 @@ public:
 
     std::vector<const char*> metrics() const override {
         std::vector<const char*> m;
-        if (battery_.enabled()) m.push_back("battery_voltage");
+        if (ina_.enabled()) {
+            m.push_back("battery_voltage");
+            m.push_back("battery_current");
+            m.push_back("battery_power");
+            m.push_back("battery_ah");
+        } else if (battery_.enabled()) {
+            m.push_back("battery_voltage");
+        }
         if (ntc_.enabled()) m.push_back("temperature_ntc");
         return m;
     }
@@ -60,6 +71,7 @@ public:
         const bool hadNtc = ntc_.enabled();
         battery_.configure(hw);
         if (ntc_.configure(hw)) ntcSent_ = false;  // new settings: the next good reading goes out at once
+        if (ina_.configure(hw)) ina_.begin();
         const int sda = hw["sda_pin"] | HW_SDA_PIN;
         const int scl = hw["scl_pin"] | HW_SCL_PIN;
         if (sda != sdaPin_ || scl != sclPin_) {
@@ -72,7 +84,23 @@ public:
 
     void loop(Core& core) override {
         const uint32_t now = millis();
-        if (battery_.enabled() && core.online() && (!sent_ || now - lastBatteryMs_ >= teleIntervalMs_)) {
+        ina_.poll(now);
+        if (ina_.enabled() != hadIna_) {  // the chip came or went: the metrics follow
+            hadIna_ = ina_.enabled();
+            core.refreshInfo();
+        }
+        if (ina_.enabled() && core.online() && (!inaSent_ || now - lastInaMs_ >= teleIntervalMs_)) {
+            Ina226::Tele t;
+            if (ina_.take(t)) {
+                inaSent_ = true;
+                lastInaMs_ = now;
+                core.publishTele("battery_voltage", t.volts, "V");
+                core.publishTele("battery_current", t.amps, "A");
+                core.publishTele("battery_power", t.watts, "W");
+                core.publishTele("battery_ah", t.ah, "Ah");
+            }
+        }
+        if (battery_.enabled() && !ina_.enabled() && core.online() && (!sent_ || now - lastBatteryMs_ >= teleIntervalMs_)) {
             sent_ = true;
             lastBatteryMs_ = now;
             core.publishTele("battery_voltage", battery_.read(), "V");
@@ -92,6 +120,12 @@ public:
         }
         // Redraw on new texts and when the online dot changes; nothing else moves on the screen.
         const bool online = core.online();
+        // Own numbers: a refresh a second while the screen has no rows from the hive and the INA226 has something to say.
+        const bool own = rows_.empty() && ina_.enabled();
+        if (own && now - lastOwnDrawMs_ >= 1000) {
+            lastOwnDrawMs_ = now;
+            dirty_ = true;
+        }
         if (dirty_ || online != drawnOnline_) {
             dirty_ = false;
             drawnOnline_ = online;
@@ -123,6 +157,7 @@ private:
             sclPin_ = HW_SCL_PIN;
         }
         Wire.begin(sdaPin_, sclPin_);
+        ina_.begin();  // the INA226 shares the bus with the screen
         screenOk_ = oled_.begin();
         oled_.setFontMode(1);  // transparent: a text drawn in black on a white plate leaves the plate around the glyphs
         if (!screenOk_) Serial.printf("[monitor] no screen on i2c %d/%d\n", sdaPin_, sclPin_);
@@ -159,6 +194,8 @@ private:
         const size_t n = rows_.size();
         if (placed_ && n > 0) {
             drawPlaced();
+        } else if (n == 0 && drawOwn()) {
+            // volts and amps of the INA226, drawn by drawOwn()
         } else if (n == 0) {
             oled_.setFont(u8g2_font_5x8_t_cyrillic);
             if (received_) {
@@ -197,6 +234,21 @@ private:
         }
         if (online) oled_.drawDisc(kWidth - 3, 2, 2);
         oled_.sendBuffer();
+    }
+
+    // The INA226's own volts and amps, large, as long as the hive has chosen no rows: "12.61V" over "-1.85A".
+    // A minus is a charging battery (docs/ina226-battery.md). False when the chip has no reading yet.
+    bool drawOwn() {
+        float volts = 0;
+        float amps = 0;
+        if (!ina_.live(volts, amps)) return false;
+        char line[16];
+        oled_.setFont(u8g2_font_logisoso16_tf);
+        snprintf(line, sizeof line, "%.2fV", volts);
+        oled_.drawStr(0, 18, line);
+        snprintf(line, sizeof line, "%.2fA", amps);
+        oled_.drawStr(0, 38, line);
+        return true;
     }
 
     // Width of a value in the current font, its arrow included.
@@ -251,6 +303,11 @@ private:
     uint32_t teleIntervalMs_ = 60000;
     uint32_t lastBatteryMs_ = 0;
     bool sent_ = false;
+    Ina226 ina_;
+    bool hadIna_ = false;
+    bool inaSent_ = false;
+    uint32_t lastInaMs_ = 0;
+    uint32_t lastOwnDrawMs_ = 0;
     NtcSensor ntc_;
     uint32_t lastNtcMs_ = 0;
     bool ntcSent_ = false;

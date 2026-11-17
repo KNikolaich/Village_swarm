@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { BatteryMedium, Camera, Car, CircleHelp, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Thermometer, Wifi, WifiOff, type LucideIcon } from 'lucide-react'
+import { BatteryMedium, Camera, Car, CircleHelp, Cpu, Droplets, Flame, Gauge, HardDrive, Lightbulb, Moon, Thermometer, Wifi, WifiOff, Zap, type LucideIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { type DeviceDto, type LatestValueDto } from '@/api/client'
@@ -20,6 +20,9 @@ const readingIcons: Record<string, LucideIcon> = {
   humidity: Droplets,
   pressure: Gauge,
   battery_voltage: BatteryMedium,
+  battery_current: Zap,
+  battery_power: Zap,
+  battery_ah: BatteryMedium,
   cpu_temperature: Cpu,
   disk_used_pct: HardDrive,
 }

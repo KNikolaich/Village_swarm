@@ -75,6 +75,9 @@ export const metricUnit = (metric: string) =>
   metric.startsWith('temperature') || metric === 'cpu_temperature' ? '°'
     : metric === 'humidity' || metric === 'disk_used_pct' || metric === 'cpu_load_pct' || metric === 'mem_used_pct' ? '%'
       : metric === 'battery_voltage' ? ' ' + t('units.volt')
+        : metric === 'battery_current' ? ' ' + t('units.amp')
+          : metric === 'battery_power' ? ' ' + t('units.watt')
+            : metric === 'battery_ah' ? ' ' + t('units.ah')
         : metric === 'pressure' ? ' ' + t('units.hpa')
           : metric.startsWith('mem_') && metric.endsWith('_mb') ? ' ' + t('units.mb')
             : metric.startsWith('disk_') && metric.endsWith('_gb') ? ' ' + t('units.gb')
@@ -82,7 +85,7 @@ export const metricUnit = (metric: string) =>
 
 export function formatValue(metric: string, value: number): string {
   // Battery voltage needs hundredths: a 12 V battery's whole charge range is about 1.5 V.
-  const digits = metric === 'battery_voltage' ? 2 : 1
+  const digits = metric === 'battery_voltage' || metric === 'battery_current' ? 2 : 1
   return `${value.toLocaleString(locale(), { maximumFractionDigits: digits })}${metricUnit(metric)}`
 }
 
