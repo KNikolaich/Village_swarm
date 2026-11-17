@@ -134,6 +134,48 @@ public sealed class CityOwnHornetsTests(CityFixture city) : IClassFixture<CityFi
         Assert.True(copy.Config is null || !copy.Config.RootElement.TryGetProperty("mqtt_city", out _));
     }
 
+    /// <summary>A copy of a dacha hornet is changed on the city only, but where it connects is the dacha's to write: the city tells the dacha, retained.</summary>
+    [Fact]
+    public async Task Choosing_the_preferred_hive_for_a_copy_of_a_dacha_hornet_also_tells_the_dacha()
+    {
+        var admin = await city.LoginAsync();
+        await RegisterCopyAsync("meteo-copy5");
+        await city.QueryAsync(async db =>
+        {
+            (await db.Devices.SingleAsync(d => d.DeviceId == "meteo-copy5")).Config = JsonDocument.Parse(
+                """{"v":1,"rev":1,"name":"c","health_interval_s":60,"mqtt_city":{"host":"192.168.1.3","port":1883,"user":"u","pass":"p"}}""");
+            await db.SaveChangesAsync();
+            return 0;
+        });
+
+        using var response = await admin.PutAsJsonAsync("/api/devices/meteo-copy5/prefer", new { prefer = "other" });
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+
+        // the request is retained on the city broker, where the bridge takes it to the dacha
+        using var watcher = new MqttClientFactory().CreateMqttClient();
+        string? payload = null;
+        var retained = false;
+        watcher.ApplicationMessageReceivedAsync += m =>
+        {
+            payload = m.ApplicationMessage.ConvertPayloadToString();
+            retained = m.ApplicationMessage.Retain;
+            return Task.CompletedTask;
+        };
+        await watcher.ConnectAsync(new MqttClientOptionsBuilder().WithTcpServer(city.MqttHost, city.MqttPort).WithClientId($"prefer-watch-{Guid.NewGuid():N}").Build());
+        await watcher.SubscribeAsync("vs/v1/sync/city/prefer/meteo-copy5");
+        for (var i = 0; i < 50 && payload is null; i++)
+            await Task.Delay(100);
+
+        var request = Hive.Modules.Devices.PreferRequest.Parse(System.Text.Encoding.UTF8.GetBytes(payload ?? throw new TimeoutException("the request for the dacha")))!;
+        Assert.Equal((1, "city", "meteo-copy5", "other"), (request.V, request.Node, request.DeviceId, request.Prefer));
+        Assert.True(retained);
+        Assert.False(string.IsNullOrEmpty(request.Id));
+
+        // the city's own copy changed too, so its page shows the choice
+        var copy = await city.QueryAsync(db => db.Devices.AsNoTracking().SingleAsync(d => d.DeviceId == "meteo-copy5"));
+        Assert.Equal("other", copy.Config!.RootElement.GetProperty("prefer_hive").GetString());
+    }
+
     /// <summary>The city names its own hornets; home lets them in and knows them as guests, who are not reported as missing while they are away.</summary>
     [Fact]
     public async Task The_citys_own_hornets_are_named_to_home_which_knows_them_as_guests_who_are_not_missed()

@@ -126,6 +126,35 @@ public sealed class FailoverConfigTests(HiveFixture hive)
     }
 
     [Fact]
+    public async Task A_hornet_of_the_other_hive_is_moved_to_this_one_without_an_address_of_the_neighbour()
+    {
+        await RegisterAsync("meteo-guest1");
+        using var scope = hive.App.Services.CreateScope();
+        var failover = Service(scope);
+        await failover.SetAsync(new FailoverDto(null, 1883), "user:test", CancellationToken.None);
+        // a hornet made on the other hive: its config already names that hive's second broker; this hive has no address set
+        await hive.QueryAsync(async db =>
+        {
+            var d = await db.Devices.SingleAsync(x => x.DeviceId == "meteo-guest1");
+            d.Visitor = true;
+            d.Config = JsonDocument.Parse("""{"v":1,"rev":1,"name":"g","health_interval_s":60,"mqtt_city":{"host":"10.0.0.7","port":1883,"user":"u","pass":"p"}}""");
+            await db.SaveChangesAsync();
+            return 0;
+        });
+
+        Assert.Equal(ConfigUpdateStatus.Updated, await failover.SetPreferAsync("meteo-guest1", "other", "user:test", CancellationToken.None));
+        var moved = (await hive.QueryAsync(db => db.Devices.AsNoTracking().SingleAsync(d => d.DeviceId == "meteo-guest1"))).Config!.RootElement;
+        Assert.Equal("other", moved.GetProperty("prefer_hive").GetString());
+        Assert.True(moved.GetProperty("mqtt_city").GetProperty("prefer_other").GetBoolean());
+        Assert.Equal("10.0.0.7", moved.GetProperty("mqtt_city").GetProperty("host").GetString());
+
+        Assert.Equal(ConfigUpdateStatus.Updated, await failover.SetPreferAsync("meteo-guest1", "this", "user:test", CancellationToken.None));
+        var back = (await hive.QueryAsync(db => db.Devices.AsNoTracking().SingleAsync(d => d.DeviceId == "meteo-guest1"))).Config!.RootElement;
+        Assert.False(back.TryGetProperty("prefer_hive", out _));
+        Assert.False(back.GetProperty("mqtt_city").TryGetProperty("prefer_other", out _));
+    }
+
+    [Fact]
     public async Task Without_the_shared_secret_no_login_is_made_up_and_a_bad_address_is_refused()
     {
         var admin = await hive.LoginAsync();

@@ -46,7 +46,7 @@ password of the hornet on the city broker is derived from the secret the nodes s
 being told it. What the city broker received while home was gone reaches home through the catch-up (`contracts/cluster.md`).
 
 **The preferred hive** (config `prefer_hive`, `this` by default, or `other`): the one the hornet tries first and looks at again from the other. A hornet that stays in the city is
-set to the city, one that stays at the dacha to the dacha; the hive writes it to the firmware as `mqtt_city.prefer_other`. Without `mqtt_city` there is no other hive and the setting does nothing.
+set to the city, one that stays at the dacha to the dacha; the hive writes it to the firmware as `mqtt_city.prefer_other`. Without `mqtt_city` there is no other hive and the setting does nothing. A hornet made on the other hive (a copy at the city, a visitor at the dacha) is moved to this one from here without naming the neighbour: its `mqtt_city` stays as the hive that made it wrote it, only `prefer_other` in it changes (`PUT /api/devices/{id}/prefer` is allowed on an observer for this).
 
 The same mechanism carries a hornet **between two hives**: a hornet enrolled at the city hive (a "own" device there, `devices.local`) gets the dacha's broker as its `mqtt_city`, with `after_s` 20 and
 `probe_s` 900, so at the dacha it leaves the city broker, which it cannot reach, within 20 seconds and settles on the dacha broker; carried back, it settles on the city one. The dacha creates its login there

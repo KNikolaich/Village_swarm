@@ -1867,7 +1867,9 @@
     "city": "City",
     "dacha": "Dacha",
     "saved": "Saved, the hornet applies it at its next contact",
-    "needOther": "Set the address of the other hive first: Settings → fallback broker"
+    "needOther": "This hornet has no second hive: on the hive it was added to, set the address of the other hive in Settings → fallback broker",
+    "viaDacha": "This hornet belongs to the dacha: the choice is sent to the dacha and applies when the dacha receives it (if the dacha is offline, when it is back).",
+    "savedViaDacha": "Saved and sent to the dacha: it applies when the dacha receives it"
   },
   "config": {
     "title": "Hive parameters",
