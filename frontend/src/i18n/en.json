@@ -1925,6 +1925,10 @@
         "title": "Mail",
         "hint": "\"Forgot password\" letters. The mail password is entered under Secrets."
       },
+      "sms": {
+        "title": "SMS",
+        "hint": "SMS about critical events through the USB modem on this hive (docs/sms-keenetic.md). Both the port and the numbers must be set."
+      },
       "backup": {
         "title": "Backups",
         "hint": "The nightly backup schedule. Also where the off-site copy goes (its password stays in .env: RESTIC_PASSWORD)."
@@ -1982,6 +1986,22 @@
       "smtp_from": {
         "name": "Sender address",
         "hint": "Usually the same mailbox as the login."
+      },
+      "sms_port": {
+        "name": "Modem port",
+        "hint": "The AT port of the modem, e.g. /dev/ttyUSB2 for the Quectel EC25. Empty: SMS is off."
+      },
+      "sms_recipients": {
+        "name": "Phone numbers",
+        "hint": "Separated by commas: +79161234567, 89161234567. Only critical events are sent."
+      },
+      "sms_maxperhour": {
+        "name": "Messages per hour",
+        "hint": "A guard for the balance: what exceeds it is not sent."
+      },
+      "sms_groupwindowmin": {
+        "name": "Same event again, min",
+        "hint": "The same event of the same device is not sent again sooner than this."
       },
       "backup_at": {
         "name": "Backup time",

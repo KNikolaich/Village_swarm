@@ -3,6 +3,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="System.IO.Ports" />
     <PackageReference Include="Telegram.Bot" />
   </ItemGroup>
   <ItemGroup>

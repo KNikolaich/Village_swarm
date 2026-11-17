@@ -31,7 +31,7 @@ public static class ConfigSettings
     public const string RowPrefix = "cfg.";
 
     /// <summary>Order of the sections on the page.</summary>
-    public static readonly string[] Sections = ["general", "security", "monitoring", "cluster", "assistant", "mail", "backup"];
+    public static readonly string[] Sections = ["general", "security", "monitoring", "cluster", "assistant", "mail", "sms", "backup"];
 
     public static readonly IReadOnlyList<ConfigDef> All =
     [
@@ -53,6 +53,12 @@ public static class ConfigSettings
         new("smtp.port", "Smtp:Port", "mail", ConfigKind.Int, "587", Min: 1, Max: 65535),
         new("smtp.user", "Smtp:User", "mail", ConfigKind.Text, ""),
         new("smtp.from", "Smtp:From", "mail", ConfigKind.Text, ""),
+
+        // SMS about critical events through the USB modem on this node (docs/sms-keenetic.md); empty port or numbers: off.
+        new("sms.port", "Sms:Port", "sms", ConfigKind.Text, ""),
+        new("sms.recipients", "Sms:Recipients", "sms", ConfigKind.Text, ""),
+        new("sms.maxperhour", "Sms:MaxPerHour", "sms", ConfigKind.Int, "6", Min: 1, Max: 60),
+        new("sms.groupwindowmin", "Sms:GroupWindowMin", "sms", ConfigKind.Int, "30", Min: 1, Max: 1440),
 
         // The backup container reads these straight from the database (deploy/backup/loop.sh); .env BACKUP_* is the fallback.
         new("backup.at", "BACKUP_AT", "backup", ConfigKind.Time, "03:00", ConfigApply.Auto),
