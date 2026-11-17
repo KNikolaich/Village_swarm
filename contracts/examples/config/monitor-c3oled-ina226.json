@@ -1,0 +1,11 @@
+{
+  "v": 1, "rev": 3, "name": "АКБ ИБП 12 В",
+  "health_interval_s": 60, "tele_interval_s": 60,
+  "hw": { "sda_pin": 5, "scl_pin": 6, "ina_addr": 64, "ina_shunt_mohm": 10, "ina_full_v": 14.0, "ina_full_a": 0.5 },
+  "display": {
+    "items": [
+      { "device": "monitor-ups", "metric": "battery_voltage", "label": "АКБ", "x": 0, "y": 0, "size": 5 },
+      { "device": "monitor-ups", "metric": "battery_current", "label": "Ток", "x": 0, "y": 22, "size": 5 }
+    ]
+  }
+}

@@ -284,6 +284,34 @@
           "maximum": 20,
           "description": "C added to the result: calibration against a reference thermometer (default 0)"
         },
+        "ina_addr": {
+          "type": "integer",
+          "minimum": 64,
+          "maximum": 79,
+          "description": "Role monitor: I2C address of an INA226 that measures a battery (docs/ina226-battery.md), 0x40..0x4F (default 64 = 0x40). The chip is found by itself at boot: with one on the bus the monitor publishes battery_voltage (V), battery_current (A, plus = the battery gives), battery_power (W) and battery_ah (Ah taken out since it was full)"
+        },
+        "ina_shunt_mohm": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "description": "Milliohm, the shunt of the INA226 module (default 10: the module marked R010; R002 is 2, R100 is 100, which reads only up to 0.8 A)"
+        },
+        "ina_invert": {
+          "type": "boolean",
+          "description": "Swap the sign of the INA226 current (IN+ and IN- wired the other way round). Default false: IN+ on the battery, IN- on the load and the charger, a discharge reads plus"
+        },
+        "ina_full_v": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 30,
+          "description": "V, the voltage at or above which a battery taking only a trickle counts as full and battery_ah goes back to 0 (default 14.0; 0 = never reset by voltage)"
+        },
+        "ina_full_a": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 20,
+          "description": "A, the trickle: the battery is full when the current stays below this at ina_full_v for 10 minutes (default 0.5)"
+        },
         "thermometer": {
           "enum": [
             "ds18b20",

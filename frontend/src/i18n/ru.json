@@ -515,6 +515,9 @@
     "disk_total_gb": "Диск всего",
     "disk_free_gb": "Диск свободно",
     "battery_voltage": "Напряжение АКБ",
+    "battery_current": "Ток АКБ",
+    "battery_power": "Мощность АКБ",
+    "battery_ah": "Отдано АКБ",
     "pressure": "Давление",
     "temperature_2": "Температура 2",
     "temperature_ntc": "Температура NTC"
@@ -1171,6 +1174,9 @@
   },
   "units": {
     "volt": "В",
+    "amp": "А",
+    "watt": "Вт",
+    "ah": "А·ч",
     "hpa": "гПа",
     "mb": "МБ",
     "gb": "ГБ"
