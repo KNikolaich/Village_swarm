@@ -11,6 +11,11 @@ services:
       Cluster__BridgePassword: ${CITY_MQTT_PASSWORD:?set CITY_MQTT_PASSWORD in .env}
       # The city is a hive too: CPU load, memory and disk of the VM (a VM has no thermal zone or DS18B20, those are just left out).
       Hive__Sensors__Enabled: "true"
+      # Memory and CPU of the LXC/VM itself, not of the whole Proxmox host: the container's cgroup, mounted below.
+      # On a real machine (no container limits) drop these two lines: /proc is the whole truth there.
+      Hive__Sensors__CgroupRoot: /host-cgroup
+    volumes:
+      - /sys/fs/cgroup:/host-cgroup:ro
     mem_limit: 384m
   # Sized for a 2 GB VM or container (the default of the RPi stack, a little more for the copy of the home data).
   postgres:

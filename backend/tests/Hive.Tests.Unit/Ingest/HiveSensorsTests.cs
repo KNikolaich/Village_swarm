@@ -51,6 +51,57 @@ public sealed class HiveSensorsTests : IDisposable
         Assert.Null(nothing.Memory());
     }
 
+    private sealed class StepClock : TimeProvider
+    {
+        public long Now;
+        public override long GetTimestamp() => Now;
+        public override long TimestampFrequency => 1000;
+    }
+
+    [Fact]
+    public void In_a_container_memory_and_cpu_come_from_the_cgroup()
+    {
+        var proc = Path.Combine(_sys, "proc3");
+        Directory.CreateDirectory(proc);
+        File.WriteAllText(Path.Combine(proc, "meminfo"), "MemTotal: 24000000 kB\nMemAvailable: 500000 kB\n"); // the whole host
+        var cg = Path.Combine(_sys, "cg");
+        Directory.CreateDirectory(cg);
+        File.WriteAllText(Path.Combine(cg, "memory.current"), "1073741824\n");   // 1024 MB held, 100 MB of it droppable cache
+        File.WriteAllText(Path.Combine(cg, "memory.max"), "2147483648\n");
+        File.WriteAllText(Path.Combine(cg, "memory.stat"), "anon 1\ninactive_file 104857600\n");
+        File.WriteAllText(Path.Combine(cg, "cpu.max"), "200000 100000\n");          // two cores
+        File.WriteAllText(Path.Combine(cg, "cpu.stat"), "usage_usec 10000000\n");
+        var clock = new StepClock();
+        var reader = new HiveSensorReader(_sys, proc, cg, clock);
+
+        var memory = reader.Memory()!.Value;
+        Assert.Equal((2048.0, 924.0), (memory.TotalMb, memory.UsedMb));
+        Assert.Null(reader.CpuLoadPct(8));           // the first reading has nothing to compare with
+
+        clock.Now = 10_000;                           // 10 s later one core worked the whole time = 50 % of two
+        File.WriteAllText(Path.Combine(cg, "cpu.stat"), "usage_usec 20000000\n");
+        Assert.Equal(50.0, reader.CpuLoadPct(8));
+
+        clock.Now = 20_000;                           // never above 100 %
+        File.WriteAllText(Path.Combine(cg, "cpu.stat"), "usage_usec 90000000\n");
+        Assert.Equal(100.0, reader.CpuLoadPct(8));
+    }
+
+    [Fact]
+    public void Without_a_cgroup_limit_the_host_memory_is_used()
+    {
+        var proc = Path.Combine(_sys, "proc4");
+        Directory.CreateDirectory(proc);
+        File.WriteAllText(Path.Combine(proc, "meminfo"), "MemTotal: 4194304 kB\nMemAvailable: 2097152 kB\n");
+        var cg = Path.Combine(_sys, "cg2");
+        Directory.CreateDirectory(cg);
+        File.WriteAllText(Path.Combine(cg, "memory.current"), "536870912\n");
+        File.WriteAllText(Path.Combine(cg, "memory.max"), "max\n");
+
+        Assert.Equal((4096.0, 512.0), new HiveSensorReader(_sys, proc, cg).Memory()!.Value);
+        Assert.Equal((4096.0, 2048.0), new HiveSensorReader(_sys, proc).Memory()!.Value);   // no cgroup configured: /proc as is
+    }
+
     [Fact]
     public void The_latest_readings_are_kept_for_the_other_node()
     {
