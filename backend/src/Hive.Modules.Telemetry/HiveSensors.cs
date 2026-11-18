@@ -25,6 +25,13 @@ public sealed class HiveSensorOptions
     /// <summary>procfs root (load average, memory); tests point it at a fake tree.</summary>
     public string ProcRoot { get; set; } = "/proc";
 
+    /// <summary>
+    /// Root of the cgroup tree of the container the hive lives in (an LXC on Proxmox shares /proc/meminfo and the CPU counters
+    /// with the whole host). Empty: not in a container, read /proc as is. Bind the container's /sys/fs/cgroup into the api
+    /// and point this at it (see compose.city.yaml): the api's own cgroup would show the api's limit, not the container's.
+    /// </summary>
+    public string CgroupRoot { get; set; } = "";
+
     /// <summary>Disk whose usage is watched (the media root lives on it).</summary>
     public string DiskPath { get; set; } = "/srv/hive/media";
 
@@ -40,11 +47,30 @@ public sealed class HiveSensorOptions
 }
 
 /// <summary>Reads the hive's own sensors from sysfs: DS18B20 via the w1-gpio overlay and the SoC thermal zone.</summary>
-public sealed class HiveSensorReader(string sysRoot, string procRoot = "/proc")
+public sealed class HiveSensorReader(string sysRoot, string procRoot = "/proc", string cgroupRoot = "", TimeProvider? clock = null)
 {
-    /// <summary>The 1-minute load average divided by the number of cores, in percent: how busy the processor is.</summary>
+    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+    private (long Usec, long At)? _lastCpu;
+
+    /// <summary>
+    /// How busy the processor is, in percent of the cores the container has (0..100). In a container: the growth of the cgroup's
+    /// CPU time since the previous call (null on the first call); otherwise the 1-minute load average divided by the cores.
+    /// </summary>
     public double? CpuLoadPct(int cores)
     {
+        if (cgroupRoot.Length > 0 && CgroupCpu() is { } cg)
+        {
+            var now = _clock.GetTimestamp();
+            var last = _lastCpu;
+            _lastCpu = (cg.Usec, now);
+            if (last is not { } prev)
+                return null;
+            var seconds = _clock.GetElapsedTime(prev.At, now).TotalSeconds;
+            if (seconds <= 0 || cg.Usec < prev.Usec)
+                return null;
+            var capacity = cg.Cores ?? cores;
+            return capacity > 0 ? Math.Round(Math.Clamp(100.0 * (cg.Usec - prev.Usec) / 1e6 / seconds / capacity, 0, 100), 1) : null;
+        }
         try
         {
             var file = Path.Combine(procRoot, "loadavg");
@@ -63,6 +89,85 @@ public sealed class HiveSensorReader(string sysRoot, string procRoot = "/proc")
 
     /// <summary>Total and used memory in megabytes (used = total minus what the system calls available), from /proc/meminfo.</summary>
     public (double TotalMb, double UsedMb)? Memory()
+    {
+        var host = HostMemory();
+        if (cgroupRoot.Length > 0 && CgroupMemory() is { } cg)
+        {
+            // The container's limit, or the host's memory when the container has none.
+            var totalMb = cg.LimitBytes is { } l && (host is null || l / 1048576.0 < host.Value.TotalMb) ? l / 1048576.0 : host?.TotalMb;
+            if (totalMb is { } total)
+                return (Math.Round(total, 0), Math.Round(Math.Min(cg.UsedBytes / 1048576.0, total), 0));
+        }
+        return host;
+    }
+
+    /// <summary>CPU time used (microseconds) and the cores the container may use (null: no quota), from cgroup v2 or v1.</summary>
+    private (long Usec, double? Cores)? CgroupCpu()
+    {
+        try
+        {
+            var v2 = Path.Combine(cgroupRoot, "cpu.stat");
+            if (File.Exists(v2))
+            {
+                long? usage = null;
+                foreach (var line in File.ReadLines(v2))
+                    if (line.StartsWith("usage_usec ", StringComparison.Ordinal) && long.TryParse(line.AsSpan(11), CultureInfo.InvariantCulture, out var u))
+                        usage = u;
+                if (usage is null)
+                    return null;
+                double? cores = null;
+                var max = Path.Combine(cgroupRoot, "cpu.max");
+                if (File.Exists(max) && File.ReadAllText(max).Split(' ', StringSplitOptions.RemoveEmptyEntries) is [var quota, var period]
+                    && long.TryParse(quota, CultureInfo.InvariantCulture, out var q) && long.TryParse(period, CultureInfo.InvariantCulture, out var p) && q > 0 && p > 0)
+                    cores = (double)q / p;
+                return (usage.Value, cores);
+            }
+            var ns = ReadLong(Path.Combine(cgroupRoot, "cpuacct", "cpuacct.usage"));
+            if (ns is null)
+                return null;
+            var q1 = ReadLong(Path.Combine(cgroupRoot, "cpu", "cpu.cfs_quota_us"));
+            var p1 = ReadLong(Path.Combine(cgroupRoot, "cpu", "cpu.cfs_period_us"));
+            return (ns.Value / 1000, q1 is > 0 && p1 is > 0 ? (double)q1.Value / p1.Value : null);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Memory the container holds (without cache the kernel can drop, like docker stats) and its limit (null: none), v2 or v1.</summary>
+    private (long UsedBytes, long? LimitBytes)? CgroupMemory()
+    {
+        try
+        {
+            string current, max, stat;
+            if (File.Exists(Path.Combine(cgroupRoot, "memory.current")))
+                (current, max, stat) = (Path.Combine(cgroupRoot, "memory.current"), Path.Combine(cgroupRoot, "memory.max"), Path.Combine(cgroupRoot, "memory.stat"));
+            else
+                (current, max, stat) = (Path.Combine(cgroupRoot, "memory", "memory.usage_in_bytes"), Path.Combine(cgroupRoot, "memory", "memory.limit_in_bytes"), Path.Combine(cgroupRoot, "memory", "memory.stat"));
+            if (ReadLong(current) is not { } used)
+                return null;
+            long inactive = 0;
+            if (File.Exists(stat))
+                foreach (var line in File.ReadLines(stat))
+                {
+                    var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length == 2 && parts[0] is "inactive_file" or "total_inactive_file" && long.TryParse(parts[1], CultureInfo.InvariantCulture, out var v))
+                        inactive = v;
+                }
+            var limit = ReadLong(max); // "max" (v2) does not parse = no limit; v1 says a huge number
+            return (Math.Max(0, used - inactive), limit is > 0 and < (1L << 60) ? limit : null);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
+    private static long? ReadLong(string file) =>
+        File.Exists(file) && long.TryParse(File.ReadAllText(file).Trim(), CultureInfo.InvariantCulture, out var v) ? v : null;
+
+    private (double TotalMb, double UsedMb)? HostMemory()
     {
         try
         {
@@ -214,7 +319,7 @@ public sealed class HiveSensors(
         if (!o.Enabled)
             return;
 
-        var reader = new HiveSensorReader(o.SysRoot, o.ProcRoot);
+        var reader = new HiveSensorReader(o.SysRoot, o.ProcRoot, o.CgroupRoot);
         Announce(reader);
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(5, o.IntervalS)), time);
         do
