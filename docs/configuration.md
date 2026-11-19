@@ -37,7 +37,7 @@
 
 | Параметр | Что это | Пример |
 |---|---|---|
-| `COMPOSE_FILE` | какие compose-файлы собираются; ставит `install.sh` | дача `compose.yaml:compose.home.yaml`, город `compose.yaml:compose.city.yaml` |
+| `COMPOSE_FILE` | какие compose-файлы собираются; ставит `install.sh`. `ship.sh` привозит все `compose.*.yaml`, а установка проверяет, что каждый названный здесь файл есть в `/opt/hive` | дача `compose.yaml:compose.home.yaml`, дача на мини-ПК `compose.yaml:compose.home.yaml:compose.minipc.yaml` (и `HIVE_BIND_IP`), город `compose.yaml:compose.city.yaml` |
 | `HIVE_VERSION`, `HIVE_IMAGES` | версия образов и их префикс; меняет `update.sh` | `a30158e`, `ghcr.io/knikolaich/village-swarm` |
 | `HIVE_DATA` | где на диске данные (БД, фото, бэкапы) | `/srv/hive` |
 | `HIVE_TIMEZONE` | часовой пояс; можно сменить в «Настройки → Параметры Улья» | `Europe/Moscow` |

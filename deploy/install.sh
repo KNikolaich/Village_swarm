@@ -98,13 +98,9 @@ if [ -f "$BOOT/config.txt" ]; then
 fi
 
 # 4. Files: compose and configs to /opt/hive, data to /srv/hive.
-if [ "$SRC" != "$HIVE_DIR" ]; then
-	say "Копирую файлы в $HIVE_DIR"
-	mkdir -p "$HIVE_DIR"
-	cp -r "$SRC/compose.yaml" "$SRC/compose.home.yaml" "$SRC/compose.zigbee.yaml" "$SRC/compose.city.yaml" "$SRC/.env.example" "$SRC/mosquitto" \
-		"$SRC/install.sh" "$SRC/update.sh" "$SRC/restore.sh" "$HIVE_DIR/"
-fi
-chmod +x "$HIVE_DIR/install.sh" "$HIVE_DIR/update.sh" "$HIVE_DIR/restore.sh"
+say "Копирую файлы в $HIVE_DIR"
+# Every compose overlay of the bundle; then the ones COMPOSE_FILE in .env names are checked (install-files.sh).
+bash "$SRC/install-files.sh" "$SRC"
 cd "$HIVE_DIR"
 
 ENV=.env

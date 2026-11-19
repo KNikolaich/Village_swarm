@@ -18,7 +18,10 @@ tarball="dist/hive-images-$version-$arch.tar.gz"
 stage="$(mktemp -d)"
 trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/hive-bundle/images"
-cp -r compose.yaml compose.home.yaml compose.zigbee.yaml compose.city.yaml .env.example mosquitto install.sh update.sh restore.sh "$stage/hive-bundle/"
+# Every compose overlay goes along (compose.dev.yaml is for the PC only): the hive's .env picks its own in COMPOSE_FILE.
+overlays=()
+for f in compose.*.yaml; do [ "$f" = compose.dev.yaml ] || overlays+=("$f"); done
+cp -r compose.yaml "${overlays[@]}" .env.example mosquitto install.sh install-files.sh update.sh restore.sh "$stage/hive-bundle/"
 cp "$tarball" "$stage/hive-bundle/images/"
 echo "$version" >"$stage/hive-bundle/images/VERSION"
 
@@ -47,9 +50,9 @@ image="/var/tmp/hive-bundle/images/$(basename "$tarball")"
 ssh -t "$target" "
 	set -e
 	# Update only when the hive is running: a half-finished install has a .env but no database yet.
-	if sudo test -f /opt/hive/.env && sudo docker compose -f /opt/hive/compose.yaml -f /opt/hive/compose.home.yaml --project-directory /opt/hive ps -q postgres | grep -q .; then
-		sudo cp -r /var/tmp/hive-bundle/compose.yaml /var/tmp/hive-bundle/compose.home.yaml /var/tmp/hive-bundle/compose.zigbee.yaml /var/tmp/hive-bundle/compose.city.yaml /var/tmp/hive-bundle/.env.example \
-			/var/tmp/hive-bundle/mosquitto /var/tmp/hive-bundle/install.sh /var/tmp/hive-bundle/update.sh /var/tmp/hive-bundle/restore.sh /opt/hive/
+	# Asked by the container labels, not through compose: COMPOSE_FILE may name an overlay this bundle brings for the first time.
+	if sudo test -f /opt/hive/.env && sudo docker ps -q --filter label=com.docker.compose.project=village-swarm --filter label=com.docker.compose.service=postgres | grep -q .; then
+		sudo bash /var/tmp/hive-bundle/install-files.sh /var/tmp/hive-bundle
 		sudo bash /opt/hive/update.sh '$version' '$image'
 	else
 		sudo bash /var/tmp/hive-bundle/install.sh $*
