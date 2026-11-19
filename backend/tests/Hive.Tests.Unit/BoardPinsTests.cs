@@ -150,6 +150,15 @@ public class BoardPinsTests
     }
 
     [Fact]
+    public void Monitor_shows_the_load_relay_of_the_low_voltage_cutoff()
+    {
+        var rows = BoardPins.Rows("esp32c3-oled-042", "monitor", Hw("""{ "relay_pin": 10 }"""));
+        Assert.Contains(rows, r => r.Function == "relay" && r.Pin == 10 && r.Source == "config");
+        rows = BoardPins.Rows("esp32c3-oled-042", "monitor", Hw("{}"));
+        Assert.Contains(rows, r => r.Function == "relay" && r.Pin is null && r.Source == "none");
+    }
+
+    [Fact]
     public void Thermistor_on_the_1wire_pin_of_a_supermini_is_a_conflict()
     {
         var rows = BoardPins.Rows("esp32c3-mini", "meteo", Hw("""{ "ntc_pin": 3 }"""));
