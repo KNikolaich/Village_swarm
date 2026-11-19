@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1580 1000" width="1580" height="1000" font-family="DejaVu Sans, Arial, sans-serif">
+<rect width="1580" height="1000" fill="#ffffff"/>
+<text x="40" y="44" font-size="26" fill="#111" text-anchor="start" font-weight="700">Схема 3: автомат 10 А + красный модуль INA226 (VIN / GND / GND / VOUT, шунт R010) + ESP32-C3</text>
+<text x="40" y="72" font-size="15" fill="#555" text-anchor="start" font-weight="400">Ток &gt; 0 — АКБ отдаёт (течёт VIN → VOUT), ток &lt; 0 — АКБ заряжается. Читайте надписи VIN, GND, GND, VOUT на обратной стороне платы.</text>
+<rect x="40" y="170" width="170" height="170" rx="10" fill="#eef2f7" stroke="#333" stroke-width="3"/>
+<text x="125" y="215" font-size="20" fill="#111" text-anchor="middle" font-weight="700">АКБ 12 В</text>
+<text x="125" y="243" font-size="16" fill="#444" text-anchor="middle" font-weight="400">55 А·ч</text>
+<circle cx="210" cy="250" r="8" fill="#d62828"/>
+<text x="196" y="238" font-size="20" fill="#d62828" text-anchor="end" font-weight="700">+</text>
+<circle cx="125" cy="340" r="8" fill="#222"/>
+<text x="140" y="330" font-size="22" fill="#222" text-anchor="start" font-weight="700">−</text>
+<rect x="250" y="196" width="130" height="104" rx="8" fill="#2b2b2b" stroke="#000" stroke-width="3"/>
+<rect x="268" y="204" width="94" height="30" rx="4" fill="#d62828"/>
+<text x="315" y="224" font-size="16" fill="#fff" text-anchor="middle" font-weight="700">10 А</text>
+<text x="315" y="252" font-size="13" fill="#ddd" text-anchor="middle" font-weight="400">автомат</text>
+<circle cx="250" cy="270" r="7" fill="#d62828"/>
+<text x="262" y="274" font-size="12" fill="#fff" text-anchor="start" font-weight="400">2 LINE</text>
+<circle cx="380" cy="270" r="7" fill="#d62828"/>
+<text x="368" y="274" font-size="12" fill="#fff" text-anchor="end" font-weight="400">3 LOAD</text>
+<circle cx="315" cy="300" r="6" fill="#999"/>
+<text x="315" y="320" font-size="12" fill="#777" text-anchor="middle" font-weight="400">1 WS — не подключать</text>
+<text x="315" y="186" font-size="12" fill="#555" text-anchor="middle" font-weight="400">автомат AC 125/250 В</text>
+<path d="M210,250 H230 V270 H250" fill="none" stroke="#d62828" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="500" y="170" width="320" height="120" rx="8" fill="#e53935" stroke="#7a1111" stroke-width="3"/>
+<rect x="500" y="120" width="110" height="60" rx="5" fill="#2e9e44" stroke="#1b5e29" stroke-width="3"/>
+<circle cx="530" cy="150" r="13" fill="#cde8d2"/>
+<circle cx="580" cy="150" r="13" fill="#cde8d2"/>
+<text x="555" y="112" font-size="13" fill="#1b5e29" text-anchor="middle" font-weight="700">INPUT</text>
+<text x="530" y="138" font-size="12" fill="#fff" text-anchor="middle" font-weight="700">VIN</text>
+<text x="580" y="138" font-size="12" fill="#fff" text-anchor="middle" font-weight="700">GND</text>
+<rect x="710" y="120" width="110" height="60" rx="5" fill="#2a6fdb" stroke="#173f8a" stroke-width="3"/>
+<circle cx="740" cy="150" r="13" fill="#cfe0fa"/>
+<circle cx="790" cy="150" r="13" fill="#cfe0fa"/>
+<text x="765" y="112" font-size="13" fill="#173f8a" text-anchor="middle" font-weight="700">OUT</text>
+<text x="740" y="138" font-size="12" fill="#fff" text-anchor="middle" font-weight="700">GND</text>
+<text x="790" y="138" font-size="12" fill="#fff" text-anchor="middle" font-weight="700">VOUT</text>
+<rect x="600" y="205" width="120" height="30" rx="4" fill="#222" stroke="#000" stroke-width="2"/>
+<text x="660" y="226" font-size="15" fill="#fff" text-anchor="middle" font-weight="700">R010</text>
+<text x="660" y="252" font-size="12" fill="#ffe" text-anchor="middle" font-weight="400">шунт 10 мОм</text>
+<text x="660" y="266" font-size="12" fill="#ffe" text-anchor="middle" font-weight="400">VIN → VOUT</text>
+<text x="508" y="200" font-size="11" fill="#ffd" text-anchor="start" font-weight="400">A0 A1:</text>
+<text x="508" y="214" font-size="11" fill="#ffd" text-anchor="start" font-weight="400">не трогать</text>
+<path d="M380,270 H440 V150 H530" fill="none" stroke="#d62828" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="530" cy="150" r="7" fill="#d62828"/>
+<circle cx="790" cy="150" r="7" fill="#d62828"/>
+<path d="M790,150 H900 V250 H1010" fill="none" stroke="#d62828" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M580,150 V100 H420 V262 a8,8 0 0 0 0,16 V400" fill="none" stroke="#222" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="580" cy="150" r="7" fill="#222"/>
+<circle cx="420" cy="400" r="7" fill="#222"/>
+<rect x="1010" y="170" width="200" height="170" rx="10" fill="#f3f3f3" stroke="#333" stroke-width="3"/>
+<text x="1110" y="205" font-size="17" fill="#111" text-anchor="middle" font-weight="700">К шине 12 В:</text>
+<text x="1110" y="235" font-size="14" fill="#111" text-anchor="middle" font-weight="400">зарядное устройство</text>
+<text x="1110" y="257" font-size="14" fill="#111" text-anchor="middle" font-weight="400">RPi · роутер · инвертор</text>
+<text x="1110" y="287" font-size="13" fill="#555" text-anchor="middle" font-weight="400">все «+» — сюда,</text>
+<text x="1110" y="305" font-size="13" fill="#555" text-anchor="middle" font-weight="400">все «−» — на минус АКБ</text>
+<circle cx="1010" cy="250" r="8" fill="#d62828"/>
+<circle cx="1110" cy="340" r="8" fill="#222"/>
+<path d="M125,340 V400 H1110 V340" fill="none" stroke="#222" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="160" y="392" font-size="14" fill="#222" text-anchor="start" font-weight="700">минус АКБ</text>
+<circle cx="520" cy="290" r="6" fill="#e08a00"/>
+<text x="520" y="282" font-size="13" fill="#fff" text-anchor="middle" font-weight="700">VCC</text>
+<circle cx="575" cy="290" r="6" fill="#222"/>
+<text x="575" y="282" font-size="13" fill="#fff" text-anchor="middle" font-weight="700">GND</text>
+<circle cx="640" cy="290" r="6" fill="#1d6fd6"/>
+<text x="640" y="282" font-size="13" fill="#fff" text-anchor="middle" font-weight="700">SDA</text>
+<circle cx="700" cy="290" r="6" fill="#17a34a"/>
+<text x="700" y="282" font-size="13" fill="#fff" text-anchor="middle" font-weight="700">SCL</text>
+<circle cx="760" cy="290" r="6" fill="#888"/>
+<text x="760" y="282" font-size="13" fill="#fff" text-anchor="middle" font-weight="700">ALER</text>
+<text x="790" y="312" font-size="11" fill="#b36b00" text-anchor="start" font-weight="700">порядок — как на плате (по фото)</text>
+<rect x="620" y="520" width="220" height="390" rx="14" fill="#6d28a8" stroke="#3b1260" stroke-width="3"/>
+<rect x="690" y="510" width="80" height="44" rx="8" fill="#cfd4da" stroke="#555" stroke-width="2"/>
+<text x="730" y="536" font-size="13" fill="#333" text-anchor="middle" font-weight="700">USB-C</text>
+<rect x="682" y="630" width="96" height="110" rx="6" fill="#0a0a0a" stroke="#888" stroke-width="2"/>
+<text x="730" y="688" font-size="14" fill="#9ad" text-anchor="middle" font-weight="400">OLED</text>
+<text x="730" y="708" font-size="12" fill="#9ad" text-anchor="middle" font-weight="400">0x3C</text>
+<text x="730" y="888" font-size="13" fill="#e9d5ff" text-anchor="middle" font-weight="400">ESP32-C3 · monitor-c3oled</text>
+<circle cx="634" cy="590" r="7" fill="#d9c36a"/>
+<circle cx="826" cy="590" r="7" fill="#d9c36a"/>
+<text x="648" y="595" font-size="14" fill="#fff" text-anchor="start" font-weight="700">5V</text>
+<text x="812" y="595" font-size="14" fill="#fff" text-anchor="end" font-weight="700">10</text>
+<circle cx="634" cy="626" r="7" fill="#d9c36a"/>
+<circle cx="826" cy="626" r="7" fill="#d9c36a"/>
+<text x="648" y="631" font-size="14" fill="#fff" text-anchor="start" font-weight="700">GND</text>
+<text x="812" y="631" font-size="14" fill="#fff" text-anchor="end" font-weight="700">9</text>
+<circle cx="634" cy="662" r="7" fill="#d9c36a"/>
+<circle cx="826" cy="662" r="7" fill="#d9c36a"/>
+<text x="648" y="667" font-size="14" fill="#fff" text-anchor="start" font-weight="700">3V3</text>
+<text x="812" y="667" font-size="14" fill="#fff" text-anchor="end" font-weight="700">8</text>
+<circle cx="634" cy="698" r="7" fill="#d9c36a"/>
+<circle cx="826" cy="698" r="7" fill="#d9c36a"/>
+<text x="648" y="703" font-size="14" fill="#fff" text-anchor="start" font-weight="700">RX</text>
+<text x="812" y="703" font-size="14" fill="#fff" text-anchor="end" font-weight="700">7</text>
+<circle cx="634" cy="734" r="7" fill="#d9c36a"/>
+<circle cx="826" cy="734" r="7" fill="#d9c36a"/>
+<text x="648" y="739" font-size="14" fill="#fff" text-anchor="start" font-weight="700">TX</text>
+<text x="812" y="739" font-size="14" fill="#fff" text-anchor="end" font-weight="700">6</text>
+<circle cx="634" cy="770" r="7" fill="#d9c36a"/>
+<circle cx="826" cy="770" r="7" fill="#d9c36a"/>
+<text x="648" y="775" font-size="14" fill="#fff" text-anchor="start" font-weight="700">2</text>
+<text x="812" y="775" font-size="14" fill="#fff" text-anchor="end" font-weight="700">5</text>
+<circle cx="634" cy="806" r="7" fill="#d9c36a"/>
+<circle cx="826" cy="806" r="7" fill="#d9c36a"/>
+<text x="648" y="811" font-size="14" fill="#fff" text-anchor="start" font-weight="700">1</text>
+<text x="812" y="811" font-size="14" fill="#fff" text-anchor="end" font-weight="700">4</text>
+<circle cx="634" cy="842" r="7" fill="#d9c36a"/>
+<circle cx="826" cy="842" r="7" fill="#d9c36a"/>
+<text x="648" y="847" font-size="14" fill="#fff" text-anchor="start" font-weight="700">0</text>
+<text x="812" y="847" font-size="14" fill="#fff" text-anchor="end" font-weight="700">3</text>
+<path d="M575,290 V626 H634" fill="none" stroke="#222" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="575" cy="400" r="7" fill="#222"/>
+<path d="M520,290 V392 a8,8 0 0 1 0,16 V662 H634" fill="none" stroke="#e08a00" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M640,290 V392 a8,8 0 0 1 0,16 V440 H900 V770 H826" fill="none" stroke="#1d6fd6" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M700,290 V392 a8,8 0 0 1 0,16 V424 a8,8 0 0 1 0,16 V462 H870 V734 H826" fill="none" stroke="#17a34a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="560" y="654" font-size="13" fill="#e08a00" text-anchor="end" font-weight="700">3,3 В</text>
+<text x="560" y="618" font-size="13" fill="#222" text-anchor="end" font-weight="700">GND</text>
+<text x="882" y="728" font-size="13" fill="#17a34a" text-anchor="start" font-weight="700">SCL = GPIO6</text>
+<text x="912" y="786" font-size="13" fill="#1d6fd6" text-anchor="start" font-weight="700">SDA = GPIO5</text>
+<text x="1075" y="470" font-size="17" fill="#111" text-anchor="start" font-weight="700">Что куда</text>
+<text x="1075" y="496" font-size="15" fill="#111" text-anchor="start" font-weight="400">1. У каждого клеммника два винта РАЗНОГО назначения:</text>
+<text x="1075" y="522" font-size="15" fill="#111" text-anchor="start" font-weight="400">   зелёный: VIN и GND, синий: GND и VOUT.</text>
+<text x="1075" y="548" font-size="15" fill="#111" text-anchor="start" font-weight="400">   Сверяйте по надписям на обратной стороне платы.</text>
+<text x="1075" y="574" font-size="15" fill="#111" text-anchor="start" font-weight="400">2. Плюс АКБ (через автомат) → VIN.</text>
+<text x="1075" y="600" font-size="15" fill="#111" text-anchor="start" font-weight="400">3. VOUT → плюсы нагрузки и зарядного устройства.</text>
+<text x="1075" y="626" font-size="15" fill="#111" text-anchor="start" font-weight="400">4. GND зелёного клеммника → минус АКБ.</text>
+<text x="1075" y="652" font-size="15" fill="#111" text-anchor="start" font-weight="400">   GND синего не нужен: минус нагрузки и зарядки идёт</text>
+<text x="1075" y="678" font-size="15" fill="#111" text-anchor="start" font-weight="400">   прямо на минус АКБ, мимо платы (большой ток по</text>
+<text x="1075" y="704" font-size="15" fill="#111" text-anchor="start" font-weight="400">   дорожке модуля пускать не стоит).</text>
+<text x="1075" y="730" font-size="15" fill="#111" text-anchor="start" font-weight="400">5. Разъём (слева направо): VCC, GND, SDA, SCL, ALER.</text>
+<text x="1075" y="756" font-size="15" fill="#111" text-anchor="start" font-weight="400">   ALER (сигнал тревоги) не подключать.</text>
+<text x="1075" y="782" font-size="15" fill="#111" text-anchor="start" font-weight="400">6. A0/A1 не трогать: адрес 0x40, как в прошивке.</text>
+<text x="1075" y="808" font-size="15" fill="#111" text-anchor="start" font-weight="400">7. VBS отдельным выводом нет: проверьте мультиметром,</text>
+<text x="1075" y="834" font-size="15" fill="#111" text-anchor="start" font-weight="400">   что напряжение на VOUT совпадает с VIN (без нагрузки).</text>
+<text x="1075" y="860" font-size="15" fill="#111" text-anchor="start" font-weight="400">8. Автомат — вплотную к клемме плюса АКБ.</text>
+<text x="1075" y="886" font-size="15" fill="#111" text-anchor="start" font-weight="400">9. Знак тока перепутан — ina_invert: true.</text>
+<text x="1075" y="912" font-size="15" fill="#111" text-anchor="start" font-weight="400">10. Клеммники и штыри идут в комплекте: впаять надо.</text>
+<text x="1075" y="938" font-size="15" fill="#111" text-anchor="start" font-weight="400">   Зелёный — в две дырки у надписи INPUT, синий — у OUT.</text>
+</svg>
