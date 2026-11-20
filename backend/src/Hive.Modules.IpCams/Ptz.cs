@@ -201,8 +201,16 @@ public sealed class PtzControl(IServiceScopeFactory scopes, IDataProtectionProvi
         await camera.Gate.WaitAsync();
         try
         {
-            if (!camera.Moving || camera.StopDue > time.GetUtcNow())
-                return; // stopped already, or a newer move came meanwhile
+            if (!camera.Moving)
+                return; // stopped already
+            var left = camera.StopDue - time.GetUtcNow();
+            if (left > TimeSpan.Zero)
+            {
+                // A newer move came meanwhile, or the timer fired a moment early (it may): wait out the rest. Returning
+                // here without a new timer once left a Dahua camera, which has no timeout of its own, turning for good.
+                camera.ArmStop(time, left, () => _ = Task.Run(() => TimedStopAsync(camera)));
+                return;
+            }
             logger.LogInformation("PTZ of {Device}: no command for {Limit} s, stopped", camera.DeviceId, MoveLimit.TotalSeconds);
             await StopAsync(camera, CancellationToken.None);
             Hush(camera.DeviceId, time.GetUtcNow() + QuietAfterMove);
