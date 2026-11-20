@@ -8,6 +8,10 @@
 // gives), battery_power (W) and battery_ah (Ah taken out since it was full). While the hive has told the screen no rows,
 // the screen shows the volts and amps of the INA226 itself, live.
 //
+// With hw.relay_pin set the monitor also guards the battery: a relay (normally open, so it is off without power) feeds the
+// load, and LowVoltageCutoff.h opens it when the battery voltage stays below failsafe.lvd.cutoff_v, closing it again only
+// when the battery has recovered (docs/low-voltage-cutoff.md). It runs on the monitor alone, with no hive and no Wi-Fi.
+//
 // Layout: without "size" on any item the role lays out up to four lines itself; with it every item is drawn where x, y
 // say, in the largest font not taller than size/10 of the screen height (DisplayLayout.h), its label in the smallest font
 // above it.
@@ -22,6 +26,7 @@
 #include <DisplayLayout.h>
 #include <HornetCore.h>
 #include <Ina226.h>
+#include <LowVoltageCutoff.h>
 #include <Ntc.h>
 #include <U8g2lib.h>
 #include <Wire.h>
@@ -74,6 +79,7 @@ public:
         if (ina_.configure(hw)) ina_.begin();
         const int sda = hw["sda_pin"] | HW_SDA_PIN;
         const int scl = hw["scl_pin"] | HW_SCL_PIN;
+        configureLvd(core, hw, config["failsafe"]["lvd"]);
         if (sda != sdaPin_ || scl != sclPin_) {
             sdaPin_ = sda;
             sclPin_ = scl;
@@ -105,6 +111,7 @@ public:
             lastBatteryMs_ = now;
             core.publishTele("battery_voltage", battery_.read(), "V");
         }
+        guardBattery(core, now);
         ntc_.poll(now);
         if (ntc_.enabled() && core.online() && (!ntcSent_ || now - lastNtcMs_ >= teleIntervalMs_)) {
             const float t = ntc_.value();
@@ -236,6 +243,67 @@ private:
         oled_.sendBuffer();
     }
 
+    // ---- low-voltage cutoff ----
+
+    void configureLvd(Core& core, JsonObjectConst hw, JsonObjectConst lvd) {
+        const int pin = hw["relay_pin"] | HW_RELAY_PIN;
+        const bool activeLow = hw["relay_active_low"] | (HW_RELAY_ACTIVE_LOW != 0);
+        LowVoltageCutoff::Config c;
+        c.cutoffV = lvd["cutoff_v"] | c.cutoffV;
+        c.restoreV = lvd["restore_v"] | c.restoreV;
+        c.delayMs = (lvd["delay_s"] | (c.delayMs / 1000U)) * 1000UL;
+        c.restoreDelayMs = (lvd["restore_delay_s"] | (c.restoreDelayMs / 1000U)) * 1000UL;
+        lvd_.configure(c);
+        if (pin != lvdPin_ || activeLow != lvdActiveLow_) {
+            if (lvdPin_ >= 0) driveLoad(false);  // the old pin lets go of the load
+            lvdPin_ = pin;
+            lvdActiveLow_ = activeLow;
+            lvdWarned_ = false;
+            if (lvdPin_ >= 0) pinMode(lvdPin_, OUTPUT);
+            lvd_.restart();  // load off until the battery proves itself
+            driveLoad(false);
+            lvdPublished_ = false;
+        }
+    }
+
+    void driveLoad(bool on) {
+        if (lvdPin_ >= 0) digitalWrite(lvdPin_, on != lvdActiveLow_ ? HIGH : LOW);
+    }
+
+    void publishLoad(Core& core) {
+        JsonDocument state;
+        state["load"] = lvd_.connected() ? "on" : "off";
+        core.publishState(state);
+        lvdPublished_ = true;
+    }
+
+    // Once a second: the battery voltage (INA226 first, else the divider) goes through the cutoff, the pin follows.
+    void guardBattery(Core& core, uint32_t now) {
+        if (lvdPin_ < 0) return;
+        if (now - lastLvdMs_ >= 1000) {
+            lastLvdMs_ = now;
+            float volts = NAN;
+            float amps = 0;
+            if (ina_.enabled()) {
+                if (!ina_.live(volts, amps)) volts = NAN;
+            } else if (battery_.enabled()) {
+                volts = battery_.read();
+            } else if (!lvdWarned_) {
+                lvdWarned_ = true;
+                core.log(LogLevel::Warn, "relay_pin set but no battery voltage source: the load stays off");
+            }
+            const LowVoltageCutoff::Event e = lvd_.update(now, volts);
+            if (e != LowVoltageCutoff::Event::None) {
+                driveLoad(lvd_.connected());
+                lvdPublished_ = false;
+                if (e == LowVoltageCutoff::Event::Cut) core.log(LogLevel::Warn, "load cut: battery voltage too low");
+                else if (e == LowVoltageCutoff::Event::Lost) core.log(LogLevel::Warn, "load cut: no battery reading");
+                else core.log(LogLevel::Info, "load restored: battery recovered");
+            }
+        }
+        if (!lvdPublished_ && core.online()) publishLoad(core);
+    }
+
     // The INA226's own volts and amps, large, as long as the hive has chosen no rows: "12.61V" over "-1.85A".
     // A minus is a charging battery (docs/ina226-battery.md). False when the chip has no reading yet.
     bool drawOwn() {
@@ -303,6 +371,12 @@ private:
     uint32_t teleIntervalMs_ = 60000;
     uint32_t lastBatteryMs_ = 0;
     bool sent_ = false;
+    LowVoltageCutoff lvd_;
+    int lvdPin_ = -1;
+    bool lvdActiveLow_ = false;
+    bool lvdWarned_ = false;
+    bool lvdPublished_ = false;
+    uint32_t lastLvdMs_ = 0;
     Ina226 ina_;
     bool hadIna_ = false;
     bool inaSent_ = false;

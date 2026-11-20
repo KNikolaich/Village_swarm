@@ -378,6 +378,16 @@ public sealed record RelayConfig
 public sealed record FailsafeConfig
 {
     public HeaterFailsafe? Heater { get; init; }
+    public LvdFailsafe? Lvd { get; init; }
+}
+
+/// <summary>Low-voltage cutoff of a battery on a monitor with a load relay. Null fields: the firmware defaults.</summary>
+public sealed record LvdFailsafe
+{
+    public double? CutoffV { get; init; }
+    public double? RestoreV { get; init; }
+    public int? DelayS { get; init; }
+    public int? RestoreDelayS { get; init; }
 }
 
 public sealed record HeaterFailsafe

@@ -1,0 +1,12 @@
+{
+  "v": 1, "rev": 4, "name": "АКБ ИБП 12 В, защита от глубокого разряда",
+  "health_interval_s": 60, "tele_interval_s": 60,
+  "hw": { "sda_pin": 5, "scl_pin": 6, "ina_addr": 64, "ina_shunt_mohm": 10, "ina_full_v": 14.0, "ina_full_a": 0.5, "relay_pin": 10 },
+  "failsafe": { "lvd": { "cutoff_v": 10.5, "restore_v": 12.4, "delay_s": 30, "restore_delay_s": 120 } },
+  "display": {
+    "items": [
+      { "device": "monitor-ups", "metric": "battery_voltage", "label": "АКБ", "x": 0, "y": 0, "size": 5 },
+      { "device": "monitor-ups", "metric": "battery_current", "label": "Ток", "x": 0, "y": 22, "size": 5 }
+    ]
+  }
+}

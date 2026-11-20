@@ -69,7 +69,8 @@ DS18B20 needs a 4.7 kΩ pull-up from data to 3.3 V (the ready-made modules have 
 - INA226 (monitor): a battery's voltage and current on the I2C bus of the screen (GPIO5/GPIO6), found by itself at boot.
   Published as `battery_voltage` (V), `battery_current` (A, plus = the battery gives), `battery_power` (W) and
   `battery_ah` (Ah out since full). Config `hw.ina_addr`, `ina_shunt_mohm` (default 10), `ina_invert`, `ina_full_v`,
-  `ina_full_a`. Wiring: docs/ina226-battery.md.
+  `ina_full_a`. Wiring: docs/ina226-battery.md. With `hw.relay_pin` and `failsafe.lvd` the monitor also cuts the load at a deeply
+  discharged battery on its own: docs/low-voltage-cutoff.md.
 - **monitor** (`monitor-c3oled`): a screen that measures nothing itself. It draws the texts the hive publishes to
   `vs/v1/hive/display/{id}` for the readings chosen on the device page, "Экран" (config `display.items`, up to four
   lines from any device; docs/display.md). A dot in the corner means it is online. A hornet on the old

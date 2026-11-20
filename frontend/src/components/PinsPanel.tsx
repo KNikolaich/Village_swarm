@@ -19,7 +19,7 @@ const roleFunctions: Record<string, readonly string[]> = {
   relay: ['relay', 'button', 'vbat'],
   heat: ['onewire', 'dht', 'sda', 'scl', 'relay', 'button', 'vbat'],
   'guard-cam': ['relay'],
-  monitor: ['sda', 'scl', 'vbat', 'ntc'],
+  monitor: ['sda', 'scl', 'vbat', 'ntc', 'relay'],
 }
 
 /** ESP8266 boards: one ADC (A0 = GPIO17) and D-labels on the silkscreen. */

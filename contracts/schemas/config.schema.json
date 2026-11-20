@@ -90,6 +90,37 @@
             }
           },
           "additionalProperties": false
+        },
+        "lvd": {
+          "type": "object",
+          "description": "Role monitor with hw.relay_pin: low-voltage cutoff of a battery, done by the monitor alone (no hive, no Wi-Fi). The load relay (normally open) is closed only while the battery is fine: opened when the voltage stays below cutoff_v for delay_s (or is not measured for 120 s), closed again when it stays at or above restore_v for restore_delay_s. After boot the load is off until the battery has been at or above restore_v for 5 s",
+          "properties": {
+            "cutoff_v": {
+              "type": "number",
+              "minimum": 6,
+              "maximum": 30,
+              "description": "Volts; default 10.5 (a 12 V lead-acid battery)"
+            },
+            "restore_v": {
+              "type": "number",
+              "minimum": 6,
+              "maximum": 30,
+              "description": "Volts; default 12.4. Kept at least 0.3 V above cutoff_v"
+            },
+            "delay_s": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3600,
+              "description": "Seconds below cutoff_v before the cut; default 30"
+            },
+            "restore_delay_s": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 86400,
+              "description": "Seconds at or above restore_v before the load comes back; default 120"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
