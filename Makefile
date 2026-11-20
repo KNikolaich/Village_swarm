@@ -3,9 +3,9 @@
 
 COMPOSE_DEV = docker compose -f deploy/compose.dev.yaml
 
-.PHONY: check backend frontend firmware firmware-test dev-up dev-down images ship
+.PHONY: check backend frontend firmware firmware-test deploy-test dev-up dev-down images ship
 
-check: backend frontend firmware
+check: backend frontend firmware deploy-test
 
 backend:
 	dotnet build backend/Hive.slnx -c Release
@@ -25,6 +25,11 @@ dev-up:
 
 dev-down:
 	$(COMPOSE_DEV) down
+
+# Deploy helper scripts without root or Docker: the compose copy to /opt/hive, the desktop launchers.
+deploy-test:
+	bash deploy/test-install-files.sh
+	bash deploy/test-desktop-icons.sh
 
 # Tries the backup scripts for real in Docker (dump, rotation, restic copy, restore check, failures).
 backup-test:

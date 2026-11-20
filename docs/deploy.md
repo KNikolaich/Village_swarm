@@ -74,6 +74,19 @@ deploy\deploy.bat kirill@192.168.10.4 --rtc    # с часами DS3231 при �
 
 В конце окно ждёт нажатия клавиши, чтобы можно было прочитать вывод. Пароль RPi (и `sudo`) спросит сам скрипт.
 
+### На Linux (мини-ПК)
+
+То же самое без WSL: `deploy/deploy.sh` (как `deploy.bat`), `deploy/deploy-all.sh` (как `deploy_all.bat`: город, затем дом) и `deploy/deploy-all-firmware.sh` (город и дом, все прошивки заново). Процессор Улья скрипт спрашивает у него самого по ssh: arm64 для RPi, amd64 для мини-ПК и ВМ (`HIVE_PLATFORM` задаёт его вручную). Нужны Docker без `sudo` (группа `docker`), вход по ssh-ключу на Ульи, PlatformIO (`pipx install platformio`) и ключ подписи прошивок в `~/.village-swarm/ota-signing.key` (или путь в `HORNET_OTA_KEY`).
+
+```
+deploy/deploy.sh                          # hive1: kirill@192.168.10.4
+WITH_FIRMWARE=1 deploy/deploy.sh          # то же, все прошивки заново
+deploy/deploy-all.sh                      # город 192.168.1.3, затем дом 192.168.10.4
+deploy/deploy-all-firmware.sh             # город и дом, все прошивки заново
+```
+
+Значки для рабочего стола XFCE ставит `deploy/desktop-icons.sh` (запустить ещё раз, если репозиторий переехал в другую папку). Окно терминала остаётся открытым после конца скрипта.
+
 ## 4. Переезд на дачу
 
 1. RPi подключается кабелем к дачному Giga в обычный порт домашней сети (рядом с аккумулятором, там же хаб с остальными устройствами).
