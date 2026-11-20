@@ -32,7 +32,7 @@ EOF
 
 launcher hive-deploy-hive1 "Улей: обновить дом (hive1)" \
 	"Собрать изменённые прошивки и образы, доставить на kirill@192.168.10.4" system-software-update deploy.sh
-launcher hive-deploy-all "Улей: обновить город и дом" \
-	"Собрать изменённые прошивки и образы, доставить в город (192.168.1.3), затем домой (192.168.10.4)" network-server deploy-all.sh
-launcher hive-deploy-all-firmware "Улей: город и дом, все прошивки заново" \
-	"Пересобрать и переподписать все прошивки шершней, затем обновить город и дом" view-refresh deploy-all-firmware.sh
+launcher hive-deploy-all "Улей: обновить дом и город" \
+	"Собрать изменённые прошивки и образы, доставить домой (192.168.10.4), затем в город (192.168.1.3)" network-server deploy-all.sh
+launcher hive-deploy-all-firmware "Улей: дом и город, все прошивки заново" \
+	"Пересобрать и переподписать все прошивки шершней, затем обновить дом и город" view-refresh deploy-all-firmware.sh

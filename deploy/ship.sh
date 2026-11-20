@@ -28,19 +28,20 @@ echo "$version" >"$stage/hive-bundle/images/VERSION"
 echo "==> copying $version to $target"
 # A weak link (the dacha is on 4G) drops a 500 MB copy now and then: rsync keeps what arrived and carries on, up to 8 tries.
 # /var/tmp is on the disk: /tmp on the small hives is tmpfs, that is RAM (a 500 MB image in 2 GB of memory is what drops the link).
-# Without rsync on both ends, scp tries the whole thing again.
+# Without rsync on both ends, scp tries the whole thing again. Both show how far the copy is (percent, speed, time left).
 ssh "$target" 'mkdir -p /var/tmp/hive-bundle'
 if command -v rsync >/dev/null 2>&1 && ssh "$target" 'command -v rsync >/dev/null 2>&1'; then
   copied=0
   for try in 1 2 3 4 5 6 7 8; do
-    if rsync -rt --delete --partial --append-verify --timeout=60 -e "ssh -o ServerAliveInterval=15" "$stage/hive-bundle/" "$target:/var/tmp/hive-bundle/"; then copied=1; break; fi
+    if rsync -rt --delete --partial --append-verify --timeout=60 --info=progress2 -e "ssh -o ServerAliveInterval=15" "$stage/hive-bundle/" "$target:/var/tmp/hive-bundle/"; then copied=1; break; fi
     echo "==> copy interrupted (try $try of 8), continuing"; sleep 5
   done
   [ "$copied" = 1 ] || { echo "copy failed" >&2; exit 1; }
 else
+  echo "==> no rsync on $target: scp, which starts over when the link drops (sudo apt install rsync on the hive helps)"
   for try in 1 2 3 4; do
     ssh "$target" 'rm -rf /var/tmp/hive-bundle'
-    if scp -rq -o ServerAliveInterval=15 "$stage/hive-bundle" "$target:/var/tmp/"; then break; fi
+    if scp -r -o ServerAliveInterval=15 "$stage/hive-bundle" "$target:/var/tmp/"; then break; fi
     [ "$try" = 4 ] && { echo "copy failed" >&2; exit 1; }
     echo "==> copy interrupted (try $try of 4), again"; sleep 5
   done

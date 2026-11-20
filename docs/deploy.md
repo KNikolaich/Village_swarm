@@ -76,13 +76,13 @@ deploy\deploy.bat kirill@192.168.10.4 --rtc    # с часами DS3231 при �
 
 ### На Linux (мини-ПК)
 
-То же самое без WSL: `deploy/deploy.sh` (как `deploy.bat`), `deploy/deploy-all.sh` (как `deploy_all.bat`: город, затем дом) и `deploy/deploy-all-firmware.sh` (город и дом, все прошивки заново). Процессор Улья скрипт спрашивает у него самого по ssh: arm64 для RPi, amd64 для мини-ПК и ВМ (`HIVE_PLATFORM` задаёт его вручную). Нужны Docker без `sudo` (группа `docker`), вход по ssh-ключу на Ульи, PlatformIO (`pipx install platformio`) и ключ подписи прошивок в `~/.village-swarm/ota-signing.key` (или путь в `HORNET_OTA_KEY`).
+То же самое без WSL: `deploy/deploy.sh` (как `deploy.bat`), `deploy/deploy-all.sh` (как `deploy_all.bat`, но сначала дом, затем город: мини-ПК, который собирает, сам и есть домашний Улей, и новая версия работает дома, пока комплект медленно едет в город) и `deploy/deploy-all-firmware.sh` (дом и город, все прошивки заново). Копирование показывает процент, скорость и оставшееся время; без `rsync` на Улье копирует `scp` и при обрыве начинает заново. Процессор Улья скрипт спрашивает у него самого по ssh: arm64 для RPi, amd64 для мини-ПК и ВМ (`HIVE_PLATFORM` задаёт его вручную). Нужны Docker без `sudo` (группа `docker`), вход по ssh-ключу на Ульи, PlatformIO (`pipx install platformio`) и ключ подписи прошивок в `~/.village-swarm/ota-signing.key` (или путь в `HORNET_OTA_KEY`).
 
 ```
 deploy/deploy.sh                          # hive1: kirill@192.168.10.4
 WITH_FIRMWARE=1 deploy/deploy.sh          # то же, все прошивки заново
-deploy/deploy-all.sh                      # город 192.168.1.3, затем дом 192.168.10.4
-deploy/deploy-all-firmware.sh             # город и дом, все прошивки заново
+deploy/deploy-all.sh                      # дом 192.168.10.4, затем город 192.168.1.3
+deploy/deploy-all-firmware.sh             # дом и город, все прошивки заново
 ```
 
 Значки для рабочего стола XFCE ставит `deploy/desktop-icons.sh` (запустить ещё раз, если репозиторий переехал в другую папку). Окно терминала остаётся открытым после конца скрипта.
