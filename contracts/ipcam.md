@@ -168,7 +168,8 @@ go2rtc (`alexxit/go2rtc`, version pinned in `deploy/compose.yaml`, 128 MB) runs 
 the docker network; no port is published and it has no RTSP or WebRTC server of its own. Its image goes in the deploy bundle.
 
 - The hive owns go2rtc's streams (`VideoStreams`): two per IP camera, `{device}-sub` and `{device}-main`, whose sources are
-  the RTSP addresses with the login (the same as for snapshots). They are pushed through go2rtc's API (`PUT/DELETE
+  the RTSP addresses with the login (the same as for snapshots) and `#backchannel=0`: go2rtc would otherwise ask for the
+  ONVIF audio back channel, after which some cameras send no video; the hive never talks to a camera. They are pushed through go2rtc's API (`PUT/DELETE
   /api/streams`) on start, on every change of the NVRs and cameras, and checked every minute (go2rtc forgets them when it
   restarts). go2rtc keeps them in a config file in RAM (tmpfs): no camera password on the disk. A camera is opened only
   while someone watches.

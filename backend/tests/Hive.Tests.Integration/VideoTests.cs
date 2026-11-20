@@ -50,8 +50,9 @@ public sealed class VideoTests(HiveFixture hive) : IAsyncLifetime
         var cam = nvr.Channels[0].DeviceId;
 
         await WaitAsync(() => Go2Rtc.Streams.ContainsKey($"{cam}-sub") && Go2Rtc.Streams.ContainsKey($"{cam}-main"), "both streams pushed");
-        Assert.Equal("rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=2&subtype=1", Go2Rtc.Streams[$"{cam}-sub"]);
-        Assert.Equal("rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=2&subtype=0", Go2Rtc.Streams[$"{cam}-main"]);
+        // No ONVIF audio back channel: some cameras send no video once it is asked for.
+        Assert.Equal("rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=2&subtype=1#backchannel=0", Go2Rtc.Streams[$"{cam}-sub"]);
+        Assert.Equal("rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=2&subtype=0#backchannel=0", Go2Rtc.Streams[$"{cam}-main"]);
         // The H.264 copies for browsers without H.265 (Video:Transcode=vaapi): ffmpeg reads the stream back by its name,
         // so the camera keeps one connection per stream and no login is repeated.
         await WaitAsync(() => Go2Rtc.Streams.ContainsKey($"{cam}-main-h264"), "H.264 copies pushed");

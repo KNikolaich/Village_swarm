@@ -128,6 +128,12 @@ public sealed class VideoStreams(
     public const string MainSuffix = "-main";
     public const string H264Suffix = "-h264";
 
+    /// <summary>
+    /// go2rtc asks an RTSP camera for its ONVIF audio back channel by default; some cameras (a direct one on stream0/stream1)
+    /// then send no video at all ("i/o timeout"). The hive never talks to a camera, so it is never asked for.
+    /// </summary>
+    public const string NoBackchannel = "#backchannel=0";
+
     private readonly Channel<bool> _changed = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
     private readonly Dictionary<string, string> _pushed = new(StringComparer.Ordinal);
     private volatile IReadOnlySet<string> _names = new HashSet<string>();
@@ -281,8 +287,8 @@ public sealed class VideoStreams(
             var transcode = TranscodeSuffix(options.Value.Transcode);
             foreach (var c in nvr.Channels.Where(c => live.Contains(c.DeviceId)))
             {
-                wanted[Sub(c.DeviceId)] = endpoint.RtspUrlWithLogin(c.Channel, 1);
-                wanted[Main(c.DeviceId)] = endpoint.RtspUrlWithLogin(c.Channel, 0);
+                wanted[Sub(c.DeviceId)] = endpoint.RtspUrlWithLogin(c.Channel, 1) + NoBackchannel;
+                wanted[Main(c.DeviceId)] = endpoint.RtspUrlWithLogin(c.Channel, 0) + NoBackchannel;
                 if (transcode is null)
                     continue;
                 // ffmpeg reads the camera's stream back from go2rtc by name, so the camera still has one connection per stream.
