@@ -4,6 +4,8 @@ import type { DeviceDto } from '@/api/client'
 import { useChunkedSeries } from '@/api/queries'
 import { useWidth, type ChartPoint } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
+import { SmoothingControl } from '@/components/SmoothingControl'
+import { useSmoother } from '@/lib/smoothingStore'
 import { metricLabel, t } from '@/i18n'
 import { pickAt } from '@/lib/chartPick'
 import { formatFixed, formatTick, formatValue, formatWhen, metricUnit } from '@/lib/format'
@@ -62,6 +64,7 @@ export function HornetChartModal({ device, metrics, onClose }: { device: DeviceD
     return list
   }, [metrics])
 
+  const smooth = useSmoother()
   const lines: Line[] = entries.map((e) => {
     const points = e.key.startsWith('m:')
       ? data.metrics[e.key.slice(2)] ?? []
@@ -69,7 +72,7 @@ export function HornetChartModal({ device, metrics, onClose }: { device: DeviceD
         const v = e.key === 'h:vbat' ? r.vbat : e.key === 'h:rssi' ? r.rssi : r.heapFree / 1024
         return v == null ? [] : [scalar(r.ts, v)]
       })
-    return { ...e, points }
+    return { ...e, points: smooth(points) }
   })
 
   const toggle = (key: string) => setOff((s) => {
@@ -116,6 +119,7 @@ export function HornetChartModal({ device, metrics, onClose }: { device: DeviceD
               {data.loading && <span className="ml-2 text-neutral-400">{t('hornetChart.loading')}</span>}
             </p>
           </div>
+          <SmoothingControl />
           <Button variant="ghost" size="icon" title={t('hornetChart.back')} aria-label={t('hornetChart.back')} onClick={() => pan(-view.hours * HOUR / 2)}><ChevronLeft /></Button>
           <Button variant="ghost" size="icon" title={t('hornetChart.forward')} aria-label={t('hornetChart.forward')} disabled={view.end == null} onClick={() => pan(view.hours * HOUR / 2)}><ChevronRight /></Button>
           <Button variant="outline" size="sm" disabled={view.end == null} onClick={() => setView((v) => ({ ...v, end: null }))}>{t('hornetChart.now')}</Button>

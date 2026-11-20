@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { t } from '@/i18n'
 import { formatFixed, formatTick, formatWhen } from '@/lib/format'
 import { pickAt } from '@/lib/chartPick'
 import { seriesColors } from '@/lib/seriesColors'
+import { useSmoother } from '@/lib/smoothingStore'
 import { niceTicks, tickDecimals, timeTicks } from '@/lib/ticks'
 
 export type ChartPoint = { ts: string; avg: number; min: number; max: number }
@@ -68,7 +69,8 @@ export function MultiChart({ series, from, to, format, axisFormat, height }: {
 }) {
   // The measured container always exists, so its width is known when data arrives after the first render.
   const [ref, width] = useWidth()
-  const filled = series.filter((s) => s.points.length > 0)
+  const smooth = useSmoother()
+  const filled = useMemo(() => series.filter((s) => s.points.length > 0).map((s) => ({ ...s, points: smooth(s.points) })), [series, smooth])
   return (
     <div ref={ref}>
       {filled.length === 0

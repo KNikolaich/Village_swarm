@@ -8,6 +8,7 @@ import { historyWindow, keys, useDashboardLayout, useDevices, useLatestTelemetry
 import { DashboardGrid, type WidgetView } from '@/components/DashboardGrid'
 import { MultiChart, TimeAxis, type ChartPoint, type ChartSeries } from '@/components/Chart'
 import { ZoneBanners } from '@/components/DeviceBanners'
+import { SmoothingControl } from '@/components/SmoothingControl'
 import { ZoneEditor } from '@/components/ZoneEditor'
 import { WeatherCard } from '@/components/WeatherCard'
 import { ZoneTiles } from '@/components/ZoneTiles'
@@ -98,6 +99,7 @@ export function ClimatePage() {
               <LayoutGrid />{t('layout.arrange')}
             </Button>
           )}
+          <SmoothingControl />
           <Select value={hours} onChange={(e) => setHours(Number(e.target.value))} className="h-8 w-auto text-xs" aria-label={t('device.range')}>
             {ranges.map((h) => <option key={h} value={h}>{rangeLabel(h)}</option>)}
           </Select>

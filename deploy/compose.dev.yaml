@@ -1,12 +1,13 @@
 # Local development on a laptop: broker + database (spec 13.1, build step 1).
 # Usage: docker compose -f deploy/compose.dev.yaml up -d
+# Ports can be moved (and kept off the LAN) with DEV_MQTT_BIND / DEV_PG_BIND, e.g. 127.0.0.1:51883: see deploy/dev-lan.sh.
 # The api runs from the IDE (dotnet run) against these services; the simulator joins in step 3.
 name: village-swarm-dev
 
 services:
   mosquitto:
     image: eclipse-mosquitto:2
-    ports: ["1883:1883"]
+    ports: ["${DEV_MQTT_BIND:-1883}:1883"]
     volumes:
       - ./mosquitto/mosquitto.dev.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto_data:/mosquitto/data
@@ -23,7 +24,7 @@ services:
       POSTGRES_DB: hive
       POSTGRES_USER: hive
       POSTGRES_PASSWORD: hive
-    ports: ["5432:5432"]
+    ports: ["${DEV_PG_BIND:-5432}:5432"]
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:

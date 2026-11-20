@@ -5,6 +5,7 @@ import type { DeviceDto } from '@/api/client'
 import { historyWindow, useMetricSeries } from '@/api/queries'
 import { MultiChart, TimeAxis } from '@/components/Chart'
 import { Button } from '@/components/ui/button'
+import { SmoothingControl } from '@/components/SmoothingControl'
 import { metricLabel, t } from '@/i18n'
 import { formatFixed, formatValue, metricUnit } from '@/lib/format'
 import { ranges, rangeLabel } from '@/lib/ranges'
@@ -62,6 +63,7 @@ export function TileChartModal({ device, metric, title, onClose }: { device: Dev
             <p className="truncate font-semibold">{title}</p>
             <p className="truncate text-xs text-neutral-500">{metricLabel(metric)} · {rangeLabel(hours)}</p>
           </div>
+          <SmoothingControl />
           <Button variant="ghost" size="icon" title={t('tileChart.zoomIn')} aria-label={t('tileChart.zoomIn')} disabled={index <= 0} onClick={() => setHours(ranges[index - 1])}><ZoomIn /></Button>
           <Button variant="ghost" size="icon" title={t('tileChart.zoomOut')} aria-label={t('tileChart.zoomOut')} disabled={index < 0 || index >= ranges.length - 1} onClick={() => setHours(ranges[index + 1])}><ZoomOut /></Button>
           <Button variant="ghost" size="icon" title={full ? t('tileChart.exitFull') : t('tileChart.full')} aria-label={full ? t('tileChart.exitFull') : t('tileChart.full')} onClick={() => setFull(!full)}>{full ? <Minimize2 /> : <Maximize2 />}</Button>

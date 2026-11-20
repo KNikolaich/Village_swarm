@@ -1124,6 +1124,25 @@
     "hint": "Drag the chart sideways to scroll through time; Ctrl + wheel or the magnifier buttons change the scale. Lines that are switched off are not loaded.",
     "nothingOn": "All lines are off: tick the ones you need above the chart"
   },
+  "smoothing": {
+    "label": "Smoothing",
+    "toggle": "Smooth chart lines",
+    "template": "Smoothing template",
+    "edit": "Smoothing templates",
+    "editTitle": "Smoothing templates",
+    "hint": "Window is how many neighbouring readings are averaged. Remembered in this browser and applied to every chart.",
+    "none": "No templates — add one.",
+    "kind": "Method",
+    "window": "Window",
+    "delete": "Delete template",
+    "add": "Add template",
+    "kinds": {
+      "sma": "Moving average (SMA)",
+      "ema": "Exponential (EMA)",
+      "median": "Median",
+      "wma": "Weighted (WMA)"
+    }
+  },
   "tileChart": {
     "open": "Show chart",
     "offline": "No data for a long time: the hornet is offline",

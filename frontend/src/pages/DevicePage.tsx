@@ -21,6 +21,7 @@ import { EventCard, type PhotoRef } from '@/components/EventCard'
 import { Lightbox } from '@/components/Lightbox'
 import { Chart, TimeAxis, type ChartPoint } from '@/components/Chart'
 import { HornetChartModal } from '@/components/HornetChartModal'
+import { SmoothingControl } from '@/components/SmoothingControl'
 import { Button } from '@/components/ui/button'
 import { Badge, Card, CardContent, CardHeader, CardTitle, Empty, Select, Skeleton } from '@/components/ui/primitives'
 import { metricLabel, statusLabel, t } from '@/i18n'
@@ -540,7 +541,10 @@ export function DevicePage() {
       <Card>
         <CardHeader>
           <CardTitle>{t('device.history')}</CardTitle>
-          <Button variant="outline" size="sm" onClick={() => setChartOpen(true)}><ChartLine />{t('hornetChart.open')}</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <SmoothingControl />
+            <Button variant="outline" size="sm" onClick={() => setChartOpen(true)}><ChartLine />{t('hornetChart.open')}</Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-5">
           {readings.map((v) => <MetricChart key={v.metric} device={deviceId} metric={v.metric} hours={hours} />)}
