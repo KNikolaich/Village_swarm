@@ -5473,6 +5473,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/video/viewers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["VideoViewersDto"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ipcams/ptz/{deviceId}": {
         parameters: {
             query?: never;
@@ -8495,10 +8530,20 @@ export interface components {
              * @default 0
              */
             rotate: number;
+            subH264?: null | string;
+            mainH264?: null | string;
         };
         VideoStreamsDto: {
             enabled: boolean;
             cameras: components["schemas"]["VideoCameraDto"][];
+        };
+        VideoViewersDto: {
+            /** Format: int32 */
+            viewers: number;
+            /** Format: int32 */
+            max: number;
+            /** Format: int32 */
+            keepOnUpTo: number;
         };
         WeatherCurrentDto: {
             /** Format: date-time */

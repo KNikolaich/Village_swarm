@@ -1689,6 +1689,12 @@
     "codecUnsupported": "The browser cannot play this stream's codec (most likely H.265).",
     "codecHint": "Switch the camera's sub-stream to H.264 in the NVR settings, or choose \"Snapshots\".",
     "connectionFailed": "Could not connect to the video",
+    "keepOn": "Keep on",
+    "keepOnHint": "Do not stop after 5 minutes without a touch while no more than {n} people watch",
+    "keepOnBusy": "{n} people are watching: playback stops after 5 minutes without a touch.",
+    "tooMany": "{n} people are watching, the hive lets no more in. Try later or choose \"Snapshots\".",
+    "viewers": "viewers: {n}",
+    "transcoded": "transcoded by the hive",
     "ptz": {
       "title": "Camera turning",
       "up": "Up",

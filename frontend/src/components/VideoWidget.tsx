@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, Maximize2, Minimize2, Play, Square, Video, WifiOff } from 'lucide-react'
+import { Camera, Maximize2, Minimize2, Pin, Play, Square, Video, WifiOff } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api, call, type EventDto } from '@/api/client'
 import { useLatestPhoto, useSnapshot } from '@/api/queries'
@@ -9,15 +9,16 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, Select } from '@/components/ui/primitives'
 import { t } from '@/i18n'
 import {
-  alarmCamera, codecList, codecName, groupCameras, idleAfterMs, isCodecMismatch, isStalled, kbps, linkedCamera, rotatedBox, stallAfterMs, loadChoice, qualities, saveChoice, shouldPlay,
-  type Quality, type VideoCamera, type VideoChoice,
+  alarmCamera, codecList, codecName, groupCameras, hasVideo, idleAfterMs, idleApplies, isCodecMismatch, isFull, isStalled, kbps, linkedCamera, liveStreams, loadKeepOn, rotatedBox,
+  saveKeepOn, stallAfterMs, loadChoice, qualities, saveChoice, shouldPlay,
+  type Quality, type VideoCamera, type VideoChoice, type VideoViewers,
 } from '@/lib/video'
 
 /**
  * «Видео» on the overview (contracts/ipcam.md "Live video"): one camera of the family's choice in this browser, as frames
  * every 5 s or live through go2rtc (light or detailed stream). Nothing is opened until someone presses play; the stream
- * stops when the tab is hidden, the widget scrolls away or nobody has touched it for 5 minutes. An alarm offers its camera
- * but never starts it.
+ * stops when the tab is hidden, the widget scrolls away or nobody has touched it for 5 minutes («Не выключать» lifts the
+ * last while few people watch). An alarm offers its camera but never starts it.
  */
 export function VideoWidget({ events }: { events: readonly EventDto[] }) {
   const streams = useQuery({ queryKey: ['video', 'streams'], queryFn: () => call(api.GET('/api/video/streams')), staleTime: 60_000 })
@@ -32,7 +33,16 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
   const [idle, setIdle] = useState(false)
   const [lost, setLost] = useState(false)
   const [full, setFull] = useState(false)
+  const [keepOn, setKeepOn] = useState(loadKeepOn)
+  // The camera and quality whose codec this browser lacked: watched through the hive's H.264 copy from then on.
+  const [h264For, setH264For] = useState<string | null>(null)
   const lastTouch = useRef(Date.now())
+  const viewers = useQuery({
+    queryKey: ['video', 'viewers'],
+    queryFn: () => call(api.GET('/api/video/viewers')),
+    enabled: streams.data?.enabled === true && wanted,
+    refetchInterval: 15_000,
+  })
 
   const camera = cameras.find((c) => c.deviceId === choice.camera) ?? null
   // A guard-cam has no stream, only frames: whatever quality was picked, it is shown as «Снимки».
@@ -65,11 +75,12 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
     observer.observe(box.current)
     return () => observer.disconnect()
   }, [])
+  const idleOn = idleApplies(keepOn, viewers.data)
   useEffect(() => {
-    if (!wanted) return
+    if (!wanted || !idleOn) return
     const timer = setInterval(() => { if (Date.now() - lastTouch.current > idleAfterMs) setIdle(true) }, 10_000)
     return () => clearInterval(timer)
-  }, [wanted])
+  }, [wanted, idleOn])
 
   useEffect(() => {
     const onChange = () => setFull(document.fullscreenElement !== null && document.fullscreenElement === box.current)
@@ -99,6 +110,11 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
     setWanted(false)
     setLost(true)
   }, [])
+  const refetchViewers = viewers.refetch
+  const refused = useCallback(() => void refetchViewers(), [refetchViewers])
+  const live = quality === 'snapshots' || !camera || camera.kind === 'car' ? null : liveStreams(camera, quality)
+  const liveKey = camera ? `${camera.deviceId}-${quality}` : ''
+  const onH264 = live?.fallback != null && h264For === liveKey
 
   if (streams.data && !streams.data.enabled) return null
 
@@ -116,6 +132,11 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
               </optgroup>
             ))}
           </Select>
+          <button type="button" aria-pressed={keepOn} title={t('video.keepOnHint').replace('{n}', String(viewers.data?.keepOnUpTo ?? 3))}
+            onClick={() => { const next = !keepOn; setKeepOn(next); saveKeepOn(next); touch() }}
+            className={keepOn ? 'flex items-center gap-1 rounded-md bg-neutral-700 px-2 py-1 text-xs text-neutral-100' : 'flex items-center gap-1 rounded-md px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200'}>
+            <Pin className="size-3.5" />{t('video.keepOn')}
+          </button>
           <div className="flex rounded-md bg-neutral-900 p-0.5 text-xs" role="radiogroup" aria-label={t('video.quality')}>
             {qualities.map((q) => (
               <button key={q} type="button" role="radio" aria-checked={quality === q} disabled={framesOnly && q !== 'snapshots'} onClick={() => choose({ ...choice, quality: q })}
@@ -141,12 +162,15 @@ export function VideoWidget({ events }: { events: readonly EventDto[] }) {
             ? (framesOnly ? <GuardFrames camera={camera} /> : <Snapshots camera={camera} />)
             : camera.kind === 'car'
               ? <MjpegPlayer key={camera.deviceId} stream={camera.sub} onLost={lose} />
-              : <LivePlayer key={`${camera.deviceId}-${choice.quality}`} stream={choice.quality === 'hd' ? camera.main : camera.sub} quality={choice.quality} onLost={lose} />}
+              : live && <LivePlayer key={`${liveKey}-${onH264 ? 'h264' : 'own'}`} stream={onH264 ? live.fallback! : live.stream} quality={quality}
+                  transcoded={onH264} viewers={viewers.data} onLost={lose} onRefused={refused}
+                  onMismatch={live.fallback && !onH264 ? () => setH264For(liveKey) : undefined} />}
             </Turned>
           )}
           {camera && !playing && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-neutral-400">
               {idle && <p>{t('video.stillWatching')}</p>}
+              {idle && keepOn && viewers.data && <p className="max-w-xs text-center text-xs">{t('video.keepOnBusy').replace('{n}', String(viewers.data.viewers))}</p>}
               {lost && <p className="flex items-center gap-1.5 text-red-300"><WifiOff className="size-4" />{t('video.lost')}</p>}
               <Button onClick={play}><Play />{lost ? t('video.playAgain') : idle ? t('video.continue') : t('video.play')}</Button>
             </div>
@@ -305,9 +329,27 @@ function MjpegPlayer({ stream, onLost }: { stream: string; onLost: () => void })
  * stream's MIME type and then sends fragmented MP4. A camera whose codec the browser lacks (H.265 on most desktops)
  * gets a plain explanation instead of a black box.
  */
-function LivePlayer({ stream, quality, onLost }: { stream: string; quality: Quality; onLost: () => void }) {
+function LivePlayer({ stream, quality, transcoded, viewers, onLost, onRefused, onMismatch }: {
+  stream: string
+  quality: Quality
+  /** The hive's H.264 copy of an H.265 camera. */
+  transcoded: boolean
+  viewers: VideoViewers | undefined
+  onLost: () => void
+  /** The connection did not open: the hive may have refused one viewer too many; the count is asked again. */
+  onRefused: () => void
+  /** The browser lacks the camera's codec and there is an H.264 copy to switch to; without it the reason is shown. */
+  onMismatch?: () => void
+}) {
   const video = useRef<HTMLVideoElement>(null)
-  const [state, setState] = useState<{ codec?: string; kbps?: number; error?: string; mismatch?: boolean }>({})
+  const [state, setState] = useState<{ codec?: string; kbps?: number; error?: string; mismatch?: boolean; refused?: boolean }>({})
+  // Kept in refs so a new callback from the parent does not reconnect the stream.
+  const mismatchRef = useRef(onMismatch)
+  const refusedRef = useRef(onRefused)
+  useEffect(() => {
+    mismatchRef.current = onMismatch
+    refusedRef.current = onRefused
+  })
 
   useEffect(() => {
     const element = video.current
@@ -358,6 +400,14 @@ function LivePlayer({ stream, quality, onLost }: { stream: string; quality: Qual
       if (typeof ev.data === 'string') {
         const msg = JSON.parse(ev.data) as { type: string; value: string }
         if (msg.type === 'mse') {
+          if (!hasVideo(msg.value)) {
+            // No picture among the codecs: the H.264 copy, or said plainly instead of a black box.
+            codecProblem = true
+            ws.close(1000)
+            if (mismatchRef.current) mismatchRef.current()
+            else setState((s) => ({ ...s, error: t('video.codecUnsupported'), mismatch: true }))
+            return
+          }
           setState((s) => ({ ...s, codec: codecName(msg.value) }))
           source = new Source()
           element.src = URL.createObjectURL(source)
@@ -369,13 +419,15 @@ function LivePlayer({ stream, quality, onLost }: { stream: string; quality: Qual
               pump()
             } catch {
               codecProblem = true
-              setState((s) => ({ ...s, error: t('video.codecUnsupported'), mismatch: true }))
+              if (mismatchRef.current) mismatchRef.current()
+              else setState((s) => ({ ...s, error: t('video.codecUnsupported'), mismatch: true }))
             }
           }, { once: true })
           void element.play().catch(() => {})
         } else if (msg.type === 'error') {
           codecProblem = true // go2rtc said why (a codec, an unreachable camera): shown as it is, not as a lost connection
-          setState((s) => ({ ...s, error: msg.value, mismatch: isCodecMismatch(msg.value) }))
+          if (isCodecMismatch(msg.value) && mismatchRef.current) mismatchRef.current()
+          else setState((s) => ({ ...s, error: msg.value, mismatch: isCodecMismatch(msg.value) }))
         }
         return
       }
@@ -384,13 +436,17 @@ function LivePlayer({ stream, quality, onLost }: { stream: string; quality: Qual
       queue.push(ev.data as ArrayBuffer)
       pump()
     }
+    const failed = () => {
+      setState((s) => ({ ...s, error: s.error ?? t('video.connectionFailed'), refused: s.error === undefined }))
+      refusedRef.current()
+    }
     ws.onerror = () => {
-      if (lastData === null) setState((s) => ({ ...s, error: s.error ?? t('video.connectionFailed') }))
+      if (lastData === null) failed()
     }
     ws.onclose = (ev) => {
       // Dropped after the picture came: the connection is lost. Before it, the reason stays on the picture.
       if (ev.code !== 1000 && lastData !== null && !codecProblem) onLost()
-      else if (ev.code !== 1000) setState((s) => ({ ...s, error: s.error ?? t('video.connectionFailed') }))
+      else if (ev.code !== 1000) failed()
     }
 
     return () => {
@@ -409,11 +465,12 @@ function LivePlayer({ stream, quality, onLost }: { stream: string; quality: Qual
     <>
       <video ref={video} muted playsInline autoPlay className="h-full w-full object-contain" />
       <p className="absolute bottom-2 left-2 rounded bg-black/60 px-1.5 py-0.5 text-[11px] text-neutral-300">
-        {t(`video.qualities.${quality}`)}{state.codec ? ` · ${state.codec}` : ''}{state.kbps ? ` · ${state.kbps} kbit/s` : ''}
+        {t(`video.qualities.${quality}`)}{state.codec ? ` · ${state.codec}` : ''}{transcoded ? ` (${t('video.transcoded')})` : ''}
+        {state.kbps ? ` · ${state.kbps} kbit/s` : ''}{viewers && viewers.viewers > 1 ? ` · ${t('video.viewers').replace('{n}', String(viewers.viewers))}` : ''}
       </p>
       {state.error && (
         <div className="absolute inset-x-2 top-2 space-y-1 rounded bg-black/80 p-2 text-xs text-red-300">
-          <p>{state.mismatch ? t('video.codecUnsupported') : state.error}</p>
+          <p>{state.mismatch ? t('video.codecUnsupported') : state.refused && isFull(viewers) ? t('video.tooMany').replace('{n}', String(viewers!.viewers)) : state.error}</p>
           {state.mismatch && <p className="text-neutral-300">{t('video.codecHint')}</p>}
         </div>
       )}

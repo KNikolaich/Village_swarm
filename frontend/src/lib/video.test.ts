@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EventDto } from '@/api/client'
-import { alarmCamera, codecList, codecName, defaultChoice, driveLink, rotatedBox, groupCameras, linkedCamera, isCodecMismatch, isStalled, kbps, loadChoice, loadTourPause, nextTourIndex, ptzMove, ptzRepeatMs, saveChoice, saveTourPause, shouldPlay, tourPresets, tourStepMs, type VideoCamera } from './video'
+import { alarmCamera, codecList, codecName, defaultChoice, hasVideo, idleApplies, isFull, liveStreams, loadKeepOn, saveKeepOn, driveLink, rotatedBox, groupCameras, linkedCamera, isCodecMismatch, isStalled, kbps, loadChoice, loadTourPause, nextTourIndex, ptzMove, ptzRepeatMs, saveChoice, saveTourPause, shouldPlay, tourPresets, tourStepMs, type VideoCamera } from './video'
 
 const camera = (deviceId: string, zone: string | null, name = deviceId) =>
   ({ deviceId, name, zone, zoneId: zone ? 1 : null, nvrId: 1, channel: 1, sub: `${deviceId}-sub`, main: `${deviceId}-main`, status: 'online' }) as VideoCamera
@@ -37,6 +37,43 @@ describe('player', () => {
   it('offers only the codecs the browser plays', () => {
     expect(codecList((t) => t.includes('avc1'))).toBe('avc1.640029,avc1.64002A,avc1.640033')
     expect(codecList(() => false)).toBe('')
+  })
+
+  it('offers no audio: a muted player of an H.265 camera must not get its sound alone', () => {
+    expect(codecList(() => true)).toBe('avc1.640029,avc1.64002A,avc1.640033,hvc1.1.6.L153.B0')
+  })
+
+  it('keeps the picture on while few watch, and stops it again when more do', () => {
+    const viewers = (n: number) => ({ viewers: n, max: 5, keepOnUpTo: 3 })
+    expect(idleApplies(false, viewers(1))).toBe(true)
+    expect(idleApplies(true, undefined)).toBe(false)
+    expect(idleApplies(true, viewers(3))).toBe(false)
+    expect(idleApplies(true, viewers(4))).toBe(true)
+    expect(isFull(viewers(4))).toBe(false)
+    expect(isFull(viewers(5))).toBe(true)
+    expect(isFull(undefined)).toBe(false)
+  })
+
+  it('remembers «Не выключать» in this browser, off by default', () => {
+    const store = new Map<string, string>()
+    const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) }
+    expect(loadKeepOn(storage)).toBe(false)
+    saveKeepOn(true, storage)
+    expect(loadKeepOn(storage)).toBe(true)
+    expect(loadKeepOn({ getItem: () => { throw new Error('closed') } })).toBe(false)
+  })
+
+  it('has the H.264 copy of the chosen stream to fall back to, when the hive makes one', () => {
+    const cam = { ...camera('ipcam1-ch1', null), subH264: 'ipcam1-ch1-sub-h264', mainH264: 'ipcam1-ch1-main-h264' }
+    expect(liveStreams(cam, 'sd')).toEqual({ stream: 'ipcam1-ch1-sub', fallback: 'ipcam1-ch1-sub-h264' })
+    expect(liveStreams(cam, 'hd')).toEqual({ stream: 'ipcam1-ch1-main', fallback: 'ipcam1-ch1-main-h264' })
+    expect(liveStreams(camera('ipcam1-ch2', null), 'sd')).toEqual({ stream: 'ipcam1-ch2-sub', fallback: null })
+  })
+
+  it('tells an answer without a picture', () => {
+    expect(hasVideo('video/mp4; codecs="flac"')).toBe(false)
+    expect(hasVideo('video/mp4; codecs="hvc1.1.6.L153.B0,flac"')).toBe(true)
+    expect(hasVideo('video/mp4; codecs="avc1.640029"')).toBe(true)
   })
 
   it('tells an H.265 camera on a browser without H.265, and names codecs', () => {

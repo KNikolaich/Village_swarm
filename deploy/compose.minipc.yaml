@@ -39,9 +39,27 @@ services:
     mem_limit: 3g
     shm_size: 256m
 
+  # H.264 copies of the H.265 cameras for browsers without H.265 (Chrome on Windows, most phones), made by the graphics
+  # card (VA-API): the -hardware image has its drivers (amd64 only; compose pulls it, it is not in the deploy bundle).
+  # ffmpeg reads a camera's stream back from go2rtc by name over RTSP, so go2rtc listens for RTSP inside its own
+  # container only (127.0.0.1); nothing new is reachable from the network.
+  go2rtc:
+    image: alexxit/go2rtc:1.9.4-hardware
+    command:
+      - go2rtc
+      - -config
+      - /config/go2rtc.yaml
+      - -config
+      - "{api: {listen: ':1984', origin: '*'}, rtsp: {listen: '127.0.0.1:8554'}, webrtc: {listen: ''}, log: {level: warn}}"
+    devices:
+      - /dev/dri:/dev/dri
+    # Each running copy is an ffmpeg (about 100-200 MB at 1440p).
+    mem_limit: 1g
+
   api:
     mem_limit: 1g
     environment:
+      Video__Transcode: vaapi
       # Pool 80 of the 100 connections; the rest is for the nightly dump and manual psql (deploy/test-db-pool.sh).
       ConnectionStrings__Hive: Host=postgres;Port=5432;Database=hive;Username=hive;Password=${PG_PASSWORD};Maximum Pool Size=80
 

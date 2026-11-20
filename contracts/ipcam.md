@@ -172,24 +172,37 @@ the docker network; no port is published and it has no RTSP or WebRTC server of 
   /api/streams`) on start, on every change of the NVRs and cameras, and checked every minute (go2rtc forgets them when it
   restarts). go2rtc keeps them in a config file in RAM (tmpfs): no camera password on the disk. A camera is opened only
   while someone watches.
+- H.264 copies (`Video:Transcode` = `cpu` or `vaapi`, the mini PC: `vaapi`, the go2rtc `-hardware` image with `/dev/dri`):
+  two more streams per IP camera, `{device}-sub-h264` and `{device}-main-h264`, source `ffmpeg:{stream}#video=h264`
+  (`#hardware=vaapi`). ffmpeg reads the camera's stream back from go2rtc by name over RTSP, which go2rtc then serves on
+  127.0.0.1 inside its container only; the camera keeps one connection per stream and runs a copy only while someone
+  watches it. Without `Video:Transcode` (the RPi) there are none.
 - The browser reaches go2rtc only through Caddy: `/streams/ws?src={stream}` (MSE over WebSocket, go2rtc's video-rtc
   protocol), `/streams/frame.jpeg?src={stream}` and, for a car (MJPEG, which MSE cannot play), `/streams/stream.mjpeg?src={stream}`. Before each, Caddy asks the api (`forward_auth` → `GET
   /api/video/authorize`, `X-Forwarded-Uri`): 204 for a signed-in user and a stream of the list, 403 otherwise (an unknown
-  name, an address given as src, two src), 401 when not signed in. Every other `/streams/*` is 404; go2rtc's API and page
+  name, an address given as src, two src), 401 when not signed in, 429 when a live picture (`/api/ws`, `/api/stream.mjpeg`)
+  would make one viewer more than `Video:MaxViewers` (5). Single frames are never refused.
+- Viewers are go2rtc's consumers of the MSE player (`format_name` `mse/…`) and of a car's MJPEG, on all streams together;
+  go2rtc's own ffmpeg (rtsp) and single frames (jpeg) are not. `GET /api/video/viewers`: `{viewers, max, keepOnUpTo}`
+  (`Video:MaxViewers` 5, `Video:KeepOnViewers` 3), asked from go2rtc at most once a second. Every other `/streams/*` is 404; go2rtc's API and page
   are never reachable.
 - Rotation: `PUT /api/devices/{id}/rotate {rotate: 0|90|180|270}` (users who may control) sets config `camera.rotate` of
   any device with a picture (guard-cam, car, IP camera; a hornet gets its config published, its firmware ignores it). The
   widget turns the live picture in the browser (at 90/270 its box swapped so it is not cut; the arrows over it are not
   turned: they drive the car or the camera); the hive turns photos once when it stores them (older ones stay). `rotate`
   is in `GET /api/video/streams` and in the device.
-- `GET /api/video/streams`: `{enabled, cameras: [{deviceId, name, zoneId, zone, nvrId, channel, sub, main, status}]}`, no
-  addresses, no logins. `enabled` is false when `Video:Go2RtcUrl` is empty.
+- `GET /api/video/streams`: `{enabled, cameras: [{deviceId, name, zoneId, zone, nvrId, channel, sub, main, status, subH264,
+  mainH264}]}` (`subH264`/`mainH264` null without copies), no addresses, no logins. `enabled` is false when `Video:Go2RtcUrl` is empty.
 - The overview widget «Видео»: «Нет камеры» by default (no connection at all); a camera picked by zone; «Снимки» (a frame
   every 5 s through `GET /api/ipcams/{id}/snapshot`, the same way as photos), «Видео SD» (sub), «Видео HD» (main, chosen
   for the full screen). The choice is kept per browser. Playback starts only on «Смотреть» and stops when the tab is
-  hidden, the widget is off screen, or after 5 minutes without a touch («Продолжить просмотр?»). It shows the codec and
-  bitrate, and says so plainly when the browser cannot play the stream's codec (H.265: switch the sub-stream to H.264 or
-  use «Снимки»). An unacknowledged alarm of a camera offers «Показать …», which never starts by itself.
+  hidden, the widget is off screen, or after 5 minutes without a touch («Продолжить просмотр?»). «Не выключать» (kept
+  per browser) lifts the 5-minute stop while no more than `keepOnUpTo` people watch; above it the stop comes back for
+  everyone. The player offers go2rtc only video codecs (it is muted): offered audio once let an H.265 camera reach a
+  browser without H.265 as sound alone, a black picture. When the browser lacks the camera's codec (go2rtc's "codecs not
+  matched", or an answer without a picture) and there is an H.264 copy, the player switches to it («перекодировано
+  Ульем»); without one it says so plainly (H.265: switch the sub-stream to H.264 or use «Снимки»). It shows the codec,
+  the bitrate and the viewers when more than one watch; a refused viewer is told how many watch. An unacknowledged alarm of a camera offers «Показать …», which never starts by itself.
 - A stream that started and then gets no data for 8 s, or whose connection drops, is stopped by the widget itself:
   «Связь с камерой потеряна» and «Смотреть снова». The full-screen button leaves full screen too; stopping the picture
   («Остановить», a lost connection, idle) leaves it as well.

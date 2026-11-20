@@ -5,6 +5,7 @@ using Hive.Domain;
 using Hive.Infrastructure;
 using Hive.Infrastructure.Data;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -22,6 +23,19 @@ public sealed class VideoOptions
 
     /// <summary>How often go2rtc is checked against the cameras (it forgets its streams when it restarts).</summary>
     public int SyncEveryS { get; set; } = 60;
+
+    /// <summary>
+    /// An H.264 copy of each IP camera stream for browsers without H.265 (Chrome on Windows, most phones): "" (none, the
+    /// RPi: it cannot afford it), "cpu" (ffmpeg in software) or "vaapi" (the graphics card: the go2rtc -hardware image
+    /// with /dev/dri). go2rtc runs it only while someone watches the copy.
+    /// </summary>
+    public string Transcode { get; set; } = "";
+
+    /// <summary>Live viewers at once (all cameras together); one more is refused. Each takes its own copy of the stream.</summary>
+    public int MaxViewers { get; set; } = 5;
+
+    /// <summary>Up to this many viewers «Не выключать» keeps the picture on; above it the 5-minute stop comes back for all.</summary>
+    public int KeepOnViewers { get; set; } = 3;
 }
 
 /// <summary>
@@ -30,7 +44,10 @@ public sealed class VideoOptions
 /// </summary>
 public sealed record VideoCameraDto(
     string DeviceId, string Name, int? ZoneId, string? Zone, int NvrId, int Channel, string Sub, string Main, string Status, string Kind = Cameras.IpCam,
-    int Rotate = 0);
+    int Rotate = 0, string? SubH264 = null, string? MainH264 = null);
+
+/// <summary>Live viewers now (all cameras), the most at once, and up to how many «Не выключать» holds.</summary>
+public sealed record VideoViewersDto(int Viewers, int Max, int KeepOnUpTo);
 
 /// <summary>Whether live video works on this hive (go2rtc configured), and the cameras.</summary>
 public sealed record VideoStreamsDto(bool Enabled, IReadOnlyList<VideoCameraDto> Cameras);
@@ -54,6 +71,30 @@ public sealed class Go2RtcClient(HttpClient http)
             streams[s.Name] = url;
         }
         return streams;
+    }
+
+    /// <summary>
+    /// Browsers watching now: consumers of the MSE player (format mse/…) or of a car's MJPEG, on every stream. go2rtc's own
+    /// ffmpeg reading a camera for its H.264 copy (rtsp) and single frames (jpeg) are not viewers.
+    /// </summary>
+    public async Task<int> ViewersAsync(CancellationToken ct)
+    {
+        var json = await http.GetFromJsonAsync<JsonElement>("api/streams", ct);
+        return CountViewers(json);
+    }
+
+    public static int CountViewers(JsonElement streams)
+    {
+        if (streams.ValueKind != JsonValueKind.Object)
+            return 0;
+        var viewers = 0;
+        foreach (var s in streams.EnumerateObject())
+            if (s.Value.ValueKind == JsonValueKind.Object && s.Value.TryGetProperty("consumers", out var consumers) && consumers.ValueKind == JsonValueKind.Array)
+                foreach (var c in consumers.EnumerateArray())
+                    if (c.ValueKind == JsonValueKind.Object && c.TryGetProperty("format_name", out var f) && f.GetString() is { } format
+                        && (format.StartsWith("mse", StringComparison.Ordinal) || format.StartsWith("mjpeg", StringComparison.Ordinal)))
+                        viewers++;
+        return viewers;
     }
 
     public async Task PutAsync(string name, string source, CancellationToken ct)
@@ -85,12 +126,79 @@ public sealed class VideoStreams(
 {
     public const string SubSuffix = "-sub";
     public const string MainSuffix = "-main";
+    public const string H264Suffix = "-h264";
 
     private readonly Channel<bool> _changed = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
     private readonly Dictionary<string, string> _pushed = new(StringComparer.Ordinal);
     private volatile IReadOnlySet<string> _names = new HashSet<string>();
+    private (DateTime At, int Count) _viewers = (DateTime.MinValue, 0);
+    private readonly SemaphoreSlim _viewersGate = new(1, 1);
 
     public bool Enabled => !string.IsNullOrWhiteSpace(options.Value.Go2RtcUrl);
+
+    /// <summary>The go2rtc suffix of the H.264 copy, or null when the hive makes none (Video:Transcode).</summary>
+    public static string? TranscodeSuffix(string? transcode) => transcode?.Trim().ToLowerInvariant() switch
+    {
+        "cpu" => "#video=h264",
+        "vaapi" => "#video=h264#hardware=vaapi",
+        _ => null,
+    };
+
+    private bool Transcodes => TranscodeSuffix(options.Value.Transcode) is not null;
+
+    public int MaxViewers => Math.Max(1, options.Value.MaxViewers);
+
+    /// <summary>Browsers watching now (go2rtc's consumers), asked at most once a second; 0 when go2rtc does not answer.</summary>
+    public async Task<int> ViewersAsync(CancellationToken ct)
+    {
+        if (!Enabled)
+            return 0;
+        await _viewersGate.WaitAsync(ct);
+        try
+        {
+            if (DateTime.UtcNow - _viewers.At < TimeSpan.FromSeconds(1))
+                return _viewers.Count;
+            int count;
+            try
+            {
+                count = await new Go2RtcClient(clients.CreateClient(nameof(VideoStreams))).ViewersAsync(ct);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                logger.LogDebug("go2rtc viewers not known: {Error}", ex.Message);
+                count = 0;
+            }
+            _viewers = (DateTime.UtcNow, count);
+            return count;
+        }
+        finally
+        {
+            _viewersGate.Release();
+        }
+    }
+
+    public async Task<VideoViewersDto> ViewersDtoAsync(CancellationToken ct) =>
+        new(await ViewersAsync(ct), MaxViewers, Math.Clamp(options.Value.KeepOnViewers, 0, MaxViewers));
+
+    /// <summary>
+    /// What Caddy asks before a browser reaches go2rtc: 401/403 as <see cref="Allows"/> says, 429 for one live viewer too
+    /// many (the player socket or a car's MJPEG; single frames are always let through), 204 otherwise.
+    /// </summary>
+    public async Task<int> AuthorizeAsync(string? forwardedUri, CancellationToken ct)
+    {
+        if (!Allows(SourceOf(forwardedUri)))
+            return StatusCodes.Status403Forbidden;
+        if (IsLive(forwardedUri) && await ViewersAsync(ct) >= MaxViewers)
+            return StatusCodes.Status429TooManyRequests;
+        return StatusCodes.Status204NoContent;
+    }
+
+    /// <summary>A request that opens a live picture (and so a viewer): the MSE socket or the MJPEG stream.</summary>
+    public static bool IsLive(string? forwardedUri)
+    {
+        var path = forwardedUri?.Split('?', 2)[0];
+        return path is "/api/ws" or "/api/stream.mjpeg";
+    }
 
     /// <summary>The cameras changed: go2rtc is brought in line now rather than at the next round.</summary>
     public void Changed() => _changed.Writer.TryWrite(true);
@@ -101,9 +209,10 @@ public sealed class VideoStreams(
     public static string Sub(string deviceId) => deviceId + SubSuffix;
     public static string Main(string deviceId) => deviceId + MainSuffix;
 
-    /// <summary>A stream the hive manages: one of an IP camera's two, or one it pushed (a car's).</summary>
+    /// <summary>A stream the hive manages: an IP camera's (with its H.264 copies), or one it pushed (a car's).</summary>
     private bool Ours(string name) =>
-        (name.StartsWith("ipcam", StringComparison.Ordinal) && (name.EndsWith(SubSuffix, StringComparison.Ordinal) || name.EndsWith(MainSuffix, StringComparison.Ordinal)))
+        (name.StartsWith("ipcam", StringComparison.Ordinal) && (name.EndsWith(SubSuffix, StringComparison.Ordinal) || name.EndsWith(MainSuffix, StringComparison.Ordinal)
+            || name.EndsWith(SubSuffix + H264Suffix, StringComparison.Ordinal) || name.EndsWith(MainSuffix + H264Suffix, StringComparison.Ordinal)))
         || _pushed.ContainsKey(name);
 
     /// <summary>
@@ -169,10 +278,16 @@ public sealed class VideoStreams(
                 continue; // IpCamWatch says so in the log
             }
             var endpoint = new NvrEndpoint(nvr.Host, nvr.Port, nvr.Username, password, nvr.RtspPort, nvr.SnapshotUrl, nvr.RtspMain, nvr.RtspSub);
+            var transcode = TranscodeSuffix(options.Value.Transcode);
             foreach (var c in nvr.Channels.Where(c => live.Contains(c.DeviceId)))
             {
                 wanted[Sub(c.DeviceId)] = endpoint.RtspUrlWithLogin(c.Channel, 1);
                 wanted[Main(c.DeviceId)] = endpoint.RtspUrlWithLogin(c.Channel, 0);
+                if (transcode is null)
+                    continue;
+                // ffmpeg reads the camera's stream back from go2rtc by name, so the camera still has one connection per stream.
+                wanted[Sub(c.DeviceId) + H264Suffix] = $"ffmpeg:{Sub(c.DeviceId)}{transcode}";
+                wanted[Main(c.DeviceId) + H264Suffix] = $"ffmpeg:{Main(c.DeviceId)}{transcode}";
             }
         }
         var cars = await db.Devices.AsNoTracking().Where(d => d.TypeCode == Cars.Type && d.Status != DeviceStatus.Disabled)
@@ -222,9 +337,11 @@ public sealed class VideoStreams(
         var ids = channels.Select(c => c.DeviceId).ToList();
         var devices = await db.Devices.AsNoTracking().Include(d => d.Zone)
             .Where(d => ids.Contains(d.DeviceId) && d.Status != DeviceStatus.Disabled).ToListAsync(ct);
+        var h264 = Transcodes && !node.ReadOnly;
         var cameras = devices.Join(channels, d => d.DeviceId, c => c.DeviceId, (d, c) => new VideoCameraDto(
                 d.DeviceId, d.Name, d.ZoneId, d.Zone?.Name, c.NvrId, c.Channel, Sub(d.DeviceId), Main(d.DeviceId), d.Status.ToString().ToLowerInvariant(),
-                Rotate: VideoRotation.Of(d.Config)))
+                Rotate: VideoRotation.Of(d.Config),
+                SubH264: h264 ? Sub(d.DeviceId) + H264Suffix : null, MainH264: h264 ? Main(d.DeviceId) + H264Suffix : null))
             .ToList();
         var cars = await db.Devices.AsNoTracking().Include(d => d.Zone)
             .Where(d => d.TypeCode == Cars.Type && d.Status != DeviceStatus.Disabled).ToListAsync(ct);

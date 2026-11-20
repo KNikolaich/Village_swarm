@@ -4514,6 +4514,25 @@
         }
       }
     },
+    "/api/video/viewers": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoViewersDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ipcams/ptz/{deviceId}": {
       "get": {
         "tags": [
@@ -11219,6 +11238,18 @@
             "type": "integer",
             "format": "int32",
             "default": 0
+          },
+          "subH264": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "mainH264": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -11237,6 +11268,28 @@
             "items": {
               "$ref": "#/components/schemas/VideoCameraDto"
             }
+          }
+        }
+      },
+      "VideoViewersDto": {
+        "required": [
+          "viewers",
+          "max",
+          "keepOnUpTo"
+        ],
+        "type": "object",
+        "properties": {
+          "viewers": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "max": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "keepOnUpTo": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },

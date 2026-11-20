@@ -121,6 +121,7 @@ public sealed class HiveFixture : IAsyncLifetime
             b.UseSetting("IpCams:AuthRetryS", "2");
             b.UseSetting("Video:Go2RtcUrl", Go2Rtc.BaseUrl);
             b.UseSetting("Video:SyncEveryS", "2");
+            b.UseSetting("Video:Transcode", "vaapi");
             b.ConfigureTestServices(s => s.AddSingleton<Hive.Modules.IpCams.IFrameGrabber>(Grabber));
         });
         _ = App.Server; // start the host: migrations, MQTT gateway, ingest pipeline

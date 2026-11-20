@@ -1,6 +1,7 @@
 import type { EventDto, Schemas } from '@/api/client'
 
 export type VideoCamera = Schemas['VideoCameraDto']
+export type VideoViewers = Schemas['VideoViewersDto']
 
 /** What the video widget shows: frames every few seconds, the light stream, or the detailed one. */
 export const qualities = ['snapshots', 'sd', 'hd'] as const
@@ -79,8 +80,12 @@ export function groupCameras(cameras: readonly VideoCamera[], noZone: string): {
   return groups
 }
 
-/** The codecs go2rtc's player offers (video-rtc), those this browser can play through MSE. */
-const offered = ['avc1.640029', 'avc1.64002A', 'avc1.640033', 'hvc1.1.6.L153.B0', 'mp4a.40.2', 'mp4a.40.5', 'flac', 'opus']
+/**
+ * The video codecs go2rtc's player offers (video-rtc), those this browser can play through MSE. No audio: the player is
+ * muted, and with audio on offer an H.265 camera (sound in PCMU, which go2rtc turns into FLAC) reached a browser
+ * without H.265 as sound only, a black picture with no error.
+ */
+const offered = ['avc1.640029', 'avc1.64002A', 'avc1.640033', 'hvc1.1.6.L153.B0']
 
 export function codecList(isSupported: (type: string) => boolean): string {
   return offered.filter((c) => isSupported(`video/mp4; codecs="${c}"`)).join(',')
@@ -89,6 +94,11 @@ export function codecList(isSupported: (type: string) => boolean): string {
 /** go2rtc found no codec of the camera among the browser's: an H.265 camera on a browser without H.265. */
 export function isCodecMismatch(error: string): boolean {
   return /codec/i.test(error)
+}
+
+/** Whether go2rtc's MSE answer carries a picture: 'video/mp4; codecs="flac"' alone is sound only. */
+export function hasVideo(mime: string): boolean {
+  return /avc1|hvc1|hev1/i.test(mime)
 }
 
 /** A readable codec from go2rtc's MSE answer: 'video/mp4; codecs="avc1.640029"' → "H.264", hvc1/hev1 → "H.265". */
@@ -105,6 +115,45 @@ export function shouldPlay(s: { wanted: boolean; visible: boolean; inView: boole
 
 /** After this long without a touch the stream stops and asks whether to go on. */
 export const idleAfterMs = 5 * 60_000
+
+/**
+ * Whether the 5-minute stop applies: always without «Не выключать», and for everyone while more people watch than it
+ * holds (each viewer takes its own copy of the stream).
+ */
+export function idleApplies(keepOn: boolean, viewers: VideoViewers | undefined): boolean {
+  return !keepOn || (viewers !== undefined && viewers.viewers > viewers.keepOnUpTo)
+}
+
+/** No room for one more live viewer: the hive refuses the next one. */
+export function isFull(viewers: VideoViewers | undefined): boolean {
+  return viewers !== undefined && viewers.viewers >= viewers.max
+}
+
+/** The stream asked for first, and the hive's H.264 copy for a browser without the camera's codec (null: none). */
+export function liveStreams(camera: VideoCamera, quality: 'sd' | 'hd'): { stream: string; fallback: string | null } {
+  return quality === 'hd'
+    ? { stream: camera.main, fallback: camera.mainH264 ?? null }
+    : { stream: camera.sub, fallback: camera.subH264 ?? null }
+}
+
+const keepOnKey = 'overview.videoKeepOn'
+
+/** «Не выключать» in this browser; off when never set or storage is closed. */
+export function loadKeepOn(storage: Pick<Storage, 'getItem'> | undefined = globalThis.localStorage): boolean {
+  try {
+    return storage?.getItem(keepOnKey) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function saveKeepOn(on: boolean, storage: Pick<Storage, 'setItem'> | undefined = globalThis.localStorage) {
+  try {
+    storage?.setItem(keepOnKey, on ? '1' : '0')
+  } catch {
+    // private window or storage full: just not remembered
+  }
+}
 
 /** The camera of the newest alarm nobody acknowledged yet, if it can be watched: offered, never started by itself. */
 export function alarmCamera(events: readonly EventDto[], cameras: readonly VideoCamera[]): VideoCamera | null {

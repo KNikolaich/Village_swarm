@@ -55,8 +55,11 @@ public static class IpCamsModule
         // Caddy makes before it lets a browser through to go2rtc (forward_auth): signed in, and a stream of the list.
         var video = app.MapGroup("/api/video").WithTags("video");
         video.MapGet("/streams", async Task<Ok<VideoStreamsDto>> (VideoStreams v, CancellationToken ct) => TypedResults.Ok(await v.ListAsync(ct)));
-        video.MapGet("/authorize", (HttpRequest request, VideoStreams v) =>
-                v.Allows(VideoStreams.SourceOf(request.Headers["X-Forwarded-Uri"])) ? Results.NoContent() : Results.StatusCode(StatusCodes.Status403Forbidden))
+        // Live viewers now and the limits, for «Не выключать» (contracts/ipcam.md "Live video").
+        video.MapGet("/viewers", async Task<Ok<VideoViewersDto>> (VideoStreams v, CancellationToken ct) => TypedResults.Ok(await v.ViewersDtoAsync(ct)));
+        video.MapGet("/authorize", async (HttpRequest request, VideoStreams v, CancellationToken ct) =>
+                await v.AuthorizeAsync(request.Headers["X-Forwarded-Uri"], ct) is var status && status == StatusCodes.Status204NoContent
+                    ? Results.NoContent() : Results.StatusCode(status))
             .ExcludeFromDescription();
 
         var ipcams = app.MapGroup("/api/ipcams").WithTags("ipcams");

@@ -52,6 +52,11 @@ public sealed class VideoTests(HiveFixture hive) : IAsyncLifetime
         await WaitAsync(() => Go2Rtc.Streams.ContainsKey($"{cam}-sub") && Go2Rtc.Streams.ContainsKey($"{cam}-main"), "both streams pushed");
         Assert.Equal("rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=2&subtype=1", Go2Rtc.Streams[$"{cam}-sub"]);
         Assert.Equal("rtsp://admin:nvr-secret-1@127.0.0.1:554/cam/realmonitor?channel=2&subtype=0", Go2Rtc.Streams[$"{cam}-main"]);
+        // The H.264 copies for browsers without H.265 (Video:Transcode=vaapi): ffmpeg reads the stream back by its name,
+        // so the camera keeps one connection per stream and no login is repeated.
+        await WaitAsync(() => Go2Rtc.Streams.ContainsKey($"{cam}-main-h264"), "H.264 copies pushed");
+        Assert.Equal($"ffmpeg:{cam}-sub#video=h264#hardware=vaapi", Go2Rtc.Streams[$"{cam}-sub-h264"]);
+        Assert.Equal($"ffmpeg:{cam}-main#video=h264#hardware=vaapi", Go2Rtc.Streams[$"{cam}-main-h264"]);
 
         // The widget's list: names to ask Caddy for, never an address or a password.
         var raw = await admin.GetStringAsync("/api/video/streams");
@@ -61,6 +66,7 @@ public sealed class VideoTests(HiveFixture hive) : IAsyncLifetime
         Assert.True(list.Enabled);
         var camera = Assert.Single(list.Cameras, c => c.DeviceId == cam);
         Assert.Equal(($"{cam}-sub", $"{cam}-main", 2), (camera.Sub, camera.Main, camera.Channel));
+        Assert.Equal(($"{cam}-sub-h264", $"{cam}-main-h264"), (camera.SubH264, camera.MainH264));
 
         // go2rtc restarted and forgot them: they come back without anyone touching the settings.
         Go2Rtc.Restart();
@@ -88,6 +94,7 @@ public sealed class VideoTests(HiveFixture hive) : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.NoContent, await AskAsync(admin, $"/api/ws?src={cam}-sub"));
         Assert.Equal(HttpStatusCode.NoContent, await AskAsync(admin, $"/api/frame.jpeg?src={cam}-main"));
+        Assert.Equal(HttpStatusCode.NoContent, await AskAsync(admin, $"/api/ws?src={cam}-sub-h264"));
         Assert.Equal(HttpStatusCode.Forbidden, await AskAsync(admin, "/api/ws?src=ipcam999-ch1-sub"));
         // go2rtc would open any address given as src: never through the hive.
         Assert.Equal(HttpStatusCode.Forbidden, await AskAsync(admin, "/api/ws?src=" + Uri.EscapeDataString("rtsp://evil/x")));
@@ -101,5 +108,57 @@ public sealed class VideoTests(HiveFixture hive) : IAsyncLifetime
         await hive.CreateUserAsync("video-viewer", "viewer-password-2", "viewer");
         using var viewer = await hive.LoginAsync("video-viewer", "viewer-password-2");
         Assert.Equal(HttpStatusCode.NoContent, await AskAsync(viewer, $"/api/ws?src={cam}-sub"));
+    }
+
+    [Fact]
+    public async Task A_sixth_live_viewer_is_refused_while_frames_still_come()
+    {
+        using var admin = await hive.LoginAsync();
+        var nvr = await AddNvrAsync(admin);
+        var cam = nvr.Channels[0].DeviceId;
+        await WaitAsync(() => Go2Rtc.Streams.ContainsKey($"{cam}-sub-h264"), "streams pushed");
+
+        async Task<HttpStatusCode> AskAsync(string uri)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/api/video/authorize");
+            request.Headers.Add("X-Forwarded-Uri", uri);
+            using var response = await admin.SendAsync(request);
+            return response.StatusCode;
+        }
+
+        try
+        {
+            // Four watch in H.265, one in the H.264 copy, whose ffmpeg also reads the H.265 stream (not a viewer).
+            Go2Rtc.Consumers[$"{cam}-sub"] = ["mse/fmp4", "mse/fmp4", "rtsp"];
+            Go2Rtc.Consumers[$"{cam}-main"] = ["mse/fmp4", "mse/fmp4"];
+            Go2Rtc.Consumers[$"{cam}-sub-h264"] = ["mse/fmp4"];
+            var viewers = await WaitForAsync(admin, v => v.Viewers == 5);
+            Assert.Equal((5, 5, 3), (viewers.Viewers, viewers.Max, viewers.KeepOnUpTo));
+            Assert.Equal(HttpStatusCode.TooManyRequests, await AskAsync($"/api/ws?src={cam}-sub"));
+            Assert.Equal(HttpStatusCode.NoContent, await AskAsync($"/api/frame.jpeg?src={cam}-sub"));
+
+            // One leaves: the next may come in.
+            Go2Rtc.Consumers[$"{cam}-main"] = ["mse/fmp4"];
+            await WaitForAsync(admin, v => v.Viewers == 4);
+            Assert.Equal(HttpStatusCode.NoContent, await AskAsync($"/api/ws?src={cam}-sub"));
+        }
+        finally
+        {
+            Go2Rtc.Consumers.Clear();
+        }
+    }
+
+    private static async Task<VideoViewersDto> WaitForAsync(HttpClient client, Func<VideoViewersDto, bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            var viewers = (await client.GetFromJsonAsync<VideoViewersDto>("/api/video/viewers"))!;
+            if (condition(viewers))
+                return viewers;
+            if (DateTime.UtcNow > deadline)
+                Assert.Fail($"viewers stayed {viewers}");
+            await Task.Delay(300);
+        }
     }
 }
