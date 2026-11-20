@@ -26,10 +26,12 @@ dev-up:
 dev-down:
 	$(COMPOSE_DEV) down
 
-# Deploy helper scripts without root or Docker: the compose copy to /opt/hive, the desktop launchers.
+# Deploy helper scripts without root (Docker optional): the compose copy to /opt/hive, the desktop launchers,
+# the api database pool against postgres max_connections.
 deploy-test:
 	bash deploy/test-install-files.sh
 	bash deploy/test-desktop-icons.sh
+	bash deploy/test-db-pool.sh
 
 # Tries the backup scripts for real in Docker (dump, rotation, restic copy, restore check, failures).
 backup-test:

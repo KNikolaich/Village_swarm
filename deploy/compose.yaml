@@ -124,7 +124,9 @@ services:
     image: ${HIVE_IMAGES:-ghcr.io/knikolaich/village-swarm}-api:${HIVE_VERSION:?set HIVE_VERSION in .env}
     env_file: .env
     environment:
-      ConnectionStrings__Hive: Host=postgres;Port=5432;Database=hive;Username=hive;Password=${PG_PASSWORD}
+      # The pool stays below postgres max_connections (30): at a burst the api queues for a connection instead of
+      # being refused with "too many clients". deploy/test-db-pool.sh checks every overlay.
+      ConnectionStrings__Hive: Host=postgres;Port=5432;Database=hive;Username=hive;Password=${PG_PASSWORD};Maximum Pool Size=20
       Mqtt__Host: mosquitto
       Mqtt__Username: ${MQTT_ADMIN_USER:-hive-api}
       Mqtt__Password: ${MQTT_ADMIN_PASSWORD}
